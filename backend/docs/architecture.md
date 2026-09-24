@@ -130,9 +130,11 @@ gateway verifies a token and sets the header; the services do not change.
 
 ## What would change at scale
 
-- **Photo uploads.** Listings carry photo URLs. An upload endpoint (object
-  storage, signed PUT) is the missing piece; the catalog already refuses
-  anything that is not an `http(s)` URL so image bytes never land in Postgres.
+- **Photo storage.** `POST /uploads` writes to a volume (`catalog/media.py`,
+  content-addressed, served at `/media/…` through the gateway). At scale that
+  module's two functions move to object storage behind a CDN; the URLs in
+  `Listing.photos` and the app do not change, and image bytes still never
+  land in Postgres.
 - **Slot consumption.** An accepted booking should split the idle window it
   sits in. Today neither the app nor the server does that; it belongs in
   catalog, triggered by `booking.status_changed` (to `accepted`).

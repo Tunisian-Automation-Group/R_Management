@@ -16,7 +16,7 @@ RULES: list[tuple[re.Pattern[str], str]] = [
     (re.compile(r"^/districts/nearest$"), MATCHING),
     (re.compile(r"^/listings/[^/]+/offers$"), MATCHING),
     (re.compile(r"^/listings/[^/]+/reviews/summary$"), MATCHING),
-    (re.compile(r"^/(world|me|districts|owners|listings|reviews|saved)(/|$)"), CATALOG),
+    (re.compile(r"^/(world|me|districts|owners|listings|reviews|saved|uploads)(/|$)"), CATALOG),
 ]
 
 

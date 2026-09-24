@@ -1,9 +1,11 @@
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import type { CategoryId, Listing, Material, Slot } from '../../domain/types.ts'
 import { CATEGORIES, category } from '../../domain/categories.ts'
 import { formatEur } from '../../domain/money.ts'
 import { ME, useCappy } from '../store.tsx'
+import * as repo from '../../data/repo.ts'
+import { MAX_PHOTOS, shrink } from '../photos.ts'
 import { Screen } from '../components/AppShell.tsx'
 import { Icon, categoryIcon } from '../components/Icon.tsx'
 import {
@@ -116,7 +118,13 @@ function customSummary(c: CustomWindow): string {
   return `${days}, ${c.start} – ${c.end}`
 }
 
-type Errors = Partial<Record<'title' | 'blurb' | 'rate' | 'instructions' | 'machine' | 'availability', string>>
+type Errors = Partial<
+  Record<'title' | 'blurb' | 'rate' | 'instructions' | 'machine' | 'availability' | 'photos', string>
+>
+
+/** A photograph on its way in: shown at once from the file, sent shrunk, and
+ *  carrying the server's URL once it has one. The first in the list is the cover. */
+type PhotoDraft = { key: string; preview: string; url?: string; error?: string }
 
 export function AddListing() {
   const nav = useNavigate()
@@ -139,6 +147,8 @@ export function AddListing() {
   const [custom, setCustom] = useState<CustomWindow>(defaultCustom)
   const [instructions, setInstructions] = useState('')
   const [rules, setRules] = useState<string[]>([])
+  const [photos, setPhotos] = useState<PhotoDraft[]>([])
+  const fileInput = useRef<HTMLInputElement>(null)
   const [errors, setErrors] = useState<Errors>({})
   const [touched, setTouched] = useState<Record<string, boolean>>({})
 
@@ -156,6 +166,7 @@ export function AddListing() {
       e.instructions = 'Say how someone actually gets hold of it.'
     }
     if (isBatch && machine.trim().length < 2) e.machine = 'Which machine is it?'
+    if (photos.some((p) => !p.url && !p.error)) e.photos = 'Give the photos a moment to finish uploading.'
     if (availability === 'custom') {
       const problem = customProblem(custom)
       if (problem) e.availability = problem
@@ -169,6 +180,45 @@ export function AddListing() {
   }
 
   const errorFor = (key: keyof Errors) => (touched[key] ? errors[key] : undefined)
+
+  /** Show each picture straight away, then send it shrunk. Failures stay in
+   *  the grid with the reason, so the person can remove them or try again. */
+  const addPhotos = async (files: FileList | null) => {
+    if (!files) return
+    const picked = Array.from(files).slice(0, Math.max(0, MAX_PHOTOS - photos.length))
+    const drafts: PhotoDraft[] = picked.map((f, i) => ({
+      key: `${Date.now().toString(36)}-${i}-${f.name}`,
+      preview: URL.createObjectURL(f),
+    }))
+    setPhotos((prev) => [...prev, ...drafts])
+    setTouched((t) => ({ ...t, photos: true }))
+    await Promise.all(
+      picked.map(async (file, i) => {
+        const key = drafts[i].key
+        try {
+          const url = await repo.uploadPhoto(await shrink(file), file.name.replace(/\.[^.]*$/, '') + '.jpg')
+          setPhotos((prev) => prev.map((d) => (d.key === key ? { ...d, url } : d)))
+        } catch (err) {
+          const error = err instanceof Error ? err.message : 'Upload failed'
+          setPhotos((prev) => prev.map((d) => (d.key === key ? { ...d, error } : d)))
+        }
+      }),
+    )
+    setErrors((prev) => ({ ...prev, photos: undefined }))
+  }
+
+  const removePhoto = (key: string) =>
+    setPhotos((prev) => {
+      const gone = prev.find((d) => d.key === key)
+      if (gone) URL.revokeObjectURL(gone.preview)
+      return prev.filter((d) => d.key !== key)
+    })
+
+  const makeCover = (key: string) =>
+    setPhotos((prev) => {
+      const pick = prev.find((d) => d.key === key)
+      return pick ? [pick, ...prev.filter((d) => d.key !== key)] : prev
+    })
 
   const buildSlots = (listingId: string): Slot[] => {
     const out: Slot[] = []
@@ -224,7 +274,15 @@ export function AddListing() {
   const submit = () => {
     const e = validate()
     setErrors(e)
-    setTouched({ title: true, blurb: true, rate: true, instructions: true, machine: true, availability: true })
+    setTouched({
+      title: true,
+      blurb: true,
+      rate: true,
+      instructions: true,
+      machine: true,
+      availability: true,
+      photos: true,
+    })
     if (Object.keys(e).length > 0 || !categoryId || !meta) {
       document.querySelector<HTMLElement>('[aria-invalid="true"]')?.focus()
       return
@@ -241,6 +299,7 @@ export function AddListing() {
       instructions: instructions.trim(),
       rules: rules.length ? rules : ['Leave it as you found it'],
       active: true,
+      ...(photos.some((p) => p.url) ? { photos: photos.flatMap((p) => (p.url ? [p.url] : [])) } : {}),
     }
 
     const listing: Listing = isBatch
@@ -346,6 +405,86 @@ export function AddListing() {
             onChange={(e) => setTitle(e.target.value)}
             onBlur={blur('title')}
             placeholder={isBatch ? 'Haas VF-2SS' : 'Festool TS 55 plunge saw'}
+          />
+        </Field>
+
+        <Field
+          label="Photos"
+          hint="Your own pictures of the actual thing. The first one is the cover."
+          error={errorFor('photos')}
+        >
+          <div className="grid grid-cols-3 gap-2">
+            {photos.map((p, i) => {
+              const pending = !p.url && !p.error
+              return (
+                <div
+                  key={p.key}
+                  className="relative aspect-[4/3] overflow-hidden rounded-[var(--radius-field)] bg-[var(--sunken)]"
+                >
+                  <img
+                    src={p.preview}
+                    alt=""
+                    className={`h-full w-full object-cover transition-opacity duration-[200ms] ${pending ? 'opacity-40' : ''}`}
+                  />
+                  {pending && (
+                    <span className="absolute inset-0 grid place-items-center text-[12px] font-semibold text-[var(--ink-2)]">
+                      Uploading…
+                    </span>
+                  )}
+                  {i === 0 && p.url && (
+                    <span className="absolute left-2 top-2 rounded-full bg-[var(--ink)] px-2 py-0.5 text-[11px] font-semibold text-[var(--on-inverse)]">
+                      Cover
+                    </span>
+                  )}
+                  {p.error && (
+                    <span className="absolute inset-x-0 bottom-0 bg-[var(--danger)] px-2 py-1 text-[11px] font-semibold leading-tight text-white">
+                      {p.error}
+                    </span>
+                  )}
+                  <button
+                    type="button"
+                    aria-label="Remove photo"
+                    onClick={() => removePhoto(p.key)}
+                    className="tap absolute right-1.5 top-1.5 grid h-7 w-7 place-items-center rounded-full bg-[var(--ink)] text-[var(--on-inverse)]"
+                  >
+                    <Icon name="close" size={13} strokeWidth={2.6} />
+                  </button>
+                  {i > 0 && p.url && (
+                    <button
+                      type="button"
+                      onClick={() => makeCover(p.key)}
+                      className="absolute inset-x-1.5 bottom-1.5 rounded-full bg-white/90 py-1 text-[11px] font-semibold text-[var(--ink)]"
+                    >
+                      Make cover
+                    </button>
+                  )}
+                </div>
+              )
+            })}
+            {photos.length < MAX_PHOTOS && (
+              <button
+                type="button"
+                onClick={() => fileInput.current?.click()}
+                className="grid aspect-[4/3] place-items-center rounded-[var(--radius-field)] border border-dashed border-[var(--line-strong)] text-[var(--ink-3)] transition-colors duration-[160ms] hover:border-[var(--ink)] hover:text-[var(--ink)]"
+              >
+                <span className="flex flex-col items-center gap-1 text-[12px] font-semibold">
+                  <Icon name="camera" size={20} strokeWidth={1.8} />
+                  {photos.length ? 'Add another' : 'Add photos'}
+                </span>
+              </button>
+            )}
+          </div>
+          <input
+            ref={fileInput}
+            type="file"
+            accept="image/*"
+            multiple
+            className="sr-only"
+            aria-label="Choose photos"
+            onChange={(e) => {
+              void addPhotos(e.target.files)
+              e.target.value = ''
+            }}
           />
         </Field>
 

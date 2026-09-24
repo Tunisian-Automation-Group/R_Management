@@ -52,6 +52,9 @@ services:
       DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-cappy}:${POSTGRES_PASSWORD:-cappy}@postgres:5432/cappy_catalog
       SEED_ON_START: "true"
       SEED_TIMEZONE: ${SEED_TIMEZONE:-Europe/Berlin}
+      MEDIA_DIR: /app/media
+    volumes:
+      - mediadata:/app/media
     depends_on:
       postgres: { condition: service_healthy }
       redis: { condition: service_healthy }
@@ -119,3 +122,5 @@ services:
 volumes:
   pgdata:
   redisdata:
+  # Listing photographs. Survives rebuilds; `docker compose down -v` deletes it.
+  mediadata:

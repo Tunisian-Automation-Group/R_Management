@@ -109,6 +109,12 @@ def build_app(settings: Settings, transport: httpx.AsyncBaseTransport | None = N
             raise NotFound(f"no service answers {rel}")
         return await forward(request, upstream, rel)
 
+    @app.get("/media/{name}", include_in_schema=False)
+    async def media_file(name: str, request: Request) -> Response:
+        """Listing photographs, from the catalog's store, on the app's origin
+        so a photo URL is the same string on the website and the phone."""
+        return await forward(request, CATALOG, f"/media/{name}")
+
     if root is None:
 
         @app.get("/", include_in_schema=False)

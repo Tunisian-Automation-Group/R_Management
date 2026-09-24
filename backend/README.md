@@ -135,8 +135,9 @@ Same list as the app, plus the server-side equivalents:
   requests after `DEMO_AUTO_ACCEPT_SECONDS` (default 5.5). Set it to `0` to
   turn that off.
 - No money moves. Quotes are computed and stored; nothing is charged.
-- Photos are URLs the owner supplies. There is no upload endpoint yet; the
-  seed uses curated stand-ins, as the app does.
+- Photos an owner uploads live on the `mediadata` Docker volume, not in
+  object storage, and are never deleted when a listing is removed. The seed's
+  photos are curated stand-ins, as in the app.
 - Accepted bookings do not yet carve the booked hours out of the idle window,
   matching the app's current behaviour. That is the next real piece of work.
 - `POST /api/admin/reset` wipes both databases (bookings, hearts, the world)

@@ -305,3 +305,49 @@ def test_world_version_and_reseed_when_the_seed_changes(tmp_path):
         c.put("/saved/l8")
     with TestClient(app) as c:
         assert c.get("/saved").json() == ["l8"], "a current world is not touched on restart"
+
+
+# A 1x1 PNG, the smallest real image there is.
+_PNG = bytes.fromhex(
+    "89504e470d0a1a0a0000000d49484452000000010000000108060000001f15c4890000000d4944415478da63f8cfc0"
+    "000000030001b7b5d4620000000049454e44ae426082"
+)
+
+
+def test_photo_upload_and_serve(tmp_path):
+    app = build_app(
+        Settings(
+            database_url="sqlite+aiosqlite://",
+            event_bus_url="memory://",
+            cors_origins="",
+            media_dir=str(tmp_path / "media"),
+            media_max_bytes=50_000,
+        )
+    )
+    with TestClient(app) as c:
+        r = c.post("/uploads", files={"file": ("IMG_0042.HEIC", _PNG, "application/octet-stream")})
+        assert r.status_code == 201, r.text
+        up = r.json()
+        assert up["contentType"] == "image/png" and up["bytes"] == len(_PNG), "the bytes decide, not the name"
+        assert up["url"].startswith("/media/") and up["url"].endswith(".png")
+
+        again = c.post("/uploads", files={"file": ("same.png", _PNG, "image/png")}).json()
+        assert again["url"] == up["url"], "same picture, same file"
+
+        got = c.get(up["url"])
+        assert got.status_code == 200 and got.content == _PNG
+        assert got.headers["content-type"] == "image/png" and "immutable" in got.headers["cache-control"]
+        assert c.get("/media/../../etc/passwd").status_code in (404, 422)
+        assert c.get("/media/00000000000000000000000000000000.png").status_code == 404
+
+        r = c.post("/uploads", files={"file": ("notes.txt", b"hello", "text/plain")})
+        assert r.status_code == 422 and "JPEG, PNG or WebP" in r.json()["error"]["message"]
+        r = c.post("/uploads", files={"file": ("big.png", _PNG + b"\0" * 60_000, "image/png")})
+        assert r.status_code == 422 and "limited" in r.json()["error"]["message"]
+
+        # The URL is what a listing carries.
+        listing = _listing(photos=[up["url"], "https://x.test/other.jpg"])
+        assert c.post("/listings", json={"listing": listing, "slots": []}).status_code == 201
+        assert c.get("/listings/own_test1").json()["photos"][0] == up["url"]
+        bad = _listing(id="own_test2", photos=["/media/../secret.png"])
+        assert c.post("/listings", json={"listing": bad, "slots": []}).status_code == 422

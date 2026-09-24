@@ -2,7 +2,8 @@ from __future__ import annotations
 
 from collections.abc import AsyncIterator
 
-from fastapi import Depends, Request, Response, status
+from fastapi import Depends, Request, Response, UploadFile, status
+from fastapi.responses import FileResponse
 
 from cappy_common.app import ApiRouter
 from cappy_common.categories import mode_of
@@ -20,13 +21,19 @@ from cappy_common.models import (
 )
 from cappy_common.timeutil import HOUR_MS, ms_from_iso
 
+from . import media
 from .repository import CatalogRepository
 
 router = ApiRouter()
 
-# A listing carries the owner's own photographs, by URL. Uploads land in object
-# storage and arrive here as URLs too; the catalog never stores image bytes.
+# A listing carries the owner's own photographs, by URL: ours (``/media/…``,
+# from ``POST /uploads``) or anyone's over http(s). The database never holds
+# image bytes.
 MAX_PHOTOS = 12
+
+
+def _photo_url_ok(url: str) -> bool:
+    return url.startswith(("https://", "http://")) or bool(media.NAME.match(url.removeprefix("/media/")))
 
 
 async def get_repo(request: Request) -> AsyncIterator[CatalogRepository]:
@@ -167,8 +174,8 @@ async def create_listing(
         if len(l.photos) > MAX_PHOTOS:
             raise Invalid(f"at most {MAX_PHOTOS} photos per listing")
         for url in l.photos:
-            if not url.startswith(("https://", "http://")):
-                raise Invalid("photos must be URLs; upload the image first and send its address")
+            if not _photo_url_ok(url):
+                raise Invalid("photos must be URLs; upload the image first (POST /uploads) and send its address")
 
     seen: set[str] = set()
     for s in body.slots:
@@ -230,6 +237,35 @@ async def remove(
     await repo.remove_listing(listing_id)
     await _changed(request, "listing", id=listing_id)
     return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+# --- photos ---------------------------------------------------------------------
+
+
+class Uploaded(CamelModel):
+    url: str
+    content_type: str
+    bytes: int
+
+
+@router.post("/uploads", response_model=Uploaded, status_code=status.HTTP_201_CREATED)
+async def upload(file: UploadFile, request: Request, user: str = Depends(current_user)) -> Uploaded:
+    """One photograph in, its URL out. The app shrinks pictures before sending
+    (a phone photo is 4 to 12 MB; nobody needs that on a card), so the limit
+    here is a backstop, not a budget. The URL goes in ``Listing.photos``."""
+    settings = request.app.state.settings
+    # Read at most one byte over the limit, so a huge upload is refused without
+    # being buffered whole.
+    data = await file.read(settings.media_max_bytes + 1)
+    name, ctype = media.store(settings.media_dir, data, settings.media_max_bytes)
+    return Uploaded(url=f"{settings.media_public_base.rstrip('/')}/media/{name}", content_type=ctype, bytes=len(data))
+
+
+@router.get("/media/{name}", include_in_schema=False)
+async def serve_media(name: str, request: Request) -> FileResponse:
+    """Names are content hashes, so a URL never changes meaning: cache forever."""
+    path, ctype = media.locate(request.app.state.settings.media_dir, name)
+    return FileResponse(path, media_type=ctype, headers={"Cache-Control": "public, max-age=31536000, immutable"})
 
 
 # --- saved: the heart on every card ---------------------------------------------

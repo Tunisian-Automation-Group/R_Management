@@ -27,6 +27,7 @@ from gateway.settings import Settings
         ("/reviews", CATALOG),
         ("/saved", CATALOG),
         ("/saved/l9", CATALOG),
+        ("/uploads", CATALOG),
         ("/listings/l9/offers", MATCHING),
         ("/listings/l9/reviews/summary", MATCHING),
         ("/matches", MATCHING),
@@ -59,6 +60,12 @@ def _fake_upstreams(calls: list):
             return httpx.Response(200, json={"owners": [], "listings": [], "slots": [], "districts": {}, "reviews": []})
         if request.url.host == "catalog" and request.url.path == "/saved/l9":
             return httpx.Response(200, json=["l9"])
+        if request.url.host == "catalog" and request.url.path.startswith("/media/"):
+            return httpx.Response(
+                200,
+                content=b"PNG",
+                headers={"content-type": "image/png", "cache-control": "public, max-age=31536000, immutable"},
+            )
         if request.url.host == "booking" and request.url.path == "/bookings":
             body = json.loads(request.content or b"{}")
             return httpx.Response(201, json={"echo": body, "user": request.headers.get("x-cappy-user")})
@@ -90,10 +97,14 @@ def test_proxies_by_path_and_forwards_identity(gateway):
     r = c.post("/api/bookings", json={"listingId": "l9"}, headers={"X-Cappy-User": "o5"})
     assert r.status_code == 201 and r.json() == {"echo": {"listingId": "l9"}, "user": "o5"}
     assert c.put("/api/saved/l9").json() == ["l9"]
+    photo = c.get("/media/abc.png")
+    assert photo.status_code == 200 and photo.headers["content-type"] == "image/png"
+    assert "immutable" in photo.headers["cache-control"]
     assert [(h, m, p) for h, m, p, _ in calls] == [
         ("catalog", "GET", "/world"),
         ("booking", "POST", "/bookings"),
         ("catalog", "PUT", "/saved/l9"),
+        ("catalog", "GET", "/media/abc.png"),
     ]
 
 
@@ -141,6 +152,7 @@ def test_serves_the_web_app_from_the_same_origin(tmp_path):
         assert c.get("/../../etc/passwd").status_code == 200 and "Cappy" in c.get("/../../etc/passwd").text
 
         assert c.get("/api/world").status_code == 200, "the API is untouched"
+        assert c.get("/media/abc.png").headers["content-type"] == "image/png", "photos are not the app"
         assert c.get("/api/health").json()["ok"] is True
         assert c.get("/api/whatever").status_code == 404
 

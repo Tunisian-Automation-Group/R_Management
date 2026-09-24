@@ -108,6 +108,29 @@ export const pauseListing = (id: string): Promise<Listing> => post(`/listings/${
 export const resumeListing = (id: string): Promise<Listing> => post(`/listings/${id}/resume`)
 export const removeListing = (id: string): Promise<void> => del(`/listings/${id}`)
 
+/**
+ * One photograph in, its URL out, to go in `Listing.photos`. Multipart, so
+ * the JSON helper above does not apply. The URL is same-origin (`/media/…`)
+ * unless the API is hosted apart, in which case it is absolute.
+ */
+export async function uploadPhoto(image: Blob, filename = 'photo.jpg'): Promise<string> {
+  const form = new FormData()
+  form.append('file', image, filename)
+  let res: Response
+  try {
+    res = await fetch(`${API}/uploads`, { method: 'POST', headers: { 'X-Cappy-User': ME }, body: form })
+  } catch {
+    throw new ApiError('Cannot reach Cappy. Check your connection and try again.', 0, 'offline')
+  }
+  const data = (await res.json().catch(() => undefined)) as
+    | { url?: string; error?: { code?: string; message?: string } }
+    | undefined
+  if (!res.ok || !data?.url) {
+    throw new ApiError(data?.error?.message ?? `upload failed (${res.status})`, res.status, data?.error?.code ?? 'error')
+  }
+  return data.url
+}
+
 export const saveListing = (id: string): Promise<string[]> => put(`/saved/${id}`)
 export const unsaveListing = (id: string): Promise<string[]> => del(`/saved/${id}`)
 

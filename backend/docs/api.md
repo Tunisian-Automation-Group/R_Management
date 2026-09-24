@@ -48,6 +48,8 @@ shipping the seed. Served by matching, static.
 | POST   | `/api/listings/{id}/pause`       |                                       | `Listing`           |
 | POST   | `/api/listings/{id}/resume`      |                                       | `Listing`           |
 | DELETE | `/api/listings/{id}`             |                                       | 204                 |
+| POST   | `/api/uploads`                   | multipart, one `file`                 | `{ url, contentType, bytes }`, 201 |
+| GET    | `/media/{name}`                  |                                       | the photograph, cached forever |
 | GET    | `/api/saved`                     |                                       | `string[]` — listing ids the caller hearted, newest first |
 | PUT    | `/api/saved/{listingId}`         |                                       | `string[]` (updated) |
 | DELETE | `/api/saved/{listingId}`         |                                       | `string[]` (updated) |
@@ -64,6 +66,14 @@ promise that", not as zero.
 
 Saving is idempotent both ways and per caller. A removed listing drops out of
 everyone's shortlist; a demo reset clears it.
+
+**Photos.** `POST /api/uploads` takes one JPEG, PNG or WebP (decided from the
+bytes, not the filename) up to `MEDIA_MAX_BYTES` (10 MB) and returns the URL to
+put in `Listing.photos`. Files are named by content hash, so the same picture
+is one file and every URL is immutable; the gateway serves them at `/media/…`
+on the app's origin. The app shrinks pictures to 1600 px JPEG before sending.
+Files live on the `mediadata` volume (`MEDIA_DIR`); an object-storage backend
+replaces `catalog/media.py` and nothing else.
 
 ## Matching
 
