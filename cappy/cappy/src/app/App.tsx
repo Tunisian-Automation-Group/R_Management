@@ -3,7 +3,7 @@ import { useEffect } from 'react'
 import { AppProvider, ME, useCappy } from './store.tsx'
 import { Dock } from './components/AppShell.tsx'
 import { ErrorBoundary } from './components/ErrorBoundary.tsx'
-import { Toast } from './components/ui.tsx'
+import { Banner, Button, Toast } from './components/ui.tsx'
 import { Browse } from './screens/Browse.tsx'
 import { Listing } from './screens/Listing.tsx'
 import { Bookings } from './screens/Bookings.tsx'
@@ -37,6 +37,20 @@ function Shell() {
   return (
     <>
       <ScrollReset />
+      {state.loadError && !state.ready && (
+        <div className="mx-auto w-full max-w-[560px] px-5 pt-5 md:max-w-[760px]">
+          <Banner
+            tone="danger"
+            title="Cappy is not reachable right now"
+            body={state.loadError}
+            action={
+              <Button size="sm" onClick={() => send({ type: 'LOAD_RETRY' })}>
+                Try again
+              </Button>
+            }
+          />
+        </div>
+      )}
       <Routes>
         <Route path="/" element={<Browse />} />
         <Route path="/listing/:id" element={<Listing />} />

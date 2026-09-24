@@ -1,151 +1,123 @@
-// The only module that knows where data lives.
+// The only module that knows where data lives: the Cappy backend, over HTTP.
 //
-// Every function is async even though it currently reads local arrays. That is
-// deliberate: swapping in a real backend changes this file and no call sites.
+// Reads return the app's own types verbatim, because the server serialises the
+// same shapes (camelCase, integer cents, ISO strings, optional fields left out
+// rather than null). Writes are one call per reducer event; the store forwards
+// each event here after applying it optimistically, then re-reads what the
+// server says so its answer (the quote, the status a demo host gave) is the
+// one that sticks.
 //
-// It stores a DELTA, never the whole world. Seed content, listings, windows,
-// owner records, is rebuilt from code on every load and only what the person
-// actually did is layered on top. Persisting the whole world meant that editing
-// seed.ts changed nothing for anyone whose browser already held a copy: a silent
-// and genuinely confusing class of bug, and no amount of key-bumping fixes it.
-import type { Booking, Listing, Owner, Slot, World } from '../domain/types.ts'
-import { districts, listings, owners, reviews, seedBookings, slots } from './seed.ts'
+// Nothing is persisted in the browser any more. The service worker caches the
+// app shell, not the data, so a stale copy of the world cannot linger.
+import type { Booking, Listing, Outcome, Slot, World } from '../domain/types.ts'
 
-const KEY = 'cappy.delta.v1'
+/**
+ * Same origin by default: the gateway serves the app at / and the API at /api,
+ * and the Vite dev server proxies /api to the backend (see vite.config.ts), so
+ * neither the website nor a phone on the LAN needs CORS. Set VITE_API_URL when
+ * the app is hosted apart from the API, or wrapped in a native shell.
+ */
+const API: string = (import.meta.env.VITE_API_URL as string | undefined)?.replace(/\/$/, '') ?? '/api'
 
-type OwnerRecord = Pick<Owner, 'ratingSum' | 'jobsDone' | 'onTimeJobs'>
+/**
+ * Who the app speaks for. Until real accounts exist the backend defaults to
+ * the seeded owner `o1`, and this header lets a second browser act as someone
+ * else (VITE_CAPPY_USER=o5 npm run dev) to answer a request from the other side.
+ */
+export const ME: string = (import.meta.env.VITE_CAPPY_USER as string | undefined) || 'o1'
 
-type Delta = {
-  bookings: Booking[]
-  /** Listings the person created. These have no seed counterpart. */
-  ownListings: Listing[]
-  ownSlots: Slot[]
-  /** Listings they paused, seeded or their own. */
-  paused: string[]
-  /** Seeded listings they removed. */
-  removed: string[]
-  /** Owner records moved by ratings they gave. */
-  records: Record<string, OwnerRecord>
-  /** Listings they saved. */
-  saved: string[]
-  /** Set once anything has been saved, so the seeded inbox request is offered
-   *  on a cold start and never re-injected after it has been answered. */
-  started: boolean
+/** Who the client is speaking for, and where their searches start. */
+export type Me = { id: string; homeDistrict: string }
+
+export class ApiError extends Error {
+  constructor(
+    message: string,
+    public readonly status: number,
+    public readonly code: string,
+  ) {
+    super(message)
+  }
 }
 
-const empty: Delta = {
-  bookings: [],
-  ownListings: [],
-  ownSlots: [],
-  paused: [],
-  removed: [],
-  records: {},
-  saved: [],
-  started: false,
-}
-
-const seedListingIds = new Set(listings.map((l) => l.id))
-const seedSlotIds = new Set(slots.map((s) => s.id))
-const seedRecords = new Map(owners.map((o) => [o.id, o]))
-
-function read(): Delta {
+async function call<T>(method: string, path: string, body?: unknown): Promise<T> {
+  let res: Response
   try {
-    const raw = localStorage.getItem(KEY)
-    if (!raw) return empty
-    // Merge key by key: a half-written or older delta must never brick the app.
-    return { ...empty, ...(JSON.parse(raw) as Partial<Delta>) }
+    res = await fetch(`${API}${path}`, {
+      method,
+      headers: {
+        Accept: 'application/json',
+        'X-Cappy-User': ME,
+        ...(body !== undefined ? { 'Content-Type': 'application/json' } : {}),
+      },
+      body: body !== undefined ? JSON.stringify(body) : undefined,
+    })
   } catch {
-    return empty
+    throw new ApiError('Cannot reach Cappy. Check your connection and try again.', 0, 'offline')
   }
-}
-
-function write(d: Delta): void {
-  try {
-    localStorage.setItem(KEY, JSON.stringify(d))
-  } catch {
-    // Private mode or a full quota. Persistence is a convenience, not correctness.
+  if (res.status === 204) return undefined as T
+  const text = await res.text()
+  const data = text ? (JSON.parse(text) as unknown) : undefined
+  if (!res.ok) {
+    const err = (data as { error?: { code?: string; message?: string } } | undefined)?.error
+    throw new ApiError(err?.message ?? `${method} ${path} failed (${res.status})`, res.status, err?.code ?? 'error')
   }
+  return data as T
 }
 
-export async function getWorld(): Promise<World> {
-  const d = read()
-  const removed = new Set(d.removed)
-  const paused = new Set(d.paused)
+const get = <T>(path: string) => call<T>('GET', path)
+const post = <T>(path: string, body?: unknown) => call<T>('POST', path, body)
+const put = <T>(path: string, body?: unknown) => call<T>('PUT', path, body)
+const del = <T>(path: string) => call<T>('DELETE', path)
 
-  const merged: Listing[] = [...d.ownListings, ...listings]
-    .filter((l) => !removed.has(l.id))
-    .map((l) => (paused.has(l.id) ? { ...l, active: false } : l))
+// --- reads --------------------------------------------------------------------
 
-  const live = new Set(merged.map((l) => l.id))
+export const getMe = (): Promise<Me> => get('/me')
+export const getWorld = (): Promise<World> => get('/world')
+export const getBookings = (): Promise<Booking[]> => get('/bookings')
+export const getSaved = (): Promise<string[]> => get('/saved')
 
-  return {
-    owners: owners.map((o) => (d.records[o.id] ? { ...o, ...d.records[o.id] } : o)),
-    listings: merged,
-    slots: [...slots, ...d.ownSlots].filter((s) => live.has(s.listingId)),
-    districts,
-    // Reviews this person wrote are not stored separately: they are the outcome
-    // on a booking they already saved, and the store folds them in from there.
-    reviews: reviews.filter((r) => live.has(r.listingId)),
-  }
-}
+// --- writes: one per reducer event ----------------------------------------------
 
-export async function getBookings(): Promise<Booking[]> {
-  const d = read()
-  // A saved booking can outlive the listing it was made against when seed.ts
-  // changes underneath it: the old washing machine went, and a request for it
-  // sat in the Earn inbox as "wants your listing". Keep bookings for anything
-  // that still exists in code or that this person listed themselves; a listing
-  // they removed on purpose is different, and its history stays.
-  const known = new Set([...seedListingIds, ...d.ownListings.map((l) => l.id)])
-  const saved = d.bookings.filter((b) => known.has(b.match.listingId))
-  if (!d.started) return [...seedBookings(), ...saved]
-  // If the seeded inbox request was one of the casualties, bring the current one
-  // back rather than leaving the owner side empty for no reason they can see.
-  const have = new Set(saved.map((b) => b.id))
-  return [...seedBookings().filter((b) => !have.has(b.id)), ...saved]
-}
-
-export async function getSaved(): Promise<string[]> {
-  // A saved listing that has since gone from the catalogue is just dropped.
-  const d = read()
-  const known = new Set([...seedListingIds, ...d.ownListings.map((l) => l.id)])
-  return d.saved.filter((id) => known.has(id))
-}
-
-export async function persist(world: World, bookings: Booking[], saved: string[]): Promise<void> {
-  const present = new Set(world.listings.map((l) => l.id))
-
-  const records: Record<string, OwnerRecord> = {}
-  for (const o of world.owners) {
-    const seeded = seedRecords.get(o.id)
-    if (
-      seeded &&
-      (seeded.ratingSum !== o.ratingSum ||
-        seeded.jobsDone !== o.jobsDone ||
-        seeded.onTimeJobs !== o.onTimeJobs)
-    ) {
-      records[o.id] = { ratingSum: o.ratingSum, jobsDone: o.jobsDone, onTimeJobs: o.onTimeJobs }
-    }
-  }
-
-  write({
-    bookings,
-    ownListings: world.listings.filter((l) => !seedListingIds.has(l.id)),
-    ownSlots: world.slots.filter((s) => !seedSlotIds.has(s.id)),
-    paused: world.listings.filter((l) => !l.active).map((l) => l.id),
-    removed: [...seedListingIds].filter((id) => !present.has(id)),
-    records,
-    saved,
-    started: true,
+/**
+ * Sends the choice, not the match. The app built the match locally for the
+ * preview; the server prices the same window itself and stores its own answer.
+ * The client's id is kept so the screen that navigated to it still finds it.
+ */
+export const requestBooking = (b: Booking): Promise<Booking> =>
+  post('/bookings', {
+    id: b.id,
+    requirement: b.requirement,
+    listingId: b.match.listingId,
+    slotId: b.match.slotId,
+    start: b.match.start,
+    end: b.match.end,
   })
-}
 
+export const acceptBooking = (id: string): Promise<Booking> => post(`/bookings/${id}/accept`)
+export const declineBooking = (id: string, reason: string): Promise<Booking> =>
+  post(`/bookings/${id}/decline`, { reason })
+export const startBooking = (id: string): Promise<Booking> => post(`/bookings/${id}/start`)
+export const completeBooking = (id: string): Promise<Booking> => post(`/bookings/${id}/complete`)
+export const cancelBooking = (id: string): Promise<Booking> => post(`/bookings/${id}/cancel`)
+export const rateBooking = (id: string, outcome: Outcome): Promise<Booking> =>
+  post(`/bookings/${id}/rate`, outcome)
+
+export const addListing = (listing: Listing, slots: Slot[]): Promise<{ listing: Listing; slots: Slot[] }> =>
+  post('/listings', { listing, slots })
+export const pauseListing = (id: string): Promise<Listing> => post(`/listings/${id}/pause`)
+export const resumeListing = (id: string): Promise<Listing> => post(`/listings/${id}/resume`)
+export const removeListing = (id: string): Promise<void> => del(`/listings/${id}`)
+
+export const saveListing = (id: string): Promise<string[]> => put(`/saved/${id}`)
+export const unsaveListing = (id: string): Promise<string[]> => del(`/saved/${id}`)
+
+/** Demo: the server forgets every booking and heart and reseeds the world. */
 export async function reset(): Promise<void> {
+  await post('/admin/reset')
   try {
-    localStorage.removeItem(KEY)
-    // Older builds stored the whole world under these; clear them too so a
-    // stale copy cannot linger behind the new delta.
-    for (const old of ['cappy.v1', 'cappy.v2', 'cappy.v3-eu']) localStorage.removeItem(old)
+    // Older builds kept a copy of the world in the browser; clear it too so it
+    // can never shadow what the server now says.
+    for (const old of ['cappy.delta.v1', 'cappy.v1', 'cappy.v2', 'cappy.v3-eu']) localStorage.removeItem(old)
   } catch {
     // Nothing stored, nothing to clear.
   }

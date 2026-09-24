@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useMemo, useState, useEffect } from 'react'
 import { Navigate, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import type { Booking, Requirement } from '../../domain/types.ts'
 import { isWindow, rating } from '../../domain/types.ts'
@@ -7,7 +7,6 @@ import { offersFor, type Offer } from '../../domain/availability.ts'
 import { distanceKm, matchForOffer, trackRecord } from '../../domain/match.ts'
 import { hoursFor, quoteFor, PLATFORM_FEE_BPS } from '../../domain/pricing.ts'
 import { formatEur, formatEurExact } from '../../domain/money.ts'
-import { HOME_DISTRICT } from '../../data/seed.ts'
 import { ME, useCappy, useLookups } from '../store.tsx'
 import { Screen, SectionHead } from '../components/AppShell.tsx'
 import { CapacityBar } from '../components/CapacityBar.tsx'
@@ -44,6 +43,13 @@ export function Listing() {
     listing && isWindow(listing) ? Math.max(listing.minHours, state.search.hours) : 0,
   )
   const [quantity, setQuantity] = useState(state.search.quantity)
+  // On a deep link the world arrives after the first render, so the initial
+  // value above saw no listing. Adopt a sensible duration once it is there.
+  useEffect(() => {
+    if (listing && isWindow(listing) && hours === 0) {
+      setHours(Math.max(listing.minHours, state.search.hours))
+    }
+  }, [listing, hours, state.search.hours])
   const [picked, setPicked] = useState<Offer | null>(null)
   const [dayPick, setDayPick] = useState<string | null>(null)
   const [confirming, setConfirming] = useState(false)
@@ -51,6 +57,8 @@ export function Listing() {
   const now = useMemo(() => new Date(), [])
   const slots = listing ? slotsFor(listing.id) : []
 
+  // Distances and offers are measured from wherever this person searches from.
+  const origin = state.search.district
   const requirement: Requirement | null = useMemo(() => {
     if (!listing) return null
     const until = new Date(now.getTime() + 28 * 86_400_000).toISOString()
@@ -61,7 +69,7 @@ export function Listing() {
           hours,
           earliest: now.toISOString(),
           latest: until,
-          district: HOME_DISTRICT,
+          district: origin,
           maxDistanceKm: 500,
         }
       : {
@@ -69,10 +77,10 @@ export function Listing() {
           category: listing.category,
           quantity,
           deadline: until,
-          district: HOME_DISTRICT,
+          district: origin,
           maxDistanceKm: 500,
         }
-  }, [listing, hours, quantity, now])
+  }, [listing, hours, quantity, now, origin])
 
   const needed = listing && requirement ? hoursFor(requirement, listing) : null
 
@@ -103,7 +111,7 @@ export function Listing() {
   const meta = category(listing.category)
   const quote = requirement ? quoteFor(requirement, listing) : null
   const km = distanceKm(
-    state.world.districts[HOME_DISTRICT],
+    state.world.districts[origin],
     state.world.districts[listing.district],
   )
   const stars = rating(owner)

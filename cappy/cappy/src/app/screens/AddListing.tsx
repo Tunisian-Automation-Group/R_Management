@@ -3,7 +3,6 @@ import { useNavigate } from 'react-router-dom'
 import type { CategoryId, Listing, Material, Slot } from '../../domain/types.ts'
 import { CATEGORIES, category } from '../../domain/categories.ts'
 import { formatEur } from '../../domain/money.ts'
-import { districts } from '../../data/seed.ts'
 import { ME, useCappy } from '../store.tsx'
 import { Screen } from '../components/AppShell.tsx'
 import { Icon, categoryIcon } from '../components/Icon.tsx'
@@ -121,12 +120,12 @@ type Errors = Partial<Record<'title' | 'blurb' | 'rate' | 'instructions' | 'mach
 
 export function AddListing() {
   const nav = useNavigate()
-  const { send } = useCappy()
+  const { state, send } = useCappy()
 
   const [categoryId, setCategoryId] = useState<CategoryId | null>(null)
   const [title, setTitle] = useState('')
   const [blurb, setBlurb] = useState('')
-  const [district, setDistrict] = useState('Kreuzberg')
+  const [district, setDistrict] = useState(state.search.district || 'Kreuzberg')
   const [rate, setRate] = useState(400)
   const [extraFee, setExtraFee] = useState(0)
   const [extraLabel, setExtraLabel] = useState('Consumables')
@@ -416,7 +415,7 @@ export function AddListing() {
 
         <Field label="Where is it?" htmlFor="f-district">
           <Select id="f-district" value={district} onChange={(e) => setDistrict(e.target.value)}>
-            {Object.keys(districts).map((d) => (
+            {Object.keys(state.world.districts).map((d) => (
               <option key={d} value={d}>
                 {d}
               </option>

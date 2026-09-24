@@ -94,7 +94,7 @@ is at least one review, because "new" is not the same as "bad".
 |--------|-----------------------------------|--------------------------------------------------|--------------|
 | GET    | `/api/bookings`                   |                                                  | `Booking[]` for the caller, newest first |
 | GET    | `/api/bookings/{id}`              |                                                  | `Booking`    |
-| POST   | `/api/bookings`                   | `{ requirement, listingId, slotId, start, end }` | `Booking`, 201 |
+| POST   | `/api/bookings`                   | `{ requirement, listingId, slotId, start, end, id? }` | `Booking`, 201 |
 | POST   | `/api/bookings/{id}/accept`       |                                                  | `Booking`    |
 | POST   | `/api/bookings/{id}/decline`      | `{ reason }`                                     | `Booking`    |
 | POST   | `/api/bookings/{id}/start`        |                                                  | `Booking`    |
@@ -112,6 +112,10 @@ Who may do what:
 | complete | active                | completed   | requester          |
 | cancel   | requested, accepted   | cancelled   | requester or owner |
 | rate     | completed, once       |             | requester          |
+
+`id` on `POST /api/bookings` is optional and client-generated (`bk_` plus 6 to
+40 lowercase letters or digits), so the app can navigate to the booking it
+just built before the server has answered; a reused id is a 409.
 
 `GET /api/bookings` returns bookings the caller requested *and* bookings
 against the caller's listings. `requesterId` is present only on the latter,

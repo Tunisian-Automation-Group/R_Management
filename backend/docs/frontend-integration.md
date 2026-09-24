@@ -6,37 +6,35 @@ code talking to the same API, so everything here applies to both. The
 differences are only about *where the app is served from*, which is the last
 section.
 
-The app's README promised that "swapping in a backend later touches one file
-and zero call sites": `src/data/repo.ts`. That holds for reads. For writes,
-the reducer's events map one-to-one onto backend calls, so the second change
-is a small effect in `store.tsx` that forwards each event.
+The app is wired. This page records how, so the next change on either side
+knows what the other expects.
 
-Nothing in `src/domain/` changes. The server runs the same rules; the client
-keeps running them too, for instant previews.
+The app's README promised that "swapping in a backend later touches one file
+and zero call sites": `src/data/repo.ts`. That held for reads. For writes,
+the reducer's events map one-to-one onto backend calls, so the second change
+was `store.tsx` forwarding each event after applying it optimistically, then
+re-reading what the server holds so its answer is the one that sticks.
+
+Nothing in `src/domain/` changed. The server runs the same rules; the client
+keeps running them too, for instant previews. `seed.ts` is no longer in the
+bundle: it feeds `npm run check` and the backend's seed export, nothing else.
 
 ## 1. Reads: `repo.ts`
 
-```ts
-const API = import.meta.env.VITE_API_URL ?? '/api'      // same origin by default
-const headers = { 'Content-Type': 'application/json' }   // add X-Cappy-User to act as someone else
-
-const get = <T>(path: string) => fetch(`${API}${path}`, { headers }).then((r) => r.json() as Promise<T>)
-
-export const getWorld = (): Promise<World> => get('/world')       // includes reviews
-export const getBookings = (): Promise<Booking[]> => get('/bookings')
-export const getSaved = (): Promise<string[]> => get('/saved')
-export const reset = () => fetch(`${API}/admin/reset`, { method: 'POST' }).then(() => undefined)
-export const persist = async () => {}   // writes go through the events below
-```
+On load the store fetches, in parallel, `GET /me` (who the app speaks for and
+where their searches start), `/world` (owners, listings, slots, districts,
+reviews), `/bookings` and `/saved`. If any of that fails the shell shows the
+error with a retry; nothing is cached in the browser.
 
 The JSON the gateway returns *is* the app's `World`, `Booking[]` and
 `string[]`: camelCase, integer cents, ISO strings, optional fields left out
 rather than `null` (so `listing.toleranceMm === undefined` keeps meaning what
 it means), `requesterId` present only on inbound requests.
 
-`ME` and `HOME_DISTRICT` come from `GET /me` instead of `seed.ts` once the
-seed is no longer bundled; `GROUPS`, `CATEGORIES` and `REVIEW_TAGS` stay in
-`src/domain/` (they are code, not data) and `GET /groups`, `/categories`,
+`ME` is the account the `X-Cappy-User` header names: `o1` unless
+`VITE_CAPPY_USER` says otherwise, which is how a second browser answers a
+request from the other side. `GROUPS`, `CATEGORIES` and `REVIEW_TAGS` stay in
+`src/domain/` (they are code, not data); `GET /groups`, `/categories` and
 `/review-tags` serve the same tables for a client that has no domain package.
 
 ## 2. Writes: one call per reducer event
@@ -58,29 +56,31 @@ seed is no longer bundled; `GROUPS`, `CATEGORIES` and `REVIEW_TAGS` stay in
 | `LISTING_UNSAVED`    | `DELETE /saved/{id}`                                            |
 | `DEMO_RESET`         | `POST /admin/reset`                                             |
 
-Details worth knowing:
+How the store does it (`forward()` in `store.tsx`):
 
+- **Optimistic, then the server's word.** The reducer applies the event at
+  once, the call goes out, and when it lands the store re-reads the parts it
+  touched: bookings after a booking event, the world after a listing event,
+  both after a rating (the owner's record and the new review come back with
+  the world), the shortlist after a heart. Writes queue one behind another,
+  so a slow reply can never overwrite a later change. A refused or failed
+  call shows the server's message as a toast and resyncs everything.
 - **`BOOKING_REQUESTED` sends the choice, not the match.** The app builds a
-  `Match` locally with `matchForOffer` for the preview. Send the requirement
-  and the selected offer; the response is the server's `Booking`, whose id
-  and quote should replace the optimistic one. Reloading `getBookings()`
-  after the call is enough.
-- **The 5.5-second simulated host reply moves server-side.** Delete the
-  `waiting` timer effect in `store.tsx` and poll `GET /bookings` (or refetch
-  on focus) while any booking is `requested`. The booking service accepts
-  seeded hosts' requests after `DEMO_AUTO_ACCEPT_SECONDS`; requests to `o1`
-  stay pending until answered in Earn, exactly as now.
+  `Match` locally with `matchForOffer` for the preview and navigates to the
+  booking straight away, so it sends its own `id` along with the requirement
+  and the selected offer. The server prices the window itself; its quote
+  replaces the preview on the next read.
+- **The simulated host reply is server-side.** While any request to another
+  owner is pending the store polls `GET /bookings` every three seconds, and it
+  re-reads on focus. Requests to `o1` stay pending until answered in Earn.
 - **Rating writes the review on the server too.** `useLookups().reviewsFor`
-  synthesises the person's own reviews from rated bookings as `rv_<bookingId>`
-  so they appear the instant they are submitted. The catalog writes the same
-  review under the same id on `booking.rated`, so after the next `getWorld()`
-  the listing would show it twice. Either drop the synthesis once the backend
-  is wired, or keep it for the instant feedback and filter
-  `world.reviews` by `!r.id.startsWith('rv_bk_')` for bookings the app already
-  has. Server reviews carry `authorId`, which is how to label them "You".
-- **The seeded inbox request is the same one.** The booking service puts
+  shows the person's own review the instant they rate, read off the booking as
+  `rv_<bookingId>`; the catalog writes the same review under the same id on
+  `booking.rated`, and the lookup drops that copy so it is never shown twice.
+  Reviews other accounts wrote carry `authorId`.
+- **The seeded inbox request comes from the server.** The booking service puts
   `bk_seed_1` (o17 wants two hours of the saw, `l9`) in the Earn inbox on a
-  cold start, so `seedBookings()` in `repo.ts` goes.
+  cold start, so `seedBookings()` in `repo.ts` is gone.
 
 ## 3. Optional: let the server search
 
@@ -119,6 +119,10 @@ Compose mounts `../cappy/cappy/dist` into the gateway; without a build there
 the gateway is API-only and `/` returns a JSON index. Outside compose, set
 `STATIC_DIR=/path/to/dist` on the gateway.
 
+**Development.** `npm run dev` proxies `/api` to `VITE_API_PROXY` (default
+`http://localhost:8000`), so the dev server on 5173 and a phone on the Vite
+LAN URL are same-origin with the API too. `npm run preview` does the same.
+
 **Separate origins.** When the app is on a CDN, or a native shell (Capacitor,
 React Native) wraps it, set `VITE_API_URL` to the gateway and list the app's
 origin in `CORS_ORIGINS` (`capacitor://localhost` and `http://localhost` for
@@ -136,8 +140,9 @@ allows in development.
 # backend
 cd backend && cp .env.example .env && docker compose up --build
 
-# frontend, against the running backend
-cd cappy/cappy && echo 'VITE_API_URL=http://localhost:8000/api' >> .env.local && npm run dev
+# frontend, against the running backend (proxied, no env needed)
+cd cappy/cappy && npm install && npm run dev
 ```
 
-`CORS_ORIGINS` in `backend/.env` already allows `http://localhost:5173`.
+To answer your own request from the host's side, run a second dev server as
+that owner: `VITE_CAPPY_USER=o5 npm run dev -- --port 5174`.

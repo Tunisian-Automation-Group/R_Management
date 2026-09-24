@@ -1,9 +1,11 @@
 import {
   createContext,
+  useCallback,
   useContext,
   useEffect,
   useMemo,
   useReducer,
+  useRef,
   type ReactNode,
 } from 'react'
 import type {
@@ -20,8 +22,8 @@ import type {
 import { byRecent } from '../domain/reviews.ts'
 import { applyOutcome } from '../domain/types.ts'
 import { category } from '../domain/categories.ts'
-import { ME, HOME_DISTRICT } from '../data/seed.ts'
 import * as repo from '../data/repo.ts'
+import { ME } from '../data/repo.ts'
 
 export { ME }
 
@@ -42,6 +44,8 @@ export type Search = {
 
 export type State = {
   ready: boolean
+  /** Why the first load failed, when it did. The shell offers a retry. */
+  loadError: string | null
   world: World
   bookings: Booking[]
   /** Listings this person hearted, newest first. A shortlist, not a booking. */
@@ -50,10 +54,15 @@ export type State = {
   toast: string | null
 }
 
-// Domain events, not UI events. Each maps to something that would really happen,
-// so a backend grows around this shape rather than replacing it.
+// Domain events, not UI events. Each maps to something that really happens on
+// the server: the store applies it here first, forwards it, then takes the
+// server's answer as the truth.
 export type Event =
-  | { type: 'WORLD_LOADED'; world: World; bookings: Booking[]; saved: string[] }
+  | { type: 'WORLD_LOADED'; world: World; bookings: Booking[]; saved: string[]; homeDistrict: string }
+  | { type: 'LOAD_FAILED'; message: string }
+  | { type: 'LOAD_RETRY' }
+  /** What the server says now. Any part may be omitted to leave it as it is. */
+  | { type: 'SYNCED'; world?: World; bookings?: Booking[]; saved?: string[] }
   | { type: 'LISTING_SAVED'; id: string }
   | { type: 'LISTING_UNSAVED'; id: string }
   | { type: 'SEARCH_CHANGED'; patch: Partial<Search> }
@@ -80,9 +89,11 @@ const emptyWorld: World = { owners: [], listings: [], slots: [], districts: {}, 
  * app would show them anything. 75 km covers a city and its industrial belt,
  * which is the catchment the plan targets, and it is one of Browse's own RADII
  * so the filter opens with the current value selected.
+ *
+ * The district is a placeholder until `GET /me` says where this person starts.
  */
 export const defaultSearch: Search = {
-  district: HOME_DISTRICT,
+  district: 'Kreuzberg',
   categoryId: null,
   hours: 4,
   quantity: 50,
@@ -93,6 +104,7 @@ export const defaultSearch: Search = {
 
 const initial: State = {
   ready: false,
+  loadError: null,
   world: emptyWorld,
   bookings: [],
   saved: [],
@@ -107,7 +119,31 @@ const setStatus = (bookings: Booking[], id: string, status: BookingStatus, extra
 export function reduce(state: State, e: Event): State {
   switch (e.type) {
     case 'WORLD_LOADED':
-      return { ...state, ready: true, world: e.world, bookings: e.bookings, saved: e.saved }
+      return {
+        ...state,
+        ready: true,
+        loadError: null,
+        world: e.world,
+        bookings: e.bookings,
+        saved: e.saved,
+        // Only the first load moves the search origin: a person who switched
+        // city and then lost the connection keeps the city they chose.
+        search: state.ready ? state.search : { ...state.search, district: e.homeDistrict },
+      }
+
+    case 'LOAD_FAILED':
+      return { ...state, loadError: e.message }
+
+    case 'LOAD_RETRY':
+      return { ...state, loadError: null }
+
+    case 'SYNCED':
+      return {
+        ...state,
+        world: e.world ?? state.world,
+        bookings: e.bookings ?? state.bookings,
+        saved: e.saved ?? state.saved,
+      }
 
     case 'LISTING_SAVED':
       return state.saved.includes(e.id) ? state : { ...state, saved: [e.id, ...state.saved] }
@@ -158,7 +194,8 @@ export function reduce(state: State, e: Event): State {
       const booking = state.bookings.find((b) => b.id === e.id)
       if (!booking || booking.outcome) return state
       // The write half of the loop: a finished booking changes where this owner
-      // ranks for everyone else from now on.
+      // ranks for everyone else from now on. The server does the same and its
+      // record replaces this one on the next sync.
       return {
         ...state,
         world: {
@@ -189,6 +226,7 @@ export function reduce(state: State, e: Event): State {
           listings: state.world.listings.filter((l) => l.id !== e.id),
           slots: state.world.slots.filter((s) => s.listingId !== e.id),
         },
+        saved: state.saved.filter((id) => id !== e.id),
       }
 
     case 'LISTING_PAUSED':
@@ -217,38 +255,142 @@ export function reduce(state: State, e: Event): State {
   }
 }
 
+/**
+ * The server call behind an event, and which parts of the state to re-read
+ * once it lands. Events with no entry are the app's own business.
+ */
+type Sync = { world?: true; bookings?: true; saved?: true }
+
+function forward(e: Event): { call: Promise<unknown>; then: Sync } | null {
+  switch (e.type) {
+    case 'BOOKING_REQUESTED':
+      // The server prices the window itself; its quote replaces the preview.
+      return { call: repo.requestBooking(e.booking), then: { bookings: true } }
+    case 'BOOKING_ACCEPTED':
+      return { call: repo.acceptBooking(e.id), then: { bookings: true } }
+    case 'BOOKING_DECLINED':
+      return { call: repo.declineBooking(e.id, e.reason), then: { bookings: true } }
+    case 'BOOKING_STARTED':
+      return { call: repo.startBooking(e.id), then: { bookings: true } }
+    case 'BOOKING_COMPLETED':
+      return { call: repo.completeBooking(e.id), then: { bookings: true } }
+    case 'BOOKING_CANCELLED':
+      return { call: repo.cancelBooking(e.id), then: { bookings: true } }
+    case 'BOOKING_RATED':
+      // The owner's record and the new review come back with the world.
+      return { call: repo.rateBooking(e.id, e.outcome), then: { bookings: true, world: true } }
+    case 'LISTING_ADDED':
+      return { call: repo.addListing(e.listing, e.slots), then: { world: true } }
+    case 'LISTING_PAUSED':
+      return { call: repo.pauseListing(e.id), then: { world: true } }
+    case 'LISTING_RESUMED':
+      return { call: repo.resumeListing(e.id), then: { world: true } }
+    case 'LISTING_REMOVED':
+      return { call: repo.removeListing(e.id), then: { world: true, saved: true } }
+    case 'LISTING_SAVED':
+      return { call: repo.saveListing(e.id), then: { saved: true } }
+    case 'LISTING_UNSAVED':
+      return { call: repo.unsaveListing(e.id), then: { saved: true } }
+    default:
+      return null
+  }
+}
+
+async function fetchSync(parts: Sync): Promise<Extract<Event, { type: 'SYNCED' }>> {
+  const [world, bookings, saved] = await Promise.all([
+    parts.world ? repo.getWorld() : undefined,
+    parts.bookings ? repo.getBookings() : undefined,
+    parts.saved ? repo.getSaved() : undefined,
+  ])
+  return { type: 'SYNCED', world, bookings, saved }
+}
+
+const messageOf = (err: unknown) =>
+  err instanceof Error && err.message ? err.message : 'Something went wrong. Please try again.'
+
 const Ctx = createContext<{ state: State; send: (e: Event) => void } | null>(null)
 
 export function AppProvider({ children }: { children: ReactNode }) {
-  const [state, send] = useReducer(reduce, initial)
+  const [state, dispatch] = useReducer(reduce, initial)
+  // Writes are forwarded one after another, so a reply to an earlier write can
+  // never overwrite the effect of a later one.
+  const queue = useRef<Promise<void>>(Promise.resolve())
 
-  useEffect(() => {
-    void Promise.all([repo.getWorld(), repo.getBookings(), repo.getSaved()]).then(
-      ([world, bookings, saved]) => send({ type: 'WORLD_LOADED', world, bookings, saved }),
-    )
+  const load = useCallback(async () => {
+    try {
+      const [me, world, bookings, saved] = await Promise.all([
+        repo.getMe(),
+        repo.getWorld(),
+        repo.getBookings(),
+        repo.getSaved(),
+      ])
+      dispatch({ type: 'WORLD_LOADED', world, bookings, saved, homeDistrict: me.homeDistrict })
+    } catch (err) {
+      dispatch({ type: 'LOAD_FAILED', message: messageOf(err) })
+    }
   }, [])
 
   useEffect(() => {
-    if (state.ready) void repo.persist(state.world, state.bookings, state.saved)
-  }, [state.ready, state.world, state.bookings, state.saved])
+    void load()
+  }, [load])
 
-  // Hosts in this build are seeded people, so their reply is simulated on a short
-  // timer rather than leaving every request pending forever. Requests against the
-  // user's own listings are left alone, those are answered for real under Earn.
-  const waiting = state.bookings
-    .filter((b) => b.status === 'requested' && b.match.ownerId !== ME)
-    .map((b) => b.id)
-    .join(',')
+  const send = useCallback(
+    (e: Event) => {
+      if (e.type === 'LOAD_RETRY') {
+        dispatch(e)
+        void load()
+        return
+      }
+      dispatch(e)
+      const fwd = forward(e)
+      if (!fwd) return
+      queue.current = queue.current
+        .then(async () => {
+          try {
+            await fwd.call
+            dispatch(await fetchSync(fwd.then))
+          } catch (err) {
+            // The server refused or is unreachable: say so, and put the screen
+            // back to what the server holds rather than leave a phantom state.
+            dispatch({ type: 'TOAST', message: messageOf(err) })
+            try {
+              dispatch(await fetchSync({ world: true, bookings: true, saved: true }))
+            } catch {
+              // Still offline. The next write, or a retry, will resync.
+            }
+          }
+        })
+        .catch(() => undefined)
+    },
+    [load],
+  )
+
+  // Hosts other than this person are simulated on the server, which accepts
+  // their requests after a few seconds. Poll while anything is waiting on them,
+  // and re-read on focus so a request answered in another browser shows up.
+  // Requests against the user's own listings are answered for real under Earn.
+  const waiting = state.bookings.some((b) => b.status === 'requested' && b.match.ownerId !== ME)
 
   useEffect(() => {
-    if (!waiting) return
-    const timers = waiting.split(',').map((id) =>
-      setTimeout(() => send({ type: 'BOOKING_ACCEPTED', id }), 5500),
-    )
-    return () => timers.forEach(clearTimeout)
-  }, [waiting])
+    if (!state.ready) return
+    const refresh = () => {
+      if (document.visibilityState === 'hidden') return
+      void repo
+        .getBookings()
+        .then((bookings) => dispatch({ type: 'SYNCED', bookings }))
+        .catch(() => undefined)
+    }
+    const timer = waiting ? setInterval(refresh, 3000) : null
+    window.addEventListener('focus', refresh)
+    document.addEventListener('visibilitychange', refresh)
+    return () => {
+      if (timer) clearInterval(timer)
+      window.removeEventListener('focus', refresh)
+      document.removeEventListener('visibilitychange', refresh)
+    }
+  }, [state.ready, waiting])
 
-  const value = useMemo(() => ({ state, send }), [state])
+  const value = useMemo(() => ({ state, send }), [state, send])
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>
 }
 
@@ -270,9 +412,11 @@ export function useLookups() {
       myListings: () => state.world.listings.filter((l) => l.ownerId === ME),
       me: () => state.world.owners.find((o) => o.id === ME)!,
       /**
-       * Seeded reviews plus the ones this person wrote. Their own are not stored
-       * twice: a rated booking already carries the outcome, so it is read back
-       * as a review here and appears on the listing the moment it is submitted.
+       * Reviews on a listing, newest first. The ones this person wrote appear
+       * the instant they rate, read straight off the booking; the server writes
+       * the same review under the same id (`rv_<bookingId>`) a moment later, so
+       * that copy is dropped rather than shown twice. Reviews other accounts
+       * wrote through the app carry `authorId` and read like any other.
        */
       reviewsFor: (listingId: string): Review[] => {
         const me = state.world.owners.find((o) => o.id === ME)
@@ -290,7 +434,11 @@ export function useLookups() {
             tags: b.outcome!.tags ?? [],
             at: b.match.end,
           }))
-        return [...own, ...state.world.reviews.filter((r) => r.listingId === listingId)].sort(byRecent)
+        const ownIds = new Set(own.map((r) => r.id))
+        return [
+          ...own,
+          ...state.world.reviews.filter((r) => r.listingId === listingId && !ownIds.has(r.id)),
+        ].sort(byRecent)
       },
     }),
     [state.world, state.bookings],

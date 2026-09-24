@@ -3,12 +3,12 @@ from __future__ import annotations
 from collections.abc import AsyncIterator
 
 from fastapi import Depends, Request, Response, status
-from pydantic import TypeAdapter
+from pydantic import Field, TypeAdapter
 from sqlalchemy import or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from cappy_common.app import ApiRouter
-from cappy_common.errors import Invalid, NotFound
+from cappy_common.errors import Conflict, Invalid, NotFound
 from cappy_common.events import BOOKING_RATED, BOOKING_REQUESTED, BOOKING_STATUS_CHANGED
 from cappy_common.ids import new_id
 from cappy_common.models import Booking, CamelModel, Iso, Match, Outcome, Requirement
@@ -60,6 +60,10 @@ class CreateBookingIn(CamelModel):
     slot_id: str
     start: Iso
     end: Iso
+    # Optional, client-generated, like a listing's. The app navigates to the
+    # booking it just built before the server has answered, so the id it chose
+    # is kept rather than replaced. Must look like ours; must be new.
+    id: str | None = Field(default=None, pattern=r"^bk_[a-z0-9]{6,40}$")
 
 
 class DeclineIn(CamelModel):
@@ -103,11 +107,13 @@ async def create_booking(
     )
     if match.owner_id == user:
         raise Invalid("you cannot book your own listing")
+    if body.id and await session.get(BookingRow, body.id):
+        raise Conflict(f"booking {body.id} already exists")
 
     now = now_iso()
     simulate = settings.demo_auto_accept_seconds > 0 and match.owner_id != settings.demo_user_id
     row = BookingRow(
-        id=new_id("bk"),
+        id=body.id or new_id("bk"),
         requester_id=user,
         owner_id=match.owner_id,
         listing_id=match.listing_id,

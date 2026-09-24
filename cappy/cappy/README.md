@@ -31,16 +31,21 @@ Fabrication is one category rather than six processes. The process lives on the
 listing's `machine`, which is where a buyer actually reads it, and splitting the
 browse grid by process only ever split the liquidity.
 
-A mobile-first installable PWA. No backend, no accounts, no card details.
+A mobile-first installable PWA, one build for the website and the phone, talking
+to the [Cappy backend](../../backend) over `/api`. No accounts yet, no card details.
 
 ## Run
 
 ```bash
 npm install
-npm run dev      # http://localhost:5173
-npm run check    # domain self-check, 12 assertions, no test framework
-npm run build
+npm run dev      # http://localhost:5173, /api proxied to the backend on :8000
+npm run check    # domain self-check, no test framework
+npm run build    # dist/, which the backend's gateway serves at /
 ```
+
+The backend is the source of truth: `cd ../../backend && docker compose up --build`
+brings it up on http://localhost:8000, which also serves this app once it is
+built. Nothing is stored in the browser.
 
 ## On your phone
 
@@ -56,7 +61,7 @@ Written to grow into the real product. Boundaries, not extra code.
 
 ```
 src/domain/   pure. no React, no fetch, no storage, moves to a server or RN untouched
-src/data/     repo.ts is the ONLY module that knows where data lives, and it is async
+src/data/     repo.ts is the ONLY module that knows where data lives: the API, over fetch
 src/app/      theme tokens, components, screens, and a reducer over domain events
 ```
 
@@ -64,10 +69,12 @@ src/app/      theme tokens, components, screens, and a reducer over domain event
 
 - `domain/` imports nothing from `app/` or `data/`.
   Check it: `grep -rE "react|fetch|localStorage" src/domain/` must be empty.
-- `data/repo.ts` is async over local arrays today. That is the whole reason swapping
-  in a backend later touches one file and zero call sites.
+- `data/repo.ts` talks to the API and nothing else knows it exists. Swapping the
+  backend in touched that file and the store, and zero screens.
 - Reducer actions are domain events (`BOOKING_REQUESTED`, `LISTING_ADDED`,
-  `BOOKING_RATED`), so a server grows around this shape instead of replacing it.
+  `BOOKING_RATED`). The store applies each one optimistically, forwards it as one
+  API call, then re-reads what the server holds so its answer is the one that
+  sticks. See `backend/docs/frontend-integration.md`.
 - Money is integer cents everywhere. `formatEur` never rounds €3.50 up to €4.
 - `assessFeasibility()` is a named seam: rules today, a probabilistic judgment layer
   later, callers unchanged.
@@ -230,9 +237,10 @@ footers and sheets.
 ## What is not real
 
 Hosts, machines, prices and availability in `src/data/seed.ts` are realistic examples,
-not real people or businesses. Requests you send are auto-accepted after ~5 s so the
-whole flow is walkable; requests *to* you (the Earn inbox) are answered for real.
-No money moves.
+not real people or businesses; the backend seeds the same world from that file.
+Requests you send are accepted by the server after ~5 s so the whole flow is
+walkable; requests *to* you (the Earn inbox) are answered for real. You are the
+seeded account `o1` until real sign-in exists. No money moves.
 
 ## Before sharing the link
 

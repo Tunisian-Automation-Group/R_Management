@@ -279,3 +279,11 @@ def test_unversioned_database_keeps_what_still_reads_and_drops_the_rest(client, 
     assert client.portal.call(reconcile_world, app) is True
     assert [b["id"] for b in client.get("/bookings").json()] == [good]
     assert client.portal.call(reconcile_world, app) is False
+
+
+def test_client_may_choose_the_booking_id(client):
+    body = {"requirement": _req(), "listingId": "l8", "slotId": "w9", "start": START, "end": END, "id": "bk_mug4abc123"}
+    r = client.post("/bookings", json=body)
+    assert r.status_code == 201 and r.json()["id"] == "bk_mug4abc123"
+    assert client.post("/bookings", json=body).status_code == 409, "the same id twice is a conflict"
+    assert client.post("/bookings", json={**body, "id": "not-ours"}).status_code == 422
