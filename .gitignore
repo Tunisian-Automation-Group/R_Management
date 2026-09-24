@@ -1,0 +1,10 @@
+# macOS zip leftovers and Finder metadata
+__MACOSX/
+.DS_Store
+
+# TypeScript incremental build state
+*.tsbuildinfo
+
+# Secrets live next to their .env.example, never in git
+.env
+.env.local

@@ -1,0 +1,21 @@
+[project]
+name = "cappy-gateway"
+version = "0.1.0"
+description = "Cappy API gateway: one origin for the frontend, routed to the services"
+requires-python = ">=3.12"
+dependencies = [
+    "cappy-common",
+    "fastapi>=0.115",
+    "uvicorn[standard]>=0.30",
+    "httpx>=0.27",
+]
+
+[tool.uv.sources]
+cappy-common = { workspace = true }
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["gateway"]

@@ -1,0 +1,121 @@
+name: cappy
+
+x-service: &service
+  restart: unless-stopped
+  env_file: .env
+  environment: &service-env
+    EVENT_BUS_URL: redis://redis:6379/0
+    CATALOG_URL: http://catalog:8001
+    MATCHING_URL: http://matching:8002
+    BOOKING_URL: http://booking:8003
+    LOG_LEVEL: ${LOG_LEVEL:-INFO}
+    DEMO_USER_ID: ${DEMO_USER_ID:-o1}
+    CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:5173,http://127.0.0.1:5173}
+    TZ: ${SEED_TIMEZONE:-Europe/Berlin}
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-cappy}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-cappy}
+      POSTGRES_DB: postgres
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./docker/postgres-init.sql:/docker-entrypoint-initdb.d/01-databases.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-cappy}"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - redisdata:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  catalog:
+    <<: *service
+    build:
+      context: .
+      dockerfile: services/catalog/Dockerfile
+    environment:
+      <<: *service-env
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-cappy}:${POSTGRES_PASSWORD:-cappy}@postgres:5432/cappy_catalog
+      SEED_ON_START: "true"
+      SEED_TIMEZONE: ${SEED_TIMEZONE:-Europe/Berlin}
+    depends_on:
+      postgres: { condition: service_healthy }
+      redis: { condition: service_healthy }
+    healthcheck: &py-health
+      test: ["CMD", "python3", "-c", "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://localhost:8001/healthz').status==200 else 1)"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    ports:
+      - "8001:8001"
+
+  matching:
+    <<: *service
+    build:
+      context: .
+      dockerfile: services/matching/Dockerfile
+    depends_on:
+      catalog: { condition: service_healthy }
+      redis: { condition: service_healthy }
+    healthcheck:
+      <<: *py-health
+      test: ["CMD", "python3", "-c", "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://localhost:8002/healthz').status==200 else 1)"]
+    ports:
+      - "8002:8002"
+
+  booking:
+    <<: *service
+    build:
+      context: .
+      dockerfile: services/booking/Dockerfile
+    environment:
+      <<: *service-env
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-cappy}:${POSTGRES_PASSWORD:-cappy}@postgres:5432/cappy_booking
+      DEMO_AUTO_ACCEPT_SECONDS: ${DEMO_AUTO_ACCEPT_SECONDS:-5.5}
+      DEMO_SEED_INBOX: "true"
+    depends_on:
+      postgres: { condition: service_healthy }
+      redis: { condition: service_healthy }
+      matching: { condition: service_healthy }
+    healthcheck:
+      <<: *py-health
+      test: ["CMD", "python3", "-c", "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://localhost:8003/healthz').status==200 else 1)"]
+    ports:
+      - "8003:8003"
+
+  gateway:
+    <<: *service
+    build:
+      context: .
+      dockerfile: services/gateway/Dockerfile
+    environment:
+      <<: *service-env
+      # Serve the built web app from the gateway's origin. Run `npm run build`
+      # in ../cappy/cappy first; with no build there the gateway is API-only.
+      STATIC_DIR: /app/static
+    volumes:
+      - ${STATIC_DIR:-../cappy/cappy/dist}:/app/static:ro
+    depends_on:
+      catalog: { condition: service_healthy }
+      matching: { condition: service_healthy }
+      booking: { condition: service_healthy }
+    ports:
+      - "8000:8000"
+
+volumes:
+  pgdata:
+  redisdata:
