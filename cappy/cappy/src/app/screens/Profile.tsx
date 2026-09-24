@@ -2,7 +2,8 @@ import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { formatEur } from '../../domain/money.ts'
 import { PLATFORM_FEE_BPS } from '../../domain/pricing.ts'
-import { ME, useCappy, useLookups } from '../store.tsx'
+import { useCappy, useLookups, useMe } from '../store.tsx'
+import { SignedOut } from '../components/SignedOut.tsx'
 import * as repo from '../../data/repo.ts'
 import { Screen, SectionHead } from '../components/AppShell.tsx'
 import { Icon } from '../components/Icon.tsx'
@@ -11,7 +12,8 @@ import { Avatar, Banner, Button, Card, Row, Sheet, Skeleton } from '../component
 
 export function Profile() {
   const nav = useNavigate()
-  const { state } = useCappy()
+  const { state, auth } = useCappy()
+  const ME = useMe()
   const { me, myListings, listing, owner, slotsFor } = useLookups()
   const [resetting, setResetting] = useState(false)
 
@@ -20,6 +22,14 @@ export function Profile() {
       <Screen title="You">
         <Skeleton className="h-[136px] rounded-[var(--radius-card)]" />
         <Skeleton className="mt-3 h-[200px] rounded-[var(--radius-card)]" />
+      </Screen>
+    )
+  }
+
+  if (!state.session) {
+    return (
+      <Screen title="You">
+        <SignedOut what="see your profile, saved listings and record" next="/profile" />
       </Screen>
     )
   }
@@ -44,6 +54,7 @@ export function Profile() {
             <p className="t-sm tnum text-[var(--ink-3)]">
               {you.district} · member since {you.joinedYear}
             </p>
+            <p className="t-sm truncate text-[var(--ink-3)]">{state.session.email}</p>
           </div>
         </div>
         <div className="mt-5 grid grid-cols-3 gap-3 border-t border-[var(--line)] pt-5">
@@ -103,6 +114,19 @@ export function Profile() {
       </section>
 
       <section>
+        <SectionHead title="Account" className="mt-7" />
+        <Card className="p-5">
+          <p className="t-sm text-[var(--ink-2)]">
+            Signed in as <span className="font-semibold text-[var(--ink)]">{state.session.email}</span> on this
+            device. Signing out keeps everything you listed and booked.
+          </p>
+          <Button className="mt-4" variant="secondary" onClick={() => void auth.signOut().then(() => nav('/'))}>
+            Sign out
+          </Button>
+        </Card>
+      </section>
+
+      <section>
         <SectionHead title="How Cappy works" className="mt-7" />
         <Card className="p-5">
           <p className="t-body text-[var(--ink-2)]">
@@ -150,8 +174,9 @@ export function Profile() {
             Privacy
           </h3>
           <p className="t-sm leading-[20px] text-[var(--ink-3)]">
-            Everything you do stays in this browser. There is no account to make and
-            nothing is sent to a server. Clearing the data below erases all of it.
+            Your account holds your name, email, a hash of your password, and what you
+            list, book and rate. Nothing else is collected and nothing is shared. Reset
+            below wipes the demo server, every account included.
           </p>
         </Card>
       </section>

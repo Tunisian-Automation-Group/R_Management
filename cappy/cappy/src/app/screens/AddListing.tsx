@@ -1,9 +1,9 @@
 import { useRef, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { Navigate, useNavigate } from 'react-router-dom'
 import type { CategoryId, Listing, Material, Slot } from '../../domain/types.ts'
 import { CATEGORIES, category } from '../../domain/categories.ts'
 import { formatEur } from '../../domain/money.ts'
-import { ME, useCappy } from '../store.tsx'
+import { useCappy, useMe } from '../store.tsx'
 import * as repo from '../../data/repo.ts'
 import { MAX_PHOTOS, shrink } from '../photos.ts'
 import { Screen } from '../components/AppShell.tsx'
@@ -129,6 +129,7 @@ type PhotoDraft = { key: string; preview: string; url?: string; error?: string }
 export function AddListing() {
   const nav = useNavigate()
   const { state, send } = useCappy()
+  const ME = useMe()
 
   const [categoryId, setCategoryId] = useState<CategoryId | null>(null)
   const [title, setTitle] = useState('')
@@ -151,6 +152,8 @@ export function AddListing() {
   const fileInput = useRef<HTMLInputElement>(null)
   const [errors, setErrors] = useState<Errors>({})
   const [touched, setTouched] = useState<Record<string, boolean>>({})
+
+  if (state.ready && !state.session) return <Navigate to="/login?next=%2Fearn%2Fnew" replace />
 
   const meta = categoryId ? category(categoryId) : null
   const isBatch = meta?.mode === 'batch'

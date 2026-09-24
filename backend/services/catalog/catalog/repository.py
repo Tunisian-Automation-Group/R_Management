@@ -241,6 +241,10 @@ class CatalogRepository:
             self.s.add(MetaRow(key=key, value=value))
         await self.s.flush()
 
+    async def add_owner(self, owner: Owner) -> None:
+        self.s.add(_owner_row(owner))
+        await self.s.flush()
+
     async def add_listing(self, listing: AnyListing, slots: list[Slot]) -> None:
         # No relationship() is mapped, so the unit of work will not order the
         # inserts for us: flush the parent before the rows that reference it.

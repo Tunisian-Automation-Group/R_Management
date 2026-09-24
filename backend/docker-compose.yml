@@ -8,8 +8,10 @@ x-service: &service
     CATALOG_URL: http://catalog:8001
     MATCHING_URL: http://matching:8002
     BOOKING_URL: http://booking:8003
+    ACCOUNTS_URL: http://accounts:8004
     LOG_LEVEL: ${LOG_LEVEL:-INFO}
-    DEMO_USER_ID: ${DEMO_USER_ID:-o1}
+    # Empty: anonymous requests are nobody, and acting needs a signed-in account.
+    DEMO_USER_ID: ${DEMO_USER_ID:-}
     CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:5173,http://127.0.0.1:5173}
     TZ: ${SEED_TIMEZONE:-Europe/Berlin}
 
@@ -100,6 +102,25 @@ services:
     ports:
       - "8003:8003"
 
+  accounts:
+    <<: *service
+    build:
+      context: .
+      dockerfile: services/accounts/Dockerfile
+    environment:
+      <<: *service-env
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-cappy}:${POSTGRES_PASSWORD:-cappy}@postgres:5432/cappy_accounts
+      DEMO_ACCOUNT_EMAIL: ${DEMO_ACCOUNT_EMAIL:-nadia@cappy.demo}
+      DEMO_ACCOUNT_PASSWORD: ${DEMO_ACCOUNT_PASSWORD:-cappy-demo}
+    depends_on:
+      postgres: { condition: service_healthy }
+      catalog: { condition: service_healthy }
+    healthcheck:
+      <<: *py-health
+      test: ["CMD", "python3", "-c", "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://localhost:8004/healthz').status==200 else 1)"]
+    ports:
+      - "8004:8004"
+
   gateway:
     <<: *service
     build:
@@ -116,6 +137,7 @@ services:
       catalog: { condition: service_healthy }
       matching: { condition: service_healthy }
       booking: { condition: service_healthy }
+      accounts: { condition: service_healthy }
     ports:
       - "8000:8000"
 

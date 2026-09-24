@@ -7,19 +7,29 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 
-from cappy_common.app import create_app
+from cappy_common.app import create_app, identity
 from cappy_common.db import Base, Database
 from cappy_common.events import CATALOG_CHANGED, make_event_bus
 
 from . import tables  # noqa: F401 - registers the tables on Base.metadata
-from .clients import CatalogClient, HttpCatalogClient, HttpMatchingClient, MatchingClient
+from .clients import (
+    AccountsClient,
+    CatalogClient,
+    HttpAccountsClient,
+    HttpCatalogClient,
+    HttpMatchingClient,
+    MatchingClient,
+)
 from .routes import router
 from .settings import Settings
 from .workers import auto_accept_loop, on_catalog_changed, seed_inbox_with_retry
 
 
 def build_app(
-    settings: Settings, matching: MatchingClient | None = None, catalog: CatalogClient | None = None
+    settings: Settings,
+    matching: MatchingClient | None = None,
+    catalog: CatalogClient | None = None,
+    accounts: AccountsClient | None = None,
 ) -> FastAPI:
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
@@ -32,7 +42,8 @@ def build_app(
         app.state.bus = bus
         app.state.matching = matching or HttpMatchingClient(settings.matching_url)
         app.state.catalog = catalog or HttpCatalogClient(settings.catalog_url)
-        app.state.current_user = lambda header: header or settings.demo_user_id
+        app.state.accounts = accounts or HttpAccountsClient(settings.accounts_url)
+        app.state.current_user = identity(settings)
 
         async def _on_catalog_changed(payload: dict) -> None:
             await on_catalog_changed(app, payload)
@@ -56,6 +67,7 @@ def build_app(
             await bus.stop()
             await app.state.matching.aclose()
             await app.state.catalog.aclose()
+            await app.state.accounts.aclose()
             await db.dispose()
 
     app = create_app(settings, title="Cappy booking", lifespan=lifespan)

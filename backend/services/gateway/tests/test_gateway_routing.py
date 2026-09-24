@@ -7,7 +7,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from gateway.main import build_app
-from gateway.routing import BOOKING, CATALOG, MATCHING, resolve
+from gateway.routing import ACCOUNTS, BOOKING, CATALOG, MATCHING, resolve
 from gateway.settings import Settings
 
 
@@ -41,6 +41,12 @@ from gateway.settings import Settings
         ("/districts/nearest", MATCHING),
         ("/bookings", BOOKING),
         ("/bookings/bk_1/accept", BOOKING),
+        ("/auth/login", ACCOUNTS),
+        ("/auth/register", ACCOUNTS),
+        ("/auth/session", ACCOUNTS),
+        ("/auth/logout", ACCOUNTS),
+        ("/internal/accounts/o1", None),
+        ("/internal/owners", None),
         ("/nothing-here", None),
         ("/admin/reset", None),
     ],
@@ -54,6 +60,13 @@ def _fake_upstreams(calls: list):
         calls.append((request.url.host, request.method, request.url.path, dict(request.headers)))
         if request.url.path == "/healthz":
             return httpx.Response(200, json={"ok": True})
+        if request.url.host == "accounts" and request.url.path == "/auth/session":
+            auth = request.headers.get("authorization", "")
+            if auth == "Bearer good":
+                return httpx.Response(200, json={"id": "u_mara", "email": "mara@example.com", "name": "Mara"})
+            return httpx.Response(401, json={"error": {"code": "unauthorized", "message": "sign in again"}})
+        if request.url.host == "accounts" and request.url.path == "/auth/logout":
+            return httpx.Response(204)
         if request.url.path == "/admin/reset":
             return httpx.Response(204)
         if request.url.host == "catalog" and request.url.path == "/world":
@@ -79,6 +92,7 @@ def _settings(**over) -> Settings:
         catalog_url="http://catalog",
         matching_url="http://matching",
         booking_url="http://booking",
+        accounts_url="http://accounts",
         cors_origins="",
         **over,
     )
@@ -94,18 +108,58 @@ def gateway():
 def test_proxies_by_path_and_forwards_identity(gateway):
     c, calls = gateway
     assert c.get("/api/world").json() == {"owners": [], "listings": [], "slots": [], "districts": {}, "reviews": []}
-    r = c.post("/api/bookings", json={"listingId": "l9"}, headers={"X-Cappy-User": "o5"})
-    assert r.status_code == 201 and r.json() == {"echo": {"listingId": "l9"}, "user": "o5"}
+    r = c.post("/api/bookings", json={"listingId": "l9"}, headers={"Authorization": "Bearer good"})
+    assert r.status_code == 201 and r.json() == {"echo": {"listingId": "l9"}, "user": "u_mara"}
     assert c.put("/api/saved/l9").json() == ["l9"]
     photo = c.get("/media/abc.png")
     assert photo.status_code == 200 and photo.headers["content-type"] == "image/png"
     assert "immutable" in photo.headers["cache-control"]
     assert [(h, m, p) for h, m, p, _ in calls] == [
         ("catalog", "GET", "/world"),
+        ("accounts", "GET", "/auth/session"),
         ("booking", "POST", "/bookings"),
         ("catalog", "PUT", "/saved/l9"),
         ("catalog", "GET", "/media/abc.png"),
     ]
+    assert "x-cappy-user" not in calls[0][3], "anonymous requests carry no identity"
+
+
+def test_identity_comes_from_the_session_not_the_client(gateway):
+    c, calls = gateway
+    # A client cannot pick who it is by sending the header the services trust.
+    r = c.post("/api/bookings", json={}, headers={"X-Cappy-User": "o1"})
+    assert r.status_code == 201 and r.json()["user"] is None
+    assert "x-cappy-user" not in calls[-1][3]
+
+    # A bad token is refused at the gateway, before any service sees it.
+    r = c.get("/api/bookings", headers={"Authorization": "Bearer stale"})
+    assert r.status_code == 401 and r.json()["error"]["code"] == "unauthorized"
+    assert calls[-1][0] == "accounts"
+
+    # A good token is checked once, then remembered.
+    calls.clear()
+    for _ in range(3):
+        c.post("/api/bookings", json={}, headers={"Authorization": "Bearer good", "X-Cappy-User": "o1"})
+    assert [(h, p) for h, _, p, _ in calls] == [
+        ("accounts", "/auth/session"),
+        ("booking", "/bookings"),
+        ("booking", "/bookings"),
+        ("booking", "/bookings"),
+    ]
+    assert all(hdrs.get("x-cappy-user") == "u_mara" for h, _, _, hdrs in calls if h == "booking")
+
+    # Signing out forgets it at once.
+    assert c.post("/api/auth/logout", headers={"Authorization": "Bearer good"}).status_code == 204
+    calls.clear()
+    c.post("/api/bookings", json={}, headers={"Authorization": "Bearer good"})
+    assert calls[0][0] == "accounts", "asked again after logout"
+
+    # The token itself reaches only the accounts service.
+    calls.clear()
+    c.get("/api/auth/session", headers={"Authorization": "Bearer good"})
+    c.get("/api/world", headers={"Authorization": "Bearer good"})
+    assert calls[0][3].get("authorization") == "Bearer good"
+    assert "authorization" not in calls[-1][3]
 
 
 def test_index_points_somewhere_useful(gateway):
@@ -124,10 +178,14 @@ def test_unknown_and_upstream_errors_keep_shape(gateway):
 def test_health_and_reset_fan_out(gateway):
     c, calls = gateway
     h = c.get("/api/health").json()
-    assert h == {"ok": True, "services": {"catalog": True, "matching": True, "booking": True}}
+    assert h == {"ok": True, "services": {"catalog": True, "matching": True, "booking": True, "accounts": True}}
     calls.clear()
     assert c.post("/api/admin/reset").status_code == 204
-    assert [(h, p) for h, _, p, _ in calls] == [("booking", "/admin/reset"), ("catalog", "/admin/reset")]
+    assert [(h, p) for h, _, p, _ in calls] == [
+        ("booking", "/admin/reset"),
+        ("catalog", "/admin/reset"),
+        ("accounts", "/admin/reset"),
+    ]
 
 
 def test_serves_the_web_app_from_the_same_origin(tmp_path):

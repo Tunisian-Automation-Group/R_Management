@@ -2,7 +2,8 @@ import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import type { Booking, BookingStatus, Slot } from '../../domain/types.ts'
 import { formatEur } from '../../domain/money.ts'
-import { ME, useCappy, useLookups } from '../store.tsx'
+import { useCappy, useLookups, useMe } from '../store.tsx'
+import { SignedOut } from '../components/SignedOut.tsx'
 import { Screen } from '../components/AppShell.tsx'
 import { Photo } from '../components/Photo.tsx'
 import { Button, EmptyState, Pill, Segmented, Skeleton } from '../components/ui.tsx'
@@ -33,6 +34,7 @@ const statusPill = (
 export function Bookings() {
   const nav = useNavigate()
   const { state } = useCappy()
+  const ME = useMe()
   const { listing, owner, slotsFor } = useLookups()
   const [tab, setTab] = useState<'live' | 'past'>('live')
 
@@ -44,6 +46,14 @@ export function Bookings() {
             <Skeleton key={i} className="h-[104px] rounded-[var(--radius-card)]" />
           ))}
         </div>
+      </Screen>
+    )
+  }
+
+  if (!state.session) {
+    return (
+      <Screen title="Bookings" sub="Capacity you have taken from other people.">
+        <SignedOut what="see your bookings" next="/bookings" />
       </Screen>
     )
   }

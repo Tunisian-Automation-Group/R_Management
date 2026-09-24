@@ -9,7 +9,7 @@
 //
 // Nothing is persisted in the browser any more. The service worker caches the
 // app shell, not the data, so a stale copy of the world cannot linger.
-import type { Booking, Listing, Outcome, Slot, World } from '../domain/types.ts'
+import type { Booking, Listing, Outcome, Owner, Slot, World } from '../domain/types.ts'
 
 /**
  * Same origin by default: the gateway serves the app at / and the API at /api,
@@ -20,14 +20,35 @@ import type { Booking, Listing, Outcome, Slot, World } from '../domain/types.ts'
 const API: string = (import.meta.env.VITE_API_URL as string | undefined)?.replace(/\/$/, '') ?? '/api'
 
 /**
- * Who the app speaks for. Until real accounts exist the backend defaults to
- * the seeded owner `o1`, and this header lets a second browser act as someone
- * else (VITE_CAPPY_USER=o5 npm run dev) to answer a request from the other side.
+ * The session token, kept on the device so an installed app stays signed in.
+ * Sent as a bearer token; the gateway turns it into the owner id the services
+ * trust, so nothing the client sends can name someone else.
  */
-export const ME: string = (import.meta.env.VITE_CAPPY_USER as string | undefined) || 'o1'
+const TOKEN_KEY = 'cappy.session.v1'
+let token: string | null = null
+try {
+  token = localStorage.getItem(TOKEN_KEY)
+} catch {
+  // Private mode or blocked storage: signed out until they sign in again.
+}
+
+export const hasToken = () => token !== null
+
+function setToken(next: string | null): void {
+  token = next
+  try {
+    if (next) localStorage.setItem(TOKEN_KEY, next)
+    else localStorage.removeItem(TOKEN_KEY)
+  } catch {
+    // Storage is a convenience: the session still works for this page load.
+  }
+}
 
 /** Who the client is speaking for, and where their searches start. */
-export type Me = { id: string; homeDistrict: string }
+export type Me = { id: string; homeDistrict: string; owner?: Owner }
+
+/** A signed-in person, as the accounts service describes them. */
+export type Account = { id: string; email: string; name: string }
 
 export class ApiError extends Error {
   constructor(
@@ -46,7 +67,7 @@ async function call<T>(method: string, path: string, body?: unknown): Promise<T>
       method,
       headers: {
         Accept: 'application/json',
-        'X-Cappy-User': ME,
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
         ...(body !== undefined ? { 'Content-Type': 'application/json' } : {}),
       },
       body: body !== undefined ? JSON.stringify(body) : undefined,
@@ -68,6 +89,54 @@ const get = <T>(path: string) => call<T>('GET', path)
 const post = <T>(path: string, body?: unknown) => call<T>('POST', path, body)
 const put = <T>(path: string, body?: unknown) => call<T>('PUT', path, body)
 const del = <T>(path: string) => call<T>('DELETE', path)
+
+// --- account ---------------------------------------------------------------------
+
+type SessionOut = { token: string; account: Account; expiresAt: string }
+
+export async function register(input: {
+  email: string
+  password: string
+  name: string
+  kind: 'person' | 'business'
+  district: string
+}): Promise<Account> {
+  const out = await post<SessionOut>('/auth/register', input)
+  setToken(out.token)
+  return out.account
+}
+
+export async function signIn(email: string, password: string): Promise<Account> {
+  const out = await post<SessionOut>('/auth/login', { email, password })
+  setToken(out.token)
+  return out.account
+}
+
+/** The account behind the stored token, or null when there is none or it has
+ *  expired (in which case the token is forgotten). */
+export async function getAccount(): Promise<Account | null> {
+  if (!token) return null
+  try {
+    return await get<Account>('/auth/session')
+  } catch (err) {
+    if (err instanceof ApiError && err.status === 401) {
+      setToken(null)
+      return null
+    }
+    throw err
+  }
+}
+
+export async function signOut(): Promise<void> {
+  const had = token
+  setToken(null)
+  if (!had) return
+  try {
+    await fetch(`${API}/auth/logout`, { method: 'POST', headers: { Authorization: `Bearer ${had}` } })
+  } catch {
+    // Offline: the token is gone from this device, which is what matters here.
+  }
+}
 
 // --- reads --------------------------------------------------------------------
 
@@ -118,7 +187,11 @@ export async function uploadPhoto(image: Blob, filename = 'photo.jpg'): Promise<
   form.append('file', image, filename)
   let res: Response
   try {
-    res = await fetch(`${API}/uploads`, { method: 'POST', headers: { 'X-Cappy-User': ME }, body: form })
+    res = await fetch(`${API}/uploads`, {
+      method: 'POST',
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+      body: form,
+    })
   } catch {
     throw new ApiError('Cannot reach Cappy. Check your connection and try again.', 0, 'offline')
   }
@@ -134,9 +207,11 @@ export async function uploadPhoto(image: Blob, filename = 'photo.jpg'): Promise<
 export const saveListing = (id: string): Promise<string[]> => put(`/saved/${id}`)
 export const unsaveListing = (id: string): Promise<string[]> => del(`/saved/${id}`)
 
-/** Demo: the server forgets every booking and heart and reseeds the world. */
+/** Demo: the server forgets every booking, heart, account and session and
+ *  reseeds the world. Signs this device out too. */
 export async function reset(): Promise<void> {
   await post('/admin/reset')
+  setToken(null)
   try {
     // Older builds kept a copy of the world in the browser; clear it too so it
     // can never shadow what the server now says.

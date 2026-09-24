@@ -11,7 +11,7 @@ import {
   type Spotlight,
 } from '../../domain/browse.ts'
 import { formatEur } from '../../domain/money.ts'
-import { buildRequirement, ME, useCappy, useLookups } from '../store.tsx'
+import { buildRequirement, useCappy, useLookups, useMe } from '../store.tsx'
 import { Screen, SectionHead } from '../components/AppShell.tsx'
 import { Icon, categoryIcon } from '../components/Icon.tsx'
 import { ListingCard } from '../components/ListingCard.tsx'
@@ -31,6 +31,7 @@ const QUANTITIES = [10, 50, 200, 500]
 export function Browse() {
   const nav = useNavigate()
   const { state, send } = useCappy()
+  const ME = useMe()
   const { owner, slotsFor } = useLookups()
   const [filtersOpen, setFiltersOpen] = useState(false)
   const [showMap, setShowMap] = useState(false)

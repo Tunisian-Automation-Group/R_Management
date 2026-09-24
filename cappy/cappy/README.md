@@ -32,7 +32,9 @@ listing's `machine`, which is where a buyer actually reads it, and splitting the
 browse grid by process only ever split the liquidity.
 
 A mobile-first installable PWA, one build for the website and the phone, talking
-to the [Cappy backend](../../backend) over `/api`. No accounts yet, no card details.
+to the [Cappy backend](../../backend) over `/api`. Browsing is open; booking,
+listing and hearting need an account (email and password, made in the app). No
+card details.
 
 ## Run
 
@@ -239,8 +241,9 @@ footers and sheets.
 Hosts, machines, prices and availability in `src/data/seed.ts` are realistic examples,
 not real people or businesses; the backend seeds the same world from that file.
 Requests you send are accepted by the server after ~5 s so the whole flow is
-walkable; requests *to* you (the Earn inbox) are answered for real. You are the
-seeded account `o1` until real sign-in exists. No money moves.
+walkable; requests *to* you (the Earn inbox) are answered for real. Sign in as
+the seeded owner with `nadia@cappy.demo` / `cappy-demo` to see an inbox on day
+one, or create your own account. No money moves.
 
 ## Before sharing the link
 

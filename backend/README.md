@@ -5,10 +5,11 @@ four Python microservices behind one gateway, sharing a small common library.
 One API serves the website and the same app installed on a phone.
 
 ```
-gateway   :8000   one origin for the app and the API; routes /api/* by path
-catalog   :8001   districts, owners, listings, idle windows, reviews, hearts (Postgres)
+gateway   :8000   one origin for the app and the API; checks sessions, routes /api/* by path
+catalog   :8001   districts, owners, listings, idle windows, reviews, hearts, photos (Postgres)
 matching  :8002   feasibility, availability, pricing, ranking, vocabulary (stateless)
 booking   :8003   request → accept → active → completed → rated (Postgres)
+accounts  :8004   sign up, sign in, sessions (Postgres)
 redis             events between services (Redis Streams)
 ```
 
@@ -44,7 +45,15 @@ The catalog seeds the same demo world the app ships with: 70 owners, 78
 listings across nine categories, 250 idle windows and 275 reviews across
 Berlin, Amsterdam, Eindhoven, Paris, Lyon, Milan, Brescia and Lisbon. The
 booking service puts one request in the Earn inbox (two hours of the saw),
-exactly as the app does on a cold start.
+exactly as the app does on a cold start. Browsing needs no account; to book,
+list or answer requests, create one in the app or sign in as the seeded
+owner: **nadia@cappy.demo / cappy-demo**.
+
+**Upgrading a stack that ran before accounts existed:** Postgres only runs
+`docker/postgres-init.sql` on an empty volume, so create the new database
+once: `docker compose exec postgres psql -U cappy -d postgres -c "CREATE
+DATABASE cappy_accounts"`, then `docker compose up --build`. Or start clean
+with `docker compose down -v`.
 
 ## Run the tests
 
@@ -123,17 +132,20 @@ docs/                    architecture, API, frontend integration
 - **Money is integer cents, rounding is JavaScript's.** `cappy_common.jsmath`
   reproduces `Math.round` and `toFixed` so the server agrees with the app to
   the cent.
-- **Identity is a header for now.** `X-Cappy-User` names the caller and
-  defaults to the seeded account `o1`. Real auth slots in at the gateway;
-  the services already check ownership on every write.
+- **Identity is a session at the gateway, a header inside.** The app sends a
+  bearer token; the gateway checks it with the accounts service and sets
+  `X-Cappy-User`, the only identity the services trust. Nothing a client
+  sends can name someone else, and `/internal/…` never leaves the network.
 
 ## What is not real
 
 Same list as the app, plus the server-side equivalents:
 
-- Hosts other than `o1` are simulated: the booking service accepts their
-  requests after `DEMO_AUTO_ACCEPT_SECONDS` (default 5.5). Set it to `0` to
-  turn that off.
+- Hosts with no account behind them are simulated: the booking service
+  accepts their requests after `DEMO_AUTO_ACCEPT_SECONDS` (default 5.5). Set
+  it to `0` to turn that off. Anyone who has signed up answers for themselves.
+- Accounts have no email verification, password reset or rate limiting yet.
+  The session token sits in the browser's storage, as on any single-page app.
 - No money moves. Quotes are computed and stored; nothing is charged.
 - Photos an owner uploads live on the `mediadata` Docker volume, not in
   object storage, and are never deleted when a listing is removed. The seed's

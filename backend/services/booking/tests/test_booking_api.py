@@ -6,7 +6,7 @@ import pytest
 from fastapi.testclient import TestClient
 from pydantic import ValidationError
 
-from booking.clients import CatalogClient, MatchingClient, Offer
+from booking.clients import AccountsClient, CatalogClient, MatchingClient, Offer
 from booking.main import build_app
 from booking.settings import Settings
 from booking.workers import accept_due, reconcile_world, seed_inbox
@@ -68,21 +68,34 @@ def _create(client, listing_id="l8", user=None):
     )
 
 
+class FakeAccounts(AccountsClient):
+    """o1 has signed up; nobody else has."""
+
+    def __init__(self, registered=("o1",)):
+        self.registered = set(registered)
+
+    async def has_account(self, owner_id):
+        return owner_id in self.registered
+
+
 def _settings(**over):
-    return Settings(
+    # Everything explicit, so the local .env (which turns the demo user off for
+    # the real stack) cannot change what these tests mean.
+    base = dict(
         database_url="sqlite+aiosqlite://",
         event_bus_url="memory://",
+        demo_user_id="o1",
         demo_auto_accept_seconds=0.01,
         demo_seed_inbox=False,
         run_background_workers=False,
         cors_origins="",
-        **over,
     )
+    return Settings(**{**base, **over})
 
 
 @pytest.fixture()
 def app():
-    return build_app(_settings(), matching=FakeMatching())
+    return build_app(_settings(), matching=FakeMatching(), accounts=FakeAccounts())
 
 
 @pytest.fixture()
@@ -181,7 +194,7 @@ def test_demo_hosts_accept_after_a_moment(client, app):
 
 
 def test_demo_user_is_never_simulated():
-    with TestClient(build_app(_settings(), matching=FakeMatching())) as c:
+    with TestClient(build_app(_settings(), matching=FakeMatching(), accounts=FakeAccounts())) as c:
         # o5 asks for o1's saw: that lands in the real Earn inbox.
         r = _create(c, listing_id="l9", user="o5")
         assert r.status_code == 201
@@ -225,7 +238,7 @@ def test_bookings_against_a_vanished_world_are_dropped_at_startup():
     """A catalog reseeded from a newer seed.ts serves a different world; the
     bookings on disk point at listings that no longer exist and go."""
     catalog = FakeCatalog("seed-a")
-    with TestClient(build_app(_settings(), matching=FakeMatching(), catalog=catalog)) as c:
+    with TestClient(build_app(_settings(), matching=FakeMatching(), catalog=catalog, accounts=FakeAccounts())) as c:
         assert c.portal.call(reconcile_world, c.app) is False, "first run: nothing to compare with"
         _create(c)
         assert c.portal.call(reconcile_world, c.app) is False, "same world, bookings stay"
@@ -287,3 +300,23 @@ def test_client_may_choose_the_booking_id(client):
     assert r.status_code == 201 and r.json()["id"] == "bk_mug4abc123"
     assert client.post("/bookings", json=body).status_code == 409, "the same id twice is a conflict"
     assert client.post("/bookings", json={**body, "id": "not-ours"}).status_code == 422
+
+
+def test_a_signed_up_host_is_never_simulated():
+    """Once someone has an account, requests to them wait for them."""
+    with TestClient(
+        build_app(_settings(demo_user_id=""), matching=FakeMatching(), accounts=FakeAccounts(registered={"o5"}))
+    ) as c:
+        r = _create(c, listing_id="l8", user="u_buyer")
+        assert r.status_code == 201
+        time.sleep(0.05)
+        assert c.portal.call(accept_due, c.app) == 0
+        assert c.get("/bookings", headers={"X-Cappy-User": "u_buyer"}).json()[0]["status"] == "requested"
+
+
+def test_nobody_without_a_session_when_the_demo_user_is_off():
+    with TestClient(build_app(_settings(demo_user_id=""), matching=FakeMatching(), accounts=FakeAccounts())) as c:
+        assert c.get("/bookings").status_code == 401
+        assert c.get("/bookings").json()["error"]["code"] == "unauthorized"
+        assert _create(c).status_code == 401
+        assert c.get("/bookings", headers={"X-Cappy-User": "u_x"}).status_code == 200

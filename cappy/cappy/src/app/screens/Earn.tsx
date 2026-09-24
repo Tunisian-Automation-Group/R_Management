@@ -4,7 +4,8 @@ import type { Booking } from '../../domain/types.ts'
 import { durationLabel } from '../../domain/categories.ts'
 import { idleHours } from '../../domain/availability.ts'
 import { formatEur } from '../../domain/money.ts'
-import { ME, useCappy, useLookups } from '../store.tsx'
+import { useCappy, useLookups, useMe } from '../store.tsx'
+import { SignedOut } from '../components/SignedOut.tsx'
 import { Screen, SectionHead } from '../components/AppShell.tsx'
 import { CapacityBar } from '../components/CapacityBar.tsx'
 import { Photo } from '../components/Photo.tsx'
@@ -22,6 +23,7 @@ const DECLINE_REASONS = [
 export function Earn() {
   const nav = useNavigate()
   const { state, send } = useCappy()
+  const ME = useMe()
   const { owner, slotsFor, myListings, me } = useLookups()
   const [declining, setDeclining] = useState<Booking | null>(null)
   const [reason, setReason] = useState(DECLINE_REASONS[0])
@@ -63,6 +65,14 @@ export function Earn() {
         <Skeleton className="mt-4 h-[60px] w-[62%]" />
         <Skeleton className="mt-4 h-[44px] w-full" />
         <Skeleton className="mt-5 h-[210px] w-full rounded-[var(--radius-card)]" />
+      </Screen>
+    )
+  }
+
+  if (!state.session) {
+    return (
+      <Screen title="Earn" sub="Everything you own has hours you never use.">
+        <SignedOut what="list something and answer requests" next="/earn" />
       </Screen>
     )
   }

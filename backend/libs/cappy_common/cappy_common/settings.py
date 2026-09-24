@@ -19,9 +19,14 @@ class CommonSettings(BaseSettings):
     catalog_url: str = "http://localhost:8001"
     matching_url: str = "http://localhost:8002"
     booking_url: str = "http://localhost:8003"
+    accounts_url: str = "http://localhost:8004"
 
-    # Until real accounts exist the frontend speaks for one seeded owner.
-    # Requests may override it with an ``X-Cappy-User`` header.
+    # Who a request with no ``X-Cappy-User`` header is. The gateway sets that
+    # header from a signed-in session and strips whatever the client sent, so
+    # behind the gateway this only matters for anonymous requests: empty (the
+    # compose default) means "nobody", and anything that needs a person gets
+    # a 401. The seeded owner is the default here so one service can be poked
+    # at on its own without signing in.
     demo_user_id: str = "o1"
 
     cors_origins: str = "http://localhost:5173,http://127.0.0.1:5173"

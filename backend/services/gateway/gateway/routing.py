@@ -1,4 +1,8 @@
-"""Which service answers which path. Order matters: first match wins."""
+"""Which service answers which path. Order matters: first match wins.
+
+Anything not listed is a 404 at the gateway, which is what keeps the
+services' ``/internal/…`` and ``/admin/…`` routes off the internet.
+"""
 
 from __future__ import annotations
 
@@ -7,9 +11,11 @@ import re
 CATALOG = "catalog"
 MATCHING = "matching"
 BOOKING = "booking"
+ACCOUNTS = "accounts"
 
 # (regex over the path *after* the /api prefix, upstream)
 RULES: list[tuple[re.Pattern[str], str]] = [
+    (re.compile(r"^/auth/(register|login|logout|session)$"), ACCOUNTS),
     (re.compile(r"^/bookings(/|$)"), BOOKING),
     (re.compile(r"^/(matches|match-for-offer|quote|feasibility|categories|groups|review-tags)$"), MATCHING),
     (re.compile(r"^/browse(/|$)"), MATCHING),

@@ -31,9 +31,14 @@ The JSON the gateway returns *is* the app's `World`, `Booking[]` and
 rather than `null` (so `listing.toleranceMm === undefined` keeps meaning what
 it means), `requesterId` present only on inbound requests.
 
-`ME` is the account the `X-Cappy-User` header names: `o1` unless
-`VITE_CAPPY_USER` says otherwise, which is how a second browser answers a
-request from the other side. `GROUPS`, `CATEGORIES` and `REVIEW_TAGS` stay in
+**Who the app is.** `repo.ts` keeps the session token from `POST /auth/login`
+or `/auth/register` on the device and sends it as a bearer token; the store
+holds the `Account` behind it as `state.session`, and `useMe()` gives screens
+the owner id (or `''` when nobody is signed in, which compares equal to no
+owner). Screens that belong to a person (Bookings, Earn, You, the listing
+form) show a sign-in prompt without one; Request and the heart send the
+person to `/login?next=…` and back. Signing in, up or out reloads everything
+as that person. `GROUPS`, `CATEGORIES` and `REVIEW_TAGS` stay in
 `src/domain/` (they are code, not data); `GET /groups`, `/categories` and
 `/review-tags` serve the same tables for a client that has no domain package.
 
@@ -144,5 +149,6 @@ cd backend && cp .env.example .env && docker compose up --build
 cd cappy/cappy && npm install && npm run dev
 ```
 
-To answer your own request from the host's side, run a second dev server as
-that owner: `VITE_CAPPY_USER=o5 npm run dev -- --port 5174`.
+To answer your own request from the host's side, sign in as the host in a
+second browser (or a private window): create an account for the host, or use
+the seeded one, `nadia@cappy.demo` / `cappy-demo`, whose saw is listing `l9`.

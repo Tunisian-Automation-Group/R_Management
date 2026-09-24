@@ -30,6 +30,13 @@ class Conflict(ApiError):
     code = "conflict"
 
 
+class Unauthorized(ApiError):
+    """No account behind the request. Sign in, then try again."""
+
+    status = 401
+    code = "unauthorized"
+
+
 class Forbidden(ApiError):
     status = 403
     code = "forbidden"

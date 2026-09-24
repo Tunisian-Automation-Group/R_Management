@@ -111,7 +111,13 @@ async def create_booking(
         raise Conflict(f"booking {body.id} already exists")
 
     now = now_iso()
-    simulate = settings.demo_auto_accept_seconds > 0 and match.owner_id != settings.demo_user_id
+    # A seeded host with nobody behind them is played by the demo. A real
+    # person, seeded or signed up, answers for themselves in Earn.
+    simulate = (
+        settings.demo_auto_accept_seconds > 0
+        and match.owner_id != settings.demo_user_id
+        and not await request.app.state.accounts.has_account(match.owner_id)
+    )
     row = BookingRow(
         id=body.id or new_id("bk"),
         requester_id=user,

@@ -23,9 +23,10 @@ import { byRecent } from '../domain/reviews.ts'
 import { applyOutcome } from '../domain/types.ts'
 import { category } from '../domain/categories.ts'
 import * as repo from '../data/repo.ts'
-import { ME } from '../data/repo.ts'
+import type { Account } from '../data/repo.ts'
 
-export { ME }
+/** Who is signed in on this device, as the accounts service knows them. */
+export type Session = Account
 
 export type Search = {
   /** Where the user is searching from. A district name; its city and country
@@ -46,6 +47,8 @@ export type State = {
   ready: boolean
   /** Why the first load failed, when it did. The shell offers a retry. */
   loadError: string | null
+  /** Null while browsing anonymously. Browsing is open; acting needs a person. */
+  session: Session | null
   world: World
   bookings: Booking[]
   /** Listings this person hearted, newest first. A shortlist, not a booking. */
@@ -58,7 +61,14 @@ export type State = {
 // the server: the store applies it here first, forwards it, then takes the
 // server's answer as the truth.
 export type Event =
-  | { type: 'WORLD_LOADED'; world: World; bookings: Booking[]; saved: string[]; homeDistrict: string }
+  | {
+      type: 'WORLD_LOADED'
+      world: World
+      bookings: Booking[]
+      saved: string[]
+      homeDistrict: string
+      session: Session | null
+    }
   | { type: 'LOAD_FAILED'; message: string }
   | { type: 'LOAD_RETRY' }
   /** What the server says now. Any part may be omitted to leave it as it is. */
@@ -105,6 +115,7 @@ export const defaultSearch: Search = {
 const initial: State = {
   ready: false,
   loadError: null,
+  session: null,
   world: emptyWorld,
   bookings: [],
   saved: [],
@@ -123,6 +134,7 @@ export function reduce(state: State, e: Event): State {
         ...state,
         ready: true,
         loadError: null,
+        session: e.session,
         world: e.world,
         bookings: e.bookings,
         saved: e.saved,
@@ -308,7 +320,20 @@ async function fetchSync(parts: Sync): Promise<Extract<Event, { type: 'SYNCED' }
 const messageOf = (err: unknown) =>
   err instanceof Error && err.message ? err.message : 'Something went wrong. Please try again.'
 
-const Ctx = createContext<{ state: State; send: (e: Event) => void } | null>(null)
+/** Signing in, up and out. Each one reloads everything as that person. */
+export type Auth = {
+  signIn: (email: string, password: string) => Promise<void>
+  register: (input: {
+    email: string
+    password: string
+    name: string
+    kind: 'person' | 'business'
+    district: string
+  }) => Promise<void>
+  signOut: () => Promise<void>
+}
+
+const Ctx = createContext<{ state: State; send: (e: Event) => void; auth: Auth } | null>(null)
 
 export function AppProvider({ children }: { children: ReactNode }) {
   const [state, dispatch] = useReducer(reduce, initial)
@@ -318,17 +343,45 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   const load = useCallback(async () => {
     try {
-      const [me, world, bookings, saved] = await Promise.all([
-        repo.getMe(),
+      // The world is public. Who this is, what they booked and what they
+      // hearted need a session; anonymous browsing gets the world alone.
+      const session = await repo.getAccount()
+      const [world, me, bookings, saved] = await Promise.all([
         repo.getWorld(),
-        repo.getBookings(),
-        repo.getSaved(),
+        session ? repo.getMe() : null,
+        session ? repo.getBookings() : [],
+        session ? repo.getSaved() : [],
       ])
-      dispatch({ type: 'WORLD_LOADED', world, bookings, saved, homeDistrict: me.homeDistrict })
+      dispatch({
+        type: 'WORLD_LOADED',
+        world,
+        bookings,
+        saved,
+        homeDistrict: me?.homeDistrict ?? defaultSearch.district,
+        session,
+      })
     } catch (err) {
       dispatch({ type: 'LOAD_FAILED', message: messageOf(err) })
     }
   }, [])
+
+  const auth = useMemo<Auth>(
+    () => ({
+      signIn: async (email, password) => {
+        await repo.signIn(email, password)
+        await load()
+      },
+      register: async (input) => {
+        await repo.register(input)
+        await load()
+      },
+      signOut: async () => {
+        await repo.signOut()
+        await load()
+      },
+    }),
+    [load],
+  )
 
   useEffect(() => {
     void load()
@@ -365,14 +418,15 @@ export function AppProvider({ children }: { children: ReactNode }) {
     [load],
   )
 
-  // Hosts other than this person are simulated on the server, which accepts
-  // their requests after a few seconds. Poll while anything is waiting on them,
-  // and re-read on focus so a request answered in another browser shows up.
-  // Requests against the user's own listings are answered for real under Earn.
-  const waiting = state.bookings.some((b) => b.status === 'requested' && b.match.ownerId !== ME)
+  // Hosts with nobody behind them are simulated on the server, which accepts
+  // their requests after a few seconds; real hosts answer when they get to it.
+  // Poll while anything is waiting on someone else, and re-read on focus so a
+  // request answered on another device shows up.
+  const me = state.session?.id
+  const waiting = state.bookings.some((b) => b.status === 'requested' && b.match.ownerId !== me)
 
   useEffect(() => {
-    if (!state.ready) return
+    if (!state.ready || !state.session) return
     const refresh = () => {
       if (document.visibilityState === 'hidden') return
       void repo
@@ -388,9 +442,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
       window.removeEventListener('focus', refresh)
       document.removeEventListener('visibilitychange', refresh)
     }
-  }, [state.ready, waiting])
+  }, [state.ready, state.session, waiting])
 
-  const value = useMemo(() => ({ state, send }), [state, send])
+  const value = useMemo(() => ({ state, send, auth }), [state, send, auth])
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>
 }
 
@@ -400,9 +454,16 @@ export function useCappy() {
   return ctx
 }
 
+/** The signed-in person's owner id, or '' when nobody is. Comparing an owner
+ *  id against '' is always false, which is the right answer for a stranger. */
+export function useMe(): string {
+  return useCappy().state.session?.id ?? ''
+}
+
 /** Lookups every screen needs, memoised against the world. */
 export function useLookups() {
   const { state } = useCappy()
+  const ME = state.session?.id ?? ''
   return useMemo(
     () => ({
       owner: (id: string) => state.world.owners.find((o) => o.id === id),
@@ -410,6 +471,7 @@ export function useLookups() {
       slotsFor: (listingId: string) =>
         state.world.slots.filter((s) => s.listingId === listingId),
       myListings: () => state.world.listings.filter((l) => l.ownerId === ME),
+      /** The signed-in person's owner record. Only call it behind a session check. */
       me: () => state.world.owners.find((o) => o.id === ME)!,
       /**
        * Reviews on a listing, newest first. The ones this person wrote appear
@@ -441,7 +503,7 @@ export function useLookups() {
         ].sort(byRecent)
       },
     }),
-    [state.world, state.bookings],
+    [state.world, state.bookings, ME],
   )
 }
 

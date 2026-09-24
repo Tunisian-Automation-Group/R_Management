@@ -1,6 +1,6 @@
 import { BrowserRouter, Navigate, Route, Routes, useLocation } from 'react-router-dom'
 import { useEffect } from 'react'
-import { AppProvider, ME, useCappy } from './store.tsx'
+import { AppProvider, useCappy, useMe } from './store.tsx'
 import { Dock } from './components/AppShell.tsx'
 import { ErrorBoundary } from './components/ErrorBoundary.tsx'
 import { Banner, Button, Toast } from './components/ui.tsx'
@@ -11,6 +11,7 @@ import { BookingDetail } from './screens/BookingDetail.tsx'
 import { Earn } from './screens/Earn.tsx'
 import { AddListing } from './screens/AddListing.tsx'
 import { Profile } from './screens/Profile.tsx'
+import { Login } from './screens/Login.tsx'
 
 /** A new screen starts at the top, the way a native push does. */
 function ScrollReset() {
@@ -23,6 +24,7 @@ function ScrollReset() {
 
 function Shell() {
   const { state, send } = useCappy()
+  const ME = useMe()
 
   // Each side of the market counts what is waiting on this person, separately,
   // requests to answer as a host, and finished bookings still to rate as a guest.
@@ -59,6 +61,7 @@ function Shell() {
         <Route path="/earn" element={<Earn />} />
         <Route path="/earn/new" element={<AddListing />} />
         <Route path="/profile" element={<Profile />} />
+        <Route path="/login" element={<Login />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
       <Dock badges={badges} />

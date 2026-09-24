@@ -7,7 +7,8 @@
 | gateway  | routing, CORS, the caller's identity header, the built web app | everything, over HTTP        | none     |
 | catalog  | districts, owners, listings, idle windows, reviews, hearts | nobody (publishes events)       | Postgres |
 | matching | feasibility, availability, pricing, ranking, browse, review summaries, the category and tag vocabulary | catalog (`GET /world`), cached | none |
-| booking  | booking lifecycle, demo hosts                           | matching (`POST /match-for-offer`), catalog (`GET /world/version`, at startup) | Postgres |
+| booking  | booking lifecycle, demo hosts                           | matching (`POST /match-for-offer`), catalog (`GET /world/version`, at startup), accounts (is this host a real person?) | Postgres |
+| accounts | sign up, sign in, sessions                              | catalog (`POST /internal/owners` on sign-up) | Postgres |
 
 Two rules keep the boundaries honest:
 
@@ -121,12 +122,28 @@ dates.
 
 ## Identity
 
-`X-Cappy-User` names the caller; the gateway forwards it and every service
-defaults it to `DEMO_USER_ID` (`o1`, the account the app's Earn side speaks
-for). Ownership is checked on every write: only the owner pauses or removes a
+```
+app ──Authorization: Bearer t──▶ gateway ──GET /auth/session──▶ accounts
+                                    │  (cached 60 s per token)
+                                    ▼
+                                 X-Cappy-User: u_…  ──▶ catalog / matching / booking
+```
+
+The accounts service owns people: email, scrypt password hash, and sessions
+(a hash of each token, with an expiry). Signing up creates the person's owner
+record in the catalog through `POST /internal/owners`, with the same id, so
+the catalog and booking never learned what an account is: they still see an
+owner id in `X-Cappy-User`. The gateway is the only thing that sets that
+header, strips any copy the client sent, and turns a bad token into a 401
+before a service is involved. `/internal/…` and `/admin/…` paths are not in
+the gateway's routing table, so they cannot be reached from outside.
+
+Ownership is checked on every write: only the owner pauses or removes a
 listing, only the owner accepts or declines, only the requester starts,
-completes and rates; hearts are per caller. When real accounts arrive, the
-gateway verifies a token and sets the header; the services do not change.
+completes and rates; hearts are per caller. With no session there is nobody
+(`DEMO_USER_ID` is empty in compose): the world is public, everything else is
+401. A seeded host with no account is played by the demo; the moment someone
+signs up as a host, requests to them wait for them.
 
 ## What would change at scale
 

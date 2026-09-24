@@ -20,6 +20,8 @@ def app():
             event_bus_url="memory://",
             seed_on_start=True,
             cors_origins="",
+            # Explicit: the local .env turns the demo user off for the real stack.
+            demo_user_id="o1",
         )
     )
 
@@ -280,7 +282,11 @@ def test_world_version_and_reseed_when_the_seed_changes(tmp_path):
     # A file, because an in-memory SQLite dies with the engine on shutdown and
     # the point is what happens to a database that outlives the process.
     db = (tmp_path / "catalog.db").as_posix()
-    app = build_app(Settings(database_url=f"sqlite+aiosqlite:///{db}", event_bus_url="memory://", cors_origins=""))
+    app = build_app(
+        Settings(
+            database_url=f"sqlite+aiosqlite:///{db}", event_bus_url="memory://", cors_origins="", demo_user_id="o1"
+        )
+    )
 
     with TestClient(app) as c:
         assert c.get("/world/version").json() == {"version": fingerprint()}
@@ -322,6 +328,7 @@ def test_photo_upload_and_serve(tmp_path):
             cors_origins="",
             media_dir=str(tmp_path / "media"),
             media_max_bytes=50_000,
+            demo_user_id="o1",
         )
     )
     with TestClient(app) as c:
@@ -351,3 +358,39 @@ def test_photo_upload_and_serve(tmp_path):
         assert c.get("/listings/own_test1").json()["photos"][0] == up["url"]
         bad = _listing(id="own_test2", photos=["/media/../secret.png"])
         assert c.post("/listings", json={"listing": bad, "slots": []}).status_code == 422
+
+
+def test_internal_owner_creation(client):
+    body = {
+        "id": "u_new1",
+        "name": "Mara Lindqvist",
+        "initials": "ML",
+        "kind": "person",
+        "district": "Kreuzberg",
+        "verified": True,
+        "ratingSum": 99,
+        "jobsDone": 20,
+        "onTimeJobs": 20,
+        "joinedYear": 2026,
+        "responseMins": 30,
+    }
+    r = client.post("/internal/owners", json=body)
+    assert r.status_code == 201, r.text
+    o = r.json()
+    assert o["jobsDone"] == 0 and o["ratingSum"] == 0 and o["verified"] is False, "a record is earned, not declared"
+    assert client.get("/owners/u_new1").json()["name"] == "Mara Lindqvist"
+    assert client.get("/me", headers={"X-Cappy-User": "u_new1"}).json()["owner"]["initials"] == "ML"
+    assert client.post("/internal/owners", json=body).status_code == 409
+    assert client.post("/internal/owners", json={**body, "id": "u_new2", "district": "Atlantis"}).status_code == 422
+
+
+def test_nobody_when_the_demo_user_is_off():
+    app = build_app(
+        Settings(database_url="sqlite+aiosqlite://", event_bus_url="memory://", cors_origins="", demo_user_id="")
+    )
+    with TestClient(app) as c:
+        assert c.get("/world").status_code == 200, "browsing is open"
+        assert c.get("/me").status_code == 401
+        assert c.get("/saved").status_code == 401
+        assert c.put("/saved/l8").status_code == 401
+        assert c.get("/saved", headers={"X-Cappy-User": "o1"}).status_code == 200

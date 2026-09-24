@@ -2,6 +2,7 @@ import { useState, type CSSProperties, type ReactNode } from 'react'
 import type { CategoryId, Iso, Slot } from '../../domain/types.ts'
 import { Plate } from './Cover.tsx'
 import { time } from '../format.ts'
+import { useNavigate } from 'react-router-dom'
 import { useCappy } from '../store.tsx'
 import { Icon } from './Icon.tsx'
 
@@ -138,7 +139,16 @@ export function SaveButton({
   className?: string
 }) {
   const { state, send } = useCappy()
+  const nav = useNavigate()
   const on = state.saved.includes(id)
+  const toggle = () => {
+    if (!state.session) {
+      nav(`/login?next=${encodeURIComponent(location.pathname)}`)
+      return
+    }
+    send({ type: on ? 'LISTING_UNSAVED' : 'LISTING_SAVED', id })
+    send({ type: 'TOAST', message: on ? 'Removed from saved' : 'Saved. Find it under You' })
+  }
   return (
     <span
       role="button"
@@ -148,14 +158,13 @@ export function SaveButton({
       onClick={(e) => {
         e.preventDefault()
         e.stopPropagation()
-        send({ type: on ? 'LISTING_UNSAVED' : 'LISTING_SAVED', id })
-        send({ type: 'TOAST', message: on ? 'Removed from saved' : 'Saved. Find it under You' })
+        toggle()
       }}
       onKeyDown={(e) => {
         if (e.key !== 'Enter' && e.key !== ' ') return
         e.preventDefault()
         e.stopPropagation()
-        send({ type: on ? 'LISTING_UNSAVED' : 'LISTING_SAVED', id })
+        toggle()
       }}
       className={`glass glass-dark grid h-9 w-9 cursor-pointer place-items-center rounded-full
         transition-transform duration-[160ms] active:scale-90 ${className}`}

@@ -9,7 +9,7 @@ from typing import Any
 
 from fastapi import APIRouter, FastAPI, Header
 
-from .errors import install_error_handlers
+from .errors import Unauthorized, install_error_handlers
 from .settings import CommonSettings
 
 
@@ -62,10 +62,26 @@ def create_app(
     return app
 
 
+def identity(settings: CommonSettings) -> Callable[[str | None], str]:
+    """Who is calling, from the ``X-Cappy-User`` header the gateway sets after
+    checking the session. With no header and no demo user there is nobody, and
+    anything that needs a person is refused with a 401."""
+
+    def current_user(header: str | None) -> str:
+        if header:
+            return header
+        if settings.demo_user_id:
+            return settings.demo_user_id
+        raise Unauthorized("sign in to do that")
+
+    return current_user
+
+
 def user_dependency(settings: CommonSettings) -> Callable[..., str]:
-    """Who is calling. A header today; a verified token behind the gateway tomorrow."""
+    """``identity`` as a FastAPI dependency."""
+    current = identity(settings)
 
     def current_user(x_cappy_user: str | None = Header(default=None)) -> str:
-        return x_cappy_user or settings.demo_user_id
+        return current(x_cappy_user)
 
     return current_user

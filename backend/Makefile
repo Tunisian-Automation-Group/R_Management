@@ -1,6 +1,6 @@
 # Everyday commands. `uv` does the Python; compose does the stack.
 
-.PHONY: sync test lint up down logs seed dev-catalog dev-matching dev-booking dev-gateway
+.PHONY: sync test lint up down logs seed dev-catalog dev-matching dev-booking dev-accounts dev-gateway
 
 sync:            ## install every service and the dev tools into .venv
 	uv sync --all-packages
@@ -30,5 +30,7 @@ dev-matching:
 	uv run --package cappy-matching uvicorn matching.main:app --port 8002 --reload
 dev-booking:
 	uv run --package cappy-booking uvicorn booking.main:app --port 8003 --reload
+dev-accounts:
+	uv run --package cappy-accounts uvicorn accounts.main:app --port 8004 --reload
 dev-gateway:
 	uv run --package cappy-gateway uvicorn gateway.main:app --port 8000 --reload

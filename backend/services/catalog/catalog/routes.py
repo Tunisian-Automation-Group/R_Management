@@ -107,6 +107,21 @@ async def owner(owner_id: str, repo: CatalogRepository = Depends(get_repo)) -> O
     return await repo.owner(owner_id)
 
 
+@router.post("/internal/owners", response_model=Owner, status_code=status.HTTP_201_CREATED)
+async def create_owner(owner: Owner, request: Request, repo: CatalogRepository = Depends(get_repo)) -> Owner:
+    """A new person, from the accounts service when they sign up. Internal: the
+    gateway never routes ``/internal``. Starts with an empty record whatever
+    the body says; a track record is earned, not declared."""
+    if owner.district not in await repo.districts():
+        raise Invalid(f"unknown district: {owner.district}")
+    if await repo.find_owner(owner.id):
+        raise Conflict(f"owner {owner.id} already exists")
+    fresh = owner.model_copy(update={"rating_sum": 0, "jobs_done": 0, "on_time_jobs": 0, "verified": False})
+    await repo.add_owner(fresh)
+    await _changed(request, "owner", id=fresh.id)
+    return fresh
+
+
 @router.post("/owners/{owner_id}/outcomes", response_model=Owner)
 async def record_outcome(
     owner_id: str,

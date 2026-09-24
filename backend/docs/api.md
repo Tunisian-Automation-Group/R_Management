@@ -13,9 +13,37 @@ rules on what it loads and those rules test `=== undefined`. Errors are always
 with codes `invalid` (422), `forbidden` (403), `not_found` (404),
 `conflict` (409), `upstream` (502).
 
-Send `X-Cappy-User: <ownerId>` to act as someone; it defaults to `o1`. The
-same header works from the website and from a native shell: identity is a
-header, not a cookie, so nothing depends on the browser.
+## Identity
+
+Sign in, get a token, send it as `Authorization: Bearer <token>`. The gateway
+checks it with the accounts service (cached for a minute) and sets
+`X-Cappy-User` for the services, which is the only identity they trust; a
+client cannot send that header itself. No token means anonymous: the world,
+browse and matching are open, and everything that belongs to a person
+(`/me`, `/bookings`, `/saved`, every write) answers 401 `unauthorized`.
+Tokens, not cookies, so a native shell works the same as the website.
+
+| Method | Path                  | Body                                             | Returns |
+|--------|-----------------------|--------------------------------------------------|---------|
+| POST   | `/api/auth/register`  | `{ email, password (8+), name, kind, district }` | `{ token, account: { id, email, name }, expiresAt }`, 201 |
+| POST   | `/api/auth/login`     | `{ email, password }`                            | same    |
+| GET    | `/api/auth/session`   |                                                  | `{ id, email, name, expiresAt }`, or 401 |
+| POST   | `/api/auth/logout`    |                                                  | 204; ends this device's session |
+
+Registering creates an owner in the catalog (empty record, unverified) whose
+id is the account id, so everything the person lists, books or rates is
+theirs from the first minute. Sessions last `SESSION_DAYS` (30). Passwords
+are scrypt-hashed with a per-password salt; only a hash of each token is
+stored. Wrong email and wrong password get the same 401.
+
+The demo ships one account for the seeded owner Nadia Brandt (`o1`):
+`nadia@cappy.demo` / `cappy-demo`. Requests to a seeded host with no account
+are still answered by the demo after a few seconds; requests to anyone with
+an account wait for that person.
+
+`X-Cappy-User` still works when calling a service directly (not through the
+gateway) and `DEMO_USER_ID` is set, which is how `make dev-*` runs; the
+compose stack sets it empty.
 
 ## Vocabulary
 
@@ -143,5 +171,5 @@ rating locally straight away can drop the server copy by that id.
 | Method | Path                | Returns                                          |
 |--------|---------------------|--------------------------------------------------|
 | GET    | `/api/health`       | `{ ok, services: { catalog, matching, booking } }` |
-| POST   | `/api/admin/reset`  | 204; wipes bookings and hearts, reseeds the world (demo) |
+| POST   | `/api/admin/reset`  | 204; wipes bookings, hearts, accounts and sessions, reseeds the world and the demo account |
 | GET    | `/`, `/{anything}`  | the built web app, when `STATIC_DIR` points at one (see [frontend-integration](frontend-integration.md)); otherwise a JSON index |

@@ -6,7 +6,7 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 
-from cappy_common.app import create_app
+from cappy_common.app import create_app, identity
 from cappy_common.db import Base, Database
 from cappy_common.events import BOOKING_RATED, CATALOG_CHANGED, make_event_bus
 from cappy_common.models import Outcome, Review
@@ -90,7 +90,7 @@ def build_app(settings: Settings) -> FastAPI:
         app.state.settings = settings
         app.state.db = db
         app.state.bus = bus
-        app.state.current_user = lambda header: header or settings.demo_user_id
+        app.state.current_user = identity(settings)
         try:
             yield
         finally:

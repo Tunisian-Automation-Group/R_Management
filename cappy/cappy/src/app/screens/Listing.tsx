@@ -7,7 +7,7 @@ import { offersFor, type Offer } from '../../domain/availability.ts'
 import { distanceKm, matchForOffer, trackRecord } from '../../domain/match.ts'
 import { hoursFor, quoteFor, PLATFORM_FEE_BPS } from '../../domain/pricing.ts'
 import { formatEur, formatEurExact } from '../../domain/money.ts'
-import { ME, useCappy, useLookups } from '../store.tsx'
+import { useCappy, useLookups, useMe } from '../store.tsx'
 import { Screen, SectionHead } from '../components/AppShell.tsx'
 import { CapacityBar } from '../components/CapacityBar.tsx'
 import { Plate, WhenBadge } from '../components/Cover.tsx'
@@ -34,6 +34,7 @@ export function Listing() {
   const [params] = useSearchParams()
   const nav = useNavigate()
   const { state, send } = useCappy()
+  const ME = useMe()
   const { listing: findListing, owner: findOwner, slotsFor, reviewsFor } = useLookups()
 
   const listing = id ? findListing(id) : undefined
@@ -123,6 +124,15 @@ export function Listing() {
     return acc
   }, {})
 
+  // Asking for a window needs a person on the other end of it.
+  const request = () => {
+    if (!ME) {
+      nav(`/login?next=${encodeURIComponent(location.pathname)}`)
+      return
+    }
+    setConfirming(true)
+  }
+
   const book = () => {
     if (!requirement || !selected) return
     const match = matchForOffer(requirement, listing, owner, selected, km)
@@ -194,7 +204,7 @@ export function Listing() {
             <Button
               size="lg"
               disabled={!selected || !quote}
-              onClick={() => setConfirming(true)}
+              onClick={request}
               className="md:mt-5 md:w-full"
             >
               Request
