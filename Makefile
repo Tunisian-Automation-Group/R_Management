@@ -64,3 +64,8 @@ openapi: ## Regenerate docs/api/*.json from the services' code
 	$(BACKEND) uv run python openapi.py
 
 .PHONY: openapi
+
+load: ## Sustained concurrent use of the running stack: no errors, no double booking
+	$(BACKEND) uv run python ../local/load.py 50 60
+
+.PHONY: load

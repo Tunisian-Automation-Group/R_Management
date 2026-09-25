@@ -291,6 +291,11 @@ class MatchView(CamelModel):
     owner: Owner
 
 
+class Handover(CamelModel):
+    address: str | None = None
+    instructions: str
+
+
 class Booking(CamelModel):
     id: str
     match: Match
@@ -303,6 +308,8 @@ class Booking(CamelModel):
     listing: ListingSnapshot | None = None
     # While a request waits for payment or for the owner: when it lapses.
     expires_at: Iso | None = None
+    # Once accepted: where and how the hand-over happens.
+    handover: Handover | None = None
 
 
 class World(CamelModel):

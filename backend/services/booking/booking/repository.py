@@ -15,7 +15,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from cappy_common.errors import NotFound
 from cappy_common.events import BOOKING_STATUS_CHANGED, Outbox
-from cappy_common.models import Booking, ListingSnapshot, Match, Outcome, Requirement
+from cappy_common.models import Booking, Handover, ListingSnapshot, Match, Outcome, Requirement
 from cappy_common.pagination import decode_cursor, encode_cursor
 from cappy_common.timeutil import dt_from_iso, iso_from_datetime
 
@@ -39,7 +39,12 @@ def to_booking(row: BookingRow, viewer: str) -> Booking:
         outcome=Outcome.model_validate(row.outcome) if row.outcome else None,
         listing=ListingSnapshot.model_validate(row.listing_snapshot),
         expires_at=iso_from_datetime(row.expires_at) if row.expires_at else None,
+        handover=Handover.model_validate(row.handover) if row.handover and row.status in SHOWS_HANDOVER else None,
     )
+
+
+# The two sides see where to meet once the booking is on, and afterwards.
+SHOWS_HANDOVER = frozenset({"accepted", "active", "completed", "disputed"})
 
 
 def status_event(row: BookingRow, before: str | None, by: str) -> dict:
@@ -80,6 +85,10 @@ class BookingRepository:
     async def by_idempotency_key(self, requester_id: str, key: str) -> BookingRow | None:
         q = select(BookingRow).where(BookingRow.requester_id == requester_id, BookingRow.idempotency_key == key)
         return (await self.s.execute(q)).scalar_one_or_none()
+
+    async def unpaid_count(self, requester_id: str) -> int:
+        q = select(func.count()).where(BookingRow.requester_id == requester_id, BookingRow.status == "awaiting_payment")
+        return (await self.s.execute(q)).scalar_one()
 
     async def window_taken(self, listing_id: str, start: datetime, end: datetime) -> bool:
         """The friendly check. The exclusion constraint is the one that holds

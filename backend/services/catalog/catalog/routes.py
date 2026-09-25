@@ -55,8 +55,10 @@ class ListingView(CamelModel):
     listing: Listing
     owner: Owner
     saved: bool | None = None
-    # Only on the owner's own listings: their upcoming idle windows.
+    # Only on the owner's own listings: their upcoming idle windows, and the
+    # private hand-over address.
     slots: list[Slot] | None = None
+    address: str | None = None
 
 
 class TagCount(CamelModel):
@@ -117,6 +119,8 @@ class ListingIn(CamelModel):
 
     listing: dict
     slots: list[SlotIn] = Field(default_factory=list, max_length=MAX_SLOTS_PER_CALL)
+    # The hand-over address: kept private until a booking is accepted.
+    address: str | None = Field(default=None, max_length=200)
 
 
 class Uploaded(CamelModel):
@@ -336,7 +340,8 @@ async def listing_reviews(
 
 @router.get("/search", response_model=Page[ListingView])
 async def search(
-    q: str = Query(min_length=2, max_length=80),
+    # Three characters: what the trigram index needs to avoid a full scan.
+    q: str = Query(min_length=3, max_length=80),
     metro: str | None = None,
     category: str | None = None,
     cursor: str | None = None,
@@ -363,8 +368,10 @@ async def my_listings(
     slots: dict[str, list[Slot]] = {}
     for s in await repo.upcoming_slots({v.listing.id for v in views}, after=datetime.now(UTC)):
         slots.setdefault(s.listing_id, []).append(s)
+    addresses = await repo.addresses({v.listing.id for v in views})
     for v in views:
         v.slots = slots.get(v.listing.id, [])
+        v.address = addresses.get(v.listing.id)
     return Page(items=views, next_cursor=nxt)
 
 
@@ -381,6 +388,7 @@ async def create_listing(
         raise Forbidden("create your profile before listing anything")
     listing = await _validate_listing(request, repo, body.listing, p.sub)
     created, slots = await repo.create_listing(listing, _validate_slots(body.slots))
+    await repo.set_address(created.id, body.address)
     await _outbox(request).add(repo.s, LISTING_CHANGED, {"listingId": created.id, "change": "created"})
     return CreatedListing(listing=created, slots=slots)
 
@@ -398,6 +406,8 @@ async def update_listing(
         request, repo, {**body.listing, "mode": row.mode, "category": row.category}, p.sub
     )
     updated = await repo.update_listing(listing_id, listing)
+    if "address" in body.model_fields_set:
+        await repo.set_address(listing_id, body.address)
     await _outbox(request).add(repo.s, LISTING_CHANGED, {"listingId": listing_id, "change": "updated"})
     return updated
 
@@ -542,6 +552,19 @@ async def listing_context(
     listing_id: str, after: str | None = None, origin: str | None = None, repo=Depends(get_read_repo)
 ) -> World:
     return await repo.listing_context(listing_id, after=dt_from_iso(after or now_iso()), origin=origin)
+
+
+class Handover(CamelModel):
+    address: str | None = None
+    instructions: str
+
+
+@internal.get("/listings/{listing_id}/handover", response_model=Handover)
+async def handover(listing_id: str, repo=Depends(get_repo)) -> Handover:
+    """For booking to give the two sides of an accepted booking. Works for a
+    listing removed since, because the booking still happens."""
+    row = await repo.listing_row(listing_id, include_deleted=True)
+    return Handover(address=row.address, instructions=row.instructions)
 
 
 @internal.get("/owners/{owner_id}", response_model=Owner)

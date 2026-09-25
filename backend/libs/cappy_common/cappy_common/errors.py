@@ -82,7 +82,9 @@ def error_body(code: str, message: str, details: object | None = None) -> dict:
 def install_error_handlers(app: FastAPI) -> None:
     @app.exception_handler(ApiError)
     async def _api_error(_: Request, exc: ApiError) -> JSONResponse:
-        return JSONResponse(status_code=exc.status, content=error_body(exc.code, exc.message))
+        # A 503 says when to come back, so clients spread their retries out.
+        headers = {"Retry-After": "2"} if exc.status == 503 else None
+        return JSONResponse(status_code=exc.status, content=error_body(exc.code, exc.message), headers=headers)
 
     @app.exception_handler(RequestValidationError)
     async def _validation(_: Request, exc: RequestValidationError) -> JSONResponse:

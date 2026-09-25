@@ -17,6 +17,22 @@ class Settings(CommonSettings):
     # at ``/`` so the app and the API share one origin. In AWS, CloudFront
     # serves the app from S3 and this stays empty.
     static_dir: str = ""
+
+    # --- overload (docs/resilience.md F1, F3) -----------------------------------
+    # Requests one task works on at once. Past this it answers 503 at once
+    # (with Retry-After) instead of queueing everyone into a timeout. Writes
+    # (bookings, payments, listings) keep headroom above browsing.
+    max_in_flight: int = 400
+    browse_share: float = 0.8
+    # Calls in flight to any one service: a slow service cannot take every
+    # connection the others need.
+    per_upstream_in_flight: int = 200
+
+    # --- the store apps (ADR 0012) -----------------------------------------------
+    # Builds older than this are told to update; the API only changes
+    # additively within a supported range.
+    app_min_version: str = "1.0.0"
+    app_latest_version: str = "1.0.0"
     # ponytail: no app-level rate limiting. WAF rate-based rules limit per IP
     # at the edge (ADR 0008); per-user limits need shared state (Redis) and
     # are worth adding once abuse shows up in the metrics.

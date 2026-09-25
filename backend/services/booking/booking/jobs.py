@@ -7,6 +7,8 @@ from datetime import UTC, datetime
 
 from fastapi import FastAPI
 
+from cappy_common.events import jittered
+
 from .repository import BookingRepository
 from .settings import Settings
 
@@ -38,4 +40,4 @@ async def sweep_once(app: FastAPI) -> int:
 
 async def sweep(app: FastAPI) -> None:
     await sweep_once(app)
-    await asyncio.sleep(app.state.settings.sweep_seconds)
+    await asyncio.sleep(jittered(app.state.settings.sweep_seconds))

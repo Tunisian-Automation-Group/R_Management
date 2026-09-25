@@ -22,7 +22,17 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from .auth import make_verifier
 from .db import Database
-from .events import Dispatcher, Handler, Outbox, OutboxRelay, event_tables, make_consumer, make_publisher, prune
+from .events import (
+    Dispatcher,
+    Handler,
+    Outbox,
+    OutboxRelay,
+    event_tables,
+    jittered,
+    make_consumer,
+    make_publisher,
+    prune,
+)
 from .observability import setup_tracing
 
 log = logging.getLogger(__name__)
@@ -146,7 +156,7 @@ class Runtime:
 
 async def _prune_loop(runtime: Runtime) -> None:
     await prune(runtime.db, runtime.outbox_table, runtime.processed_table)
-    await asyncio.sleep(3600)
+    await asyncio.sleep(jittered(3600))
 
 
 def _named(name: str, fn: Callable[[], Awaitable[None]]) -> Callable[[], Awaitable[None]]:
@@ -166,7 +176,7 @@ async def _forever(loop: Loop, app: FastAPI) -> None:
             raise
         except Exception:  # noqa: BLE001
             log.exception("background job %s failed; continuing", loop.__name__)
-            await asyncio.sleep(5)
+            await asyncio.sleep(jittered(5))
 
 
 async def db_session(request: Request) -> AsyncIterator[AsyncSession]:

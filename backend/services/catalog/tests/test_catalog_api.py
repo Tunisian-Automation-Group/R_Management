@@ -361,7 +361,7 @@ def test_search_is_paginated_and_scoped(client):
     assert client.get("/search", params={"q": "zzzz-no-such-thing"}).json() == {"items": []}
     assert client.get("/search", params={"q": "a"}).status_code == 422  # too short to be useful
     # LIKE wildcards in the query are literals, not patterns.
-    assert client.get("/search", params={"q": "%%"}).json() == {"items": []}
+    assert client.get("/search", params={"q": "%%%"}).json() == {"items": []}
 
 
 def test_cities_are_an_aggregate(client):
@@ -526,3 +526,33 @@ def test_deleting_an_account_forgets_what_is_theirs(client, app, issuer, booking
     flush(app)
     assert [e.data["ownerId"] for e in broker.of_type(PROFILE_DELETED)] == ["user-a"]
     assert client.delete("/me").status_code == 401
+
+
+def test_the_handover_address_stays_private(client, issuer):
+    _profile(client, issuer)
+    h = issuer.headers("user-a")
+    body = {
+        "listing": _window_listing(title="Private address drill"),
+        "slots": [_slot()],
+        "address": "Oranienstr. 5, Berlin",
+    }
+    lid = client.post("/listings", json=body, headers=h).json()["listing"]["id"]
+    assert "Oranienstr" not in client.get(f"/listings/{lid}").text
+    assert "Oranienstr" not in client.get("/search", params={"q": "private address"}).text
+    assert client.get("/me/listings", headers=h).json()["items"][0]["address"] == "Oranienstr. 5, Berlin"
+    assert client.get(f"/internal/listings/{lid}/handover").status_code == 403
+    assert (
+        client.get(f"/internal/listings/{lid}/handover", headers=INTERNAL).json()["address"] == "Oranienstr. 5, Berlin"
+    )
+    # Editing without mentioning the address leaves it; sending null clears it.
+    client.put(f"/listings/{lid}", json={"listing": _window_listing(title="Private address drill 2")}, headers=h)
+    assert (
+        client.get(f"/internal/listings/{lid}/handover", headers=INTERNAL).json()["address"] == "Oranienstr. 5, Berlin"
+    )
+    client.put(f"/listings/{lid}", json={"listing": _window_listing(), "address": None}, headers=h)
+    assert "address" not in client.get(f"/internal/listings/{lid}/handover", headers=INTERNAL).json()
+
+
+def test_search_needs_three_characters(client):
+    assert client.get("/search", params={"q": "ab"}).status_code == 422
+    assert client.get("/search", params={"q": "saw"}).status_code == 200

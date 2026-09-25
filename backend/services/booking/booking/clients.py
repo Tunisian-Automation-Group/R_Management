@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from urllib.parse import quote
+
 from cappy_common.http import ServiceClient
 from cappy_common.models import CamelModel, Cents, Iso, MatchView
 
@@ -33,6 +35,25 @@ class Payments:
 
     async def aclose(self) -> None:
         """Release resources."""
+
+
+class Catalog:
+    async def handover(self, listing_id: str) -> dict:
+        raise NotImplementedError
+
+    async def aclose(self) -> None:
+        """Release resources."""
+
+
+class HttpCatalog(Catalog):
+    def __init__(self, base_url: str, token: str) -> None:
+        self._c = ServiceClient(base_url, internal_token=token)
+
+    async def handover(self, listing_id: str) -> dict:
+        return await self._c.get(f"/internal/listings/{quote(listing_id, safe='')}/handover")
+
+    async def aclose(self) -> None:
+        await self._c.aclose()
 
 
 class HttpMatching(Matching):

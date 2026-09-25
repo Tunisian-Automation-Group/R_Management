@@ -165,7 +165,7 @@ class CatalogRepository:
         await self.s.execute(
             update(ListingRow)
             .where(ListingRow.owner_id == owner_id, ListingRow.deleted_at.is_(None))
-            .values(deleted_at=now, active=False, updated_at=now)
+            .values(deleted_at=now, active=False, updated_at=now, address=None)
         )
         await self.s.execute(delete(SavedRow).where(SavedRow.user_id == owner_id))
         await self.s.execute(delete(PayableOwnerRow).where(PayableOwnerRow.owner_id == owner_id))
@@ -376,6 +376,19 @@ class CatalogRepository:
         row.spec, row.updated_at = _spec(listing), _now()
         await self.s.flush()
         return to_listing(row)
+
+    async def set_address(self, listing_id: str, address: str | None) -> None:
+        row = await self.listing_row(listing_id)
+        row.address = (address or "").strip() or None
+        await self.s.flush()
+
+    async def addresses(self, listing_ids: set[str]) -> dict[str, str]:
+        if not listing_ids:
+            return {}
+        q = select(ListingRow.id, ListingRow.address).where(
+            ListingRow.id.in_(listing_ids), ListingRow.address.is_not(None)
+        )
+        return dict((await self.s.execute(q)).all())
 
     async def set_active(self, listing_id: str, active: bool) -> AnyListing:
         row = await self.listing_row(listing_id)

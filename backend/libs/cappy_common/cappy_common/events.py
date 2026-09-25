@@ -27,6 +27,7 @@ import asyncio
 import contextlib
 import json
 import logging
+import random
 from collections import defaultdict
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
@@ -159,6 +160,12 @@ class Publisher:
 MAX_ATTEMPTS = 20
 
 
+def jittered(seconds: float) -> float:
+    """Between half and all of ``seconds``, so replicas that failed together
+    do not retry together (AWS Builders' Library: backoff with jitter)."""
+    return seconds * random.uniform(0.5, 1.0)
+
+
 class OutboxRelay:
     """Moves committed outbox rows onto the bus."""
 
@@ -229,7 +236,7 @@ class OutboxRelay:
             except Exception:  # noqa: BLE001 - logged in _once; keep the relay alive
                 backoff = min(backoff * 2, 30.0)
             with contextlib.suppress(TimeoutError):
-                await asyncio.wait_for(self._wake.wait(), timeout=backoff)
+                await asyncio.wait_for(self._wake.wait(), timeout=jittered(backoff))
             self._wake.clear()
 
 
@@ -425,7 +432,7 @@ class SqsConsumer(Consumer):
                 raise
             except Exception:  # noqa: BLE001
                 log.exception("polling %s failed; retrying", self.queue_url)
-                await asyncio.sleep(2)
+                await asyncio.sleep(jittered(2))
 
 
 def _unwrap_sns(body: str) -> str:

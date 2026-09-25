@@ -22,6 +22,9 @@ class Settings(CommonSettings):
     sweep_seconds: float = 30.0
     # Either party can mark the hand-over from this long before the window.
     start_early_minutes: int = 30
+    # Bookings a person may have waiting for payment at once. A card-testing
+    # bot makes many; a person makes one or two.
+    max_unpaid: int = 3
 
     @property
     def payment_timeout(self) -> timedelta:

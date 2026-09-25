@@ -68,6 +68,9 @@ class ListingRow(Base):
     blurb: Mapped[str] = mapped_column(String(500))
     district: Mapped[str] = mapped_column(String(80), ForeignKey("districts.name"))
     instructions: Mapped[str] = mapped_column(String(2000))
+    # Where the hand-over happens. Private: only the two sides of an accepted
+    # booking ever see it, never a public listing response.
+    address: Mapped[str | None] = mapped_column(String(200), nullable=True)
     rules: Mapped[list] = mapped_column(JsonType)
     photos: Mapped[list] = mapped_column(JsonType, default=list)
     active: Mapped[bool] = mapped_column(Boolean, default=True)

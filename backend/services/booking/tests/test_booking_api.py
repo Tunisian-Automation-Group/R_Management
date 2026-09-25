@@ -70,6 +70,14 @@ class FakePayments(Payments):
         return PaymentStart(client_secret=f"pi_{booking_id}_secret", intent_id=f"pi_{booking_id}")
 
 
+class FakeCatalog:
+    async def handover(self, listing_id):  # noqa: ANN001
+        return {"address": "Tempelhofer Damm 1, 12101 Berlin", "instructions": "Ring the workshop bell"}
+
+    async def aclose(self) -> None:
+        pass
+
+
 @pytest.fixture()
 def issuer():
     return TestIssuer()
@@ -88,7 +96,9 @@ def payments():
 @pytest.fixture()
 def app(issuer, broker, payments):
     settings = Settings(app_env="test", database_url="sqlite+aiosqlite://", internal_token="i" * 40)
-    return build_app(settings, matching=FakeMatching(), payments=payments, verifier=issuer.verifier())
+    return build_app(
+        settings, matching=FakeMatching(), payments=payments, catalog=FakeCatalog(), verifier=issuer.verifier()
+    )
 
 
 @pytest.fixture()
@@ -169,8 +179,9 @@ def test_the_same_window_cannot_be_held_twice(client, issuer):
 
 def test_a_retry_with_the_same_key_returns_the_same_booking(client, issuer):
     h = {**issuer.headers(BUYER), "Idempotency-Key": "abc-123"}
-    a = client.post("/bookings", json=_body(), headers=h).json()
-    b = client.post("/bookings", json=_body(), headers=h).json()
+    body = _body()
+    a = client.post("/bookings", json=body, headers=h).json()
+    b = client.post("/bookings", json=body, headers=h).json()
     assert a["booking"]["id"] == b["booking"]["id"]
     assert b["payment"]["clientSecret"] == a["payment"]["clientSecret"]
     assert len(client.get("/bookings", headers=issuer.headers(BUYER)).json()["items"]) == 1
@@ -182,11 +193,12 @@ def test_payments_down_keeps_the_booking_for_a_retry(client, issuer, payments):
     booking lapses by itself."""
     payments.down = True
     h = {**issuer.headers(BUYER), "Idempotency-Key": "k-down"}
-    assert client.post("/bookings", json=_body(), headers=h).status_code == 503
+    body = _body()
+    assert client.post("/bookings", json=body, headers=h).status_code == 503
     [b] = client.get("/bookings", headers=issuer.headers(BUYER)).json()["items"]
     assert b["status"] == "awaiting_payment"
     payments.down = False
-    again = client.post("/bookings", json=_body(), headers=h).json()
+    again = client.post("/bookings", json=body, headers=h).json()
     assert again["booking"]["id"] == b["id"] and again["payment"]["clientSecret"]
 
 
@@ -371,3 +383,27 @@ def test_what_is_open_and_everything_for_one_person(client, app, issuer):
     assert client.get(f"/internal/people/{BUYER}/open", headers=INTERNAL).json() == {"open": 0}
     [b] = client.get(f"/internal/people/{BUYER}/bookings", headers=INTERNAL).json()
     assert b["id"] == bid and b["status"] == "cancelled"
+
+
+def test_the_handover_address_is_shared_only_once_accepted(client, app, issuer):
+    bid = _requested(client, app, issuer)
+    assert "handover" not in client.get(f"/bookings/{bid}", headers=issuer.headers(BUYER)).json()
+    _do(client, issuer, HOST, bid, "accept")
+    for who in (BUYER, HOST):
+        h = client.get(f"/bookings/{bid}", headers=issuer.headers(who)).json()["handover"]
+        assert h["address"].startswith("Tempelhofer Damm") and h["instructions"]
+    assert client.get(f"/bookings/{bid}", headers=issuer.headers("stranger")).status_code == 404
+
+
+def test_a_key_reused_for_a_different_request_is_refused(client, issuer):
+    h = {**issuer.headers(BUYER), "Idempotency-Key": "k-reuse"}
+    assert client.post("/bookings", json=_body(start_h=24), headers=h).status_code == 201
+    r = client.post("/bookings", json=_body(start_h=30), headers=h)
+    assert r.status_code == 422 and "different" in r.json()["error"]["message"]
+
+
+def test_a_person_cannot_pile_up_unpaid_bookings(client, issuer):
+    for h in (24, 30, 36):
+        _book(client, issuer, start_h=h)
+    r = client.post("/bookings", json=_body(start_h=42), headers=issuer.headers(BUYER))
+    assert r.status_code == 429 and r.headers.get("retry-after") is None

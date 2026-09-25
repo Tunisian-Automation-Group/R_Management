@@ -17,7 +17,7 @@ from cappy_common.db import Database
 from cappy_common.migrations import upgrade
 from cappy_common.testing import TestIssuer
 
-from .test_booking_api import FakeMatching, FakePayments, _body
+from .test_booking_api import FakeCatalog, FakeMatching, FakePayments, _body
 
 pytestmark = pytest.mark.postgres
 MIGRATIONS = Path(__file__).parents[1] / "booking" / "migrations"
@@ -38,7 +38,9 @@ def test_simultaneous_bookings_of_one_window_yield_exactly_one(postgres_url):
     upgrade(MIGRATIONS, postgres_url)
     issuer = TestIssuer()
     settings = Settings(app_env="test", database_url=postgres_url, internal_token="i" * 40)
-    app = build_app(settings, matching=FakeMatching(), payments=FakePayments(), verifier=issuer.verifier())
+    app = build_app(
+        settings, matching=FakeMatching(), payments=FakePayments(), catalog=FakeCatalog(), verifier=issuer.verifier()
+    )
     body = _body()
 
     with TestClient(app) as client:

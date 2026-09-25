@@ -15,6 +15,7 @@ The owner only sees the request once the card is authorised
 
 from __future__ import annotations
 
+import hashlib
 import logging
 from datetime import UTC, datetime, timedelta
 
@@ -25,7 +26,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from cappy_common.app import ApiRouter
 from cappy_common.auth import Principal, require_internal, require_principal
-from cappy_common.errors import ApiError, Conflict, Invalid, NotFound, Unavailable
+from cappy_common.errors import ApiError, Conflict, Invalid, NotFound, RateLimited, Unavailable
 from cappy_common.events import BOOKING_RATED
 from cappy_common.ids import new_id
 from cappy_common.models import Booking, CamelModel, Iso, Outcome, Requirement
@@ -34,7 +35,7 @@ from cappy_common.runtime import ReadTx, Tx
 from cappy_common.timeutil import dt_from_iso, iso_from_datetime
 
 from .clients import PaymentStart
-from .repository import BookingRepository, to_booking
+from .repository import SHOWS_HANDOVER, BookingRepository, to_booking
 from .settings import Settings
 from .state import Action, check_can_rate, next_status
 from .tables import BookingRow
@@ -96,9 +97,18 @@ async def list_bookings(
 
 @router.get("/bookings/{booking_id}", response_model=Booking)
 async def get_booking(
-    booking_id: str, repo: BookingRepository = Depends(get_repo), p: Principal = Depends(require_principal)
+    booking_id: str,
+    request: Request,
+    repo: BookingRepository = Depends(get_repo),
+    p: Principal = Depends(require_principal),
 ) -> Booking:
-    return to_booking(await repo.visible(booking_id, p.sub), p.sub)
+    row = await repo.visible(booking_id, p.sub)
+    if row.handover is None and row.status in SHOWS_HANDOVER:
+        try:
+            row.handover = await request.app.state.catalog.handover(row.listing_id)
+        except Exception as e:  # noqa: BLE001 - the booking still shows; the address comes next time
+            log.warning("no hand-over details for %s yet: %s", row.id, e)
+    return to_booking(row, p.sub)
 
 
 # --- creating --------------------------------------------------------------------------
@@ -117,11 +127,15 @@ async def create_booking(
     db, outbox = app.state.db, app.state.outbox
     settings: Settings = app.state.settings
 
+    fingerprint = hashlib.sha256(body.model_dump_json(by_alias=True).encode()).hexdigest()
     if idempotency_key:
         async with db.session() as s:
             existing = await BookingRepository(s, outbox).by_idempotency_key(p.sub, idempotency_key)
         if existing:
-            return await _with_payment(request, existing, p.sub)
+            return await _replay(request, existing, fingerprint, p.sub)
+    async with db.session() as s:
+        if await BookingRepository(s, outbox).unpaid_count(p.sub) >= settings.max_unpaid:
+            raise RateLimited("finish paying for the bookings you have started first")
 
     view = await app.state.matching.match_for_offer(
         body.requirement.model_dump(mode="json", by_alias=True), body.listing_id, body.slot_id, body.start, body.end
@@ -154,6 +168,7 @@ async def create_booking(
             **({"photo": view.listing.photos[0]} if view.listing.photos else {}),
         },
         idempotency_key=idempotency_key,
+        request_hash=fingerprint,
     )
     try:
         async with db.transaction() as s:
@@ -168,10 +183,16 @@ async def create_booking(
             async with db.session() as s:
                 existing = await BookingRepository(s, outbox).by_idempotency_key(p.sub, idempotency_key)
             if existing:
-                return await _with_payment(request, existing, p.sub)
+                return await _replay(request, existing, fingerprint, p.sub)
         raise Conflict("that window was just taken; pick another") from None
     app.state.relay.wake()
     return await _with_payment(request, row, p.sub)
+
+
+async def _replay(request: Request, row: BookingRow, fingerprint: str, viewer: str) -> BookingCreated:
+    if row.request_hash and row.request_hash != fingerprint:
+        raise Invalid("that Idempotency-Key was already used for a different booking request")
+    return await _with_payment(request, row, viewer)
 
 
 async def _payments_start(request: Request, row: BookingRow) -> PaymentStart:

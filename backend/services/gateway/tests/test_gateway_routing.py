@@ -146,3 +146,51 @@ def test_the_native_apps_may_call_the_api_cross_origin():
         assert ok.status_code == 200 and ok.headers["access-control-allow-origin"] == "capacitor://localhost"
         evil = c.options("/api/bookings", headers={"Origin": "https://evil.example", **pre})
         assert "access-control-allow-origin" not in evil.headers
+
+
+def test_app_config_for_the_store_apps(gateway):
+    c, calls = gateway
+    r = c.get("/api/app-config")
+    assert r.json() == {"minVersion": "1.0.0", "latestVersion": "1.0.0"} and "max-age" in r.headers["cache-control"]
+    assert calls == []
+
+
+def test_an_unreachable_service_says_when_to_retry(gateway):
+    c, _ = gateway
+    assert c.post("/api/matches", json={}).headers["retry-after"] == "2"
+
+
+def test_overload_sheds_browsing_first_and_keeps_room_for_writes():
+    from gateway.main import Admission, Shed
+
+    a = Admission(limit=10, browse_share=0.8)
+    for _ in range(8):
+        a.enter(write=False)
+    with pytest.raises(Shed):
+        a.enter(write=False)  # browsing is capped at 80%
+    a.enter(write=True)
+    a.enter(write=True)  # writes may use the rest
+    with pytest.raises(Shed):
+        a.enter(write=True)
+    a.leave()
+    a.enter(write=True)
+
+
+def test_a_shed_request_is_a_fast_503(gateway):
+    c, calls = gateway
+    c.app.state.admission.in_flight = c.app.state.admission.limit
+    r = c.get("/api/listings/l9")
+    assert r.status_code == 503 and r.headers["retry-after"] == "2" and r.json()["error"]["code"] == "overloaded"
+    assert calls == [], "never reached a service"
+    c.app.state.admission.in_flight = 0
+
+
+def test_a_full_bulkhead_sheds_only_that_service(gateway):
+    import asyncio
+
+    c, _ = gateway
+    sem: asyncio.Semaphore = c.app.state.bulkheads["matching"]
+    sem._value = 0  # every slot to matching taken
+    assert c.post("/api/matches", json={}).status_code == 503
+    assert c.get("/api/listings/l9").status_code == 201, "catalog is unaffected"
+    sem._value = 200

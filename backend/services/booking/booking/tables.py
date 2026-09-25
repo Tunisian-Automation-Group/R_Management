@@ -51,6 +51,12 @@ class BookingRow(Base):
     # What the client sent in Idempotency-Key, so a retried POST returns the
     # booking it already made instead of making a second one.
     idempotency_key: Mapped[str | None] = mapped_column(String(80), nullable=True)
+    # Where and how the hand-over happens, copied from the listing once the
+    # booking is accepted: what was agreed, whatever the listing says later.
+    handover: Mapped[dict | None] = mapped_column(JsonType, nullable=True)
+    # A fingerprint of the create request, so a key reused for a different
+    # request is refused rather than answered with the wrong booking.
+    request_hash: Mapped[str | None] = mapped_column(String(64), nullable=True)
 
     __table_args__ = (
         UniqueConstraint("requester_id", "idempotency_key", name="uq_bookings_requester_idempotency"),
