@@ -542,3 +542,12 @@ def test_check_in_and_check_out_photos_are_kept_as_evidence(client, app, issuer)
     got = client.get(f"/bookings/{bid}/evidence", headers=issuer.headers(HOST)).json()
     assert [(e["by"], e["stage"]) for e in got] == [(HOST, "check_in"), (BUYER, "check_out")]
     assert client.get(f"/bookings/{bid}/evidence", headers=issuer.headers("stranger")).status_code == 404
+
+
+def test_booking_requests_per_day_are_limited(client, app, issuer):
+    # Unpaid bookings are also capped (3); pay each so only the daily cap bites.
+    for i in range(10):
+        bid = _book(client, issuer, start_h=24 + i * 3)["booking"]["id"]
+        _authorise(app, bid)
+    r = client.post("/bookings", json=_body(start_h=60), headers=issuer.headers(BUYER))
+    assert r.status_code == 429 and "a lot of booking requests" in r.json()["error"]["message"]

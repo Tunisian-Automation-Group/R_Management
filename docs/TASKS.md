@@ -154,7 +154,7 @@ Engineering, before launch:
 - [ ] G-6 Checkout compliance: total price including the fee; "zahlungspflichtig buchen"; trader/private owner label; withdrawal information and the withdrawal button; review-verification statement; ranking parameters page
 - [ ] G-7 German localisation (UI, emails, legal pages), English kept
 - [ ] G-8 Renter identity verification with Stripe Identity for high-value listings and vans (needs a DPIA)
-- [ ] G-9 Basic fraud rules: velocity limits for new accounts, a review queue for new high-value listings
+- [x] G-9 Fraud rules: 10 booking requests and 20 new listings per person per day; a new owner's listing above 100 €/h waits for a staff check (`/api/admin/listings/held`, approve)
 - [ ] G-10 Stripe Connect platform tax reporting (DAC7) switched on; categories tagged in or out of scope; payouts blocked when tax data is missing after reminders
 
 Decisions for the business (not code):

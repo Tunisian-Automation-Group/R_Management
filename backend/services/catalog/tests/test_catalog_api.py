@@ -735,3 +735,43 @@ def test_a_suspended_owner_disappears_and_cannot_list(client, app, issuer, broke
         ).status_code
         == 201
     )
+
+
+def test_a_new_owner_s_expensive_listing_waits_for_a_staff_check(client, app, issuer):
+    _profile(client, issuer)
+    h = issuer.headers("user-a")
+    pricey = client.post(
+        "/listings",
+        json={"listing": _window_listing(title="Laser cutter bargain", ratePerHour=25_000), "slots": [_slot()]},
+        headers=h,
+    ).json()
+    assert pricey["held"] is True
+    lid = pricey["listing"]["id"]
+    assert client.get(f"/listings/{lid}").status_code == 404, "nobody sees it yet"
+    mine = client.get("/me/listings", headers=h).json()["items"]
+    assert [(v["listing"]["id"], v.get("held")) for v in mine] == [(lid, True)], "the owner does"
+    cheap = client.post("/listings", json={"listing": _window_listing(), "slots": [_slot()]}, headers=h).json()
+    assert cheap["held"] is False
+    assert [x["id"] for x in client.get("/admin/listings/held", headers=_staff(issuer)).json()] == [lid]
+    assert client.post(f"/admin/listings/{lid}/approve", headers=_staff(issuer)).status_code == 204
+    assert client.get(f"/listings/{lid}").status_code == 200
+
+
+def test_new_listings_per_day_are_limited(issuer, broker, tmp_path, bookings):
+    settings = Settings(
+        app_env="test", database_url="sqlite+aiosqlite://", internal_token="i" * 40, max_listings_per_day=2
+    )
+    app = build_app(settings, media_store=DirectoryStore(str(tmp_path)), bookings=bookings, verifier=issuer.verifier())
+    with TestClient(app) as c:
+
+        async def seed():
+            async with app.state.db.transaction() as s:
+                await CatalogRepository(s).load_seed(build_world())
+
+        c.portal.call(seed)
+        _profile(c, issuer)
+        codes = [
+            c.post("/listings", json={"listing": _window_listing()}, headers=issuer.headers("user-a")).status_code
+            for _ in range(3)
+        ]
+        assert codes == [201, 201, 429]

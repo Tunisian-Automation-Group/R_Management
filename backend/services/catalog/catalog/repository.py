@@ -259,6 +259,21 @@ class CatalogRepository:
         row = await self.s.get(OwnerRow, owner_id)
         return to_owner(row) if row and row.deleted_at is None else None
 
+    async def listings_since(self, owner_id: str, since: datetime) -> int:
+        q = select(func.count()).where(ListingRow.owner_id == owner_id, ListingRow.created_at >= since)
+        return (await self.s.execute(q)).scalar_one()
+
+    async def held_ids(self, listing_ids: set[str]) -> set[str]:
+        if not listing_ids:
+            return set()
+        q = select(ListingRow.id).where(ListingRow.id.in_(listing_ids), ListingRow.held_at.is_not(None))
+        return set((await self.s.execute(q)).scalars())
+
+    async def hold(self, listing_id: str) -> None:
+        row = await self.s.get(ListingRow, listing_id)
+        row.held_at = _now()
+        await self.s.flush()
+
     async def is_suspended(self, owner_id: str) -> bool:
         row = await self.s.get(OwnerRow, owner_id)
         return row is not None and row.suspended_at is not None
@@ -325,11 +340,12 @@ class CatalogRepository:
     # --- listings ------------------------------------------------------------------
 
     def _live(self):
-        return ListingRow.deleted_at.is_(None) & ListingRow.moderated_at.is_(None)
+        return ListingRow.deleted_at.is_(None) & ListingRow.moderated_at.is_(None) & ListingRow.held_at.is_(None)
 
     async def listing_row(self, listing_id: str, *, include_deleted: bool = False) -> ListingRow:
         row = await self.s.get(ListingRow, listing_id)
-        if not row or ((row.deleted_at is not None or row.moderated_at is not None) and not include_deleted):
+        hidden = row is not None and (row.deleted_at or row.moderated_at or row.held_at) is not None
+        if not row or (hidden and not include_deleted):
             raise NotFound(f"listing {listing_id} not found")
         return row
 
@@ -339,7 +355,9 @@ class CatalogRepository:
     async def listings_by_owner(
         self, owner_id: str, *, cursor: str | None, limit: int
     ) -> tuple[list[AnyListing], str | None]:
-        q = select(ListingRow).where(ListingRow.owner_id == owner_id, self._live())
+        # The owner sees their listings waiting for review too.
+        mine = ListingRow.deleted_at.is_(None) & ListingRow.moderated_at.is_(None)
+        q = select(ListingRow).where(ListingRow.owner_id == owner_id, mine)
         key = decode_cursor(cursor)
         if key:
             at = dt_from_iso(key["at"])

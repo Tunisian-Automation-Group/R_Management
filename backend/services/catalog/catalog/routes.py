@@ -59,6 +59,8 @@ class ListingView(CamelModel):
     # private hand-over address.
     slots: list[Slot] | None = None
     address: str | None = None
+    # Waiting for a staff check before it goes live.
+    held: bool | None = None
 
 
 class TagCount(CamelModel):
@@ -375,7 +377,9 @@ async def my_listings(
     for s in await repo.upcoming_slots({v.listing.id for v in views}, after=datetime.now(UTC)):
         slots.setdefault(s.listing_id, []).append(s)
     addresses = await repo.addresses({v.listing.id for v in views})
+    held = await repo.held_ids({v.listing.id for v in views})
     for v in views:
+        v.held = v.listing.id in held or None
         v.slots = slots.get(v.listing.id, [])
         v.address = addresses.get(v.listing.id)
     return Page(items=views, next_cursor=nxt)
@@ -384,6 +388,8 @@ async def my_listings(
 class CreatedListing(CamelModel):
     listing: Listing
     slots: list[Slot]
+    # True when it waits for a quick staff check before anyone can see it.
+    held: bool = False
 
 
 @router.post("/listings", response_model=CreatedListing, status_code=status.HTTP_201_CREATED)
@@ -396,11 +402,21 @@ async def create_listing(
         raise Forbidden("create your profile before listing anything")
     if await repo.is_suspended(p.sub):
         raise Forbidden("your account is suspended; see the email we sent you")
+    settings = request.app.state.settings
+    if await repo.listings_since(p.sub, datetime.now(UTC) - timedelta(days=1)) >= settings.max_listings_per_day:
+        raise RateLimited("that is a lot of new listings for one day; try again tomorrow")
     listing = await _validate_listing(request, repo, body.listing, p.sub)
     created, slots = await repo.create_listing(listing, _validate_slots(body.slots))
     await repo.set_address(created.id, body.address)
+    owner = await repo.owner(p.sub)
+    if owner.jobs_done == 0 and listing.rate_per_hour > settings.review_above_cents:
+        await repo.hold(created.id)
+        created = created.model_copy(update={"active": False})
+        held = True
+    else:
+        held = False
     await _outbox(request).add(repo.s, LISTING_CHANGED, {"listingId": created.id, "change": "created"})
-    return CreatedListing(listing=created, slots=slots)
+    return CreatedListing(listing=created, slots=slots, held=held)
 
 
 @router.put("/listings/{listing_id}", response_model=Listing)

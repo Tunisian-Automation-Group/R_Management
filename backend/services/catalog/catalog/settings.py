@@ -39,6 +39,11 @@ class Settings(CommonSettings):
     # Kill switch (docs/runbook.md): false stops new listings (a spam wave);
     # existing ones stay bookable.
     accepting_listings: bool = True
+    # Fraud rules (docs/research/2026-09-launch-gaps.md): new listings per owner
+    # per day, and the hourly price above which a new owner's listing waits
+    # for a staff check.
+    max_listings_per_day: int = 20
+    review_above_cents: int = 10_000
 
     def unsafe_reasons(self) -> list[str]:
         problems = super().unsafe_reasons()

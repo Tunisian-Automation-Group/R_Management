@@ -137,8 +137,11 @@ async def create_booking(
         if existing:
             return await _replay(request, existing, fingerprint, p.sub)
     async with db.session() as s:
-        if await BookingRepository(s, outbox).unpaid_count(p.sub) >= settings.max_unpaid:
+        repo = BookingRepository(s, outbox)
+        if await repo.unpaid_count(p.sub) >= settings.max_unpaid:
             raise RateLimited("finish paying for the bookings you have started first")
+        if await repo.requests_since(p.sub, _now() - timedelta(days=1)) >= settings.max_requests_per_day:
+            raise RateLimited("that is a lot of booking requests for one day; try again tomorrow")
 
     view = await app.state.matching.match_for_offer(
         body.requirement.model_dump(mode="json", by_alias=True), body.listing_id, body.slot_id, body.start, body.end

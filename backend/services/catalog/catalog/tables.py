@@ -79,6 +79,9 @@ class ListingRow(Base):
     address: Mapped[str | None] = mapped_column(String(200), nullable=True)
     # Taken down by moderation: hidden everywhere, and the owner cannot resume it.
     moderated_at: Mapped[datetime | None] = mapped_column(UtcDateTime, nullable=True)
+    # Held for a staff check before it goes live (a new owner listing
+    # something expensive: the classic fake listing). Cleared on approval.
+    held_at: Mapped[datetime | None] = mapped_column(UtcDateTime, nullable=True)
     rules: Mapped[list] = mapped_column(JsonType)
     photos: Mapped[list] = mapped_column(JsonType, default=list)
     active: Mapped[bool] = mapped_column(Boolean, default=True)

@@ -25,6 +25,8 @@ class Settings(CommonSettings):
     # Bookings a person may have waiting for payment at once. A card-testing
     # bot makes many; a person makes one or two.
     max_unpaid: int = 3
+    # Booking requests one person may make in 24 hours (velocity limit).
+    max_requests_per_day: int = 10
     # Kill switch (docs/runbook.md): false stops new bookings; everything
     # already booked carries on.
     accepting_bookings: bool = True

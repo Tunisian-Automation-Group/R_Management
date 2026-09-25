@@ -100,6 +100,10 @@ class BookingRepository:
         )
         return list((await self.s.execute(q)).scalars())
 
+    async def requests_since(self, requester_id: str, since: datetime) -> int:
+        q = select(func.count()).where(BookingRow.requester_id == requester_id, BookingRow.created_at >= since)
+        return (await self.s.execute(q)).scalar_one()
+
     async def unpaid_count(self, requester_id: str) -> int:
         q = select(func.count()).where(BookingRow.requester_id == requester_id, BookingRow.status == "awaiting_payment")
         return (await self.s.execute(q)).scalar_one()

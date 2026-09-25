@@ -321,3 +321,47 @@ async def audit(
         )
         for r in (await session.execute(q)).scalars()
     ]
+
+
+class HeldListing(CamelModel):
+    id: str
+    owner_id: str
+    title: str
+    category: str
+    rate_per_hour: int
+    held_at: Iso
+
+
+@admin.get("/listings/held", response_model=list[HeldListing])
+async def held(session: AsyncSession = Tx, _: Principal = Depends(require_admin)) -> list[HeldListing]:
+    """New owners' expensive listings, oldest first, waiting for a look."""
+    q = (
+        select(ListingRow)
+        .where(ListingRow.held_at.is_not(None), ListingRow.deleted_at.is_(None))
+        .order_by(ListingRow.held_at)
+    )
+    return [
+        HeldListing(
+            id=r.id,
+            owner_id=r.owner_id,
+            title=r.title,
+            category=r.category,
+            rate_per_hour=int(r.spec.get("ratePerHour", 0)),
+            held_at=iso_from_datetime(r.held_at),
+        )
+        for r in (await session.execute(q.limit(200))).scalars()
+    ]
+
+
+@admin.post("/listings/{listing_id}/approve", status_code=status.HTTP_204_NO_CONTENT)
+async def approve(
+    listing_id: str, request: Request, session: AsyncSession = Tx, p: Principal = Depends(require_admin)
+) -> None:
+    from cappy_common.events import LISTING_CHANGED
+
+    row = await session.get(ListingRow, listing_id, with_for_update=True)
+    if row is None or row.held_at is None:
+        raise NotFound(f"no held listing {listing_id}")
+    row.held_at, row.active, row.updated_at = None, True, datetime.now(UTC)
+    await _record(session, p.sub, "approve", "listing", listing_id, "Checked and approved")
+    await _outbox(request).add(session, LISTING_CHANGED, {"listingId": listing_id, "change": "approved"})
