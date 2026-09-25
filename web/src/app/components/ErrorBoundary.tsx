@@ -31,9 +31,14 @@ export class ErrorBoundary extends Component<Props, State> {
         <p className="t-body mb-6 text-[var(--ink-3)]">
           {t('Something in the app broke while drawing this page. Your bookings and listings are safe. Going back to Browse usually clears it.')}
         </p>
-        <Button size="lg" onClick={() => (location.href = '/')}>
-          {t('Back to Browse')}
-        </Button>
+        <div className="flex flex-col gap-2 sm:flex-row">
+          <Button size="lg" onClick={() => location.reload()}>
+            {t('Try again')}
+          </Button>
+          <Button size="lg" variant="secondary" onClick={() => (location.href = '/')}>
+            {t('Back to Browse')}
+          </Button>
+        </div>
         <p className="t-sm mt-6 font-mono text-[var(--ink-4)]">{this.state.error.message}</p>
       </div>
     )

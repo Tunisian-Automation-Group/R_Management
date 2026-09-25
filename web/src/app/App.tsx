@@ -1,9 +1,16 @@
-import { BrowserRouter, Route, Routes, useLocation } from 'react-router-dom'
+import { BrowserRouter, Navigate, Route, Routes, useLocation } from 'react-router-dom'
 import { useEffect } from 'react'
 import { QueryClientProvider } from '@tanstack/react-query'
 import { AppProvider, useCappy } from './store.tsx'
-import { APP_VERSION, queryClient, useAppConfig, useBookings, useMeQuery, versionBelow } from '../data/repo.ts'
-import { useSession } from '../data/auth.ts'
+import { APP_VERSION, queryClient, useAppConfig, useBookings, useMeQuery, useNotices, versionBelow } from '../data/repo.ts'
+import { accessToken, useAuthReady, useSession } from '../data/auth.ts'
+import { enablePush } from '../native.ts'
+import { device } from './device.ts'
+import { OfflineBar } from './components/Offline.tsx'
+import { PushPrime } from './components/PushPrime.tsx'
+import { Welcome } from './screens/Welcome.tsx'
+import { Help } from './screens/Help.tsx'
+import { Notifications } from './screens/Notifications.tsx'
 import { Dock } from './components/AppShell.tsx'
 import { ErrorBoundary } from './components/ErrorBoundary.tsx'
 import { Toast } from './components/ui.tsx'
@@ -31,12 +38,69 @@ function ScrollReset() {
   return null
 }
 
+/** What anyone may open signed out (GOAL 13): the way in, the law, and help.
+ *  Everything else of the product is for members only, and the server agrees. */
+const PUBLIC = [/^\/welcome$/, /^\/login$/, /^\/legal\//, /^\/account\/delete$/, /^\/help(\/|$)/]
+const isPublic = (path: string) => PUBLIC.some((re) => re.test(path))
+
+/** Where the app was opened: anything but `/` is a deep link, which skips the welcome. */
+const LAUNCH = window.location.pathname
+
+function PublicRoutes() {
+  return (
+    <Routes>
+      <Route path="/welcome" element={<Welcome />} />
+      <Route path="/login" element={<Login />} />
+      <Route path="/legal/:page" element={<Legal />} />
+      <Route path="/account/delete" element={<AccountDeletion />} />
+      <Route path="/help" element={<Help />} />
+      <Route path="/help/:topic" element={<Help />} />
+    </Routes>
+  )
+}
+
+/** Signed out: nothing of the product renders, so none of it is fetched. */
+function Gate() {
+  const { pathname, search } = useLocation()
+  if (isPublic(pathname))
+    return (
+      <>
+        <OfflineBar />
+        <PublicRoutes />
+        <Toasts />
+      </>
+    )
+  const firstTime = !device().welcomeSeen && !device().signedInBefore && LAUNCH === '/'
+  if (firstTime) return <Navigate to="/welcome" replace />
+  const next = pathname + search
+  return <Navigate to={next === '/' ? '/login' : `/login?next=${encodeURIComponent(next)}`} replace />
+}
+
+function Toasts() {
+  const { state, send } = useCappy()
+  return state.toast ? <Toast message={state.toast} onDone={() => send({ type: 'TOAST_CLEARED' })} /> : null
+}
+
 function Shell() {
+  const session = useSession()
+  const ready = useAuthReady()
+  // An App Store / Google Play build older than the API supports: nothing else is
+  // safe to show. The web is always the current build, so it is never gated.
+  const config = useAppConfig()
+  if (NATIVE && config.data && versionBelow(APP_VERSION, config.data.minVersion)) return <UpdateRequired />
+  // Until a stored session is restored or found absent, show nothing rather
+  // than flash the welcome at someone who is signed in.
+  if (!ready) return null
+  return session ? <Member /> : <Gate />
+}
+
+function Member() {
   const { state, send } = useCappy()
   const session = useSession()
   const me = useMeQuery()
   const hosting = useBookings('owner')
   const booked = useBookings('requester')
+  const notices = useNotices()
 
   // Searches start where this person is, until they pick somewhere else.
   const home = me.data?.homeDistrict
@@ -48,15 +112,18 @@ function Shell() {
   const badges: Record<string, number> = {
     '/earn': hosting.data?.items.filter((b) => b.status === 'requested').length ?? 0,
     '/bookings': booked.data?.items.filter((b) => b.status === 'completed' && !b.outcome).length ?? 0,
+    // On a phone the bell lives on the You tab; on a desktop, in the header.
+    '/notifications': notices.data?.unread ?? 0,
   }
+
+  // Already allowed on this device: keep the push token current. Asking waits
+  // for a moment that explains itself (PushPrime, U-4).
+  useEffect(() => {
+    void enablePush(accessToken)
+  }, [])
 
   // Signed in with no profile yet: that comes first, whatever the route.
   const needsProfile = Boolean(session && me.data && !me.data.owner)
-
-  // An App Store / Google Play build older than the API supports: nothing else is
-  // safe to show. The web is always the current build, so it is never gated.
-  const config = useAppConfig()
-  if (NATIVE && config.data && versionBelow(APP_VERSION, config.data.minVersion)) return <UpdateRequired />
 
   return (
     <>
@@ -69,6 +136,7 @@ function Shell() {
       >
         {t('Skip to content')}
       </a>
+      <OfflineBar />
       <Dock badges={badges} />
       {needsProfile ? (
         <Onboarding />
@@ -83,13 +151,18 @@ function Shell() {
           <Route path="/earn/edit/:id" element={<AddListing />} />
           <Route path="/profile" element={<Profile />} />
           <Route path="/login" element={<Login />} />
+          <Route path="/welcome" element={<Navigate to="/" replace />} />
+          <Route path="/help" element={<Help />} />
+          <Route path="/help/:topic" element={<Help />} />
+          <Route path="/notifications" element={<Notifications />} />
           <Route path="/legal/:page" element={<Legal />} />
           <Route path="/account/delete" element={<AccountDeletion />} />
           <Route path="/admin" element={<Admin />} />
           <Route path="*" element={<NotFound />} />
         </Routes>
       )}
-      {state.toast && <Toast message={state.toast} onDone={() => send({ type: 'TOAST_CLEARED' })} />}
+      <PushPrime />
+      <Toasts />
     </>
   )
 }

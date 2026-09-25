@@ -2,6 +2,7 @@ import { useMemo, useState, type FormEvent } from 'react'
 import { loadStripe } from '@stripe/stripe-js'
 import { Elements, PaymentElement, useElements, useStripe } from '@stripe/react-stripe-js'
 import { Banner, Button } from './ui.tsx'
+import { useOnline } from './Offline.tsx'
 import { lang, t } from '../../i18n.ts'
 
 /**
@@ -32,6 +33,7 @@ export function PayStep({
 function Form({ bookingId, onPaid }: { bookingId: string; onPaid: () => void }) {
   const stripe = useStripe()
   const elements = useElements()
+  const online = useOnline()
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -56,7 +58,7 @@ function Form({ bookingId, onPaid }: { bookingId: string; onPaid: () => void }) 
       <PaymentElement />
       {error && <Banner tone="danger" title={t('Payment not authorised')} body={error} />}
       {/* The click that binds the buyer: §312j BGB wants it to say so. */}
-      <Button type="submit" block size="lg" disabled={!stripe || busy}>
+      <Button type="submit" block size="lg" disabled={!stripe || busy || !online}>
         {busy ? t('Authorising…') : t('Book and pay')}
       </Button>
     </form>

@@ -6,6 +6,8 @@ import { ago } from '../format.ts'
 import { Button, Card, Textarea } from './ui.tsx'
 import { ReportButton } from './Report.tsx'
 import { t } from '../../i18n.ts'
+import { drafts } from '../device.ts'
+import { useOnline } from './Offline.tsx'
 
 /** Contact details the server hid before the booking was accepted, shown as a quiet chip. */
 function Body({ text }: { text: string }) {
@@ -59,7 +61,14 @@ export function Conversation({
   const qc = useQueryClient()
   const toast = useToast()
   const messages = useMessages(bookingId)
-  const [draft, setDraft] = useState('')
+  // Kept across a session expiring mid-sentence (U-10); one key per message (U-6).
+  const [draft, setDraftState] = useState(() => drafts.get(`msg.${bookingId}`) ?? '')
+  const setDraft = (v: string) => {
+    setDraftState(v)
+    drafts.set(`msg.${bookingId}`, v)
+  }
+  const [key, setKey] = useState(() => crypto.randomUUID())
+  const online = useOnline()
   const [busy, setBusy] = useState(false)
   const end = useRef<HTMLDivElement>(null)
   const items = messages.data?.items ?? []
@@ -73,8 +82,9 @@ export function Conversation({
     if (!text) return
     setBusy(true)
     try {
-      await sendMessage(bookingId, text)
+      await sendMessage(bookingId, text, key)
       setDraft('')
+      setKey(crypto.randomUUID())
       await qc.invalidateQueries({ queryKey: ['messages', bookingId] })
     } catch (err) {
       toast(messageOf(err))
@@ -122,7 +132,7 @@ export function Conversation({
             if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) void send()
           }}
         />
-        <Button type="submit" disabled={busy || !draft.trim()}>
+        <Button type="submit" disabled={busy || !draft.trim() || !online}>
           {t('Send')}
         </Button>
       </form>

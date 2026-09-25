@@ -1,6 +1,7 @@
 // The App Store and Google Play shells (Capacitor, ADR 0012). Everything here
 // is a no-op on the web; plugins are imported only inside a shell.
 import { Capacitor } from '@capacitor/core'
+import { closeTopSheet } from './app/sheets.ts'
 
 export const isNative = Capacitor.isNativePlatform()
 const platform = Capacitor.getPlatform() as 'ios' | 'android' | 'web'
@@ -46,6 +47,13 @@ export async function wireNative(): Promise<void> {
   wired = true
   const { App } = await import('@capacitor/app')
   await App.addListener('appUrlOpen', (e) => open(e.url))
+  // Android back (U-5): the top sheet, then the previous screen, then out of
+  // the app to the home screen (minimised, not killed, as native apps do).
+  await App.addListener('backButton', ({ canGoBack }) => {
+    if (closeTopSheet()) return
+    if (canGoBack && window.location.pathname !== '/') window.history.back()
+    else void App.minimizeApp()
+  })
   const { PushNotifications } = await import('@capacitor/push-notifications')
   await PushNotifications.addListener('pushNotificationActionPerformed', (action) => {
     const data = action.notification.data as { link?: string } | undefined
@@ -53,13 +61,35 @@ export async function wireNative(): Promise<void> {
   })
 }
 
-/** After sign-in: ask to notify, then tell the server where to push. */
-export async function pushSignedIn(accessToken: () => Promise<string | null>): Promise<void> {
-  if (!isNative) return
+export type PushPermission = 'granted' | 'denied' | 'prompt' | 'unavailable'
+
+/** What the OS says about notifications for this app, without asking. */
+export async function pushPermission(): Promise<PushPermission> {
+  if (!isNative) return 'unavailable'
   try {
     const { PushNotifications } = await import('@capacitor/push-notifications')
-    const perm = await PushNotifications.requestPermissions()
-    if (perm.receive !== 'granted') return
+    const { receive } = await PushNotifications.checkPermissions()
+    return receive === 'granted' ? 'granted' : receive === 'denied' ? 'denied' : 'prompt'
+  } catch {
+    return 'unavailable'
+  }
+}
+
+let registered = false
+
+/** Tell the server where to push. Asks the OS only when `ask` is set, which
+ *  happens after a moment that makes the reason obvious (U-4), never at sign-in. */
+export async function enablePush(accessToken: () => Promise<string | null>, ask = false): Promise<PushPermission> {
+  if (!isNative) return 'unavailable'
+  try {
+    const { PushNotifications } = await import('@capacitor/push-notifications')
+    let perm = await pushPermission()
+    if (perm === 'prompt' && ask) {
+      const { receive } = await PushNotifications.requestPermissions()
+      perm = receive === 'granted' ? 'granted' : 'denied'
+    }
+    if (perm !== 'granted' || registered) return perm
+    registered = true
     await PushNotifications.addListener('registration', async ({ value }) => {
       const access = await accessToken()
       if (!access) return
@@ -71,9 +101,19 @@ export async function pushSignedIn(accessToken: () => Promise<string | null>): P
       await nativeStore.set(DEVICE_KEY, value)
     })
     await PushNotifications.register()
+    return perm
   } catch {
     // Push is a convenience; email still arrives.
+    return 'unavailable'
   }
+}
+
+/** iOS opens the app's own page in Settings from this URL (Capacitor hands
+ *  non-web schemes to the OS). Android has no such URL without a plugin, so the
+ *  screen names the path instead. */
+export const canOpenSettings = platform === 'ios'
+export function openAppSettings(): void {
+  if (canOpenSettings) window.location.href = 'app-settings:'
 }
 
 /** Before sign-out: this device stops getting this person's notifications. */

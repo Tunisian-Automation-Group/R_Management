@@ -29,6 +29,7 @@ import { Photo, SaveButton } from '../components/Photo.tsx'
 import { Reviews } from '../components/Reviews.tsx'
 import { BlockButton, ReportButton } from '../components/Report.tsx'
 import { PayStep } from '../components/PayStep.tsx'
+import { askForPush } from '../components/PushPrime.tsx'
 import { Icon } from '../components/Icon.tsx'
 import {
   Avatar,
@@ -43,6 +44,7 @@ import {
   Stars,
 } from '../components/ui.tsx'
 import { day, distance, policyName, policyText, range, relative, responseTime, time } from '../format.ts'
+import { useOnline } from '../components/Offline.tsx'
 import { locale, t } from '../../i18n.ts'
 
 const QUANTITY_STEPS = [10, 25, 50, 100, 250, 500, 1000]
@@ -76,6 +78,7 @@ export function Listing() {
   const [picked, setPicked] = useState<Offer | null>(null)
   const [dayPick, setDayPick] = useState<string | null>(null)
   const [confirming, setConfirming] = useState(false)
+  const online = useOnline()
   const [sending, setSending] = useState(false)
   // One key per attempt: a retried tap is the same booking, a new attempt is a new one.
   const [attempt, setAttempt] = useState(() => crypto.randomUUID())
@@ -169,6 +172,7 @@ export function Listing() {
 
   const sent = (bookingId: string) => {
     toast(listing?.instantBook ? t('Booked') : t('Request sent to {name}', { name: first }))
+    askForPush('request')
     void qc.invalidateQueries({ queryKey: ['bookings'] })
     setConfirming(false)
     startOver()
@@ -280,7 +284,7 @@ export function Listing() {
             </div>
             <Button
               size="lg"
-              disabled={!selected || !quote}
+              disabled={!selected || !quote || !online}
               onClick={request}
               className="md:mt-5 md:w-full"
             >
@@ -582,7 +586,7 @@ export function Listing() {
         footer={
           paying ? undefined : (
             <div className="space-y-2">
-              <Button block size="lg" disabled={sending} onClick={() => void book()}>
+              <Button block size="lg" disabled={sending || !online} onClick={() => void book()}>
                 {/* The final button must say it commits to paying (§312j BGB). */}
                 {sending ? t('Sending…') : t('Book and pay')}
               </Button>

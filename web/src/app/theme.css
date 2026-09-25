@@ -783,3 +783,12 @@ input[type='range'] {
     animation: none !important;
   }
 }
+
+/* A focused field stays clear of the keyboard and the floating dock (U-26,
+   WCAG 2.4.11). With interactive-widget=resizes-content the keyboard shrinks
+   the viewport, so this margin is measured from its top. */
+input,
+textarea,
+select {
+  scroll-margin-bottom: calc(var(--dock-h, 80px) + 24px);
+}

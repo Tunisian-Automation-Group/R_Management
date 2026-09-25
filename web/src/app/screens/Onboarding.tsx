@@ -1,5 +1,7 @@
 import { useState, type FormEvent } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
+import { useNavigate } from 'react-router-dom'
+import { device, setDevice } from '../device.ts'
 import { saveProfile, useDistricts } from '../../data/repo.ts'
 import { signOut } from '../../data/auth.ts'
 import { messageOf, useCappy } from '../store.tsx'
@@ -19,6 +21,9 @@ export function Onboarding() {
   const [name, setName] = useState('')
   const [kind, setKind] = useState<'person' | 'business'>('person')
   const [district, setDistrict] = useState('')
+  // U-19: optional; picks the tab to land on. Nothing is locked by it.
+  const [intent, setIntent] = useState<'rent' | 'earn' | 'both'>(device().intent ?? 'both')
+  const nav = useNavigate()
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -32,7 +37,9 @@ export function Onboarding() {
     setError(null)
     try {
       await saveProfile({ name: name.trim(), kind, district: where })
+      setDevice({ intent })
       await qc.invalidateQueries({ queryKey: ['me'] })
+      if (intent === 'earn') nav('/earn', { replace: true })
     } catch (err) {
       setError(messageOf(err))
     } finally {
@@ -69,6 +76,18 @@ export function Onboarding() {
             districts={districts.data ?? {}}
             value={where}
             onChange={(e) => setDistrict(e.target.value)}
+          />
+        </Field>
+        <Field label={t('What brings you to Cappy?')} hint={t('Only decides where you start. You can do both any time.')}>
+          <Segmented<'rent' | 'earn' | 'both'>
+            label={t('What brings you to Cappy?')}
+            value={intent}
+            onChange={setIntent}
+            options={[
+              { value: 'rent', label: t('Renting') },
+              { value: 'earn', label: t('Earning') },
+              { value: 'both', label: t('Both') },
+            ]}
           />
         </Field>
         {error && (

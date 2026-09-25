@@ -29,6 +29,11 @@ const PAGES: Record<string, { title: string; titleDe: string; body: () => ReactN
   withdrawal: { title: 'Right of withdrawal', titleDe: 'Widerruf', body: () => (lang() === 'de' ? <WithdrawalDe /> : <Withdrawal />) },
   ranking: { title: 'How ranking works', titleDe: 'Ranking', body: () => (lang() === 'de' ? <RankingDe /> : <Ranking />) },
   report: { title: 'Reporting content', titleDe: 'Inhalte melden', body: () => (lang() === 'de' ? <ReportingDe /> : <Reporting />) },
+  accessibility: {
+    title: 'Accessibility',
+    titleDe: 'Barrierefreiheit',
+    body: () => (lang() === 'de' ? <AccessibilityDe /> : <Accessibility />),
+  },
 }
 
 const titleOf = (p: { title: string; titleDe: string }) => (lang() === 'de' ? p.titleDe : p.title)
@@ -288,6 +293,77 @@ function Ranking() {
         paid ranking and no advertising in results. Listings of owners who cannot receive payouts yet, and
         listings removed under our terms, do not appear.
       </p>
+    </>
+  )
+}
+
+/** The accessibility statement the BFSG asks of a consumer service (since 28 June 2025). */
+function Accessibility() {
+  return (
+    <>
+      <p>
+        Cappy aims to meet the Web Content Accessibility Guidelines (WCAG) 2.1 at level AA, as EN 301 549 requires, on the
+        web and in the iOS and Android apps.
+      </p>
+      <H>How far we are</H>
+      <p>
+        Partly conformant. This is our own assessment, not yet an independent audit. What we know is not there yet:
+      </p>
+      <ul className="list-disc space-y-1 pl-5">
+        <li>Panning and zooming the map on Explore needs a pointer or touch; the list shows the same listings.</li>
+        <li>Photos that owners upload have their listing’s title as the description, not a description of the photo.</li>
+        <li>Very large text sizes are not yet checked on every screen of the apps.</li>
+      </ul>
+      <H>How the service works</H>
+      <p>
+        Cappy lets members book the hours of workshops, vehicles, machines and rooms that others own, and list their own.
+        Everything works with a keyboard and a screen reader, text can be enlarged to 200% and colours meet the AA
+        contrast ratio. Statuses are written out, never shown by colour alone.
+      </p>
+      <H>Tell us</H>
+      <p>
+        Found something you cannot use? Write to {contactAddr()} and say what and where. We answer within two weeks.
+      </p>
+      <H>Enforcement</H>
+      <p>
+        If our answer does not help, you can turn to the Marktüberwachungsstelle der Länder für die Barrierefreiheit von
+        Produkten und Dienstleistungen (MLBF), Magdeburg.
+      </p>
+      <p className="t-sm text-[var(--ink-4)]">Prepared September 2026.</p>
+    </>
+  )
+}
+
+function AccessibilityDe() {
+  return (
+    <>
+      <p>
+        Cappy soll die Richtlinien für barrierefreie Webinhalte (WCAG) 2.1 auf Stufe AA erfüllen, wie es EN 301 549
+        verlangt, im Web und in den Apps für iOS und Android.
+      </p>
+      <H>Stand der Vereinbarkeit</H>
+      <p>Teilweise vereinbar. Das ist unsere eigene Bewertung, noch keine unabhängige Prüfung. Bekannt ist:</p>
+      <ul className="list-disc space-y-1 pl-5">
+        <li>Verschieben und Zoomen der Karte unter Entdecken braucht Maus oder Touch; die Liste zeigt dieselben Inserate.</li>
+        <li>Fotos, die Anbieter hochladen, tragen den Titel des Inserats als Beschreibung, keine Bildbeschreibung.</li>
+        <li>Sehr große Schriftgrößen sind in den Apps noch nicht auf jedem Bildschirm geprüft.</li>
+      </ul>
+      <H>Wie der Dienst funktioniert</H>
+      <p>
+        Mit Cappy buchen Mitglieder die Stunden von Werkstätten, Fahrzeugen, Maschinen und Räumen anderer und inserieren
+        ihre eigenen. Alles ist mit Tastatur und Screenreader bedienbar, Text lässt sich auf 200 % vergrößern, die Farben
+        erfüllen das AA-Kontrastverhältnis. Status stehen immer als Text da, nie nur als Farbe.
+      </p>
+      <H>Feedback</H>
+      <p>
+        Etwas ist für dich nicht nutzbar? Schreib an {contactAddr()}, was und wo. Wir antworten innerhalb von zwei Wochen.
+      </p>
+      <H>Durchsetzung</H>
+      <p>
+        Hilft unsere Antwort nicht, kannst du dich an die Marktüberwachungsstelle der Länder für die Barrierefreiheit von
+        Produkten und Dienstleistungen (MLBF) in Magdeburg wenden.
+      </p>
+      <p className="t-sm text-[var(--ink-4)]">Erstellt im September 2026.</p>
     </>
   )
 }

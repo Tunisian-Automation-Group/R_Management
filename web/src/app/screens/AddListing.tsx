@@ -1,10 +1,12 @@
-import { useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
+import { drafts } from '../device.ts'
 import { Navigate, useNavigate, useParams } from 'react-router-dom'
 import type { CancellationPolicy, CategoryId, Material, Slot } from '../../domain/types.ts'
 import { CATEGORIES, category } from '../../domain/categories.ts'
 import { formatEur } from '../../domain/money.ts'
 import { messageOf, useCappy, useToast } from '../store.tsx'
 import { useSession } from '../../data/auth.ts'
+import { askForPush } from '../components/PushPrime.tsx'
 import { useQueryClient } from '@tanstack/react-query'
 import * as repo from '../../data/repo.ts'
 import { MAX_PHOTOS, shrink } from '../photos.ts'
@@ -174,17 +176,26 @@ function ListingForm({ edit }: { edit?: repo.ListingView }) {
   const { state } = useCappy()
   const toast = useToast()
   const qc = useQueryClient()
+  const [createKey] = useState(() => crypto.randomUUID())
   const districts = repo.useDistricts()
   const [saving, setSaving] = useState(false)
   const was = edit?.listing
+  // A new listing's words survive a session expiring mid-form (U-10).
+  const [draft] = useState<Partial<Record<'categoryId' | 'title' | 'blurb' | 'district' | 'address', string>>>(() => {
+    try {
+      return was ? {} : (JSON.parse(drafts.get('listing') ?? '{}') as Record<string, string>)
+    } catch {
+      return {}
+    }
+  })
   const wasWindow = was?.mode === 'window' ? was : undefined
   const wasBatch = was?.mode === 'batch' ? was : undefined
 
-  const [categoryId, setCategoryId] = useState<CategoryId | null>(was?.category ?? null)
-  const [title, setTitle] = useState(was?.title ?? '')
-  const [blurb, setBlurb] = useState(was?.blurb ?? '')
-  const [district, setDistrict] = useState(was?.district ?? (state.search.district || 'Kreuzberg'))
-  const [address, setAddress] = useState(edit?.address ?? '')
+  const [categoryId, setCategoryId] = useState<CategoryId | null>(was?.category ?? ((draft.categoryId as CategoryId | undefined) || null))
+  const [title, setTitle] = useState(was?.title ?? draft.title ?? '')
+  const [blurb, setBlurb] = useState(was?.blurb ?? draft.blurb ?? '')
+  const [district, setDistrict] = useState(was?.district ?? draft.district ?? (state.search.district || 'Kreuzberg'))
+  const [address, setAddress] = useState(edit?.address ?? draft.address ?? '')
   const [rate, setRate] = useState(was?.ratePerHour ?? 400)
   const [extraFee, setExtraFee] = useState(wasWindow?.extraFee ?? 0)
   const [extraLabel, setExtraLabel] = useState(wasWindow && wasWindow.extraFee > 0 ? wasWindow.extraLabel : t('Consumables'))
@@ -215,6 +226,10 @@ function ListingForm({ edit }: { edit?: repo.ListingView }) {
 
   const meta = categoryId ? category(categoryId) : null
   const isBatch = meta?.mode === 'batch'
+  useEffect(() => {
+    if (was) return
+    drafts.set('listing', JSON.stringify({ categoryId: categoryId ?? '', title, blurb, district, address }))
+  }, [was, categoryId, title, blurb, district, address])
   const example = (categoryId && EXAMPLES[categoryId]) || DEFAULT_EXAMPLE
 
   // Validation runs on blur and on submit, never on every keystroke, which
@@ -415,9 +430,11 @@ function ListingForm({ edit }: { edit?: repo.ListingView }) {
         )
         toast(t('{title} updated', { title: listing.title }))
       } else {
-        await repo.addListing(listing, buildSlots(), address.trim())
+        await repo.addListing(listing, buildSlots(), address.trim(), createKey)
+        drafts.set('listing', '')
         await qc.invalidateQueries({ queryKey: ['myListings'] })
         toast(t('{title} is live', { title: listing.title }))
+        askForPush('listing')
       }
       nav('/earn', { replace: true })
     } catch (err) {

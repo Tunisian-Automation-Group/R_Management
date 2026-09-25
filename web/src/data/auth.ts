@@ -7,7 +7,8 @@
 // it never goes anywhere but Cognito.
 import { useSyncExternalStore } from 'react'
 import { lang, t } from '../i18n.ts'
-import { isNative, nativeStore, pushSignedIn, pushSignedOut } from '../native.ts'
+import { isNative, nativeStore, pushSignedOut } from '../native.ts'
+import { clearDrafts, loadDevice, setDevice } from '../app/device.ts'
 
 const REGION = import.meta.env.VITE_COGNITO_REGION as string | undefined
 const ENDPOINT = (
@@ -35,7 +36,7 @@ const FRIENDLY: Record<string, string> = {
   UsernameExistsException: 'There is already an account with that email. Sign in instead.',
   CodeMismatchException: 'That code is not right. Check the email and try again.',
   ExpiredCodeException: 'That code has expired. Ask for a new one.',
-  InvalidPasswordException: 'Use at least ten characters, with a number, a capital and a lowercase letter.',
+  InvalidPasswordException: 'Use at least 12 characters. A few words you will remember work well.',
   InvalidParameterException: 'Check the email address and try again.',
   LimitExceededException: 'Too many attempts. Wait a few minutes and try again.',
   TooManyRequestsException: 'Too many attempts. Wait a few minutes and try again.',
@@ -119,6 +120,8 @@ function adopt(r: AuthResult): void {
   const c = claims(r.IdToken)
   const groups = claims(r.AccessToken)['cognito:groups']
   session = { sub: String(c.sub), email: String(c.email ?? ''), staff: Array.isArray(groups) && groups.includes('admin') }
+  // A returning device goes straight to sign-in, never the welcome again.
+  setDevice({ signedInBefore: true, welcomeSeen: true })
   emit()
 }
 
@@ -165,6 +168,7 @@ export async function accessToken(): Promise<string | null> {
 
 // Restore whatever this device had, once, at start.
 void (async () => {
+  await loadDevice()
   if (isNative) mirror = await nativeStore.get(REFRESH_KEY)
   if (readRefresh()) await refresh()
 })().finally(() => {
@@ -199,7 +203,7 @@ export async function signIn(email: string, password: string): Promise<void> {
   }
   adopt(out.AuthenticationResult)
   void updateLocale(lang())
-  void pushSignedIn(accessToken)
+  // Push is asked for later, when it is worth something (push.ts, U-4).
 }
 
 /** The language emails and pushes come in: Cognito's standard `locale`. */
@@ -262,21 +266,43 @@ export async function deleteAccount(): Promise<void> {
   forget()
 }
 
-/** Ends the session everywhere Cognito can, and on this device regardless. */
-export async function signOut(): Promise<void> {
+/** Signs this device out: its refresh token is revoked, other devices stay
+ *  signed in. `everywhere` ends every session of the account (U-35): the
+ *  server forgets all push devices, Cognito revokes every token. */
+export async function signOut(opts: { everywhere?: boolean } = {}): Promise<void> {
   const access = tokens?.access
+  const stored = readRefresh()
+  if (access && opts.everywhere) {
+    try {
+      const api = (import.meta.env.VITE_API_URL as string | undefined)?.replace(/\/$/, '') ?? '/api'
+      await fetch(`${api}/me/sign-out-everywhere`, { method: 'POST', headers: { Authorization: `Bearer ${access}` } })
+    } catch {
+      // Cognito's GlobalSignOut below still ends the sessions.
+    }
+  }
   if (access) await pushSignedOut(access)
+  clearDrafts()
   forget()
-  if (!access) return
   try {
-    await fetch(ENDPOINT, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/x-amz-json-1.1',
-        'X-Amz-Target': 'AWSCognitoIdentityProviderService.GlobalSignOut',
-      },
-      body: JSON.stringify({ AccessToken: access }),
-    })
+    if (opts.everywhere && access) {
+      await fetch(ENDPOINT, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/x-amz-json-1.1',
+          'X-Amz-Target': 'AWSCognitoIdentityProviderService.GlobalSignOut',
+        },
+        body: JSON.stringify({ AccessToken: access }),
+      })
+    } else if (stored) {
+      await fetch(ENDPOINT, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/x-amz-json-1.1',
+          'X-Amz-Target': 'AWSCognitoIdentityProviderService.RevokeToken',
+        },
+        body: JSON.stringify({ Token: stored, ClientId: CLIENT_ID }),
+      })
+    }
   } catch {
     // Offline: the tokens are gone from this device, which is what matters here.
   }

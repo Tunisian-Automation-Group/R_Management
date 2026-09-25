@@ -1,5 +1,5 @@
 import { useState, type ReactNode } from 'react'
-import { useParams } from 'react-router-dom'
+import { Link, useParams } from 'react-router-dom'
 import { useAuthReady, useSession } from '../../data/auth.ts'
 import { SignedOut } from '../components/SignedOut.tsx'
 import { NotFound } from './NotFound.tsx'
@@ -38,6 +38,8 @@ import { Icon } from '../components/Icon.tsx'
 import { Avatar, Banner, Button, Card, Chip, Field, Row, Sheet, Stars, Textarea } from '../components/ui.tsx'
 import { REVIEW_TAGS } from '../../domain/reviews.ts'
 import { distance, range, relative, renterRecord, responseTime } from '../format.ts'
+import { useOnline } from '../components/Offline.tsx'
+import { supportHref } from './Help.tsx'
 import { locale, plural, t } from '../../i18n.ts'
 
 const STEPS: { id: BookingStatus; label: string; note: string; ownerNote: string }[] = [
@@ -110,6 +112,7 @@ function Detail({
   const [onTime, setOnTime] = useState<boolean | null>(null)
   const [tags, setTags] = useState<string[]>([])
   const [note, setNote] = useState('')
+  const online = useOnline()
   const [busy, setBusy] = useState(false)
   const [evidencePrompt, setEvidencePrompt] = useState<EvidenceStage | null>(null)
   const [blocking, setBlocking] = useState(false)
@@ -172,12 +175,12 @@ function Detail({
   // For the buyer, cancelling before the start is also their right of
   // withdrawal (EU consumer law), so the button says so.
   const cancelButton = (
-    <Button block variant="danger" disabled={busy} onClick={() => setCancelling(true)}>
+    <Button block variant="danger" disabled={!online || busy} onClick={() => setCancelling(true)}>
       {asOwner ? t('Cancel booking') : t('Withdraw from this booking')}
     </Button>
   )
   const disputeButton = (
-    <Button block variant="quiet" disabled={busy} onClick={() => setDisputing(true)}>
+    <Button block variant="quiet" disabled={!online || busy} onClick={() => setDisputing(true)}>
       {t('Report a problem')}
     </Button>
   )
@@ -186,7 +189,7 @@ function Detail({
       <Button
         block
         size="lg"
-        disabled={busy || !canStart}
+        disabled={!online || busy || !canStart}
         onClick={() =>
           void done(async () => {
             await actOnBooking(booking.id, 'start')
@@ -222,10 +225,10 @@ function Detail({
     case 'owner:requested':
       footer = (
         <div className="space-y-2">
-          <Button block size="lg" disabled={busy} onClick={() => void act('accept', t('Accepted. {name} has been told', { name: buyer }))}>
+          <Button block size="lg" disabled={!online || busy} onClick={() => void act('accept', t('Accepted. {name} has been told', { name: buyer }))}>
             {t('Accept')}
           </Button>
-          <Button block variant="quiet" disabled={busy} onClick={() => setDeclining(true)}>
+          <Button block variant="quiet" disabled={!online || busy} onClick={() => setDeclining(true)}>
             {t('Decline')}
           </Button>
         </div>
@@ -257,7 +260,7 @@ function Detail({
           <Button
             block
             size="lg"
-            disabled={busy}
+            disabled={!online || busy}
             onClick={() => setFinishing(true)}
           >
             {t('Mark as handed back')}
@@ -501,6 +504,18 @@ function Detail({
         onPromptClosed={() => setEvidencePrompt(null)}
       />
 
+      <Card className="mt-3 flex flex-wrap items-center justify-between gap-3 p-5">
+        <p className="t-sm text-[var(--ink-3)]">{t('Something not right? Tell us, and we see this booking with it.')}</p>
+        <div className="flex gap-4 text-[14px] font-semibold">
+          <Link to="/help/problems" className="underline">
+            {t('Help')}
+          </Link>
+          <a href={supportHref(booking.id)} className="underline">
+            {t('Get help with this booking')}
+          </a>
+        </div>
+      </Card>
+
       <Card className="mt-3 p-5">
         <h2 className="t-label mb-2">{t('What you agreed')}</h2>
         <Row label={t('When')} value={range(booking.match.start, booking.match.end)} />
@@ -572,7 +587,7 @@ function Detail({
             <Button
               block
               size="lg"
-              disabled={busy}
+              disabled={!online || busy}
               onClick={() => {
                 setFinishing(false)
                 void act('complete')
@@ -613,7 +628,7 @@ function Detail({
               block
               size="lg"
               variant="danger"
-              disabled={busy}
+              disabled={!online || busy}
               onClick={() => {
                 void act('cancel', t('Cancelled'))
                 setCancelling(false)
@@ -661,7 +676,7 @@ function Detail({
             block
             size="lg"
             variant="danger"
-            disabled={busy || !other}
+            disabled={!online || busy || !other}
             onClick={() => {
               if (other) void done(() => blockPerson(other.id), t('{name} is blocked', { name: other.name.split(' ')[0] }))
               setBlocking(false)
@@ -685,7 +700,7 @@ function Detail({
             block
             size="lg"
             variant="danger"
-            disabled={busy}
+            disabled={!online || busy}
             onClick={() => {
               void done(() => declineBooking(booking.id, reason), t('Declined. They have been told'))
               setDeclining(false)
@@ -712,7 +727,7 @@ function Detail({
           <Button
             block
             size="lg"
-            disabled={busy || !problem.trim()}
+            disabled={!online || busy || !problem.trim()}
             onClick={() => {
               void done(() => disputeBooking(booking.id, problem.trim()), t('Reported. The payment is on hold'))
               setDisputing(false)
@@ -744,7 +759,7 @@ function Detail({
           <Button
             block
             size="lg"
-            disabled={onTime === null || stars === 0 || busy}
+            disabled={!online || onTime === null || stars === 0 || busy}
             onClick={() => {
               if (onTime === null || stars === 0) return
               void rate({ onTime, quality: stars, tags, note: note.trim() || undefined })
@@ -851,7 +866,7 @@ function Detail({
           {[1, 2, 3, 4, 5].map((n) => (
             <button
               key={n}
-              disabled={busy}
+              disabled={!online || busy}
               onClick={() => {
                 void rateTheRenter(n)
                 setRatingRenter(false)

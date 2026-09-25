@@ -54,6 +54,8 @@ export class ApiError extends Error {
     public readonly code: string,
     /** Seconds the server asked us to wait before trying again (503s). */
     public readonly retryAfter?: number,
+    /** When a refusal stops applying, if the server said (409 open_obligations). */
+    public readonly until?: string,
   ) {
     super(message)
   }
@@ -97,14 +99,26 @@ async function call<T>(method: string, path: string, body?: unknown, headers?: R
     data = undefined // a proxy's HTML error page, say
   }
   if (!res.ok) {
-    const err = (data as { error?: { code?: string; message?: string } } | undefined)?.error
+    type Body = { code?: string; message?: string; detail?: string; until?: string }
+    const top = data as (Body & { error?: Body }) | undefined
+    const err = top?.error ?? (top?.code ? { ...top, message: top.message ?? top.detail } : undefined)
     const wait = Number(res.headers.get('Retry-After'))
+    // A fault on our side says so, with the reference support can look up (U-24).
+    const ref = res.headers.get('x-request-id')
+    const ours = res.status >= 500 && res.status !== 503
     throw new ApiError(
-      // The server speaks English; the catalogue translates what it knows.
-      err?.message ? t(err.message) : t('Something went wrong ({status}). Try again.', { status: res.status }),
+      ours
+        ? ref
+          ? t('Something went wrong on our side. Try again; if it keeps happening, tell us reference {ref}.', { ref })
+          : t('Something went wrong on our side. Try again in a moment.')
+        : // The server speaks English; the catalogue translates what it knows.
+          err?.message
+          ? t(err.message)
+          : t('Something went wrong ({status}). Try again.', { status: res.status }),
       res.status,
       err?.code ?? 'error',
       Number.isFinite(wait) && wait > 0 ? wait : undefined,
+      err?.until ?? top?.until,
     )
   }
   return data as T
@@ -384,7 +398,7 @@ export const declineBooking = (id: string, reason: string) => post<Booking>(`/bo
 export const disputeBooking = (id: string, reason: string) => post<Booking>(`/bookings/${id}/dispute`, { reason })
 /** The card step for a booking still awaiting payment (404 once there is nothing to pay). */
 export const getBookingPayment = (id: string) => get<PaymentStart>(`/bookings/${id}/payment`)
-export const rateBooking = (id: string, outcome: Outcome) => post<Booking>(`/bookings/${id}/rate`, outcome)
+export const rateBooking = (id: string, outcome: Outcome, key?: string) => post<Booking>(`/bookings/${id}/rate`, outcome, idem(key))
 /** Two-way reviews: the owner rates the renter once the booking is completed. */
 export const rateRenter = (id: string, quality: number) => post<Booking>(`/bookings/${id}/rate-renter`, { quality })
 
@@ -434,8 +448,12 @@ export const getIdentity = () => get<Identity>('/payments/identity')
 /** A listing as the owner writes it: ids and the owner come from the server. */
 export type ListingDraft = Listing extends infer L ? (L extends Listing ? Omit<L, 'id' | 'ownerId'> : never) : never
 
-export const addListing = (listing: ListingDraft, slots: Omit<Slot, 'id' | 'listingId'>[], address: string) =>
-  post<{ listing: Listing; slots: Slot[] }>('/listings', { listing, slots, address })
+/** Creates carry an Idempotency-Key made once per form (U-6): a double tap or a
+ *  retried request after a timeout is the same listing, not two. */
+const idem = (key?: string) => (key ? { 'Idempotency-Key': key } : undefined)
+
+export const addListing = (listing: ListingDraft, slots: Omit<Slot, 'id' | 'listingId'>[], address: string, key?: string) =>
+  post<{ listing: Listing; slots: Slot[] }>('/listings', { listing, slots, address }, idem(key))
 export const updateListing = (id: string, listing: ListingDraft, address: string) =>
   put<Listing>(`/listings/${id}`, { listing, address })
 export const addSlots = (id: string, slots: Omit<Slot, 'id' | 'listingId'>[]) => post<Slot[]>(`/listings/${id}/slots`, slots)
@@ -491,15 +509,15 @@ export const useMessages = (bookingId: string) =>
     refetchInterval: 5000,
     refetchOnWindowFocus: true,
   })
-export const sendMessage = (bookingId: string, body: string) =>
-  post<Message>(`/bookings/${bookingId}/messages`, { body })
+export const sendMessage = (bookingId: string, body: string, key?: string) =>
+  post<Message>(`/bookings/${bookingId}/messages`, { body }, idem(key))
 
 export type EvidenceStage = 'check_in' | 'check_out'
 export type Evidence = { id: string; by: string; stage: EvidenceStage; photos: string[]; note?: string; at: string }
 export const useEvidence = (bookingId: string) =>
   useQuery({ queryKey: ['evidence', bookingId], queryFn: () => get<Evidence[]>(`/bookings/${bookingId}/evidence`) })
-export const addEvidence = (bookingId: string, stage: EvidenceStage, photos: string[], note?: string) =>
-  post<Evidence>(`/bookings/${bookingId}/evidence`, { stage, photos, note: note || undefined })
+export const addEvidence = (bookingId: string, stage: EvidenceStage, photos: string[], note?: string, key?: string) =>
+  post<Evidence>(`/bookings/${bookingId}/evidence`, { stage, photos, note: note || undefined }, idem(key))
 
 export type ReportTarget = 'listing' | 'owner' | 'message' | 'review'
 export const REPORT_REASONS = [
@@ -557,3 +575,28 @@ export const resolveDispute = (id: string, outcome: 'pay_owner' | 'refund_buyer'
   post<Booking>(`/admin/bookings/${id}/resolve`, { outcome, by: 'console' })
 export const useAudit = () => useQuery({ queryKey: ['audit'], queryFn: () => get<AuditEntry[]>(`/admin/audit${qs({ limit: 100 })}`) })
 
+
+// --- notification centre (U-22), sign-out everywhere (U-35) -----------------------------------
+
+export type Notice = { id: string; kind: string; title: string; body: string; link?: string; at: string; read: boolean }
+export type NoticePage = { items: Notice[]; next?: string; unread: number }
+const EMPTY_NOTICES: NoticePage = { items: [], unread: 0 }
+/** Tolerates a backend without the centre yet (404): an empty bell, not an error. */
+const getNotices = (cursor?: string) =>
+  get<NoticePage>(`/notifications${qs({ cursor })}`).catch((e: unknown) => {
+    if (e instanceof ApiError && e.status === 404) return EMPTY_NOTICES
+    throw e
+  })
+export const useNotices = () => {
+  const session = useSession()
+  return useQuery({
+    queryKey: ['notices', session?.sub],
+    // ponytail: first page only; "older" with `next` when someone has more than a page.
+    queryFn: () => getNotices(),
+    enabled: Boolean(session),
+    refetchInterval: 60_000,
+    refetchOnWindowFocus: true,
+  })
+}
+export const markNoticesRead = (ids?: string[]) => post<void>('/notifications/read', ids ? { ids } : {})
+export const signOutEverywhere = () => post<void>('/me/sign-out-everywhere')

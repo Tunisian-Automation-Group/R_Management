@@ -1,9 +1,10 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { useQueryClient } from '@tanstack/react-query'
 import { formatEur } from '../../domain/money.ts'
 import { PLATFORM_FEE_BPS } from '../../domain/pricing.ts'
 import {
+  ApiError,
   deleteMe,
   exportMyData,
   saveProfile,
@@ -19,13 +20,15 @@ import {
 import type { Owner } from '../../domain/types.ts'
 import { messageOf, useToast } from '../store.tsx'
 import { DistrictSelect } from '../components/DistrictSelect.tsx'
-import { deleteAccount, signOut, useAuthReady, useSession } from '../../data/auth.ts'
+import { accessToken, deleteAccount, signOut, useAuthReady, useSession } from '../../data/auth.ts'
 import { SignedOut } from '../components/SignedOut.tsx'
 import { LanguageSwitch, Screen, SectionHead } from '../components/AppShell.tsx'
 import { Icon } from '../components/Icon.tsx'
 import { Photo, SaveButton } from '../components/Photo.tsx'
 import { Avatar, Button, Card, Field, Input, Row, Segmented, Sheet, Skeleton } from '../components/ui.tsx'
 import { locale, t } from '../../i18n.ts'
+import { day } from '../format.ts'
+import { canOpenSettings, enablePush, isNative, openAppSettings, pushPermission, type PushPermission } from '../../native.ts'
 
 const TAKEN = ['accepted', 'active', 'completed']
 
@@ -165,8 +168,11 @@ export function Profile() {
             }>
             {t('Sign out')}
           </Button>
+          <SignOutEverywhere />
         </Card>
       </section>
+
+      <NotificationSettings />
 
       <Blocked />
 
@@ -222,6 +228,16 @@ export function Profile() {
       </section>
 
       <section>
+        <SectionHead title={t('Help')} className="mt-7" />
+        <Card className="p-5">
+          <nav aria-label={t('Help')} className="flex flex-col gap-3 text-[14.5px] font-semibold">
+            <Link to="/help">{t('Help and answers')}</Link>
+            <Link to="/help/safety">{t('How we keep you safe')}</Link>
+          </nav>
+        </Card>
+      </section>
+
+      <section>
         <SectionHead title={t('Language')} className="mt-7" />
         <Card className="p-5">
           <LanguageSwitch />
@@ -238,6 +254,7 @@ export function Profile() {
             <Link to="/legal/withdrawal">{t('Right of withdrawal')}</Link>
             <Link to="/legal/ranking">{t('How ranking works')}</Link>
             <Link to="/legal/report">{t('Reporting content')}</Link>
+            <Link to="/legal/accessibility">{t('Accessibility')}</Link>
           </nav>
         </Card>
       </section>
@@ -332,13 +349,19 @@ function DeleteAccount({ open, onClose }: { open: boolean; onClose: () => void }
     setBusy(true)
     setError(null)
     try {
-      await deleteMe() // 409 while a booking is still open: the message says so
+      await deleteMe() // 409 while a booking or payout is still open (U-9)
       await deleteAccount()
       qc.clear()
       toast(t('Your account is deleted'))
       nav('/', { replace: true })
     } catch (err) {
-      setError(messageOf(err))
+      if (err instanceof ApiError && err.status === 409) {
+        setError(
+          err.until
+            ? t('{reason} You can delete your account from {date}.', { reason: err.message, date: day(err.until) })
+            : err.message,
+        )
+      } else setError(messageOf(err))
     } finally {
       setBusy(false)
     }
@@ -365,7 +388,7 @@ function DeleteAccount({ open, onClose }: { open: boolean; onClose: () => void }
         <ul className="list-disc space-y-1.5 pl-5">
           <li>{t('Your sign-in, profile, saved listings and photos are deleted.')}</li>
           <li>{t('Your listings are taken down, and your name is removed from reviews you wrote.')}</li>
-          <li>{t('Past bookings and payments are kept, without your name, because the law requires records of them.')}</li>
+          <li>{t('Past bookings, payments and invoices are kept without your name for up to ten years, because tax law requires records of them.')}</li>
         </ul>
         <p>{t('Bookings still open (requested, confirmed or in progress) have to finish or be cancelled first.')}</p>
         {error && (
@@ -435,5 +458,99 @@ function BlockedRow({ sub, onUnblock }: { sub: string; onUnblock: () => void }) 
         {t('Unblock')}
       </Button>
     </li>
+  )
+}
+
+/** Every device this account is signed in on, at once (U-35): a lost phone. */
+function SignOutEverywhere() {
+  const qc = useQueryClient()
+  const nav = useNavigate()
+  const toast = useToast()
+  const [asking, setAsking] = useState(false)
+  return (
+    <>
+      <Button className="ml-2 mt-4" variant="quiet" onClick={() => setAsking(true)}>
+        {t('Sign out everywhere')}
+      </Button>
+      <Sheet
+        open={asking}
+        onClose={() => setAsking(false)}
+        title={t('Sign out on every device?')}
+        footer={
+          <div className="space-y-2">
+            <Button
+              block
+              size="lg"
+              onClick={() =>
+                void signOut({ everywhere: true }).then(() => {
+                  qc.clear()
+                  toast(t('Signed out on every device'))
+                  nav('/login', { replace: true })
+                })
+              }
+            >
+              {t('Sign out everywhere')}
+            </Button>
+            <Button block variant="quiet" onClick={() => setAsking(false)}>
+              {t('Cancel')}
+            </Button>
+          </div>
+        }
+      >
+        <p className="t-body pb-3 text-[var(--ink-2)]">
+          {t('Every phone, tablet and browser signed in to your account is signed out within an hour, and stops getting notifications at once. Use it if a device is lost or someone else knows your password.')}
+        </p>
+      </Sheet>
+    </>
+  )
+}
+
+/** Notifications: the bell's list, and on a phone whether push is on (U-36). */
+function NotificationSettings() {
+  const [perm, setPerm] = useState<PushPermission>('unavailable')
+  useEffect(() => {
+    void pushPermission().then(setPerm)
+    // Coming back from Settings: look again.
+    const again = () => document.visibilityState === 'visible' && void pushPermission().then(setPerm)
+    document.addEventListener('visibilitychange', again)
+    return () => document.removeEventListener('visibilitychange', again)
+  }, [])
+  return (
+    <section>
+      <SectionHead title={t('Notifications')} className="mt-7" />
+      <Card className="p-5">
+        <Link to="/notifications" className="text-[14.5px] font-semibold underline underline-offset-4">
+          {t('See all notifications')}
+        </Link>
+        {isNative && perm === 'denied' && (
+          <div className="mt-4 border-t border-[var(--line)] pt-4">
+            <p className="text-[14.5px] font-semibold">{t('Notifications are off')}</p>
+            <p className="t-sm mt-1 text-[var(--ink-3)]">
+              {canOpenSettings
+                ? t('You will not hear about new requests or answers until you are back in the app. Emails still arrive.')
+                : t('Turn them on in Settings → Apps → Cappy → Notifications. Emails still arrive.')}
+            </p>
+            {canOpenSettings && (
+              <Button className="mt-3" variant="secondary" onClick={openAppSettings}>
+                {t('Turn on in Settings')}
+              </Button>
+            )}
+          </div>
+        )}
+        {isNative && perm === 'prompt' && (
+          <div className="mt-4 border-t border-[var(--line)] pt-4">
+            <Button
+              variant="secondary"
+              onClick={() => void enablePush(accessToken, true).then(setPerm)}
+            >
+              {t('Turn on notifications')}
+            </Button>
+          </div>
+        )}
+        <p className="t-sm mt-4 text-[var(--ink-3)]">
+          {t('Only bookings and messages; never marketing. Everything also arrives by email.')}
+        </p>
+      </Card>
+    </section>
   )
 }

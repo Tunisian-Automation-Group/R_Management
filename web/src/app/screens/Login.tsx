@@ -1,5 +1,5 @@
-import { useState, type FormEvent } from 'react'
-import { Navigate, useNavigate, useSearchParams } from 'react-router-dom'
+import { useEffect, useState, type FormEvent } from 'react'
+import { Link, Navigate, useNavigate, useSearchParams } from 'react-router-dom'
 import * as auth from '../../data/auth.ts'
 import { AuthError, useSession } from '../../data/auth.ts'
 import { useToast } from '../store.tsx'
@@ -8,7 +8,8 @@ import { Button, Field, Input, Segmented } from '../components/ui.tsx'
 import { t } from '../../i18n.ts'
 
 const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
-const STRONG = /^(?=.*\d)(?=.*[a-z])(?=.*[A-Z]).{10,}$/
+// NIST 800-63B-4: length, not composition (U-15), as the pool requires.
+const STRONG = /^.{12,}$/u
 
 /** `label:email:password;…` from VITE_DEMO_ACCOUNTS (written by the local bootstrap). */
 const DEMO = ((import.meta.env.VITE_DEMO_ACCOUNTS as string | undefined) ?? '')
@@ -46,6 +47,21 @@ export function Login() {
   const [code, setCode] = useState('')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [reveal, setReveal] = useState(false)
+  // A new code can be asked for every 30 s (U-16), which is also Cognito's pace.
+  const [cooldown, setCooldown] = useState(0)
+  useEffect(() => {
+    if (cooldown <= 0) return
+    const id = setTimeout(() => setCooldown((c) => c - 1), 1000)
+    return () => clearTimeout(id)
+  }, [cooldown])
+  useEffect(() => {
+    if (mode === 'confirm' || mode === 'reset') setCooldown(30)
+  }, [mode])
+  // Six digits typed or pasted from the email: confirm at once.
+  useEffect(() => {
+    if (mode === 'confirm' && /^\d{6}$/.test(code) && !busy) document.getElementById('f-submit')?.click()
+  }, [code, mode])
 
   if (session) return <Navigate to={next} replace />
 
@@ -105,7 +121,7 @@ export function Login() {
     // The same rule as the user pool (infra/platform/identity.tf), so nobody is
     // turned away by the server for something the form could have said.
     if ((mode === 'up' || mode === 'reset') && !STRONG.test(password)) {
-      return setError(t('Use at least ten characters, with a number, a capital and a lowercase letter.'))
+      return setError(t('Use at least 12 characters. A few words you will remember work well.'))
     }
     setBusy(true)
     try {
@@ -122,7 +138,7 @@ export function Login() {
   const copy = { title: t(COPY[mode].title), sub: t(COPY[mode].sub), submit: t(COPY[mode].submit) }
 
   return (
-    <Screen eyebrow={t('Your account')} title={copy.title} sub={copy.sub} back="/">
+    <Screen eyebrow={t('Your account')} title={copy.title} sub={copy.sub} back="/welcome">
       {(mode === 'in' || mode === 'up') && (
         <div className="mb-6">
           <Segmented<Mode>
@@ -159,7 +175,9 @@ export function Login() {
               inputMode="numeric"
               autoComplete="one-time-code"
               value={code}
-              onChange={(e) => setCode(e.target.value)}
+              maxLength={6}
+              pattern="[0-9]*"
+              onChange={(e) => setCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
               placeholder="123456"
             />
           </Field>
@@ -168,16 +186,28 @@ export function Login() {
         {needsPassword && (
           <Field
             label={mode === 'reset' ? t('New password') : t('Password')}
-            hint={mode === 'in' ? undefined : t('At least ten characters, with a number, a capital and a lowercase letter.')}
+            hint={mode === 'in' ? undefined : t('At least 12 characters. Any characters, spaces too; paste is fine.')}
             htmlFor="f-password"
           >
-            <Input
-              id="f-password"
-              type="password"
-              autoComplete={mode === 'in' ? 'current-password' : 'new-password'}
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-            />
+            <div className="relative">
+              <Input
+                id="f-password"
+                type={reveal ? 'text' : 'password'}
+                autoComplete={mode === 'in' ? 'current-password' : 'new-password'}
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                className="pr-20"
+              />
+              <button
+                type="button"
+                aria-pressed={reveal}
+                aria-controls="f-password"
+                onClick={() => setReveal((r) => !r)}
+                className="absolute inset-y-0 right-0 min-w-[64px] px-3 text-[13px] font-semibold text-[var(--ink-3)] hover:text-[var(--ink)]"
+              >
+                {reveal ? t('Hide') : t('Show')}
+              </button>
+            </div>
           </Field>
         )}
 
@@ -188,6 +218,7 @@ export function Login() {
         )}
 
         <Button
+          id="f-submit"
           type="submit"
           block
           size="lg"
@@ -235,15 +266,19 @@ export function Login() {
         {mode === 'confirm' && (
           <button
             type="button"
-            className="font-semibold text-[var(--ink)] underline"
+            className="font-semibold text-[var(--ink)] underline disabled:text-[var(--ink-4)] disabled:no-underline"
+            disabled={cooldown > 0}
             onClick={() =>
               void auth
                 .resendCode(email.trim().toLowerCase())
-                .then(() => toast(t('A new code is on its way')))
+                .then(() => {
+                  setCooldown(30)
+                  toast(t('A new code is on its way'))
+                })
                 .catch((err: unknown) => setError(err instanceof Error ? err.message : t('Could not send a code.')))
             }
           >
-            {t('Send a new code')}
+            {cooldown > 0 ? t('Send a new code in {n} s', { n: cooldown }) : t('Send a new code')}
           </button>
         )}
         {(mode === 'forgot' || mode === 'reset') && (
@@ -252,6 +287,16 @@ export function Login() {
           </button>
         )}
       </p>
+
+      {(mode === 'in' || mode === 'up') && (
+        // U-18: why there is nothing to see before signing in.
+        <p className="t-sm mx-auto mt-8 max-w-[44ch] border-t border-[var(--line)] pt-6 text-center text-[var(--ink-3)]">
+          {t('Cappy is for members: listings are people’s own things, places and times, so everyone signs in before seeing them.')}{' '}
+          <Link to="/help/safety" className="font-semibold text-[var(--ink)] underline">
+            {t('How we keep you safe')}
+          </Link>
+        </p>
+      )}
     </Screen>
   )
 }

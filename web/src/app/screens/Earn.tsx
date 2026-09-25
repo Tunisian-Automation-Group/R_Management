@@ -14,7 +14,7 @@ import { CapacityBar } from '../components/CapacityBar.tsx'
 import { Photo } from '../components/Photo.tsx'
 import { Icon } from '../components/Icon.tsx'
 import { Avatar, Banner, Button, Card, Chip, EmptyState, oneDecimal, Pill, Sheet, Skeleton } from '../components/ui.tsx'
-import { ago, range, renterRecord } from '../format.ts'
+import { ago, range, relative, renterRecord } from '../format.ts'
 import { locale, plural, t } from '../../i18n.ts'
 
 export const DECLINE_REASONS = [
@@ -155,60 +155,8 @@ export function Earn() {
     )
   }
 
-  return (
-    <Screen
-      title={t('Earn')}
-      action={
-        <Button size="sm" variant="secondary" icon="plus" to={'/earn/new'}>
-          {t('Add')}
-        </Button>
-      }
-    >
-      {connect.data && !connect.data.payoutsEnabled && (
-        <div className="mb-6">
-          <Banner
-            tone="warn"
-            title={
-              params.get('payments') === 'done' ? t('Stripe is checking your details') : t('Set up payouts to take bookings')
-            }
-            body={t('Buyers can only book you once Stripe knows where to send your money. It takes a few minutes, and Cappy never sees your bank details.')}
-            action={
-              <Button size="sm" disabled={busy} onClick={() => void payouts()}>
-                {connect.data.connected ? t('Continue setup') : t('Set up payouts')}
-              </Button>
-            }
-          />
-        </div>
-      )}
-
-      {/* ------------------------------------------- the number that matters */}
-      <section className="-mt-1">
-        <p className="t-label">{t('Still idle this week')}</p>
-        <p className="mt-3 flex flex-wrap items-baseline gap-x-2.5">
-          <span className="t-display tnum">{Math.round(hoursIdle)}</span>
-          <span className="text-[20px] font-medium text-[var(--ink-4)]">{t('hours')}</span>
-        </p>
-        <p className="t-lede mt-3 text-[var(--ink-2)]">
-          <span className="hl font-semibold">{formatEur(unsold)}</span> {t('of time nobody is paying you for.')}
-        </p>
-        {(sold > 0 || earned > 0) && (
-          <p className="t-sm tnum mt-2.5 font-semibold text-[var(--success-text)]">
-            {t('{h} h sold this week · {earned} earned', { h: Math.round(sold), earned: formatEur(earned) })}
-            {upcoming > 0 && ` · ${t('{amount} to come', { amount: formatEur(upcoming) })}`}
-          </p>
-        )}
-      </section>
-
-      <Card className="mt-6 p-5">
-        <CapacityBar
-          slots={active.flatMap((l) => slotsFor(l.id))}
-          booked={soldThisWeek.map((b) => b.match)}
-          intent="earn"
-          showLegend
-        />
-      </Card>
-
-      {/* --------------------------------------------------------- requests */}
+  // U-38: what needs an answer comes first; with nothing waiting it sits below the numbers.
+  const requestsSection = (
       <section>
         <SectionHead
           title={
@@ -260,6 +208,11 @@ export function Earn() {
                       <p className="t-sm mt-1 text-[var(--ink-4)]">
                         {t('asked {ago} · fits a gap you are not using', { ago: ago(b.createdAt) })}
                       </p>
+                      {b.expiresAt && (
+                        <p className="t-sm tnum mt-1 font-semibold text-[var(--accent-text)]">
+                          {t('Answer {when}, or the request lapses', { when: relative(b.expiresAt) })}
+                        </p>
+                      )}
                     </div>
 
                     {/* Sized to the label. A full-width Accept is a phone habit; on
@@ -291,6 +244,64 @@ export function Earn() {
           </ul>
         )}
       </section>
+  )
+
+  return (
+    <Screen
+      title={t('Earn')}
+      action={
+        <Button size="sm" variant="secondary" icon="plus" to={'/earn/new'}>
+          {t('Add')}
+        </Button>
+      }
+    >
+      {connect.data && !connect.data.payoutsEnabled && (
+        <div className="mb-6">
+          <Banner
+            tone="warn"
+            title={
+              params.get('payments') === 'done' ? t('Stripe is checking your details') : t('Set up payouts to take bookings')
+            }
+            body={t('Buyers can only book you once Stripe knows where to send your money. It takes a few minutes, and Cappy never sees your bank details.')}
+            action={
+              <Button size="sm" disabled={busy} onClick={() => void payouts()}>
+                {connect.data.connected ? t('Continue setup') : t('Set up payouts')}
+              </Button>
+            }
+          />
+        </div>
+      )}
+
+      {requests.length > 0 && requestsSection}
+
+      {/* ------------------------------------------- the number that matters */}
+      <section className="-mt-1">
+        <p className="t-label">{t('Still idle this week')}</p>
+        <p className="mt-3 flex flex-wrap items-baseline gap-x-2.5">
+          <span className="t-display tnum">{Math.round(hoursIdle)}</span>
+          <span className="text-[20px] font-medium text-[var(--ink-4)]">{t('hours')}</span>
+        </p>
+        <p className="t-lede mt-3 text-[var(--ink-2)]">
+          <span className="hl font-semibold">{formatEur(unsold)}</span> {t('of time nobody is paying you for.')}
+        </p>
+        {(sold > 0 || earned > 0) && (
+          <p className="t-sm tnum mt-2.5 font-semibold text-[var(--success-text)]">
+            {t('{h} h sold this week · {earned} earned', { h: Math.round(sold), earned: formatEur(earned) })}
+            {upcoming > 0 && ` · ${t('{amount} to come', { amount: formatEur(upcoming) })}`}
+          </p>
+        )}
+      </section>
+
+      <Card className="mt-6 p-5">
+        <CapacityBar
+          slots={active.flatMap((l) => slotsFor(l.id))}
+          booked={soldThisWeek.map((b) => b.match)}
+          intent="earn"
+          showLegend
+        />
+      </Card>
+
+      {requests.length === 0 && requestsSection}
 
       {/* ------------------------------------------------------ coming up */}
       {comingUp.length > 0 && (

@@ -6,8 +6,8 @@ import { useAuthReady, useSession } from '../../data/auth.ts'
 import { SignedOut } from '../components/SignedOut.tsx'
 import { Screen } from '../components/AppShell.tsx'
 import { Photo } from '../components/Photo.tsx'
-import { Button, EmptyState, Pill, Segmented, Skeleton } from '../components/ui.tsx'
-import { range } from '../format.ts'
+import { Button, Card, EmptyState, Pill, Segmented, Skeleton } from '../components/ui.tsx'
+import { range, relative } from '../format.ts'
 import { t } from '../../i18n.ts'
 
 const LIVE: BookingStatus[] = ['awaiting_payment', 'requested', 'accepted', 'active', 'disputed']
@@ -38,6 +38,28 @@ const statusPill = (
     case 'disputed':
       return { label: t('Under review'), tone: 'warn' }
   }
+}
+
+/** The one booking that needs this person now, and what to do about it (U-37). */
+function nextUp(all: Booking[], hosting: boolean): { booking: Booking; action: string } | null {
+  const soonest = (bs: Booking[]) => [...bs].sort(byStart)[0]
+  const find = (status: BookingStatus, extra: (b: Booking) => boolean = () => true) =>
+    soonest(all.filter((b) => b.status === status && extra(b)))
+  const pairs: [Booking | undefined, string][] = hosting
+    ? [
+        [find('requested'), t('Answer this request before it expires')],
+        [find('active'), t('In progress now')],
+        [find('accepted'), t('Next hand-over {when}')],
+      ]
+    : [
+        [find('awaiting_payment'), t('Finish paying so the owner is asked')],
+        [find('active'), t('In progress now')],
+        [find('accepted'), t('Next hand-over {when}')],
+        [find('completed', (b) => !b.outcome), t('Rate how it went')],
+      ]
+  const hit = pairs.find(([b]) => b)
+  if (!hit?.[0]) return null
+  return { booking: hit[0], action: hit[1].replace('{when}', relative(hit[0].match.start)) }
 }
 
 /** Soonest first for what is coming up; most recent first for what is past. */
@@ -85,6 +107,7 @@ export function Bookings() {
   const live = mine.filter((b) => LIVE.includes(b.status)).sort(byStart)
   const past = mine.filter((b) => !LIVE.includes(b.status)).sort((a, b) => byStart(b, a))
   const shown = tab === 'live' ? live : past
+  const next = nextUp(mine, hosting)
 
   return (
     <Screen
@@ -114,6 +137,17 @@ export function Bookings() {
             ]}
           />
         </div>
+      )}
+
+      {tab === 'live' && next && (
+        <Card className="mb-5 p-5">
+          <p className="t-label mb-2">{t('Next up')}</p>
+          <p className="text-[16px] font-semibold">{next.booking.listing?.title ?? t('Listing removed')}</p>
+          <p className="t-sm mt-1 text-[var(--ink-3)]">{next.action}</p>
+          <Button className="mt-4" onClick={() => nav(`/bookings/${next.booking.id}`)}>
+            {t('Open booking')}
+          </Button>
+        </Card>
       )}
 
       {mine.length === 0 ? (

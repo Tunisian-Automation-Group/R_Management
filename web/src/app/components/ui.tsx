@@ -10,6 +10,7 @@ import {
 } from 'react'
 import { Link } from 'react-router-dom'
 import { Icon, type IconName } from './Icon.tsx'
+import { sheetOpened } from '../sheets.ts'
 import { locale, t } from '../../i18n.ts'
 
 /** 160ms for micro-interactions, decelerating. Never linear. */
@@ -472,11 +473,13 @@ export function Sheet({
       }
     }
     document.addEventListener('keydown', onKey)
+    const unstack = sheetOpened(() => close.current())
     const prev = document.body.style.overflow
     document.body.style.overflow = 'hidden'
     panel.current?.querySelector<HTMLElement>('button, input, [tabindex]')?.focus()
     return () => {
       document.removeEventListener('keydown', onKey)
+      unstack()
       document.body.style.overflow = prev
     }
   }, [open])

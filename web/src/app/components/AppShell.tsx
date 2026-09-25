@@ -35,7 +35,7 @@ export function Dock({ badges }: { badges: Record<string, number> }) {
     { to: '/', label: t('Explore'), icon: 'search' },
     { to: '/bookings', label: t('Bookings'), icon: 'ticket', badge: badges['/bookings'] },
     { to: '/earn', label: t('Earn'), icon: 'wallet', badge: badges['/earn'] },
-    { to: '/profile', label: t('You'), icon: 'user' },
+    { to: '/profile', label: t('You'), icon: 'user', badge: badges['/notifications'] },
   ]
 
   return (
@@ -85,6 +85,24 @@ export function Dock({ badges }: { badges: Record<string, number> }) {
             <TabItem key={tab.to} tab={tab} />
           ))}
         </ul>
+
+        <NavLink
+          to="/notifications"
+          aria-label={
+            badges['/notifications'] ? t('Notifications, {n} unread', { n: badges['/notifications'] }) : t('Notifications')
+          }
+          className="relative hidden h-10 w-10 shrink-0 place-items-center rounded-full text-[var(--ink-2)] hover:bg-[var(--sunken)] md:grid"
+        >
+          <Icon name="bell" size={19} strokeWidth={1.8} />
+          {badges['/notifications'] ? (
+            <span
+              aria-hidden="true"
+              className="tnum absolute right-1 top-1 grid h-[15px] min-w-[15px] place-items-center rounded-[2px] bg-[var(--accent)] px-1 text-[9.5px] font-bold text-[var(--on-accent)]"
+            >
+              {badges['/notifications']}
+            </span>
+          ) : null}
+        </NavLink>
 
         <NavLink
           to="/earn/new"
@@ -291,7 +309,8 @@ export function Screen({
  * without one reads as an app someone stretched, which is the whole complaint.
  */
 function SiteFooter() {
-  const staff = useSession()?.staff ?? false
+  const session = useSession()
+  const staff = session?.staff ?? false
   const groups: { title: string; links: { label: string; to: string }[] }[] = [
     {
       title: t('Buy capacity'),
@@ -311,7 +330,8 @@ function SiteFooter() {
       title: t('Account'),
       links: [
         { label: t('Profile'), to: '/profile' },
-        { label: t('How Cappy works'), to: '/profile' },
+        { label: t('How Cappy works'), to: '/help/how' },
+        { label: t('Help'), to: '/help' },
       ],
     },
   ]
@@ -328,7 +348,8 @@ function SiteFooter() {
             <LanguageSwitch />
           </div>
         </div>
-        {groups.map((g) => (
+        {/* Signed out, the product is not there to link to (GOAL 13). */}
+        {(session ? groups : []).map((g) => (
           <nav key={g.title} aria-label={g.title}>
             <p className="t-label">{g.title}</p>
             <ul className="mt-3 space-y-2">
@@ -353,6 +374,7 @@ function SiteFooter() {
         <NavLink to="/legal/withdrawal" className="hover:text-[var(--ink-2)]">{t('Withdrawal')}</NavLink>
         <NavLink to="/legal/ranking" className="hover:text-[var(--ink-2)]">{t('Ranking')}</NavLink>
         <NavLink to="/legal/report" className="hover:text-[var(--ink-2)]">{t('Report content')}</NavLink>
+        <NavLink to="/legal/accessibility" className="hover:text-[var(--ink-2)]">{t('Accessibility')}</NavLink>
         <NavLink to="/account/delete" className="hover:text-[var(--ink-2)]">{t('Delete your account')}</NavLink>
         {staff && <NavLink to="/admin" className="hover:text-[var(--ink-2)]">{t('Staff')}</NavLink>}
       </nav>
