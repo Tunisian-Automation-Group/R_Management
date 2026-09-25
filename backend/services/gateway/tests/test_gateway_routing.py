@@ -44,7 +44,7 @@ from gateway.settings import Settings
         ("/notifications", NOTIFICATIONS),
         ("/notifications/read", NOTIFICATIONS),
         ("/notifications/settings", NOTIFICATIONS),
-        ("/me/sign-out-everywhere", NOTIFICATIONS),
+        ("/me/sign-out-everywhere", CATALOG),
         ("/notifications/anything-else", None),
         # Never reachable from outside, however the path is dressed up.
         ("/internal/candidates", None),
@@ -109,6 +109,14 @@ def test_forwards_the_token_and_request_id_and_nothing_else(gateway):
     assert headers["authorization"] == "Bearer t" and headers["idempotency-key"] == "k1"
     assert headers["x-request-id"] == r.headers["x-request-id"]
     assert "x-cappy-user" not in headers and "cookie" not in headers
+
+
+def test_the_apps_language_reaches_the_bell(gateway):
+    # V3-13: the bell renders in the language the app sends.
+    c, calls = gateway
+    c.get("/api/notifications", headers={"Authorization": "Bearer t", "Accept-Language": "de"})
+    host, _, path, headers = calls[-1]
+    assert path == "/notifications" and headers["accept-language"] == "de"
 
 
 def test_unknown_paths_never_reach_a_service(gateway):
@@ -207,6 +215,21 @@ def test_a_crash_loop_cannot_flood_the_logs(caplog):
         for _ in range(10):
             assert c.post("/api/client-errors", json={"message": "boom"}).status_code == 202
     assert sum(r.getMessage().startswith("client error") for r in caplog.records) == 3
+
+
+def test_error_reports_are_scrubbed_and_limited_per_real_client(caplog):
+    settings = _settings(client_errors_per_minute=1, trusted_proxy_hops=2)
+    with TestClient(build_app(settings, transport=_upstreams([]))) as c:
+        logging.getLogger().addHandler(caplog.handler)
+        msg = {"message": "failed for ana@example.com, call +49 30 1234567", "stack": "tel 0151-2345678"}
+        # A forged left-most hop changes nothing: the proxies' hops decide.
+        for forged in ("1.1.1.1", "2.2.2.2"):
+            xff = {"X-Forwarded-For": f"{forged}, 203.0.113.9, 10.0.0.2"}
+            assert c.post("/api/client-errors", json=msg, headers=xff).status_code == 202
+    logged = [r for r in caplog.records if r.getMessage().startswith("client error")]
+    assert len(logged) == 1, "the second report came from the same real client"
+    assert "example.com" not in str(logged[0].client) and "1234567" not in str(logged[0].client)
+    assert "[email]" in logged[0].client["message"] and logged[0].client["stack"] == "tel [number]"
 
 
 def test_an_unreachable_service_says_when_to_retry(gateway):

@@ -87,6 +87,9 @@ class FakeCatalog:
             raise Invalid("those photos were not uploaded by you")
         self.kept.append((owner_id, urls))
 
+    async def evidence_photo(self, name):  # noqa: ANN001
+        return b"RIFF" + name.encode()
+
     async def aclose(self) -> None:
         pass
 
@@ -566,6 +569,33 @@ def test_check_in_and_check_out_photos_are_kept_as_evidence(client, app, issuer)
     assert client.get(f"/bookings/{bid}/evidence", headers=issuer.headers("stranger")).status_code == 404
 
 
+def test_hand_over_photos_are_seen_only_through_signed_links(client, app, issuer):
+    from urllib.parse import parse_qs, urlparse
+
+    bid = _requested(client, app, issuer, start_h=0.25)
+    _do(client, issuer, HOST, bid, "accept")
+    ref = "evidence:" + "b" * 40 + ".webp"
+    r = client.post(
+        f"/bookings/{bid}/evidence", json={"stage": "check_in", "photos": [ref]}, headers=issuer.headers(HOST)
+    )
+    assert r.status_code == 201
+    link = client.get(f"/bookings/{bid}/evidence", headers=issuer.headers(BUYER)).json()[0]["photos"][0]
+    assert link.startswith(f"/api/bookings/{bid}/evidence/") and "sig=" in link
+    path = urlparse(link).path.removeprefix("/api")
+    q = {k: v[0] for k, v in parse_qs(urlparse(link).query).items()}
+    got = client.get(path, params=q, headers={"Authorization": ""})  # an <img>: no session, the link is the key
+    assert got.status_code == 200 and got.content == b"RIFF" + b"b" * 40 + b".webp"
+    assert got.headers["cache-control"].startswith("private")
+    assert client.get(path, params={**q, "sig": "0" * 64}, headers={"Authorization": ""}).status_code == 403
+    assert client.get(path, params={**q, "exp": "1"}, headers={"Authorization": ""}).status_code == 403
+    other = path.rsplit("/", 1)[0] + "/1"
+    assert client.get(other, params=q, headers={"Authorization": ""}).status_code == 403, "signed per photo"
+    # Staff see them only with the staff group; strangers never.
+    assert client.get(f"/bookings/{bid}/evidence", headers=issuer.headers("stranger")).status_code == 404
+    staff = issuer.headers("mod-1", **{"cognito:groups": ["admin"]})
+    assert len(client.get(f"/bookings/{bid}/evidence", headers=staff).json()) == 1
+
+
 def test_booking_requests_per_day_are_limited(client, app, issuer):
     # Unpaid bookings are also capped (3); pay each so only the daily cap bites.
     for i in range(10):
@@ -648,7 +678,10 @@ def test_cancellation_policy_decides_the_refund(issuer, broker, payments):
     matching = FakeMatching()
     matching.listing = matching.listing.model_copy(update={"cancellation_policy": "strict"})
     settings = Settings(
-        app_env="test", database_url="sqlite+aiosqlite://", internal_token="i" * 40, paid_cancellation_policies=True
+        app_env="test",
+        database_url="sqlite+aiosqlite://",
+        internal_token="i" * 40,
+        feature_flags="paidCancellationPolicies:100",
     )
     app = build_app(settings, matching=matching, payments=payments, catalog=FakeCatalog(), verifier=issuer.verifier())
     with TestClient(app) as c:
@@ -720,6 +753,25 @@ def test_a_retried_message_is_sent_once_and_pay_outside_is_flagged(client, app, 
     assert len(page) == 1 and page[0]["flagged"] is True
     changed = client.post(f"/bookings/{bid}/messages", json={"body": "something else"}, headers=h)
     assert changed.status_code == 422
+
+
+def test_messages_are_capped_per_sender_so_pushes_cannot_flood(client, app, issuer):
+    from booking.messages import MESSAGES_PER_WINDOW
+
+    bid = _requested(client, app, issuer)
+    for i in range(MESSAGES_PER_WINDOW):
+        assert (
+            client.post(
+                f"/bookings/{bid}/messages", json={"body": f"hi {i}"}, headers=issuer.headers(BUYER)
+            ).status_code
+            == 201
+        )
+    r = client.post(f"/bookings/{bid}/messages", json={"body": "one more"}, headers=issuer.headers(BUYER))
+    assert r.status_code == 429
+    assert (
+        client.post(f"/bookings/{bid}/messages", json={"body": "hello"}, headers=issuer.headers(HOST)).status_code
+        == 201
+    )
 
 
 # --- no-shows, owner reliability, cards shared with suspended accounts (S-11, S-17, S-18) ---
@@ -827,3 +879,13 @@ def test_active_people_for_the_transparency_numbers(client, app, issuer):
     assert client.get("/internal/stats/active-people", params=params).status_code == 403
     r = client.get("/internal/stats/active-people", params=params, headers=INTERNAL)
     assert r.json() == {"people": 2}
+
+
+def test_paid_policies_follow_the_flag_the_app_reads():
+    from booking.settings import Settings as BookingSettings
+
+    base = dict(app_env="test", database_url="sqlite+aiosqlite://", internal_token="i" * 40)
+    assert not BookingSettings(**base).paid_cancellation_policies
+    assert BookingSettings(**base, feature_flags="paidCancellationPolicies:100").paid_cancellation_policies
+    # Money rules are everyone or no one.
+    assert not BookingSettings(**base, feature_flags="paidCancellationPolicies:50").paid_cancellation_policies

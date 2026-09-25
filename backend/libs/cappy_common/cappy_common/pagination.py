@@ -17,6 +17,7 @@ from pydantic import Field
 
 from .errors import Invalid
 from .models import CamelModel
+from .timeutil import dt_from_iso
 
 DEFAULT_LIMIT = 20
 MAX_LIMIT = 100
@@ -39,8 +40,14 @@ def decode_cursor(cursor: str | None) -> dict | None:
         key = json.loads(raw)
     except (binascii.Error, ValueError, UnicodeDecodeError) as e:
         raise Invalid("that cursor is not one we issued") from e
-    if not isinstance(key, dict):
+    # Every cursor we issue is {"at": <iso time>, "id": <str>}: anything else is
+    # tampered, and a 422 here, not a KeyError or ValueError deeper down (P-22).
+    if not isinstance(key, dict) or not isinstance(key.get("id"), str) or not isinstance(key.get("at"), str):
         raise Invalid("that cursor is not one we issued")
+    try:
+        dt_from_iso(key["at"])
+    except ValueError as e:
+        raise Invalid("that cursor is not one we issued") from e
     return key
 
 

@@ -69,6 +69,9 @@ PAYOUTS_READY = "payment.payouts_ready"
 PROFILE_CREATED = "profile.created"
 # Someone deleted their account: forget what is theirs to forget.
 PROFILE_DELETED = "profile.deleted"
+# "Sign out everywhere": their refresh tokens go, and tokens issued before
+# now stop counting in every service (cappy_common/guard.py, P-24).
+PERSON_SIGNED_OUT = "person.signed_out"
 # DSA Art. 16: someone reported content; Art. 17: a moderation decision.
 REPORT_RECEIVED = "moderation.report_received"
 MODERATION_DECISION = "moderation.decision"
@@ -96,6 +99,7 @@ ALL_TYPES = frozenset(
         PAYOUT_SENT,
         PROFILE_CREATED,
         PROFILE_DELETED,
+        PERSON_SIGNED_OUT,
         REPORT_RECEIVED,
         MODERATION_DECISION,
         OWNER_SUSPENDED,
@@ -167,6 +171,10 @@ def event_tables(metadata: MetaData) -> tuple[Table, Table]:
         Column("type", String(80), nullable=False),
         Column("processed_at", UtcDateTime, nullable=False),
     )
+    # Every service with events also keeps which sessions ended early (P-24).
+    from .guard import revocation_table
+
+    revocation_table(metadata)
     return outbox, processed
 
 

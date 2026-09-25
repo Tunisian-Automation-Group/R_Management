@@ -134,6 +134,9 @@ def _view(r: ReportRow) -> Report:
     )
 
 
+ANONYMOUS_PER_TARGET, MEMBERS_PER_TARGET = 5, 20
+
+
 @public.post("/reports", response_model=Report, status_code=status.HTTP_201_CREATED)
 async def report(
     body: ReportIn,
@@ -164,12 +167,22 @@ async def report(
         ).scalar_one()
         if sent >= 3:
             raise RateLimited("we already have your reports from today; we will be in touch")
+    # Anonymous and signed-in reports have their own caps, so strangers filling
+    # the anonymous one never turn away a member's report (P-7). The anonymous
+    # receipt mail stays: DSA Art. 16(2)(c) asks notices for an email and
+    # 16(4) to confirm receipt to it, so a verification mail would be the same
+    # one mail; the per-address cap above bounds it instead.
+    anonymous = p is None
     about = (
         await session.execute(
-            select(func.count()).where(ReportRow.target_id == body.target_id, ReportRow.created_at >= day)
+            select(func.count()).where(
+                ReportRow.target_id == body.target_id,
+                ReportRow.created_at >= day,
+                ReportRow.reporter_id.is_(None) if anonymous else ReportRow.reporter_id.is_not(None),
+            )
         )
     ).scalar_one()
-    if about >= 20:
+    if about >= (ANONYMOUS_PER_TARGET if anonymous else MEMBERS_PER_TARGET):
         raise RateLimited("this has been reported many times today; it is already being looked at")
     row = ReportRow(
         id=new_id("rp"),

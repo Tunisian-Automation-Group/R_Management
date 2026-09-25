@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import re
 import time
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
@@ -97,6 +98,25 @@ class ClientError(CamelModel):
     route: str = Field(default="", max_length=300)
     app_version: str = Field(default="", max_length=40)
     platform: str = Field(default="", pattern="^(|web|ios|android)$")
+
+
+_EMAIL = re.compile(r"[\w.+-]+@[\w-]+(\.[\w-]+)+")
+_PHONE = re.compile(r"\+?\d[\d ()/.-]{6,}\d")
+
+
+def scrub(text: str) -> str:
+    """No email address or phone number from an error report reaches the logs (P-34)."""
+    return _PHONE.sub("[number]", _EMAIL.sub("[email]", text))
+
+
+def client_address(request: Request, trusted_hops: int) -> str:
+    """The address the nearest trusted proxy saw. ponytail: hop counting, since
+    the managed origin policy (all viewer headers but Host) does not forward
+    CloudFront-Viewer-Address; a custom policy that adds it can replace this."""
+    hops = [h.strip() for h in request.headers.get("x-forwarded-for", "").split(",") if h.strip()]
+    if trusted_hops and len(hops) >= trusted_hops:
+        return hops[-trusted_hops]
+    return request.client.host if request.client else "?"
 
 
 class ClientErrorLimit:
@@ -214,17 +234,14 @@ def build_app(settings: Settings, transport: httpx.AsyncBaseTransport | None = N
         body = await request.body()
         if len(body) > CLIENT_ERROR_MAX_BYTES:
             return JSONResponse(error_body("too_large", "an error report is at most 8 KB"), 413)
-        # Behind CloudFront and the load balancer the peer is never the phone;
-        # the first X-Forwarded-For hop is (it can be forged, which only lets
-        # a sender dodge this limit, not the WAF's).
-        who = request.headers.get("x-forwarded-for", "").split(",")[0].strip()
-        if not errors_seen.allow(who or (request.client.host if request.client else "?")):
+        if not errors_seen.allow(client_address(request, settings.trusted_proxy_hops)):
             return Response(status_code=202)  # dropped quietly: a crash loop must not flood the logs
         try:
             report = ClientError.model_validate_json(body)
         except ValueError:
             return JSONResponse(error_body("invalid", "not an error report"), 422)
-        log.warning("client error: %s", report.message[:200], extra={"client": report.model_dump(by_alias=True)})
+        fields = {k: scrub(v) if isinstance(v, str) else v for k, v in report.model_dump(by_alias=True).items()}
+        log.warning("client error: %s", fields["message"][:200], extra={"client": fields})
         return Response(status_code=202)
 
     @app.api_route("/api/{path:path}", methods=_METHODS, include_in_schema=False)

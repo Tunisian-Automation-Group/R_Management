@@ -7,18 +7,21 @@ get scammed and owners go unpaid (Airbnb and Vinted both enforce this).
 
 from __future__ import annotations
 
+import hashlib
+import hmac
 import logging
 import re
-from datetime import UTC, datetime
+import time
+from datetime import UTC, datetime, timedelta
 
 from fastapi import Depends, Request, Response, status
 from pydantic import Field
-from sqlalchemy import and_, delete, or_, select
+from sqlalchemy import and_, delete, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from cappy_common.app import ApiRouter
-from cappy_common.auth import Principal, require_principal
-from cappy_common.errors import Forbidden, Invalid
+from cappy_common.auth import Principal, require_admin, require_principal
+from cappy_common.errors import Forbidden, Invalid, NotFound, RateLimited
 from cappy_common.events import BOOKING_MESSAGE
 from cappy_common.idempotency import IdempotencyKey, fingerprint, remember, replayed
 from cappy_common.ids import new_id
@@ -33,6 +36,7 @@ from .tables import IDEMPOTENCY, BlockRow, MessageRow
 log = logging.getLogger(__name__)
 router = ApiRouter()
 HIDDEN = "[shared once the booking is accepted]"
+MESSAGES_PER_WINDOW, MESSAGE_WINDOW = 30, timedelta(minutes=10)
 
 _EMAIL = re.compile(r"[\w.+-]+@[\w-]+(\.[\w-]+)+")
 # "bob at gmail dot com", "bob(at)gmail.com", "bob [at] gmail [dot] com"
@@ -138,6 +142,19 @@ async def send(
     text = body.body.strip()
     if not text:
         raise Invalid("say something")
+    # Every message can push to the other phone: a cap per sender per booking
+    # (P-12). ponytail: per booking, on the (booking_id, at) index; booking
+    # velocity limits already bound how many bookings one person can hold.
+    since = datetime.now(UTC) - MESSAGE_WINDOW
+    sent = (
+        await session.execute(
+            select(func.count()).where(
+                MessageRow.booking_id == row.id, MessageRow.sender_id == p.sub, MessageRow.at >= since
+            )
+        )
+    ).scalar_one()
+    if sent >= MESSAGES_PER_WINDOW:
+        raise RateLimited("that is a lot of messages in a few minutes; wait a little")
     agreed = row.status in SHOWS_HANDOVER
     shown = text if agreed else mask(text)
     suspicious = flagged(body.body)
@@ -266,13 +283,69 @@ async def add_evidence(
 async def evidence(
     booking_id: str, request: Request, session: AsyncSession = Tx, p: Principal = Depends(require_principal)
 ) -> list[Evidence]:
+    """The two sides' hand-over photos, as links that work for a few minutes
+    (P-27). Staff (with MFA) see them too, to decide disputes."""
     from .tables import EvidenceRow
 
-    await BookingRepository(session, request.app.state.outbox).visible(booking_id, p.sub)
+    try:
+        await BookingRepository(session, request.app.state.outbox).visible(booking_id, p.sub)
+    except NotFound:
+        if "admin" not in (p.claims.get("cognito:groups") or []):
+            raise
+        await require_admin(request)
     rows = (
         await session.execute(select(EvidenceRow).where(EvidenceRow.booking_id == booking_id).order_by(EvidenceRow.at))
     ).scalars()
     return [
-        Evidence(id=r.id, by=r.by, stage=r.stage, photos=r.photos, note=r.note, at=iso_from_datetime(r.at))
+        Evidence(
+            id=r.id,
+            by=r.by,
+            stage=r.stage,
+            photos=[_link(request, booking_id, r.id, i, photo) for i, photo in enumerate(r.photos)],
+            note=r.note,
+            at=iso_from_datetime(r.at),
+        )
         for r in rows
     ]
+
+
+# Hand-over photos are private (P-27): the list above hands out links signed
+# for a few minutes, which an <img> can load with no session header. The key
+# comes from booking's own internal token, which only booking holds.
+LINK_TTL = 900
+
+
+def _link_key(request: Request) -> bytes:
+    token = request.app.state.settings.internal_token.get_secret_value() or "local"
+    return hashlib.sha256(b"evidence-links:" + token.encode()).digest()
+
+
+def _sig(request: Request, booking_id: str, evidence_id: str, index: int, exp: int) -> str:
+    msg = f"{booking_id}:{evidence_id}:{index}:{exp}".encode()
+    return hmac.new(_link_key(request), msg, hashlib.sha256).hexdigest()
+
+
+def _link(request: Request, booking_id: str, evidence_id: str, index: int, photo: str) -> str:
+    if not photo.startswith("evidence:"):
+        return photo  # from before photos were private
+    exp = int(time.time()) + LINK_TTL
+    sig = _sig(request, booking_id, evidence_id, index, exp)
+    return f"/api/bookings/{booking_id}/evidence/{evidence_id}/{index}?exp={exp}&sig={sig}"
+
+
+@router.get("/bookings/{booking_id}/evidence/{evidence_id}/{index}", include_in_schema=False)
+async def evidence_photo(
+    booking_id: str, evidence_id: str, index: int, exp: int, sig: str, request: Request, session: AsyncSession = Tx
+) -> Response:
+    """One hand-over photo, for whoever holds a link the list above signed."""
+    from .tables import EvidenceRow
+
+    left = exp - int(time.time())
+    if left <= 0 or not hmac.compare_digest(sig, _sig(request, booking_id, evidence_id, index, exp)):
+        raise Forbidden("that photo link has expired; open the booking again")
+    row = await session.get(EvidenceRow, evidence_id)
+    if row is None or row.booking_id != booking_id or not 0 <= index < len(row.photos):
+        raise NotFound("no such photo")
+    name = row.photos[index].removeprefix("evidence:")
+    data = await request.app.state.catalog.evidence_photo(name)
+    return Response(data, media_type="image/webp", headers={"Cache-Control": f"private, max-age={min(left, LINK_TTL)}"})

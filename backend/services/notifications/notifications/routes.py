@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 from datetime import UTC, datetime
 
 from fastapi import Depends, Request, Response, status
@@ -11,6 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from cappy_common.app import ApiRouter
 from cappy_common.auth import Principal, require_internal, require_principal
+from cappy_common.errors import Conflict
 from cappy_common.models import CamelModel, Iso
 from cappy_common.pagination import clamp_limit, decode_cursor, encode_cursor
 from cappy_common.runtime import Tx
@@ -21,7 +23,6 @@ from .tables import DeviceRow, InboxRow
 from .texts import render
 
 router = ApiRouter(prefix="/notifications")
-me = ApiRouter(prefix="/me")
 internal = ApiRouter(prefix="/internal", dependencies=[Depends(require_internal)])
 
 MAX_DEVICES = 10
@@ -30,6 +31,8 @@ MAX_DEVICES = 10
 class DeviceIn(CamelModel):
     platform: str = Field(pattern="^(ios|android)$")
     token: str = Field(min_length=8, max_length=400)
+    # A random id the app makes once per install and keeps (P-33).
+    install_id: str | None = Field(default=None, min_length=16, max_length=100)
 
 
 @router.post("/devices", status_code=status.HTTP_204_NO_CONTENT)
@@ -37,17 +40,36 @@ async def register(
     body: DeviceIn, request: Request, session: AsyncSession = Tx, p: Principal = Depends(require_principal)
 ):
     """The app calls this after sign-in with its APNs/FCM token. A token moves
-    to whoever signed in on that device last."""
-    endpoint = await request.app.state.pusher.register(body.platform, body.token)
+    to whoever signed in on that device last, but only from the same install:
+    someone who merely knows a token cannot take another person's pushes away
+    or point theirs at that phone (P-33). On a move the old endpoint is deleted
+    first, so none of the previous person's notifications can reach it."""
+    pusher = request.app.state.pusher
+    install = hashlib.sha256(body.install_id.encode()).hexdigest() if body.install_id else None
     row = await session.get(DeviceRow, body.token)
+    if row is not None and row.user_id != p.sub:
+        if row.install_hash is not None and row.install_hash != install:
+            raise Conflict("this device is registered by another install", code="device_taken")
+        if row.endpoint:
+            await pusher.unregister(row.endpoint)
+        await session.delete(row)
+        await session.flush()
+        row = None
+    endpoint = await pusher.register(body.platform, body.token)
     if row is None:
         session.add(
             DeviceRow(
-                token=body.token, user_id=p.sub, platform=body.platform, endpoint=endpoint, created_at=datetime.now(UTC)
+                token=body.token,
+                user_id=p.sub,
+                platform=body.platform,
+                endpoint=endpoint,
+                created_at=datetime.now(UTC),
+                install_hash=install,
             )
         )
     else:
-        row.user_id, row.platform, row.endpoint = p.sub, body.platform, endpoint
+        row.platform, row.endpoint = body.platform, endpoint
+        row.install_hash = install or row.install_hash
     await session.flush()
     await _keep_newest(session, p.sub)
     return Response(status_code=status.HTTP_204_NO_CONTENT)
@@ -171,13 +193,3 @@ async def export_person(person: str, session: AsyncSession = Tx) -> dict:
 
 
 # --- signing out everywhere ------------------------------------------------------------------
-
-
-@me.post("/sign-out-everywhere", status_code=status.HTTP_204_NO_CONTENT)
-async def sign_out_everywhere(request: Request, session: AsyncSession = Tx, p: Principal = Depends(require_principal)):
-    """A lost phone: every refresh token of theirs is revoked (Cognito
-    AdminUserGlobalSignOut) and no device gets their pushes any more. Access
-    tokens already issued run out within the hour."""
-    await request.app.state.directory.sign_out_everywhere(p.sub)
-    await session.execute(delete(DeviceRow).where(DeviceRow.user_id == p.sub))
-    return Response(status_code=status.HTTP_204_NO_CONTENT)

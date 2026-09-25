@@ -28,7 +28,13 @@ BUCKET = "cappy-media"
 MAIL_FROM = "no-reply@cappy.local"
 # Which events each service's queue receives (Terraform: modules/messaging).
 CONSUMERS = {
-    "catalog": ["booking.rated", "payment.payouts_ready", "booking.renter_rated", "booking.owner_reliability", "moderation.person_flagged"],
+    "catalog": [
+        "booking.rated",
+        "payment.payouts_ready",
+        "booking.renter_rated",
+        "booking.owner_reliability",
+        "moderation.person_flagged",
+    ],
     "booking": [
         "payment.authorised",
         "payment.failed",
@@ -36,13 +42,15 @@ CONSUMERS = {
         "moderation.owner_suspended",
         "payment.identity_verified",
         "profile.deleted",
+        "person.signed_out",
         "moderation.owner_reinstated",
     ],
-    "payments": ["booking.status_changed", "profile.deleted"],
+    "payments": ["booking.status_changed", "profile.deleted", "person.signed_out"],
     "notifications": [
         "booking.status_changed",
         "payment.payout_sent",
         "profile.deleted",
+        "person.signed_out",
         "booking.message",
         "moderation.report_received",
         "moderation.decision",
@@ -58,7 +66,9 @@ DEMO = {
 
 
 def client(name: str, endpoint: str = LOCALSTACK):
-    return boto3.client(name, region_name=REGION, endpoint_url=endpoint, aws_access_key_id="test", aws_secret_access_key="test")
+    return boto3.client(
+        name, region_name=REGION, endpoint_url=endpoint, aws_access_key_id="test", aws_secret_access_key="test"
+    )
 
 
 def wait(what: str, fn) -> None:
@@ -77,7 +87,9 @@ def messaging() -> dict[str, str]:
     urls = {}
     for service, types in CONSUMERS.items():
         dlq = sqs.create_queue(QueueName=f"cappy-{service}-dlq", Attributes={"MessageRetentionPeriod": "1209600"})
-        dlq_arn = sqs.get_queue_attributes(QueueUrl=dlq["QueueUrl"], AttributeNames=["QueueArn"])["Attributes"]["QueueArn"]
+        dlq_arn = sqs.get_queue_attributes(QueueUrl=dlq["QueueUrl"], AttributeNames=["QueueArn"])["Attributes"][
+            "QueueArn"
+        ]
         attributes = {
             "VisibilityTimeout": "120",
             "RedrivePolicy": json.dumps({"deadLetterTargetArn": dlq_arn, "maxReceiveCount": "12"}),
@@ -89,13 +101,23 @@ def messaging() -> dict[str, str]:
             q = sqs.get_queue_url(QueueName=f"cappy-{service}")
             sqs.set_queue_attributes(QueueUrl=q["QueueUrl"], Attributes=attributes)
         arn = sqs.get_queue_attributes(QueueUrl=q["QueueUrl"], AttributeNames=["QueueArn"])["Attributes"]["QueueArn"]
-        existing = {s["Endpoint"] for s in sns.list_subscriptions_by_topic(TopicArn=topic)["Subscriptions"]}
+        existing = {
+            s["Endpoint"]: s["SubscriptionArn"]
+            for s in sns.list_subscriptions_by_topic(TopicArn=topic)["Subscriptions"]
+        }
+        policy = json.dumps({"type": types})
         if arn not in existing:
             sns.subscribe(
                 TopicArn=topic,
                 Protocol="sqs",
                 Endpoint=arn,
-                Attributes={"RawMessageDelivery": "true", "FilterPolicy": json.dumps({"type": types})},
+                Attributes={"RawMessageDelivery": "true", "FilterPolicy": policy},
+            )
+        else:
+            # A stack made before a service learnt a new event type: without
+            # this, the type would never reach its queue.
+            sns.set_subscription_attributes(
+                SubscriptionArn=existing[arn], AttributeName="FilterPolicy", AttributeValue=policy
             )
         urls[service] = q["QueueUrl"]
     return {"topic": topic, **urls}
@@ -113,17 +135,39 @@ def storage_and_mail() -> None:
 def identity() -> dict:
     idp = client("cognito-idp", COGNITO)
     pools = [p for p in idp.list_user_pools(MaxResults=60)["UserPools"] if p["Name"] == "cappy"]
-    pool = pools[0]["Id"] if pools else idp.create_user_pool(
-        PoolName="cappy",
-        UsernameAttributes=["email"],
-        AutoVerifiedAttributes=["email"],
-        # As in infra/platform/identity.tf: 12 characters, no composition rules.
-        Policies={"PasswordPolicy": {"MinimumLength": 12, "RequireUppercase": False, "RequireLowercase": False, "RequireNumbers": False, "RequireSymbols": False}},
-    )["UserPool"]["Id"]
-    clients = [c for c in idp.list_user_pool_clients(UserPoolId=pool, MaxResults=60)["UserPoolClients"] if c["ClientName"] == "web"]
-    app_client = clients[0]["ClientId"] if clients else idp.create_user_pool_client(
-        UserPoolId=pool, ClientName="web", ExplicitAuthFlows=["ALLOW_USER_PASSWORD_AUTH", "ALLOW_REFRESH_TOKEN_AUTH"]
-    )["UserPoolClient"]["ClientId"]
+    pool = (
+        pools[0]["Id"]
+        if pools
+        else idp.create_user_pool(
+            PoolName="cappy",
+            UsernameAttributes=["email"],
+            AutoVerifiedAttributes=["email"],
+            # As in infra/platform/identity.tf: 12 characters, no composition rules.
+            Policies={
+                "PasswordPolicy": {
+                    "MinimumLength": 12,
+                    "RequireUppercase": False,
+                    "RequireLowercase": False,
+                    "RequireNumbers": False,
+                    "RequireSymbols": False,
+                }
+            },
+        )["UserPool"]["Id"]
+    )
+    clients = [
+        c
+        for c in idp.list_user_pool_clients(UserPoolId=pool, MaxResults=60)["UserPoolClients"]
+        if c["ClientName"] == "web"
+    ]
+    app_client = (
+        clients[0]["ClientId"]
+        if clients
+        else idp.create_user_pool_client(
+            UserPoolId=pool,
+            ClientName="web",
+            ExplicitAuthFlows=["ALLOW_USER_PASSWORD_AUTH", "ALLOW_REFRESH_TOKEN_AUTH"],
+        )["UserPoolClient"]["ClientId"]
+    )
     try:
         idp.create_group(GroupName="admin", UserPoolId=pool, Description="Cappy staff")
     except Exception as e:  # noqa: BLE001 - cognito-local and AWS name "already exists" differently
@@ -132,13 +176,17 @@ def identity() -> dict:
     subs = {}
     for role, (email, _) in DEMO.items():
         found = idp.list_users(UserPoolId=pool, Filter=f'email = "{email}"')["Users"]
-        user = found[0] if found else idp.admin_create_user(
-            UserPoolId=pool,
-            Username=email,
-            UserAttributes=[{"Name": "email", "Value": email}, {"Name": "email_verified", "Value": "true"}],
-            MessageAction="SUPPRESS",
-            TemporaryPassword=DEMO_PASSWORD,
-        )["User"]
+        user = (
+            found[0]
+            if found
+            else idp.admin_create_user(
+                UserPoolId=pool,
+                Username=email,
+                UserAttributes=[{"Name": "email", "Value": email}, {"Name": "email_verified", "Value": "true"}],
+                MessageAction="SUPPRESS",
+                TemporaryPassword=DEMO_PASSWORD,
+            )["User"]
+        )
         idp.admin_set_user_password(UserPoolId=pool, Username=email, Password=DEMO_PASSWORD, Permanent=True)
         subs[role] = next(a["Value"] for a in user["Attributes"] if a["Name"] == "sub")
         if role == "staff":

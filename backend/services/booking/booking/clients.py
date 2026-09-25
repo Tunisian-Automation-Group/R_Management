@@ -45,6 +45,10 @@ class Catalog:
         """Refuses photos that are not the person's own uploads."""
         raise NotImplementedError
 
+    async def evidence_photo(self, name: str) -> bytes:
+        """A private hand-over photo's bytes (P-27)."""
+        raise NotImplementedError
+
     async def aclose(self) -> None:
         """Release resources."""
 
@@ -58,6 +62,9 @@ class HttpCatalog(Catalog):
 
     async def keep_evidence(self, owner_id: str, urls: list[str]) -> None:
         await self._c.post("/internal/media/evidence", json={"ownerId": owner_id, "urls": urls})
+
+    async def evidence_photo(self, name: str) -> bytes:
+        return await self._c.get(f"/internal/evidence/{quote(name, safe='')}", raw=True)
 
     async def aclose(self) -> None:
         await self._c.aclose()

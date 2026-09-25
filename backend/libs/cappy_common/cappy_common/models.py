@@ -94,6 +94,8 @@ class CamelModel(BaseModel):
         populate_by_name=True,
         serialize_by_alias=True,
         extra="ignore",
+        # JSON NaN/Infinity parse in Python; no number we take may be one (P-22).
+        allow_inf_nan=False,
     )
 
 

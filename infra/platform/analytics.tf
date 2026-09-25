@@ -25,7 +25,9 @@ resource "aws_s3_bucket_lifecycle_configuration" "analytics" {
       days          = 90
       storage_class = "GLACIER_IR"
     }
-    # Events carry ids, not names or emails; kept two years for trends.
+    # Only ids and non-identifying fields arrive (analytics/scrub.py, P-6);
+    # kept two years for trends. Deleting an account needs nothing here: the
+    # lake holds its pseudonymous id and nothing to tie it to a person.
     expiration {
       days = 730
     }
@@ -48,6 +50,10 @@ resource "aws_iam_role_policy" "firehose" {
       Effect   = "Allow"
       Action   = ["s3:AbortMultipartUpload", "s3:GetBucketLocation", "s3:ListBucket", "s3:PutObject"]
       Resource = [aws_s3_bucket.analytics.arn, "${aws_s3_bucket.analytics.arn}/*"]
+      }, {
+      Effect   = "Allow"
+      Action   = ["lambda:InvokeFunction", "lambda:GetFunctionConfiguration"]
+      Resource = ["${aws_lambda_function.analytics_scrub.arn}", "${aws_lambda_function.analytics_scrub.arn}:*"]
     }]
   })
 }
@@ -63,7 +69,49 @@ resource "aws_kinesis_firehose_delivery_stream" "events" {
     buffering_interval  = 300
     buffering_size      = 64
     compression_format  = "GZIP"
+
+    # Only allowlisted, non-identifying fields reach the lake (P-6).
+    processing_configuration {
+      enabled = true
+      processors {
+        type = "Lambda"
+        parameters {
+          parameter_name  = "LambdaArn"
+          parameter_value = "${aws_lambda_function.analytics_scrub.arn}:$LATEST"
+        }
+      }
+    }
   }
+}
+
+data "archive_file" "analytics_scrub" {
+  type        = "zip"
+  source_file = "${path.module}/analytics/scrub.py"
+  output_path = "${path.module}/.build/analytics-scrub.zip"
+}
+
+resource "aws_iam_role" "analytics_scrub" {
+  name = "${local.name}-analytics-scrub"
+  assume_role_policy = jsonencode({
+    Version   = "2012-10-17"
+    Statement = [{ Effect = "Allow", Principal = { Service = "lambda.amazonaws.com" }, Action = "sts:AssumeRole" }]
+  })
+}
+
+resource "aws_iam_role_policy_attachment" "analytics_scrub_logs" {
+  role       = aws_iam_role.analytics_scrub.name
+  policy_arn = "arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole"
+}
+
+resource "aws_lambda_function" "analytics_scrub" {
+  function_name    = "${local.name}-analytics-scrub"
+  role             = aws_iam_role.analytics_scrub.arn
+  runtime          = "python3.12"
+  handler          = "scrub.handler"
+  filename         = data.archive_file.analytics_scrub.output_path
+  source_code_hash = data.archive_file.analytics_scrub.output_base64sha256
+  timeout          = 60
+  memory_size      = 256
 }
 
 resource "aws_iam_role" "sns_to_firehose" {

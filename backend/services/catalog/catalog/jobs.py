@@ -32,6 +32,7 @@ async def sweep_orphans_once(app: FastAPI) -> int:
     for name in gone:
         try:
             await app.state.media.delete(name)
+            await app.state.evidence.delete(name)
         except Exception as e:  # noqa: BLE001 - an orphaned file costs cents; try the rest
             log.warning("could not delete photo %s: %s", name, e)
     return len(gone)

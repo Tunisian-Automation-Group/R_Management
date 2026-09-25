@@ -54,6 +54,11 @@ class IdentityRow(Base):
     status: Mapped[str] = mapped_column(String(20))
     verified_at: Mapped[datetime | None] = mapped_column(UtcDateTime, nullable=True)
     updated_at: Mapped[datetime] = mapped_column(UtcDateTime)
+    # The person's explicit consent to the ID and selfie check, before it
+    # starts (GDPR Art. 9(2)(a), CPRA sensitive data, BIPA; P-18): when, and
+    # which wording they agreed to.
+    consent_at: Mapped[datetime | None] = mapped_column(UtcDateTime, nullable=True)
+    consent_version: Mapped[str | None] = mapped_column(String(40), nullable=True)
 
 
 class InvoiceRow(Base):

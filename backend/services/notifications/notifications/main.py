@@ -9,7 +9,7 @@ from cappy_common.runtime import Runtime
 from .handlers import handlers
 from .mail import CognitoDirectory, Directory, LogMailer, Mailer, SesMailer
 from .push import LogPusher, Pusher, SnsPusher
-from .routes import internal, me, router
+from .routes import internal, router
 from .settings import Settings
 from .tables import Base
 
@@ -35,7 +35,6 @@ def build_app(
     app.state.pusher = pusher
     app.state.directory = directory
     app.include_router(router)
-    app.include_router(me)
     app.include_router(internal)
     return app
 

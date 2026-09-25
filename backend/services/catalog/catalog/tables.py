@@ -18,6 +18,7 @@ from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
 from cappy_common.db import JsonType, UtcDateTime, new_metadata
 from cappy_common.events import event_tables
+from cappy_common.guard import rate_table
 from cappy_common.idempotency import idempotency_table
 
 
@@ -26,6 +27,8 @@ class Base(DeclarativeBase):
 
 
 OUTBOX, PROCESSED = event_tables(Base.metadata)
+# Per-person counters for limits no other table can count (exports, sign-outs; P-12).
+RATE_HITS = rate_table(Base.metadata)
 IDEMPOTENCY = idempotency_table(Base.metadata)
 
 

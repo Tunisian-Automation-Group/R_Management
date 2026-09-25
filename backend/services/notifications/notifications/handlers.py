@@ -18,6 +18,7 @@ from cappy_common.events import (
     BOOKING_STATUS_CHANGED,
     MODERATION_DECISION,
     PAYOUT_SENT,
+    PERSON_SIGNED_OUT,
     PROFILE_DELETED,
     REPORT_RECEIVED,
     Event,
@@ -155,14 +156,25 @@ def handlers(directory: Directory, mailer: Mailer, web: str, pusher: Pusher | No
             await deliver(session, event, msg)
 
     async def forget(session: AsyncSession, event: Event) -> None:
-        """Account deleted: no more pushes to their devices."""
+        """Account deleted: no more pushes to their devices, and the sign-in
+        itself goes, so the email address is not kept in Cognito (P-23)."""
         from sqlalchemy import delete
 
+        await directory.delete_person(event.data["ownerId"])
         await session.execute(delete(DeviceRow).where(DeviceRow.user_id == event.data["ownerId"]))
         await session.execute(delete(InboxRow).where(InboxRow.user_id == event.data["ownerId"]))
         await session.execute(delete(PrefsRow).where(PrefsRow.user_id == event.data["ownerId"]))
 
+    async def signed_out(session: AsyncSession, event: Event) -> None:
+        """Sign out everywhere (catalog took the request): every refresh token
+        revoked in Cognito, and no device gets their pushes any more."""
+        from sqlalchemy import delete
+
+        await directory.sign_out_everywhere(event.data["personId"])
+        await session.execute(delete(DeviceRow).where(DeviceRow.user_id == event.data["personId"]))
+
     return {
+        PERSON_SIGNED_OUT: signed_out,
         BOOKING_STATUS_CHANGED: notify,
         PAYOUT_SENT: notify,
         BOOKING_MESSAGE: notify,

@@ -14,7 +14,8 @@ from cappy_common.app import ApiRouter
 from cappy_common.auth import Principal, optional_principal, require_internal, require_principal
 from cappy_common.categories import mode_of
 from cappy_common.errors import Conflict, Forbidden, Invalid, NotFound, RateLimited, Unavailable
-from cappy_common.events import LISTING_CHANGED, PROFILE_CREATED, PROFILE_DELETED
+from cappy_common.events import LISTING_CHANGED, PERSON_SIGNED_OUT, PROFILE_CREATED, PROFILE_DELETED
+from cappy_common.guard import hit, revoke
 from cappy_common.idempotency import IdempotencyKey, fingerprint, remember, replayed
 from cappy_common.models import CamelModel, District, Iso, Listing, Owner, Review, Slot, World
 from cappy_common.pagination import Page, clamp_limit
@@ -23,7 +24,7 @@ from cappy_common.timeutil import HOUR_MS, dt_from_iso, ms_from_iso, now_iso
 
 from . import media
 from .repository import CatalogRepository
-from .tables import IDEMPOTENCY
+from .tables import IDEMPOTENCY, RATE_HITS
 
 # Signed-in only (GOAL 13): nothing of the product is served to anonymous
 # callers. Photos are the exception (an <img> cannot send a token; their names
@@ -352,13 +353,50 @@ async def delete_me(request: Request, repo=Depends(get_repo), p: Principal = Dep
             details={"openBookings": opened["open"], "pendingPayouts": payouts, "until": opened.get("until")},
         )
     await repo.forget(p.sub)
+    await _end_sessions(request, repo.s, p.sub)
     await _outbox(request).add(repo.s, PROFILE_DELETED, {"ownerId": p.sub})
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+async def _end_sessions(request: Request, session, sub: str) -> None:  # noqa: ANN001
+    """Tokens issued so far stop counting here at once; the other services
+    record the same when the event reaches them (P-24)."""
+    await revoke(session, request.app.state.runtime.revoked_table, sub, datetime.now(UTC))
+    request.app.state.revocations.forget(sub)
+
+
+@router.post("/me/sign-out-everywhere", status_code=status.HTTP_204_NO_CONTENT)
+async def sign_out_everywhere(
+    request: Request, repo=Depends(get_repo), p: Principal = Depends(require_principal)
+) -> Response:
+    """A lost phone: every session of theirs ends. Here at once; the other
+    services within seconds (person.signed_out); notifications then revokes
+    every refresh token in Cognito and forgets their devices."""
+    await hit(
+        repo.s,
+        RATE_HITS,
+        f"sign-out:{p.sub}",
+        limit=5,
+        window=timedelta(hours=1),
+        message="you have signed out everywhere several times this hour; try again later",
+    )
+    await _end_sessions(request, repo.s, p.sub)
+    await _outbox(request).add(repo.s, PERSON_SIGNED_OUT, {"personId": p.sub})
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
 @router.get("/me/export")
 async def export_me(request: Request, repo=Depends(get_repo), p: Principal = Depends(require_principal)) -> Response:
-    """A copy of everything held about me, as one JSON file."""
+    """A copy of everything held about me, as one JSON file. A few a day: each
+    asks four services for everything they hold (P-12)."""
+    await hit(
+        repo.s,
+        RATE_HITS,
+        f"export:{p.sub}",
+        limit=5,
+        window=timedelta(days=1),
+        message="you have downloaded your data several times today; try again tomorrow",
+    )
     data = await repo.export(p.sub)
     data.update(await request.app.state.bookings.all_for(p.sub))
     data["payments"] = await request.app.state.payments.export_for(p.sub)
@@ -599,9 +637,16 @@ async def remove(
 
 @router.post("/uploads", response_model=Uploaded, status_code=status.HTTP_201_CREATED)
 async def upload(
-    file: UploadFile, request: Request, repo=Depends(get_repo), p: Principal = Depends(require_principal)
+    file: UploadFile,
+    request: Request,
+    purpose: str = Query(default="listing", pattern="^(listing|evidence)$"),
+    repo=Depends(get_repo),
+    p: Principal = Depends(require_principal),
 ) -> Uploaded:
-    """One photograph in, its URL out, to go in a listing's ``photos``."""
+    """One photograph in, its URL out, to go in a listing's ``photos``. With
+    ``purpose=evidence`` (hand-over photos) it is stored privately and the
+    answer's ``url`` is a reference (``evidence:<name>``) for the booking's
+    evidence, never a public link (P-27)."""
     settings = request.app.state.settings
     if await repo.uploads_since(p.sub, datetime.now(UTC) - timedelta(days=1)) >= settings.media_daily_quota:
         raise RateLimited("that is a lot of photos for one day; try again tomorrow")
@@ -616,10 +661,11 @@ async def upload(
             max_edge=settings.media_max_edge,
             max_pixels=settings.media_max_pixels,
         )
-    await request.app.state.media.put(processed.name, processed.data)
+    private = purpose == "evidence"
+    await (request.app.state.evidence if private else request.app.state.media).put(processed.name, processed.data)
     await repo.record_media(processed.name, p.sub, len(processed.data), processed.width, processed.height)
     return Uploaded(
-        url=media.url_for(settings, processed.name),
+        url=media.evidence_ref(processed.name) if private else media.url_for(settings, processed.name),
         width=processed.width,
         height=processed.height,
         bytes=len(processed.data),
@@ -694,15 +740,23 @@ class EvidenceIn(CamelModel):
 @internal.post("/media/evidence", status_code=status.HTTP_204_NO_CONTENT)
 async def keep_evidence(body: EvidenceIn, request: Request, repo=Depends(get_repo)) -> Response:
     """Booking keeps these as check-in/out evidence: they must be the person's
-    own uploads, and they are never swept as unused."""
-    names = [media.name_from_url(request.app.state.settings, u) for u in body.urls]
+    own private uploads (``POST /uploads?purpose=evidence``), and they are
+    never swept as unused."""
+    names = [media.name_from_ref(u) for u in body.urls]
     if any(n is None for n in names):
-        raise Invalid("photos must be uploaded to Cappy first (POST /uploads)")
+        raise Invalid("hand-over photos must be uploaded as evidence first (POST /uploads?purpose=evidence)")
     owned = await repo.media_owned_by({n for n in names if n}, body.owner_id)
     if len(owned) != len(set(names)):
         raise Invalid("those photos were not uploaded by you")
     await repo.mark_used(owned, body.owner_id)
     return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+@internal.get("/evidence/{name}", include_in_schema=False)
+async def evidence_photo(name: str, request: Request) -> Response:
+    """For booking, which decides who may see it (P-27)."""
+    data = await request.app.state.evidence.get(name)
+    return Response(data, media_type="image/webp", headers={"Cache-Control": "private, no-store"})
 
 
 class Handover(CamelModel):

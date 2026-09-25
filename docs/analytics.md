@@ -5,9 +5,23 @@ to each other) also flows SNS → Kinesis Firehose → S3, partitioned by day,
 and is queryable in Athena as `cappy_events`
 (`infra/platform/analytics.tf`).
 
-- Events carry ids, never names or emails, so no client SDK and no
-  consent banner are needed.
+- What reaches the lake is filtered on the way in: a Firehose transform
+  (`infra/platform/analytics/scrub.py`) keeps the envelope and an
+  allowlist of `data` fields: ids (`…Id`), statuses, amounts, currency,
+  times, categories, districts. Some events between services do carry
+  personal data (the owner's name and business details for invoices, an
+  anonymous reporter's email for the receipt, moderation statements,
+  listing titles); none of it is stored here. A new event field stays
+  out until it is added to the allowlist on purpose (P-6). No client SDK
+  and no consent banner are needed.
 - They are kept for two years and move to cold storage after 90 days.
+- **Deletion.** Only pseudonymous ids are left, so a deleted account
+  needs nothing removed here: nothing in the lake says who an id was
+  once catalog, booking and payments have forgotten it. If a field with
+  personal data is ever allowlisted by mistake, the fix is to remove it
+  from the allowlist and rewrite the affected `events/dt=…/` partitions
+  (Athena `UNLOAD` of the scrubbed rows to the same prefix), then delete
+  the originals.
 
 `data` is the event's JSON. Examples:
 

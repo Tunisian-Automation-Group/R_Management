@@ -63,11 +63,11 @@
 
 A `disputed` booking has been paid (captured) but not paid out, and it will
 not complete by itself. Read the buyer's reason (`declineReason`) and hear
-both sides. Then settle it from inside the network (for example with ECS Exec
-into any booking task):
+both sides. Then settle it from inside the network, with ECS Exec into any
+catalog task (booking accepts catalog's internal token, not its own; P-10):
 
 ```sh
-curl -s -X POST http://localhost:8000/internal/bookings/<id>/resolve \
+curl -s -X POST http://booking:8000/internal/bookings/<id>/resolve \
   -H "X-Internal-Token: $INTERNAL_TOKEN" -H 'content-type: application/json' \
   -d '{"outcome":"pay_owner","by":"<your name>"}'     # or "refund_buyer"
 ```
@@ -81,8 +81,13 @@ Both are recorded in the booking's audit trail as `support:<name>`.
 
 - **A shell in a running task**:
   `aws ecs execute-command --cluster cappy-<env> --task <id> --container <service> --interactive --command sh`.
-- **Rotate the internal token**: `terraform taint 'module.platform.random_password.internal_token'`,
-  then deploy. All services pick up the new value together.
+- **Internal tokens** (P-10): each service has its own, `<service>:<random>`,
+  in `cappy-<env>/internal-token/<service>`, and accepts only the callers in
+  `local.internal_callers` (`infra/platform/data.tf`) by hash
+  (`INTERNAL_CALLERS`). A call from a service not listed is a 403: add the
+  edge there when one service starts calling another. **Rotate one**: `terraform taint
+  'module.platform.random_password.internal_token["<service>"]'`, then deploy:
+  the service and the hashes its callees hold change in the same rollout.
 - **Rotate a service's database password**: taint
   `module.platform.random_password.db_service["<service>"]`, then deploy. The
   migrate task sets the new password before the services roll.
@@ -99,6 +104,14 @@ Both are recorded in the booking's audit trail as `support:<name>`.
 
 Staff are members of the Cognito group `admin`:
 `aws cognito-idp admin-add-user-to-group --user-pool-id … --username … --group-name admin`.
+Wherever it is deployed a staff account also needs an authenticator app (TOTP
+MFA) switched on, or every `/api/admin/…` call answers 403 `mfa_required`
+(P-3): the new moderator signs in, sets up the authenticator from their
+profile, and signs in again. Services check it with Cognito `AdminGetUser`,
+cached five minutes, so turning MFA off takes up to five minutes to bite.
+Locally `ADMIN_MFA_REQUIRED` is off (cognito-local has no MFA), so the demo
+staff account works with its password alone; staging and prod refuse to
+start with it off.
 The console API is under `/api/admin/…`:
 
 | Call | What it does |

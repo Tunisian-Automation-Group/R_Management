@@ -21,6 +21,7 @@ def build_app(
     settings: Settings,
     *,
     media_store: MediaStore | None = None,
+    evidence_store: MediaStore | None = None,
     bookings: Bookings | None = None,
     payments: Payments | None = None,
     notifications: Notifications | None = None,
@@ -53,6 +54,7 @@ def build_app(
     )
     app.state.verifier = verifier
     app.state.media = media_store or make_store(settings)
+    app.state.evidence = evidence_store or make_store(settings, private=True)
     app.state.bookings = bookings or HttpBookings(settings.booking_url, settings.internal_token.get_secret_value())
     app.state.payments = payments or HttpPayments(settings.payments_url, settings.internal_token.get_secret_value())
     app.state.notifications = notifications or HttpNotifications(

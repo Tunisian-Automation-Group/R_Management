@@ -53,6 +53,12 @@ class CommonSettings(BaseSettings):
     # them, security groups allow only service-to-service traffic); this is the
     # second lock, so one misconfigured rule is not an open door.
     internal_token: SecretStr = SecretStr("")
+    # Per caller (P-10): this service's own token is "<service>:<random>", and
+    # it accepts only the callers listed here, as "<caller>=<sha256 of their
+    # token>,...". A service never holds another's token, so one leaked token
+    # opens only the routes its owner could already call. Empty (local, tests):
+    # one shared token, as above.
+    internal_callers: str = ""
 
     # --- identity (Cognito, or cognito-local in development) ----------------
     # The ``iss`` claim we accept, e.g.
@@ -67,6 +73,14 @@ class CommonSettings(BaseSettings):
     auth_jwks_fallback: str = ""
     # App client ids whose access tokens we accept (comma-separated).
     auth_client_ids: str = ""
+    # The user pool itself, for services that ask Cognito about a person
+    # (staff MFA below; notifications for emails). cognito-local locally.
+    user_pool_id: str = ""
+    cognito_endpoint_url: str = ""
+    # Staff powers need TOTP MFA on the staff account (P-3). Unset: required
+    # when deployed, not locally (cognito-local has no MFA). Deployed, false is
+    # refused below.
+    admin_mfa_required: bool | None = None
 
     # --- events ----------------------------------------------------------------
     # ``memory://`` in tests and single-process runs; ``sns://<topic-arn>``
@@ -89,6 +103,12 @@ class CommonSettings(BaseSettings):
     # it on their own route.
     max_body_bytes: int = 256_000
 
+    # --- feature flags (cappy_common/flags.py, S-26) --------------------------
+    # "name:percent,...". One setting for every service: the gateway hands it
+    # to the apps in /api/app-config, and a service that enforces a flag reads
+    # the same value, so what the app shows and what the server does agree.
+    feature_flags: str = ""
+
     # --- observability ---------------------------------------------------------
     otel_enabled: bool = False
     otel_endpoint: str = "http://localhost:4318"
@@ -96,6 +116,15 @@ class CommonSettings(BaseSettings):
     @property
     def deployed(self) -> bool:
         return self.app_env in ("staging", "prod")
+
+    @property
+    def internal_caller_hashes(self) -> dict[str, str]:
+        pairs = (p.split("=", 1) for p in self.internal_callers.split(",") if "=" in p)
+        return {k.strip(): v.strip().lower() for k, v in pairs}
+
+    @property
+    def staff_mfa_required(self) -> bool:
+        return self.deployed if self.admin_mfa_required is None else self.admin_mfa_required
 
     @property
     def cors_origin_list(self) -> list[str]:
@@ -115,8 +144,14 @@ class CommonSettings(BaseSettings):
         """Everything that must not reach a deployed environment. Subclasses add
         their own and call ``super()``."""
         problems: list[str] = []
-        if self.uses_internal_token and len(self.internal_token.get_secret_value()) < 32:
-            problems.append("INTERNAL_TOKEN must be set to at least 32 random characters")
+        if self.uses_internal_token:
+            token = self.internal_token.get_secret_value()
+            if len(token) < 32:
+                problems.append("INTERNAL_TOKEN must be set to at least 32 random characters")
+            if not token.startswith(f"{self.service_name}:"):
+                problems.append("INTERNAL_TOKEN must be this service's own token (<service>:<random>)")
+            if not self.internal_caller_hashes:
+                problems.append("INTERNAL_CALLERS must list which services may call this one")
         if self.event_bus_url.startswith("memory://"):
             problems.append("EVENT_BUS_URL must be a real bus (sns://...), not memory://")
         if self.aws_endpoint_url:
@@ -124,6 +159,8 @@ class CommonSettings(BaseSettings):
         if any(o == "*" or o.startswith("http://") for o in self.cors_origin_list):
             problems.append("CORS_ORIGINS must list explicit https origins")
         if self.verifies_tokens:
+            if not self.staff_mfa_required:
+                problems.append("ADMIN_MFA_REQUIRED cannot be false: staff powers need MFA")
             if not self.auth_issuer.startswith("https://"):
                 problems.append("AUTH_ISSUER must be the https Cognito issuer")
             if not self.auth_client_id_list:

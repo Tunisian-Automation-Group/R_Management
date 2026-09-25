@@ -5,9 +5,9 @@ locals {
   db_services = ["catalog", "booking", "payments", "notifications"]
   consumers = {
     catalog       = ["booking.rated", "payment.payouts_ready", "booking.renter_rated", "booking.owner_reliability", "moderation.person_flagged"]
-    booking       = ["payment.authorised", "payment.failed", "listing.changed", "moderation.owner_suspended", "payment.identity_verified", "profile.deleted", "moderation.owner_reinstated"]
-    payments      = ["booking.status_changed", "profile.deleted"]
-    notifications = ["booking.status_changed", "payment.payout_sent", "profile.deleted", "booking.message", "moderation.report_received", "moderation.decision"]
+    booking       = ["payment.authorised", "payment.failed", "listing.changed", "moderation.owner_suspended", "payment.identity_verified", "profile.deleted", "person.signed_out", "moderation.owner_reinstated"]
+    payments      = ["booking.status_changed", "profile.deleted", "person.signed_out"]
+    notifications = ["booking.status_changed", "payment.payout_sent", "profile.deleted", "person.signed_out", "booking.message", "moderation.report_received", "moderation.decision"]
   }
 }
 
@@ -135,18 +135,33 @@ resource "aws_secretsmanager_secret_version" "db_admin_url" {
   secret_string = "postgresql+asyncpg://cappy_admin:${random_password.db_admin.result}@${aws_rds_cluster.main.endpoint}:5432/cappy?ssl=require"
 }
 
+# Who may call whom on /internal/* (P-10): the call graph, nothing more. Each
+# service holds only its own token; the services it calls hold its hash.
+locals {
+  internal_callers = {
+    catalog       = ["matching", "booking"]
+    matching      = ["booking"]
+    booking       = ["matching", "catalog"]
+    payments      = ["booking", "catalog"]
+    notifications = ["catalog"]
+  }
+}
+
 resource "random_password" "internal_token" {
-  length  = 48
-  special = false
+  for_each = local.internal_callers
+  length   = 48
+  special  = false
 }
 
 resource "aws_secretsmanager_secret" "internal_token" {
-  name = "${local.name}/internal-token"
+  for_each = local.internal_callers
+  name     = "${local.name}/internal-token/${each.key}"
 }
 
 resource "aws_secretsmanager_secret_version" "internal_token" {
-  secret_id     = aws_secretsmanager_secret.internal_token.id
-  secret_string = random_password.internal_token.result
+  for_each      = local.internal_callers
+  secret_id     = aws_secretsmanager_secret.internal_token[each.key].id
+  secret_string = "${each.key}:${random_password.internal_token[each.key].result}"
 }
 
 # Values are put in by an operator (docs/runbook.md), never by Terraform, so

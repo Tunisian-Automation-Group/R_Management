@@ -13,6 +13,7 @@ Service-to-service calls to ``/internal/*`` carry ``X-Internal-Token`` instead
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import hmac
 import json
 import logging
@@ -24,7 +25,7 @@ import jwt
 from fastapi import Request
 from jwt.algorithms import RSAAlgorithm
 
-from .errors import Forbidden, Unauthorized
+from .errors import Forbidden, Unauthorized, Unavailable
 
 log = logging.getLogger(__name__)
 
@@ -164,6 +165,13 @@ async def optional_principal(request: Request) -> Principal | None:
     if verifier is None:
         raise Unauthorized("this service does not accept sign-ins")
     principal = await verifier.verify(token)
+    # Signed out everywhere, or the account deleted, after this token was
+    # issued: it no longer counts, though it has not expired yet (P-24).
+    revocations = getattr(request.app.state, "revocations", None)
+    if revocations is not None:
+        not_before = await revocations.not_before(principal.sub)
+        if not_before is not None and int(principal.claims.get("iat", 0)) < int(not_before):
+            raise Unauthorized("your session has ended; sign in again", code="token_expired")
     request.state.principal = principal
     return principal
 
@@ -175,22 +183,80 @@ async def require_principal(request: Request) -> Principal:
     return principal
 
 
+class StaffMfa:
+    """Whether a staff account has TOTP MFA switched on (P-3).
+
+    Checking the account is checking the session: Cognito challenges every
+    user who has MFA enabled for the code at each sign-in, so no token of such
+    a user was issued without it. Cached for a few minutes per person, so a
+    moderator's queue does not cost a Cognito call per request."""
+
+    ttl_seconds = 300.0
+
+    def __init__(self, settings) -> None:  # noqa: ANN001
+        self._settings = settings
+        self._client = None
+        self._cache: dict[str, tuple[float, bool]] = {}
+
+    def _lookup(self, username: str) -> bool:
+        if self._client is None:
+            from .events import aws_client
+
+            self._client = aws_client("cognito-idp", self._settings, self._settings.cognito_endpoint_url)
+        user = self._client.admin_get_user(UserPoolId=self._settings.user_pool_id, Username=username)
+        return "SOFTWARE_TOKEN_MFA" in (user.get("UserMFASettingList") or [])
+
+    async def enabled(self, username: str) -> bool:
+        hit = self._cache.get(username)
+        if hit and hit[0] > time.monotonic():
+            return hit[1]
+        try:
+            on = await asyncio.to_thread(self._lookup, username)
+        except Exception as e:  # noqa: BLE001 - fail closed: no staff powers while Cognito cannot say
+            log.warning("could not check MFA for a staff account: %s", e)
+            raise Unavailable("staff checks are unavailable right now; try again shortly") from e
+        self._cache[username] = (time.monotonic() + self.ttl_seconds, on)
+        return on
+
+
 async def require_admin(request: Request) -> Principal:
-    """Moderators and support: members of the Cognito group "admin"."""
+    """Moderators and support: members of the Cognito group "admin", signed in
+    with MFA wherever staff MFA is required (always when deployed)."""
     p = await require_principal(request)
     groups = p.claims.get("cognito:groups") or []
     if "admin" not in groups:
         raise Forbidden("this needs a Cappy staff account")
+    settings = request.app.state.settings
+    if settings.staff_mfa_required:
+        mfa: StaffMfa | None = getattr(request.app.state, "staff_mfa", None)
+        if mfa is None:
+            mfa = request.app.state.staff_mfa = StaffMfa(settings)
+        # With email sign-in (our pools) the Cognito username is the sub.
+        if not await mfa.enabled(p.username or p.sub):
+            raise Forbidden(
+                "staff accounts need an authenticator app: turn on MFA, then sign in again", code="mfa_required"
+            )
     return p
 
 
 def require_internal(request: Request) -> None:
-    """For ``/internal/*`` routes: the caller must be one of our services."""
-    expected: str = request.app.state.settings.internal_token.get_secret_value()
+    """For ``/internal/*`` routes: the caller must be one of our services, and
+    one this service lets call it (P-10)."""
+    settings = request.app.state.settings
+    given = request.headers.get("x-internal-token", "")
+    callers: dict[str, str] = settings.internal_caller_hashes
+    if callers:
+        # ponytail: per service, not per route; a route-level table when a
+        # caller should reach only some of a service's internal routes.
+        want = callers.get(given.partition(":")[0])
+        got = hashlib.sha256(given.encode()).hexdigest()
+        if not want or not hmac.compare_digest(got, want):
+            raise Forbidden("internal route")
+        return
+    expected: str = settings.internal_token.get_secret_value()
     if not expected:
         # Only reachable in local/test, where settings allow an empty token.
         return
-    given = request.headers.get("x-internal-token", "")
     if not hmac.compare_digest(given.encode(), expected.encode()):
         raise Forbidden("internal route")
 

@@ -55,7 +55,10 @@ class ServiceClient:
             h.update(extra)
         return h
 
-    async def request(self, method: str, path: str, *, headers: dict | None = None, **kwargs: Any) -> Any:
+    async def request(
+        self, method: str, path: str, *, headers: dict | None = None, raw: bool = False, **kwargs: Any
+    ) -> Any:
+        """The JSON answer, or with ``raw`` the body's bytes (photos)."""
         idempotent = method in ("GET", "HEAD")
         attempt = 0
         while True:
@@ -84,6 +87,8 @@ class ServiceClient:
             except (ValueError, KeyError, TypeError):
                 raise Upstream(f"{path} returned {r.status_code}") from None
             raise ApiError(message, status=r.status_code, code=code)
+        if raw:
+            return r.content
         if r.status_code == 204 or not r.content:
             return None
         return r.json()

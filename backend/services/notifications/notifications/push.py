@@ -19,6 +19,9 @@ class Pusher:
     async def send(self, endpoint: str, title: str, body: str, link: str) -> bool:
         """False when the device is gone (uninstalled, token expired)."""
 
+    async def unregister(self, endpoint: str) -> None:
+        """Delete the endpoint, so nothing more reaches the device through it."""
+
 
 class LogPusher(Pusher):
     """Local development and tests: pushes are logged and kept."""
@@ -36,6 +39,10 @@ class LogPusher(Pusher):
 
 
 class SnsPusher(Pusher):
+    async def unregister(self, endpoint: str) -> None:
+        # Deleting an endpoint that is already gone succeeds (SNS is idempotent here).
+        await asyncio.to_thread(self._c.delete_endpoint, EndpointArn=endpoint)
+
     def __init__(self, settings) -> None:  # noqa: ANN001
         self._c = aws_client("sns", settings)
         self._apps = {"ios": settings.push_ios_app_arn, "android": settings.push_android_app_arn}

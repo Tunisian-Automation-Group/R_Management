@@ -84,9 +84,12 @@ resource "aws_cognito_user_pool_client" "web" {
   write_attributes              = ["email", "locale"]
   prevent_user_existence_errors = "ENABLED"
   enable_token_revocation       = true
-  access_token_validity         = 60
-  id_token_validity             = 60
-  refresh_token_validity        = 30
+  # Short-lived: an access token outlives a sign-out-everywhere or a deleted
+  # account by at most this long where the services' not-before check cannot
+  # see it (P-24). The app refreshes silently.
+  access_token_validity  = 15
+  id_token_validity      = 15
+  refresh_token_validity = 30
   token_validity_units {
     access_token  = "minutes"
     id_token      = "minutes"

@@ -18,6 +18,7 @@ locals {
     AUTH_ISSUER        = local.auth_issuer
     AUTH_CLIENT_IDS    = aws_cognito_user_pool_client.web.id
     AUTH_JWKS_FALLBACK = data.http.jwks.response_body
+    USER_POOL_ID       = aws_cognito_user_pool.main.id
     # Traces go to the ADOT collector next to each task, then X-Ray.
     OTEL_ENABLED      = "true"
     OTEL_ENDPOINT     = "http://localhost:4318"
@@ -26,12 +27,15 @@ locals {
     BOOKING_URL       = "http://booking:8000"
     PAYMENTS_URL      = "http://payments:8000"
     NOTIFICATIONS_URL = "http://notifications:8000"
+    # One flag set for all: app-config shows it, services enforce the same.
+    FEATURE_FLAGS = var.feature_flags
   }
   service_env = {
     # The App Store and Google Play shells call the API cross-origin (ADR 0012).
     gateway = {
-      CORS_ORIGINS  = "capacitor://localhost,https://localhost"
-      FEATURE_FLAGS = var.feature_flags
+      CORS_ORIGINS = "capacitor://localhost,https://localhost"
+      # CloudFront, then the load balancer, append to X-Forwarded-For (P-34).
+      TRUSTED_PROXY_HOPS = "2"
     }
     catalog = {
       MEDIA_BUCKET           = aws_s3_bucket.media.bucket
@@ -54,7 +58,6 @@ locals {
     notifications = {
       MAILER               = "ses"
       MAIL_FROM            = "Cappy <no-reply@${var.domain}>"
-      USER_POOL_ID         = aws_cognito_user_pool.main.id
       PUSH_IOS_APP_ARN     = var.push_app_arns.ios
       PUSH_ANDROID_APP_ARN = var.push_app_arns.android
       WEB_BASE_URL         = "https://${var.domain}"
@@ -65,11 +68,15 @@ locals {
       local.common_env,
       { for k, v in local.service_env[s] : k => v if v != "" },
       contains(keys(local.consumers), s) ? { EVENT_QUEUE_URL = module.messaging.queue_urls[s] } : {},
+      # Hashes only: a service can check its callers, never act as them (P-10).
+      s == "gateway" ? {} : {
+        INTERNAL_CALLERS = join(",", [for c in local.internal_callers[s] : "${c}=${nonsensitive(sha256("${c}:${random_password.internal_token[c].result}"))}"])
+      },
     )
   }
   secrets = {
     for s in local.services : s => merge(
-      s == "gateway" ? {} : { INTERNAL_TOKEN = aws_secretsmanager_secret.internal_token.arn },
+      s == "gateway" ? {} : { INTERNAL_TOKEN = aws_secretsmanager_secret.internal_token[s].arn },
       contains(local.db_services, s) ? { DATABASE_URL = aws_secretsmanager_secret.db_url[s].arn } : {},
       contains(local.read_services, s) ? { DATABASE_READ_URL = aws_secretsmanager_secret.db_read_url[s].arn } : {},
       s == "payments" ? {
@@ -199,18 +206,21 @@ resource "aws_iam_role_policy" "read_secrets" {
 # What each service's code may do in AWS.
 locals {
   publishes = ["catalog", "booking", "payments"]
+  # Services with staff routes ask Cognito whether the moderator has MFA (P-3).
+  staff_mfa_check = { Effect = "Allow", Action = "cognito-idp:AdminGetUser", Resource = aws_cognito_user_pool.main.arn }
   task_statements = {
     gateway  = []
     matching = []
     catalog = [
-      { Effect = "Allow", Action = ["s3:PutObject", "s3:GetObject", "s3:DeleteObject"], Resource = "${aws_s3_bucket.media.arn}/media/*" },
+      { Effect = "Allow", Action = ["s3:PutObject", "s3:GetObject", "s3:DeleteObject"], Resource = ["${aws_s3_bucket.media.arn}/media/*", "${aws_s3_bucket.media.arn}/private/*"] },
       { Effect = "Allow", Action = "cloudfront:CreateInvalidation", Resource = aws_cloudfront_distribution.main.arn },
+      local.staff_mfa_check,
     ]
-    booking  = []
+    booking  = [local.staff_mfa_check]
     payments = []
     notifications = [
       { Effect = "Allow", Action = ["ses:SendEmail", "ses:SendRawEmail"], Resource = "*", Condition = { StringEquals = { "ses:FromAddress" = "no-reply@${var.domain}" } } },
-      { Effect = "Allow", Action = ["cognito-idp:AdminGetUser", "cognito-idp:ListUsers", "cognito-idp:AdminUserGlobalSignOut"], Resource = aws_cognito_user_pool.main.arn },
+      { Effect = "Allow", Action = ["cognito-idp:AdminGetUser", "cognito-idp:ListUsers", "cognito-idp:AdminUserGlobalSignOut", "cognito-idp:AdminDeleteUser"], Resource = aws_cognito_user_pool.main.arn },
       # Push only: its own devices' endpoints, never the event topic (P-9).
       { Effect = "Allow", Action = ["sns:CreatePlatformEndpoint"], Resource = local.push_apps },
       { Effect = "Allow", Action = ["sns:Publish", "sns:DeleteEndpoint", "sns:GetEndpointAttributes", "sns:SetEndpointAttributes"], Resource = "arn:aws:sns:${var.region}:${data.aws_caller_identity.me.account_id}:endpoint/*" },

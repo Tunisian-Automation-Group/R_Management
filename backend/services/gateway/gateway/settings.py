@@ -33,10 +33,13 @@ class Settings(CommonSettings):
     # additively within a supported range.
     app_min_version: str = "1.0.0"
     app_latest_version: str = "1.0.0"
-    # Feature flags, "name:percent,..." (cappy_common/flags.py, S-26).
-    feature_flags: str = ""
     # Crash and error reports from the apps (S-7), per client address.
     client_errors_per_minute: int = 10
+    # Proxies in front of the gateway that append to X-Forwarded-For
+    # (CloudFront, then the load balancer: 2 in AWS; none locally). The client
+    # is the hop they saw, counted from the right: what a sender writes into
+    # the header itself is to the left of it and ignored (P-34).
+    trusted_proxy_hops: int = 0
     # ponytail: no app-level rate limiting. WAF rate-based rules limit per IP
     # at the edge (ADR 0008); per-user limits need shared state (Redis) and
     # are worth adding once abuse shows up in the metrics.

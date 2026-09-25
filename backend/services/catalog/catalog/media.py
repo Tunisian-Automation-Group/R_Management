@@ -114,18 +114,19 @@ class DirectoryStore(MediaStore):
 
 
 class S3Store(MediaStore):
-    def __init__(self, bucket: str, settings: Any) -> None:
+    def __init__(self, bucket: str, settings: Any, prefix: str = "media") -> None:
         import boto3
 
         kwargs: dict[str, Any] = {"region_name": settings.aws_region}
         if settings.aws_endpoint_url:
             kwargs["endpoint_url"] = settings.aws_endpoint_url
-        self.bucket = bucket
+        self.bucket, self.prefix = bucket, prefix
         self._s3 = boto3.client("s3", **kwargs)
 
     def _key(self, name: str) -> str:
-        # The same path CloudFront serves it at: /media/<name> -> s3://bucket/media/<name>.
-        return f"media/{name}"
+        # media/: the path CloudFront serves it at (/media/<name>). private/:
+        # hand-over evidence, which CloudFront cannot read (P-27).
+        return f"{self.prefix}/{name}"
 
     async def put(self, name: str, data: bytes) -> None:
         await asyncio.to_thread(
@@ -134,7 +135,7 @@ class S3Store(MediaStore):
             Key=self._key(name),
             Body=data,
             ContentType="image/webp",
-            CacheControl="public, max-age=31536000, immutable",
+            CacheControl="public, max-age=31536000, immutable" if self.prefix == "media" else "private, no-store",
         )
 
     async def get(self, name: str) -> bytes:
@@ -151,10 +152,26 @@ class S3Store(MediaStore):
             await asyncio.to_thread(self._s3.delete_object, Bucket=self.bucket, Key=self._key(name))
 
 
-def make_store(settings: Any) -> MediaStore:
+def make_store(settings: Any, *, private: bool = False) -> MediaStore:
+    """Public listing photos, or (``private``) hand-over evidence, which only
+    the two sides of a booking and staff may see (P-27)."""
     if settings.media_bucket:
-        return S3Store(settings.media_bucket, settings)
-    return DirectoryStore(settings.media_dir)
+        return S3Store(settings.media_bucket, settings, prefix="private" if private else "media")
+    return DirectoryStore(str(Path(settings.media_dir) / "private") if private else settings.media_dir)
+
+
+EVIDENCE_REF = "evidence:"
+
+
+def evidence_ref(name: str) -> str:
+    """What an evidence upload returns instead of a URL: a reference only
+    booking can turn into a (signed, short-lived) link."""
+    return EVIDENCE_REF + name
+
+
+def name_from_ref(ref: str) -> str | None:
+    name = ref.removeprefix(EVIDENCE_REF) if ref.startswith(EVIDENCE_REF) else None
+    return name if name and NAME.match(name) else None
 
 
 def url_for(settings: Any, name: str) -> str:

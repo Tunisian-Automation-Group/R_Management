@@ -76,6 +76,7 @@ def app(issuer, broker, tmp_path, bookings):
     return build_app(
         settings,
         media_store=DirectoryStore(str(tmp_path / "media")),
+        evidence_store=DirectoryStore(str(tmp_path / "private")),
         bookings=bookings,
         payments=Payments(),
         notifications=Notifications(),
@@ -888,6 +889,25 @@ def test_reports_cannot_be_used_to_flood_an_inbox(client, issuer):
     assert mine.status_code == 201
 
 
+def test_anonymous_reports_cannot_crowd_out_members(client, issuer):
+    from catalog.moderation import ANONYMOUS_PER_TARGET
+
+    body = {
+        "goodFaith": True,
+        "targetType": "listing",
+        "targetId": "l9",
+        "reason": "spam",
+        "details": "Looks like spam to me",
+    }
+    codes = [
+        client.post("/reports", json={**body, "email": f"a{i}@example.com"}, headers=ANON).status_code
+        for i in range(ANONYMOUS_PER_TARGET + 1)
+    ]
+    assert codes[-1] == 429 and set(codes[:-1]) == {201}
+    # A member's report of the same thing still gets through (P-7).
+    assert client.post("/reports", json=body, headers=issuer.headers("user-a")).status_code == 201
+
+
 def test_taking_down_declines_requests_and_owners_manage_held_listings(client, app, issuer, broker):
     why = {"statement": "Counterfeit machinery offered under a known brand (terms 4)."}
     assert client.post("/admin/listings/l9/take-down", json=why, headers=_staff(issuer)).status_code == 204
@@ -1103,3 +1123,61 @@ def test_dsa_numbers_for_a_month(client, issuer):
     assert stats["notices"]["byDecision"] == {"dismiss": 1, "open": 1}
     assert stats["medianHoursToDecision"] is not None
     assert client.get("/admin/dsa-stats?month=2026-13", headers=_staff(issuer)).status_code == 422
+
+
+def test_signing_out_everywhere_ends_every_session_now(client, app, issuer, broker):
+    import time
+
+    from cappy_common.events import PERSON_SIGNED_OUT
+
+    _profile(client, issuer)
+    old = issuer.headers("user-a", iat=int(time.time()) - 60)
+    assert client.get("/me", headers=old).status_code == 200
+    assert client.post("/me/sign-out-everywhere", headers=old).status_code == 204
+    # The token that asked, and every other issued before, stops counting here at once (P-24).
+    r = client.get("/me", headers=old)
+    assert r.status_code == 401 and r.json()["error"]["code"] == "token_expired"
+    fresh = issuer.headers("user-a", iat=int(time.time()) + 1)
+    assert client.get("/me", headers=fresh).status_code == 200
+    flush(app)
+    assert [e.data for e in broker.of_type(PERSON_SIGNED_OUT)] == [{"personId": "user-a"}]
+    # A handful an hour, then a 429 (P-12).
+    for _ in range(4):
+        assert (
+            client.post(
+                "/me/sign-out-everywhere", headers=issuer.headers("user-a", iat=int(time.time()) + 2)
+            ).status_code
+            == 204
+        )
+    assert (
+        client.post("/me/sign-out-everywhere", headers=issuer.headers("user-a", iat=int(time.time()) + 3)).status_code
+        == 429
+    )
+
+
+def test_exports_are_limited_per_person(client, issuer):
+    _profile(client, issuer, sub="user-x")
+    h = issuer.headers("user-x")
+    for _ in range(5):
+        assert client.get("/me/export", headers=h).status_code == 200
+    assert client.get("/me/export", headers=h).status_code == 429
+    assert client.get("/me/export", headers=issuer.headers("user-y")).status_code == 200, "per person"
+
+
+def test_hand_over_photos_are_never_public(client, issuer):
+    h = issuer.headers("user-a")
+    up = client.post("/uploads?purpose=evidence", files={"file": ("p.png", _png(40), "image/png")}, headers=h)
+    assert up.status_code == 201
+    ref = up.json()["url"]
+    assert ref.startswith("evidence:"), "a reference, not a link"
+    name = ref.removeprefix("evidence:")
+    assert client.get(f"/media/{name}").status_code == 404, "not in the public store (P-27)"
+    # Booking may read it, and keep it as this person's evidence; nobody else's.
+    assert client.get(f"/internal/evidence/{name}", headers=INTERNAL).content[:4] == b"RIFF"
+    ok = {"ownerId": "user-a", "urls": [ref]}
+    assert client.post("/internal/media/evidence", json=ok, headers=INTERNAL).status_code == 204
+    other = {"ownerId": "user-b", "urls": [ref]}
+    assert client.post("/internal/media/evidence", json=other, headers=INTERNAL).status_code == 422
+    public = client.post("/uploads", files={"file": ("p.png", _png(41), "image/png")}, headers=h).json()["url"]
+    body = {"ownerId": "user-a", "urls": [public]}
+    assert client.post("/internal/media/evidence", json=body, headers=INTERNAL).status_code == 422

@@ -11,7 +11,7 @@ from fastapi.testclient import TestClient
 from sqlalchemy import Column, String, Table, insert, select
 
 from cappy_common.app import ApiRouter, create_app
-from cappy_common.auth import Principal, TokenVerifier, require_internal, require_principal
+from cappy_common.auth import Principal, TokenVerifier, require_admin, require_internal, require_principal
 from cappy_common.db import Database, new_metadata
 from cappy_common.errors import Unauthorized
 from cappy_common.events import (
@@ -32,11 +32,21 @@ from cappy_common.testing import TestIssuer
 
 SAFE_PROD = dict(
     app_env="prod",
-    internal_token="x" * 40,
+    internal_token="cappy:" + "x" * 40,
+    internal_callers="booking=" + "0" * 64,
     event_bus_url="sns://arn:aws:sns:eu-central-1:123:cappy-events",
     auth_issuer="https://cognito-idp.eu-central-1.amazonaws.com/eu-central-1_abc",
     auth_client_ids="client-1",
 )
+
+
+@pytest.mark.parametrize(
+    "override, reason",
+    [({"internal_token": "x" * 46}, "own token"), ({"internal_callers": ""}, "INTERNAL_CALLERS")],
+)
+def test_prod_needs_per_caller_internal_tokens(override, reason):
+    with pytest.raises(UnsafeSettings, match=reason):
+        CommonSettings(**{**SAFE_PROD, **override})
 
 
 def test_prod_boots_with_safe_settings():
@@ -152,6 +162,9 @@ def test_cursor_round_trip_and_tamper():
     assert decode_cursor(None) is None
     with pytest.raises(Exception, match="cursor"):
         decode_cursor("!!!not-base64")
+    for tampered in ({"x": 1}, {"at": "nope", "id": "bk_1"}, {"at": "2026-09-25T10:00:00Z", "id": 7}, [1]):
+        with pytest.raises(Exception, match="cursor"):
+            decode_cursor(encode_cursor(tampered))
     assert clamp_limit(None) == 20 and clamp_limit(10_000) == 100 and clamp_limit(0) == 1
 
 
@@ -176,6 +189,10 @@ def _app(issuer: TestIssuer, **settings):
     async def upload(body: dict) -> dict:
         return {"n": len(str(body))}
 
+    @router.get("/admin/thing", dependencies=[Depends(require_admin)])
+    async def admin() -> dict:
+        return {"ok": True}
+
     @router.get("/internal/thing", dependencies=[Depends(require_internal)])
     async def internal() -> dict:
         return {"ok": True}
@@ -196,11 +213,53 @@ def test_identity_comes_only_from_a_verified_token(issuer):
         assert c.get("/me", headers=issuer.headers("user-9")).json() == {"sub": "user-9"}
 
 
+class _Mfa:
+    def __init__(self, on: set[str]) -> None:
+        self.on, self.asked = on, 0
+
+    async def enabled(self, username: str) -> bool:
+        self.asked += 1
+        return username in self.on
+
+
+def test_staff_powers_need_mfa_where_required(issuer):
+    staff = {"cognito:groups": ["admin"]}
+    app = _app(issuer, admin_mfa_required=True)
+    app.state.staff_mfa = _Mfa(on={"mod-with-mfa"})
+    with TestClient(app) as c:
+        assert c.get("/admin/thing", headers=issuer.headers("user-1")).status_code == 403  # not staff
+        r = c.get("/admin/thing", headers=issuer.headers("mod-no-mfa", **staff))
+        assert r.status_code == 403 and r.json()["error"]["code"] == "mfa_required"
+        assert c.get("/admin/thing", headers=issuer.headers("mod-with-mfa", **staff)).json() == {"ok": True}
+    # Locally (cognito-local has no MFA) staff need only the group.
+    with TestClient(_app(issuer)) as c:
+        assert c.get("/admin/thing", headers=issuer.headers("mod-no-mfa", **staff)).status_code == 200
+
+
+def test_deployed_services_refuse_to_run_staff_without_mfa():
+    with pytest.raises(UnsafeSettings, match="ADMIN_MFA_REQUIRED"):
+        CommonSettings(**{**SAFE_PROD, "admin_mfa_required": False})
+    assert CommonSettings(**SAFE_PROD).staff_mfa_required
+
+
 def test_internal_routes_need_the_service_token(issuer):
     with TestClient(_app(issuer)) as c:
         assert c.get("/internal/thing").status_code == 403
         assert c.get("/internal/thing", headers={"X-Internal-Token": "wrong"}).status_code == 403
         assert c.get("/internal/thing", headers={"X-Internal-Token": "t" * 40}).json() == {"ok": True}
+
+
+def test_internal_routes_take_only_listed_callers(issuer):
+    import hashlib
+
+    booking, matching = "booking:" + "b" * 40, "matching:" + "m" * 40
+    listed = f"booking={hashlib.sha256(booking.encode()).hexdigest()}"
+    with TestClient(_app(issuer, internal_callers=listed)) as c:
+        assert c.get("/internal/thing", headers={"X-Internal-Token": booking}).json() == {"ok": True}
+        # A real token of a service that may not call this one, the old shared
+        # token, and a listed name with the wrong secret: all refused.
+        for token in (matching, "t" * 40, "booking:" + "x" * 40, ""):
+            assert c.get("/internal/thing", headers={"X-Internal-Token": token}).status_code == 403
 
 
 def test_body_limits(issuer):

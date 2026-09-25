@@ -28,6 +28,9 @@ class DeviceRow(Base):
     # The SNS platform endpoint; None where push is not configured.
     endpoint: Mapped[str | None] = mapped_column(String(300), nullable=True)
     created_at: Mapped[datetime] = mapped_column(UtcDateTime)
+    # sha256 of the app install's own random id: moving the token to someone
+    # else needs proof of being that install (P-33). None: registered before.
+    install_hash: Mapped[str | None] = mapped_column(String(64), nullable=True)
 
 
 class InboxRow(Base):

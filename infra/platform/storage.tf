@@ -59,7 +59,9 @@ resource "aws_s3_bucket_policy" "cloudfront_reads" {
       Effect    = "Allow"
       Principal = { Service = "cloudfront.amazonaws.com" }
       Action    = "s3:GetObject"
-      Resource  = "${each.value.arn}/*"
+      # Photos: only the public prefix. Hand-over evidence (private/) is never
+      # readable through the CDN, only through booking's signed links (P-27).
+      Resource  = each.key == "media" ? "${each.value.arn}/media/*" : "${each.value.arn}/*"
       Condition = { StringEquals = { "AWS:SourceArn" = aws_cloudfront_distribution.main.arn } }
     }]
   })

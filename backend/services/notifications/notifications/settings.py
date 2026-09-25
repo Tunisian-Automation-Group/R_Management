@@ -11,10 +11,8 @@ class Settings(CommonSettings):
     # "log" writes emails to the log instead of sending them.
     mailer: Literal["log", "ses"] = "log"
     mail_from: str = "Cappy <no-reply@cappy.local>"
-    # Where people are. The pool holds their email; we never copy it.
-    user_pool_id: str = ""
-    # cognito-local in local development. Empty: the AWS endpoint.
-    cognito_endpoint_url: str = ""
+    # Where people are (USER_POOL_ID, COGNITO_ENDPOINT_URL, in CommonSettings):
+    # the pool holds their email; we never copy it.
     web_base_url: str = "http://localhost:5173"
     # SNS platform applications (APNs, FCM). Empty: pushes are logged only.
     push_ios_app_arn: str = ""

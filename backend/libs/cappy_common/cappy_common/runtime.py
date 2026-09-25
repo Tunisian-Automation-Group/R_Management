@@ -33,6 +33,7 @@ from .events import (
     make_publisher,
     prune,
 )
+from .guard import Revocations, with_revocation
 from .observability import setup_tracing
 
 log = logging.getLogger(__name__)
@@ -67,6 +68,11 @@ class Runtime:
                 self.outbox_table, self.processed_table = event_tables(metadata)
             else:
                 self.outbox_table, self.processed_table = existing, metadata.tables["processed_events"]
+            self.revoked_table = metadata.tables["revoked_sessions"]
+            self.revocations: Revocations | None = None
+            self.handlers = with_revocation(
+                self.handlers, self.revoked_table, lambda sub: self.revocations and self.revocations.forget(sub)
+            )
 
     async def _prune(self, _app: FastAPI) -> None:
         """Hourly, on every replica (the deletes are idempotent and batched)."""
@@ -109,6 +115,8 @@ class Runtime:
                 self.relay = OutboxRelay(self.db, self.outbox_table, publisher)
                 app.state.outbox = self.outbox
                 app.state.relay = self.relay
+                # Checked on every signed-in request (cappy_common/auth.py).
+                self.revocations = app.state.revocations = Revocations(self.db, self.revoked_table)
 
                 dispatcher = Dispatcher(self.db, self.processed_table, self.handlers)
                 consumer = make_consumer(s, dispatcher)

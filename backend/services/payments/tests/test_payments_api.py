@@ -13,7 +13,7 @@ from payments.handlers import NotReady
 from payments.main import build_app
 from payments.provider import AccountStatus, FakeProvider, Intent, StripeProvider
 from payments.settings import Settings
-from payments.tables import ConnectAccountRow, PaymentRow
+from payments.tables import ConnectAccountRow, IdentityRow, PaymentRow
 
 from cappy_common.events import (
     BOOKING_STATUS_CHANGED,
@@ -437,10 +437,22 @@ def test_identity_is_verified_once_and_announced(client, app, issuer, broker):
 
     h = issuer.headers("renter-1")
     assert client.get("/payments/identity", headers=h).json() == {"status": "none"}
+    # Nothing starts without the person's consent to the ID check (P-18).
+    for body in (None, {"consent": False}):
+        r = client.post("/payments/identity/session", json=body, headers=h)
+        assert r.status_code == 422 and r.json()["error"]["code"] == "consent_required"
+    yes = {"consent": True}
     assert (
-        client.post("/payments/identity/session", headers=h).json()["status"] == "verified"
+        client.post("/payments/identity/session", json=yes, headers=h).json()["status"] == "verified"
     )  # the fake verifies at once
     assert client.post("/payments/identity/session", headers=h).json() == {"status": "verified"}
+
+    async def consent():
+        async with app.state.db.session() as s:
+            row = await s.get(IdentityRow, "renter-1")
+            return row.consent_at is not None, row.consent_version
+
+    assert call(app, consent) == (True, "identity-2026-09")
     call(app, app.state.relay.flush)
     assert [e.data["personId"] for e in broker.of_type(IDENTITY_VERIFIED)] == ["renter-1"]
 
@@ -455,8 +467,14 @@ def test_stripe_identity_outcome_comes_by_webhook(stripe_app, issuer, broker):
 
     app.state.provider.verification_session = session_for
     h = issuer.headers("renter-2")
-    started = c.post("/payments/identity/session", headers=h).json()
+    started = c.post("/payments/identity/session", json={"consent": True}, headers=h).json()
     assert started == {"status": "pending", "clientSecret": "vs_123_secret"}
+    # An event about some other session carrying the person's id does nothing (P-28).
+    body, headers = _signed(
+        _event("identity.verification_session.verified", {"id": "vs_other", "metadata": {"personId": "renter-2"}})
+    )
+    assert c.post("/payments/webhooks/stripe", content=body, headers=headers).status_code == 200
+    assert c.get("/payments/identity", headers=h).json()["status"] == "pending"
     body, headers = _signed(
         _event("identity.verification_session.verified", {"id": "vs_123", "metadata": {"personId": "renter-2"}})
     )

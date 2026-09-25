@@ -30,6 +30,9 @@ class Directory:
     async def sign_out_everywhere(self, sub: str) -> None:
         """Revoke every refresh token they hold."""
 
+    async def delete_person(self, sub: str) -> None:
+        """Remove the sign-in itself, email and all (P-23). Idempotent."""
+
 
 class Mailer:
     async def send(self, email: Email) -> None: ...
@@ -83,6 +86,16 @@ class CognitoDirectory(Directory):
     async def sign_out_everywhere(self, sub: str) -> None:
         if sub and '"' not in sub:
             await asyncio.to_thread(self._sign_out, sub)
+
+    def _delete(self, sub: str) -> None:
+        try:
+            self._c.admin_delete_user(UserPoolId=self._pool, Username=self._username(sub))
+        except self._c.exceptions.UserNotFoundException:
+            return  # already gone: a redelivered event
+
+    async def delete_person(self, sub: str) -> None:
+        if sub and '"' not in sub:
+            await asyncio.to_thread(self._delete, sub)
 
     async def person_of(self, sub: str) -> tuple[str | None, str | None]:
         if not sub or '"' in sub:

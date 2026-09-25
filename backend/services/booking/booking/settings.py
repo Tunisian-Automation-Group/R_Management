@@ -32,9 +32,18 @@ class Settings(CommonSettings):
     # space on runs already going, nobody drives someone else's van).
     verify_categories: str = ""
     verify_above_cents: int = 30_000
+
     # Moderate and strict cancellation policies charge for late cancellations;
     # off until counsel confirms them against the EU withdrawal right (G-B2).
-    paid_cancellation_policies: bool = False
+    # Switched with the "paidCancellationPolicies" feature flag, the one the
+    # app reads to word the policy (FEATURE_FLAGS="paidCancellationPolicies:100").
+    # A money rule is everyone or no one: a partial rollout counts as off.
+    @property
+    def paid_cancellation_policies(self) -> bool:
+        from cappy_common.flags import enabled, parse
+
+        return enabled(parse(self.feature_flags), "paidCancellationPolicies", None)
+
     # Kill switch (docs/runbook.md): false stops new bookings; everything
     # already booked carries on.
     accepting_bookings: bool = True

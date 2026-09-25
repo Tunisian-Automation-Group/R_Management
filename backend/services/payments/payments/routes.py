@@ -250,20 +250,39 @@ async def _verified(request: Request, session: AsyncSession, row: IdentityRow) -
         await request.app.state.outbox.add(session, IDENTITY_VERIFIED, {"personId": row.person_id})
 
 
+# The wording the app shows next to the consent box. A new wording is a new
+# version, so each stored consent says exactly what was agreed to.
+IDENTITY_CONSENT_VERSION = "identity-2026-09"
+
+
+class IdentityStart(CamelModel):
+    consent: bool = False
+
+
 @router.post("/identity/session", response_model=IdentityOut)
-async def identity_session(request: Request, session: AsyncSession = Tx, p: Principal = Depends(require_principal)):
-    """Starts (or continues) verifying who the caller is. The app hands the
-    client secret to Stripe.js (verifyIdentity); the outcome comes by webhook."""
+async def identity_session(
+    request: Request,
+    body: IdentityStart | None = None,
+    session: AsyncSession = Tx,
+    p: Principal = Depends(require_principal),
+):
+    """Starts (or continues) verifying who the caller is, once they have agreed
+    to the ID and selfie check (P-18). The app hands the client secret to
+    Stripe.js (verifyIdentity); the outcome comes by webhook."""
     row = await session.get(IdentityRow, p.sub, with_for_update=True)
     if row is not None and row.status == "verified":
         return IdentityOut(status="verified")
+    if body is None or not body.consent:
+        raise Invalid("agree to the identity check first (consent: true)", code="consent_required")
     provider = _provider(request)
     session_id, secret = await provider.verification_session(p.sub)
+    now = _now()
     if row is None:
-        row = IdentityRow(person_id=p.sub, session_id=session_id, status="pending", updated_at=_now())
+        row = IdentityRow(person_id=p.sub, session_id=session_id, status="pending", updated_at=now)
         session.add(row)
     else:
-        row.session_id, row.status, row.updated_at = session_id, "pending", _now()
+        row.session_id, row.status, row.updated_at = session_id, "pending", now
+    row.consent_at, row.consent_version = now, IDENTITY_CONSENT_VERSION
     await session.flush()
     if provider.authorises_immediately:  # the fake: verified at once
         await _verified(request, session, row)
@@ -360,6 +379,11 @@ async def stripe_webhook(request: Request, session: AsyncSession = Tx) -> dict:
     elif kind.startswith("identity.verification_session."):
         pid = (obj.get("metadata") or {}).get("personId")
         row = await session.get(IdentityRow, pid, with_for_update=True) if pid else None
+        # Only the session we started for that person counts (P-28): not an
+        # older one, not one made elsewhere carrying their id in its metadata.
+        if row is not None and row.session_id != obj.get("id"):
+            log.warning("identity event for session %s, not %s's current one; ignored", obj.get("id"), pid)
+            row = None
         if row is not None:
             if kind.endswith(".verified"):
                 await _verified(request, session, row)

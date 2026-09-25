@@ -276,8 +276,16 @@ def main() -> None:
         assert http.delete("/me", headers=who).status_code == 204
     assert http.get(f"/listings/{listing_id}", headers=other).status_code == 404, "the host's listing is gone"
     assert http.get(f"/owners/{host_sub}", headers=other).status_code == 404, "the host is gone from every page"
+    # Deleting the account also deletes the sign-in, email and all (P-23).
+    def gone(address: str) -> bool:
+        try:
+            idp.admin_get_user(UserPoolId=ENV["USER_POOL_ID"], Username=address)
+            return False
+        except idp.exceptions.UserNotFoundException:
+            return True
+
     for address in (email, host_email):
-        idp.admin_delete_user(UserPoolId=ENV["USER_POOL_ID"], Username=address)
+        until(f"{address}'s sign-in to be deleted", lambda a=address: gone(a))
     print("e2e passed")
 
 

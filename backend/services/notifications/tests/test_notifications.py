@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import time
+
 import pytest
 from fastapi.testclient import TestClient
 from notifications.mail import Directory, LogMailer
@@ -14,8 +16,14 @@ from cappy_common.timeutil import now_iso
 class People(Directory):
     book = {"buyer": "buyer@example.com", "host": "host@example.com"}
 
+    def __init__(self) -> None:
+        self.deleted: list[str] = []
+
     async def email_of(self, sub: str) -> str | None:
         return self.book.get(sub)
+
+    async def delete_person(self, sub: str) -> None:
+        self.deleted.append(sub)
 
 
 @pytest.fixture()
@@ -312,9 +320,13 @@ def test_signing_out_everywhere_revokes_tokens_and_forgets_devices():
             json={"platform": "ios", "token": "tok-lost-phone"},
             headers=issuer.headers("host"),
         )
-        assert c.post("/me/sign-out-everywhere").status_code == 401
-        assert c.post("/me/sign-out-everywhere", headers=issuer.headers("host")).status_code == 204
+        # Catalog takes the request (it can publish); this is the event it sends.
+        c.portal.call(app.state.dispatcher.handle, _event("person.signed_out", personId="host"))
         assert people.signed_out == ["host"]
+        # Tokens issued before now no longer count here either (P-24).
+        r = c.get("/notifications", headers=issuer.headers("host", iat=int(time.time()) - 60))
+        assert r.status_code == 401 and r.json()["error"]["code"] == "token_expired"
+        assert c.get("/notifications", headers=issuer.headers("host", iat=int(time.time()) + 1)).status_code == 200
         c.portal.call(app.state.dispatcher.handle, _change("requested", by="payments"))
         assert pusher.sent == [], "the lost phone gets nothing"
 
@@ -357,3 +369,44 @@ def test_times_are_told_in_the_events_zone_berlin_by_default():
     _, berlin = render("requested", "en", title="Van", link="/", _deadline=at)
     _, toronto = render("requested", "en", title="Van", link="/", _deadline=at, _tz="America/Toronto")
     assert "Sat 26 Sep, 14:00" in berlin and "Sat 26 Sep, 08:00" in toronto
+
+
+def test_a_deleted_account_loses_its_sign_in_too():
+    from cappy_common.events import PROFILE_DELETED
+
+    people = People()
+    settings = Settings(app_env="test", database_url="sqlite+aiosqlite://", internal_token="i" * 40)
+    app = build_app(settings, directory=people, mailer=LogMailer())
+    with TestClient(app) as c:
+        c.portal.call(app.state.dispatcher.handle, _event(PROFILE_DELETED, ownerId="host"))
+    assert people.deleted == ["host"]
+
+
+def test_a_push_token_moves_only_from_the_same_install():
+    from notifications.push import LogPusher
+
+    from cappy_common.testing import TestIssuer
+
+    class Pusher(LogPusher):
+        def __init__(self) -> None:
+            super().__init__()
+            self.deleted: list[str] = []
+
+        async def unregister(self, endpoint: str) -> None:
+            self.deleted.append(endpoint)
+
+    issuer, pusher = TestIssuer(), Pusher()
+    settings = Settings(app_env="test", database_url="sqlite+aiosqlite://", internal_token="i" * 40)
+    app = build_app(settings, directory=People(), mailer=LogMailer(), pusher=pusher, verifier=issuer.verifier())
+    phone = {"platform": "ios", "token": "tok-shared-phone", "installId": "install-" + "a" * 16}
+    with TestClient(app) as c:
+        assert c.post("/notifications/devices", json=phone, headers=issuer.headers("host")).status_code == 204
+        # Someone who only knows the token cannot take it.
+        stolen = {**phone, "installId": "install-" + "b" * 16}
+        r = c.post("/notifications/devices", json=stolen, headers=issuer.headers("mallory"))
+        assert r.status_code == 409 and r.json()["error"]["code"] == "device_taken"
+        r = c.post("/notifications/devices", json={**phone, "installId": None}, headers=issuer.headers("mallory"))
+        assert r.status_code == 409 and pusher.deleted == []
+        # The same install, another person signing in: the old endpoint goes first.
+        assert c.post("/notifications/devices", json=phone, headers=issuer.headers("buyer")).status_code == 204
+        assert pusher.deleted == ["local:ios:tok-shared-p"]
