@@ -22,3 +22,4 @@ terraform.tfstate*
 # Terraform local state from the LocalStack proof
 infra/localstack/terraform.tfstate*
 infra/**/.terraform.lock.hcl.bak
+infra/platform/.build/

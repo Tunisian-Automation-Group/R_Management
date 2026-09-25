@@ -9,9 +9,10 @@ terraform {
     use_lockfile = true
   }
   required_providers {
-    aws    = { source = "hashicorp/aws", version = "~> 6.0" }
-    random = { source = "hashicorp/random", version = "~> 3.6" }
-    http   = { source = "hashicorp/http", version = "~> 3.4" }
+    aws     = { source = "hashicorp/aws", version = "~> 6.0" }
+    random  = { source = "hashicorp/random", version = "~> 3.6" }
+    http    = { source = "hashicorp/http", version = "~> 3.4" }
+    archive = { source = "hashicorp/archive", version = "~> 2.4" }
   }
 }
 
