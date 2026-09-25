@@ -26,7 +26,11 @@ def build_app(
 
     # Stateless: no database, no events. Two upstreams, both per request.
     runtime = Runtime(settings, on_stop=close)
-    app = create_app(settings, title="Cappy matching", lifespan=runtime.lifespan())
+    # Offers and spotlight: a few seconds stale is fine, because booking
+    # refuses a window that was taken meanwhile.
+    app = create_app(
+        settings, title="Cappy matching", lifespan=runtime.lifespan(), public_cache=("/listings/", "/browse/")
+    )
     app.state.verifier = verifier
     app.state.catalog = catalog or HttpCatalog(settings.catalog_url, token)
     app.state.bookings = bookings or HttpBookings(settings.booking_url, token)

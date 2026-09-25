@@ -139,12 +139,48 @@ class SecurityHeadersMiddleware:
         await self.app(scope, receive, with_headers)
 
 
+# Anonymous public reads: fresh for 30 s at the edge, then served stale while
+# refreshing (request coalescing), and stale for 10 min if the origin is failing.
+EDGE_CACHE = b"public, max-age=0, s-maxage=30, stale-while-revalidate=60, stale-if-error=600"
+
+
+class PublicCacheMiddleware:
+    """Marks successful anonymous GETs under ``prefixes`` as cacheable at the
+    edge, and everything answered to a signed-in caller as private, so a
+    personal answer (saved hearts, owner-only fields) is never shared."""
+
+    def __init__(self, app: ASGIApp, prefixes: tuple[str, ...]) -> None:
+        self.app = app
+        self.prefixes = prefixes
+
+    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        if scope["type"] != "http" or scope["method"] != "GET":
+            await self.app(scope, receive, send)
+            return
+        signed_in = any(k == b"authorization" for k, _ in scope.get("headers") or [])
+        public = not signed_in and scope["path"].startswith(self.prefixes)
+
+        async def mark(message: Message) -> None:
+            if message["type"] == "http.response.start":
+                headers = list(message.get("headers") or [])
+                if not any(k.lower() == b"cache-control" for k, _ in headers):
+                    if public and message["status"] == 200:
+                        headers.append((b"cache-control", EDGE_CACHE))
+                    elif signed_in:
+                        headers.append((b"cache-control", b"private, no-store"))
+                message["headers"] = headers
+            await send(message)
+
+        await self.app(scope, receive, mark)
+
+
 def create_app(
     settings: CommonSettings,
     *,
     title: str,
     lifespan: Callable[[FastAPI], AbstractAsyncContextManager[None]] | None = None,
     body_limits: dict[str, int] | None = None,
+    public_cache: tuple[str, ...] = (),
 ) -> FastAPI:
     configure_logging(settings.log_level, service=settings.service_name, json_lines=settings.log_json)
     # Interactive docs are for developers; a deployed API does not advertise
@@ -174,6 +210,8 @@ def create_app(
         )
     # Added innermost first: security headers wrap everything, so even a 413 or
     # a 500 written by an outer layer carries them.
+    if public_cache:
+        app.add_middleware(PublicCacheMiddleware, prefixes=public_cache)
     app.add_middleware(BodyLimitMiddleware, default=settings.max_body_bytes, overrides=body_limits)
     app.add_middleware(RequestContextMiddleware)
     app.add_middleware(SecurityHeadersMiddleware)

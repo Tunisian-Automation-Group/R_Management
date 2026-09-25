@@ -301,6 +301,32 @@ resource "aws_cloudfront_cache_policy" "api_public" {
   }
 }
 
+# Public reads that are personal when signed in (hearts, owner-only fields):
+# the token is part of the key, so signed-in answers are never shared, and
+# the origin marks them private anyway. Anonymous ones are shared for 30 s.
+resource "aws_cloudfront_cache_policy" "api_anonymous" {
+  name        = "${local.name}-api-anonymous"
+  min_ttl     = 0
+  default_ttl = 0
+  max_ttl     = 600
+  parameters_in_cache_key_and_forwarded_to_origin {
+    enable_accept_encoding_gzip   = true
+    enable_accept_encoding_brotli = true
+    query_strings_config {
+      query_string_behavior = "all"
+    }
+    headers_config {
+      header_behavior = "whitelist"
+      headers {
+        items = ["Authorization"]
+      }
+    }
+    cookies_config {
+      cookie_behavior = "none"
+    }
+  }
+}
+
 data "aws_cloudfront_cache_policy" "disabled" {
   name = "Managed-CachingDisabled"
 }
@@ -470,6 +496,54 @@ resource "aws_cloudfront_distribution" "main" {
     cached_methods         = ["GET", "HEAD"]
     compress               = true
     cache_policy_id        = aws_cloudfront_cache_policy.api_public.id
+  }
+
+  # Anonymous public reads (resilience F7): the origin decides what is cacheable.
+  ordered_cache_behavior {
+    path_pattern             = "/api/listings/*"
+    target_origin_id         = "api"
+    viewer_protocol_policy   = "https-only"
+    allowed_methods          = ["GET", "HEAD", "OPTIONS", "PUT", "POST", "PATCH", "DELETE"]
+    cached_methods           = ["GET", "HEAD"]
+    compress                 = true
+    cache_policy_id          = aws_cloudfront_cache_policy.api_anonymous.id
+    origin_request_policy_id = data.aws_cloudfront_origin_request_policy.all_but_host.id
+  }
+
+  # Anonymous public reads (resilience F7): the origin decides what is cacheable.
+  ordered_cache_behavior {
+    path_pattern             = "/api/search"
+    target_origin_id         = "api"
+    viewer_protocol_policy   = "https-only"
+    allowed_methods          = ["GET", "HEAD", "OPTIONS", "PUT", "POST", "PATCH", "DELETE"]
+    cached_methods           = ["GET", "HEAD"]
+    compress                 = true
+    cache_policy_id          = aws_cloudfront_cache_policy.api_anonymous.id
+    origin_request_policy_id = data.aws_cloudfront_origin_request_policy.all_but_host.id
+  }
+
+  # Anonymous public reads (resilience F7): the origin decides what is cacheable.
+  ordered_cache_behavior {
+    path_pattern             = "/api/owners/*"
+    target_origin_id         = "api"
+    viewer_protocol_policy   = "https-only"
+    allowed_methods          = ["GET", "HEAD", "OPTIONS", "PUT", "POST", "PATCH", "DELETE"]
+    cached_methods           = ["GET", "HEAD"]
+    compress                 = true
+    cache_policy_id          = aws_cloudfront_cache_policy.api_anonymous.id
+    origin_request_policy_id = data.aws_cloudfront_origin_request_policy.all_but_host.id
+  }
+
+  # Anonymous public reads (resilience F7): the origin decides what is cacheable.
+  ordered_cache_behavior {
+    path_pattern             = "/api/browse/*"
+    target_origin_id         = "api"
+    viewer_protocol_policy   = "https-only"
+    allowed_methods          = ["GET", "HEAD", "OPTIONS", "PUT", "POST", "PATCH", "DELETE"]
+    cached_methods           = ["GET", "HEAD"]
+    compress                 = true
+    cache_policy_id          = aws_cloudfront_cache_policy.api_anonymous.id
+    origin_request_policy_id = data.aws_cloudfront_origin_request_policy.all_but_host.id
   }
 
   ordered_cache_behavior {

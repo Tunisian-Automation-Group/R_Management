@@ -37,6 +37,8 @@ def build_app(
         lifespan=runtime.lifespan(),
         # Photos are the one large body; everything else keeps the default.
         body_limits={"/uploads": settings.media_max_bytes + 64_000},
+        # Listing pages, their reviews, search and owner cards (resilience F7).
+        public_cache=("/listings/", "/search", "/owners/"),
     )
     app.state.verifier = verifier
     app.state.media = media_store or make_store(settings)

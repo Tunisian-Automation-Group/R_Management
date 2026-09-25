@@ -556,3 +556,13 @@ def test_the_handover_address_stays_private(client, issuer):
 def test_search_needs_three_characters(client):
     assert client.get("/search", params={"q": "ab"}).status_code == 422
     assert client.get("/search", params={"q": "saw"}).status_code == 200
+
+
+def test_public_reads_are_cacheable_at_the_edge_and_personal_ones_never(client, issuer):
+    anon = client.get("/listings/l9")
+    assert "s-maxage=30" in anon.headers["cache-control"] and "stale-if-error" in anon.headers["cache-control"]
+    assert "s-maxage" in client.get("/search", params={"q": "saw"}).headers["cache-control"]
+    mine = client.get("/listings/l9", headers=issuer.headers("user-a"))
+    assert mine.headers["cache-control"] == "private, no-store"
+    assert "cache-control" not in client.get("/listings/nope").headers, "errors are not cached"
+    assert client.get("/saved", headers=issuer.headers("user-a")).headers["cache-control"] == "private, no-store"
