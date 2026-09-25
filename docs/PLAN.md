@@ -139,6 +139,15 @@ Status: `[x]` done (with the commit that did it) · `[~]` in progress ·
 - [ ] Independent browser verification: rounds until a full pass finds nothing
 - [ ] Load test against the local stack: no errors under sustained concurrent use
 
+## Phase 14 — Resilience, research and launch gaps (docs/TASKS.md is the working list)
+- [x] Failure catalogue (docs/resilience.md): every scenario handled or decided
+- [x] Research: scale practices (docs/research/2026-09-scale-practices.md), launch gaps (docs/research/2026-09-launch-gaps.md)
+- [x] Load: 50 concurrent browsers + racing buyers, 0 failures; spike 30→300/s, 0 failures, p99 ≈ 220 ms
+- [x] Browser verification rounds 1 and 2 fixed (66 findings); round 3 after the trust features' UI
+- [x] Trust and compliance (API): messaging with masking, blocks, reports and moderation (DSA 16/17), check-in/out evidence, identity verification (Stripe Identity), fraud rules, DAC7 tags, German notifications
+- [ ] Web UI for the trust features, German UI, Capacitor shells, then verification round 3
+- [ ] First AWS apply; breakpoint and soak tests on staging (L-5)
+
 ## Definition of done
 
 | Goal criterion | Evidence | Status |

@@ -61,6 +61,30 @@
     "title": "HTTPValidationError",
     "type": "object"
    },
+   "IdentityOut": {
+    "properties": {
+     "clientSecret": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Clientsecret"
+     },
+     "status": {
+      "title": "Status",
+      "type": "string"
+     }
+    },
+    "required": [
+     "status"
+    ],
+    "title": "IdentityOut",
+    "type": "object"
+   },
    "IntentIn": {
     "properties": {
      "amount": {
@@ -345,6 +369,43 @@
      }
     },
     "summary": "Connect Status"
+   }
+  },
+  "/payments/identity": {
+   "get": {
+    "operationId": "identity_status_payments_identity_get",
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/IdentityOut"
+        }
+       }
+      },
+      "description": "Successful Response"
+     }
+    },
+    "summary": "Identity Status"
+   }
+  },
+  "/payments/identity/session": {
+   "post": {
+    "description": "Starts (or continues) verifying who the caller is. The app hands the\nclient secret to Stripe.js (verifyIdentity); the outcome comes by webhook.",
+    "operationId": "identity_session_payments_identity_session_post",
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/IdentityOut"
+        }
+       }
+      },
+      "description": "Successful Response"
+     }
+    },
+    "summary": "Identity Session"
    }
   },
   "/payments/webhooks/stripe": {

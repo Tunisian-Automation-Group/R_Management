@@ -101,6 +101,17 @@
    },
    "Booking": {
     "properties": {
+     "canStartFrom": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Canstartfrom"
+     },
      "createdAt": {
       "title": "Createdat",
       "type": "string"
@@ -126,6 +137,16 @@
        }
       ],
       "title": "Expiresat"
+     },
+     "handover": {
+      "anyOf": [
+       {
+        "$ref": "#/components/schemas/Handover"
+       },
+       {
+        "type": "null"
+       }
+      ]
      },
      "id": {
       "title": "Id",
@@ -362,6 +383,89 @@
     "title": "DisputeIn",
     "type": "object"
    },
+   "Evidence": {
+    "properties": {
+     "at": {
+      "title": "At",
+      "type": "string"
+     },
+     "by": {
+      "title": "By",
+      "type": "string"
+     },
+     "id": {
+      "title": "Id",
+      "type": "string"
+     },
+     "note": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Note"
+     },
+     "photos": {
+      "items": {
+       "type": "string"
+      },
+      "title": "Photos",
+      "type": "array"
+     },
+     "stage": {
+      "title": "Stage",
+      "type": "string"
+     }
+    },
+    "required": [
+     "id",
+     "by",
+     "stage",
+     "photos",
+     "at"
+    ],
+    "title": "Evidence",
+    "type": "object"
+   },
+   "EvidenceIn": {
+    "properties": {
+     "note": {
+      "anyOf": [
+       {
+        "maxLength": 1000,
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Note"
+     },
+     "photos": {
+      "items": {
+       "type": "string"
+      },
+      "maxItems": 12,
+      "minItems": 1,
+      "title": "Photos",
+      "type": "array"
+     },
+     "stage": {
+      "pattern": "^(check_in|check_out)$",
+      "title": "Stage",
+      "type": "string"
+     }
+    },
+    "required": [
+     "stage",
+     "photos"
+    ],
+    "title": "EvidenceIn",
+    "type": "object"
+   },
    "HTTPValidationError": {
     "properties": {
      "detail": {
@@ -373,6 +477,30 @@
      }
     },
     "title": "HTTPValidationError",
+    "type": "object"
+   },
+   "Handover": {
+    "properties": {
+     "address": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Address"
+     },
+     "instructions": {
+      "title": "Instructions",
+      "type": "string"
+     }
+    },
+    "required": [
+     "instructions"
+    ],
+    "title": "Handover",
     "type": "object"
    },
    "ListingSnapshot": {
@@ -486,6 +614,67 @@
     "title": "Match",
     "type": "object"
    },
+   "Message": {
+    "properties": {
+     "at": {
+      "title": "At",
+      "type": "string"
+     },
+     "body": {
+      "title": "Body",
+      "type": "string"
+     },
+     "id": {
+      "title": "Id",
+      "type": "string"
+     },
+     "mine": {
+      "title": "Mine",
+      "type": "boolean"
+     },
+     "senderId": {
+      "title": "Senderid",
+      "type": "string"
+     }
+    },
+    "required": [
+     "id",
+     "senderId",
+     "body",
+     "at",
+     "mine"
+    ],
+    "title": "Message",
+    "type": "object"
+   },
+   "MessageIn": {
+    "properties": {
+     "body": {
+      "maxLength": 2000,
+      "minLength": 1,
+      "title": "Body",
+      "type": "string"
+     }
+    },
+    "required": [
+     "body"
+    ],
+    "title": "MessageIn",
+    "type": "object"
+   },
+   "OpenBookings": {
+    "properties": {
+     "open": {
+      "title": "Open",
+      "type": "integer"
+     }
+    },
+    "required": [
+     "open"
+    ],
+    "title": "OpenBookings",
+    "type": "object"
+   },
    "Outcome": {
     "properties": {
      "note": {
@@ -559,6 +748,33 @@
     "title": "Page[Booking]",
     "type": "object"
    },
+   "Page_Message_": {
+    "properties": {
+     "items": {
+      "items": {
+       "$ref": "#/components/schemas/Message"
+      },
+      "title": "Items",
+      "type": "array"
+     },
+     "nextCursor": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Nextcursor"
+     }
+    },
+    "required": [
+     "items"
+    ],
+    "title": "Page[Message]",
+    "type": "object"
+   },
    "PaymentStart": {
     "description": "What the app needs to collect the card: Stripe's client secret for the\nPaymentIntent that holds (authorises, not captures) the booking's price.",
     "properties": {
@@ -576,6 +792,40 @@
      "intentId"
     ],
     "title": "PaymentStart",
+    "type": "object"
+   },
+   "PersonExport": {
+    "properties": {
+     "bookings": {
+      "items": {
+       "$ref": "#/components/schemas/Booking"
+      },
+      "title": "Bookings",
+      "type": "array"
+     },
+     "evidence": {
+      "items": {
+       "additionalProperties": true,
+       "type": "object"
+      },
+      "title": "Evidence",
+      "type": "array"
+     },
+     "messagesSent": {
+      "items": {
+       "additionalProperties": true,
+       "type": "object"
+      },
+      "title": "Messagessent",
+      "type": "array"
+     }
+    },
+    "required": [
+     "bookings",
+     "messagesSent",
+     "evidence"
+    ],
+    "title": "PersonExport",
     "type": "object"
    },
    "Quote": {
@@ -746,6 +996,56 @@
  },
  "openapi": "3.1.0",
  "paths": {
+  "/admin/bookings/{booking_id}/resolve": {
+   "post": {
+    "description": "The same as the internal endpoint, for staff in the admin console.",
+    "operationId": "resolve_as_staff_admin_bookings__booking_id__resolve_post",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "booking_id",
+      "required": true,
+      "schema": {
+       "title": "Booking Id",
+       "type": "string"
+      }
+     }
+    ],
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/ResolveIn"
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Booking"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Resolve As Staff"
+   }
+  },
   "/bookings": {
    "get": {
     "description": "What the caller asked for (``role=requester``), is being asked for\n(``role=owner``), or both, newest first.",
@@ -1138,6 +1438,215 @@
     "summary": "Dispute"
    }
   },
+  "/bookings/{booking_id}/evidence": {
+   "get": {
+    "operationId": "evidence_bookings__booking_id__evidence_get",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "booking_id",
+      "required": true,
+      "schema": {
+       "title": "Booking Id",
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "items": {
+          "$ref": "#/components/schemas/Evidence"
+         },
+         "title": "Response Evidence Bookings  Booking Id  Evidence Get",
+         "type": "array"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Evidence"
+   },
+   "post": {
+    "operationId": "add_evidence_bookings__booking_id__evidence_post",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "booking_id",
+      "required": true,
+      "schema": {
+       "title": "Booking Id",
+       "type": "string"
+      }
+     }
+    ],
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/EvidenceIn"
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "201": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Evidence"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Add Evidence"
+   }
+  },
+  "/bookings/{booking_id}/messages": {
+   "get": {
+    "description": "Oldest first; the cursor continues towards newer messages.",
+    "operationId": "conversation_bookings__booking_id__messages_get",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "booking_id",
+      "required": true,
+      "schema": {
+       "title": "Booking Id",
+       "type": "string"
+      }
+     },
+     {
+      "in": "query",
+      "name": "cursor",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "Cursor"
+      }
+     },
+     {
+      "in": "query",
+      "name": "limit",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "type": "integer"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "Limit"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Page_Message_"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Conversation"
+   },
+   "post": {
+    "operationId": "send_bookings__booking_id__messages_post",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "booking_id",
+      "required": true,
+      "schema": {
+       "title": "Booking Id",
+       "type": "string"
+      }
+     }
+    ],
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/MessageIn"
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "201": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Message"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Send"
+   }
+  },
   "/bookings/{booking_id}/payment": {
    "get": {
     "description": "The card step again, for a buyer who left it half way. Payments returns\nthe same intent however often it is asked.",
@@ -1319,6 +1828,7 @@
   },
   "/internal/busy": {
    "post": {
+    "description": "From the reader: a window booked a moment ago may still show as free,\nin which case the booking itself is refused by the constraint.",
     "operationId": "busy_internal_busy_post",
     "requestBody": {
      "content": {
@@ -1370,6 +1880,215 @@
      }
     },
     "summary": "Busy"
+   }
+  },
+  "/internal/people/{person}/bookings": {
+   "get": {
+    "description": "Every booking they were part of, for their data export.",
+    "operationId": "bookings_of_internal_people__person__bookings_get",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "person",
+      "required": true,
+      "schema": {
+       "title": "Person",
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "items": {
+          "$ref": "#/components/schemas/Booking"
+         },
+         "title": "Response Bookings Of Internal People  Person  Bookings Get",
+         "type": "array"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Bookings Of"
+   }
+  },
+  "/internal/people/{person}/export": {
+   "get": {
+    "description": "Everything booking holds about them (GDPR art. 15/20).",
+    "operationId": "export_person_internal_people__person__export_get",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "person",
+      "required": true,
+      "schema": {
+       "title": "Person",
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/PersonExport"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Export Person"
+   }
+  },
+  "/internal/people/{person}/open": {
+   "get": {
+    "description": "Before an account is deleted: is anything still in flight for them?",
+    "operationId": "open_bookings_internal_people__person__open_get",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "person",
+      "required": true,
+      "schema": {
+       "title": "Person",
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/OpenBookings"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Open Bookings"
+   }
+  },
+  "/me/blocks": {
+   "get": {
+    "operationId": "my_blocks_me_blocks_get",
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "items": {
+          "type": "string"
+         },
+         "title": "Response My Blocks Me Blocks Get",
+         "type": "array"
+        }
+       }
+      },
+      "description": "Successful Response"
+     }
+    },
+    "summary": "My Blocks"
+   }
+  },
+  "/me/blocks/{person}": {
+   "delete": {
+    "operationId": "unblock_me_blocks__person__delete",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "person",
+      "required": true,
+      "schema": {
+       "title": "Person",
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "204": {
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Unblock"
+   },
+   "put": {
+    "description": "No more messages or new bookings between the two of you, either way.",
+    "operationId": "block_me_blocks__person__put",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "person",
+      "required": true,
+      "schema": {
+       "title": "Person",
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "204": {
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Block"
    }
   }
  }

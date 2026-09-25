@@ -262,6 +262,11 @@
       "title": "Blurb",
       "type": "string"
      },
+     "dac7": {
+      "default": "out_of_scope",
+      "title": "Dac7",
+      "type": "string"
+     },
      "group": {
       "enum": [
        "make",

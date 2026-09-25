@@ -32,6 +32,18 @@ browser ──► CloudFront + WAF ──► S3            the web app (web/)
 - **notifications**: emails through SES.
 - **Events**: a transactional outbox → SNS → one SQS queue per consumer.
   Handlers are idempotent.
+- **Trust**:
+  - messages per booking, with contact details masked until the booking is
+    accepted;
+  - blocking;
+  - reports and moderation (DSA notice-and-action, statements of reasons,
+    audit log);
+  - check-in and check-out photos;
+  - identity verification (Stripe Identity) for high-value bookings;
+  - fraud limits and a review queue for suspicious new listings.
+- **Store-ready**: in-app account deletion and data export, a minimum app
+  version with a forced update, push notifications, and emails in English
+  and German.
 
 The reasoning behind each choice is in [`docs/adr/`](docs/adr). The review that
 started this work is in [`docs/review/`](docs/review), and the plan with its
@@ -82,5 +94,6 @@ backend/   Python 3.12 uv workspace: libs/cappy_common + services/*; one Dockerf
 web/       React 19 + Vite + TanStack Query PWA
 infra/     Terraform: platform module, envs/{staging,prod}, bootstrap, localstack proof
 local/     compose bootstrap, service runner, e2e journey
-docs/      goal, plan, ADRs, review, runbook, generated API reference (docs/api)
+docs/      goal, plan, TASKS (working list), resilience (failure catalogue), research,
+           ADRs, review, runbook, SLOs, generated API reference (docs/api)
 ```

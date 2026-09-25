@@ -1,6 +1,75 @@
 {
  "components": {
   "schemas": {
+   "ActionIn": {
+    "properties": {
+     "statement": {
+      "maxLength": 2000,
+      "minLength": 20,
+      "title": "Statement",
+      "type": "string"
+     }
+    },
+    "required": [
+     "statement"
+    ],
+    "title": "ActionIn",
+    "type": "object"
+   },
+   "AuditEntry": {
+    "properties": {
+     "action": {
+      "title": "Action",
+      "type": "string"
+     },
+     "actorId": {
+      "title": "Actorid",
+      "type": "string"
+     },
+     "at": {
+      "title": "At",
+      "type": "string"
+     },
+     "id": {
+      "title": "Id",
+      "type": "string"
+     },
+     "reportId": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Reportid"
+     },
+     "statement": {
+      "title": "Statement",
+      "type": "string"
+     },
+     "targetId": {
+      "title": "Targetid",
+      "type": "string"
+     },
+     "targetType": {
+      "title": "Targettype",
+      "type": "string"
+     }
+    },
+    "required": [
+     "id",
+     "actorId",
+     "action",
+     "targetType",
+     "targetId",
+     "statement",
+     "at"
+    ],
+    "title": "AuditEntry",
+    "type": "object"
+   },
    "BatchListing": {
     "properties": {
      "active": {
@@ -272,6 +341,11 @@
    },
    "CreatedListing": {
     "properties": {
+     "held": {
+      "default": false,
+      "title": "Held",
+      "type": "boolean"
+     },
      "listing": {
       "discriminator": {
        "mapping": {
@@ -303,6 +377,27 @@
      "slots"
     ],
     "title": "CreatedListing",
+    "type": "object"
+   },
+   "DecisionIn": {
+    "properties": {
+     "action": {
+      "pattern": "^(dismiss|take_down|suspend)$",
+      "title": "Action",
+      "type": "string"
+     },
+     "statement": {
+      "maxLength": 2000,
+      "minLength": 20,
+      "title": "Statement",
+      "type": "string"
+     }
+    },
+    "required": [
+     "action",
+     "statement"
+    ],
+    "title": "DecisionIn",
     "type": "object"
    },
    "Dims": {
@@ -367,6 +462,30 @@
     "title": "District",
     "type": "object"
    },
+   "EvidenceIn": {
+    "properties": {
+     "ownerId": {
+      "maxLength": 64,
+      "title": "Ownerid",
+      "type": "string"
+     },
+     "urls": {
+      "items": {
+       "type": "string"
+      },
+      "maxItems": 12,
+      "minItems": 1,
+      "title": "Urls",
+      "type": "array"
+     }
+    },
+    "required": [
+     "ownerId",
+     "urls"
+    ],
+    "title": "EvidenceIn",
+    "type": "object"
+   },
    "HTTPValidationError": {
     "properties": {
      "detail": {
@@ -378,6 +497,68 @@
      }
     },
     "title": "HTTPValidationError",
+    "type": "object"
+   },
+   "Handover": {
+    "properties": {
+     "address": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Address"
+     },
+     "instructions": {
+      "title": "Instructions",
+      "type": "string"
+     }
+    },
+    "required": [
+     "instructions"
+    ],
+    "title": "Handover",
+    "type": "object"
+   },
+   "HeldListing": {
+    "properties": {
+     "category": {
+      "title": "Category",
+      "type": "string"
+     },
+     "heldAt": {
+      "title": "Heldat",
+      "type": "string"
+     },
+     "id": {
+      "title": "Id",
+      "type": "string"
+     },
+     "ownerId": {
+      "title": "Ownerid",
+      "type": "string"
+     },
+     "ratePerHour": {
+      "title": "Rateperhour",
+      "type": "integer"
+     },
+     "title": {
+      "title": "Title",
+      "type": "string"
+     }
+    },
+    "required": [
+     "id",
+     "ownerId",
+     "title",
+     "category",
+     "ratePerHour",
+     "heldAt"
+    ],
+    "title": "HeldListing",
     "type": "object"
    },
    "ListingDetail": {
@@ -441,6 +622,18 @@
    "ListingIn": {
     "description": "A new or edited listing. Ids and the owner come from the server and the\ncaller's token, never from the body.",
     "properties": {
+     "address": {
+      "anyOf": [
+       {
+        "maxLength": 200,
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Address"
+     },
      "listing": {
       "additionalProperties": true,
       "title": "Listing",
@@ -464,6 +657,28 @@
    "ListingView": {
     "description": "What a card needs: the listing and who offers it.",
     "properties": {
+     "address": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Address"
+     },
+     "held": {
+      "anyOf": [
+       {
+        "type": "boolean"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Held"
+     },
      "listing": {
       "discriminator": {
        "mapping": {
@@ -657,6 +872,33 @@
     "title": "Page[ListingView]",
     "type": "object"
    },
+   "Page_Report_": {
+    "properties": {
+     "items": {
+      "items": {
+       "$ref": "#/components/schemas/Report"
+      },
+      "title": "Items",
+      "type": "array"
+     },
+     "nextCursor": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Nextcursor"
+     }
+    },
+    "required": [
+     "items"
+    ],
+    "title": "Page[Report]",
+    "type": "object"
+   },
    "Page_Review_": {
     "properties": {
      "items": {
@@ -709,6 +951,118 @@
      "district"
     ],
     "title": "ProfileIn",
+    "type": "object"
+   },
+   "Report": {
+    "properties": {
+     "createdAt": {
+      "title": "Createdat",
+      "type": "string"
+     },
+     "decision": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Decision"
+     },
+     "details": {
+      "title": "Details",
+      "type": "string"
+     },
+     "id": {
+      "title": "Id",
+      "type": "string"
+     },
+     "reason": {
+      "title": "Reason",
+      "type": "string"
+     },
+     "statement": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Statement"
+     },
+     "status": {
+      "title": "Status",
+      "type": "string"
+     },
+     "targetId": {
+      "title": "Targetid",
+      "type": "string"
+     },
+     "targetType": {
+      "title": "Targettype",
+      "type": "string"
+     }
+    },
+    "required": [
+     "id",
+     "targetType",
+     "targetId",
+     "reason",
+     "details",
+     "status",
+     "createdAt"
+    ],
+    "title": "Report",
+    "type": "object"
+   },
+   "ReportIn": {
+    "properties": {
+     "details": {
+      "description": "What is wrong, and where exactly",
+      "maxLength": 2000,
+      "minLength": 10,
+      "title": "Details",
+      "type": "string"
+     },
+     "email": {
+      "anyOf": [
+       {
+        "format": "email",
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Email"
+     },
+     "reason": {
+      "pattern": "^(illegal|fraud|unsafe|counterfeit|spam|offensive|privacy|other)$",
+      "title": "Reason",
+      "type": "string"
+     },
+     "targetId": {
+      "maxLength": 64,
+      "minLength": 1,
+      "title": "Targetid",
+      "type": "string"
+     },
+     "targetType": {
+      "pattern": "^(listing|owner|message|review)$",
+      "title": "Targettype",
+      "type": "string"
+     }
+    },
+    "required": [
+     "targetType",
+     "targetId",
+     "reason",
+     "details"
+    ],
+    "title": "ReportIn",
     "type": "object"
    },
    "Review": {
@@ -1155,6 +1509,361 @@
  },
  "openapi": "3.1.0",
  "paths": {
+  "/admin/audit": {
+   "get": {
+    "operationId": "audit_admin_audit_get",
+    "parameters": [
+     {
+      "in": "query",
+      "name": "limit",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "type": "integer"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "Limit"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "items": {
+          "$ref": "#/components/schemas/AuditEntry"
+         },
+         "title": "Response Audit Admin Audit Get",
+         "type": "array"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Audit"
+   }
+  },
+  "/admin/listings/held": {
+   "get": {
+    "description": "New owners' expensive listings, oldest first, waiting for a look.",
+    "operationId": "held_admin_listings_held_get",
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "items": {
+          "$ref": "#/components/schemas/HeldListing"
+         },
+         "title": "Response Held Admin Listings Held Get",
+         "type": "array"
+        }
+       }
+      },
+      "description": "Successful Response"
+     }
+    },
+    "summary": "Held"
+   }
+  },
+  "/admin/listings/{listing_id}/approve": {
+   "post": {
+    "operationId": "approve_admin_listings__listing_id__approve_post",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "listing_id",
+      "required": true,
+      "schema": {
+       "title": "Listing Id",
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "204": {
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Approve"
+   }
+  },
+  "/admin/listings/{listing_id}/take-down": {
+   "post": {
+    "operationId": "take_down_admin_listings__listing_id__take_down_post",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "listing_id",
+      "required": true,
+      "schema": {
+       "title": "Listing Id",
+       "type": "string"
+      }
+     }
+    ],
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/ActionIn"
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "204": {
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Take Down"
+   }
+  },
+  "/admin/owners/{owner_id}/reinstate": {
+   "post": {
+    "description": "Lifts the suspension. Their listings stay down; they can list again.",
+    "operationId": "reinstate_admin_owners__owner_id__reinstate_post",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "owner_id",
+      "required": true,
+      "schema": {
+       "title": "Owner Id",
+       "type": "string"
+      }
+     }
+    ],
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/ActionIn"
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "204": {
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Reinstate"
+   }
+  },
+  "/admin/owners/{owner_id}/suspend": {
+   "post": {
+    "operationId": "suspend_admin_owners__owner_id__suspend_post",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "owner_id",
+      "required": true,
+      "schema": {
+       "title": "Owner Id",
+       "type": "string"
+      }
+     }
+    ],
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/ActionIn"
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "204": {
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Suspend"
+   }
+  },
+  "/admin/reports": {
+   "get": {
+    "description": "Oldest first: the longest-waiting notice is handled first.",
+    "operationId": "queue_admin_reports_get",
+    "parameters": [
+     {
+      "in": "query",
+      "name": "status",
+      "required": false,
+      "schema": {
+       "default": "open",
+       "pattern": "^(open|actioned|dismissed)$",
+       "title": "Status",
+       "type": "string"
+      }
+     },
+     {
+      "in": "query",
+      "name": "cursor",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "Cursor"
+      }
+     },
+     {
+      "in": "query",
+      "name": "limit",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "type": "integer"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "Limit"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Page_Report_"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Queue"
+   }
+  },
+  "/admin/reports/{report_id}/decide": {
+   "post": {
+    "operationId": "decide_admin_reports__report_id__decide_post",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "report_id",
+      "required": true,
+      "schema": {
+       "title": "Report Id",
+       "type": "string"
+      }
+     }
+    ],
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/DecisionIn"
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Report"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Decide"
+   }
+  },
   "/cities": {
    "get": {
     "operationId": "cities_cities_get",
@@ -1358,6 +2067,78 @@
      }
     },
     "summary": "Listing Context"
+   }
+  },
+  "/internal/listings/{listing_id}/handover": {
+   "get": {
+    "description": "For booking to give the two sides of an accepted booking. Works for a\nlisting removed since, because the booking still happens.",
+    "operationId": "handover_internal_listings__listing_id__handover_get",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "listing_id",
+      "required": true,
+      "schema": {
+       "title": "Listing Id",
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Handover"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Handover"
+   }
+  },
+  "/internal/media/evidence": {
+   "post": {
+    "description": "Booking keeps these as check-in/out evidence: they must be the person's\nown uploads, and they are never swept as unused.",
+    "operationId": "keep_evidence_internal_media_evidence_post",
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/EvidenceIn"
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "204": {
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Keep Evidence"
    }
   },
   "/internal/owners/{owner_id}": {
@@ -1846,6 +2627,16 @@
    }
   },
   "/me": {
+   "delete": {
+    "description": "Delete my account's data (App Store and GDPR). Refused while a booking is\nstill open on either side: those have to finish or be cancelled first. The\napp then deletes the sign-in itself (Cognito DeleteUser). Bookings and\npayments are kept as the law requires; they hold no personal data.",
+    "operationId": "delete_me_me_delete",
+    "responses": {
+     "204": {
+      "description": "Successful Response"
+     }
+    },
+    "summary": "Delete Me"
+   },
    "get": {
     "description": "Who the caller is on Cappy. ``owner`` is absent until they have created\na profile, which the app asks for right after sign-up.",
     "operationId": "get_me_me_get",
@@ -1899,6 +2690,23 @@
      }
     },
     "summary": "Put Me"
+   }
+  },
+  "/me/export": {
+   "get": {
+    "description": "A copy of everything held about me, as one JSON file.",
+    "operationId": "export_me_me_export_get",
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {}
+       }
+      },
+      "description": "Successful Response"
+     }
+    },
+    "summary": "Export Me"
    }
   },
   "/me/listings": {
@@ -2000,6 +2808,44 @@
      }
     },
     "summary": "Owner"
+   }
+  },
+  "/reports": {
+   "post": {
+    "operationId": "report_reports_post",
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/ReportIn"
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "201": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Report"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Report"
    }
   },
   "/saved": {
@@ -2136,7 +2982,7 @@
       "required": true,
       "schema": {
        "maxLength": 80,
-       "minLength": 2,
+       "minLength": 3,
        "title": "Q",
        "type": "string"
       }
