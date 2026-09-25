@@ -17,6 +17,10 @@ def short_name(name: str) -> str:
     return parts[0] if len(parts) < 2 else f"{parts[0]} {parts[-1][0]}."
 
 
+async def on_renter_rated(session: AsyncSession, event: Event) -> None:
+    await CatalogRepository(session).apply_renter_rating(event.data["renterId"], int(event.data["quality"]))
+
+
 async def on_payouts_ready(session: AsyncSession, event: Event) -> None:
     d = event.data
     as_of = dt_from_iso(d.get("asOf") or event.occurred_at)

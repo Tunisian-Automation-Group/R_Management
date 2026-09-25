@@ -28,7 +28,7 @@ BUCKET = "cappy-media"
 MAIL_FROM = "no-reply@cappy.local"
 # Which events each service's queue receives (Terraform: modules/messaging).
 CONSUMERS = {
-    "catalog": ["booking.rated", "payment.payouts_ready"],
+    "catalog": ["booking.rated", "payment.payouts_ready", "booking.renter_rated"],
     "booking": [
         "payment.authorised",
         "payment.failed",

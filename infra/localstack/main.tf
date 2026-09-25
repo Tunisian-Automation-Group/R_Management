@@ -25,7 +25,7 @@ module "messaging" {
   source = "../modules/messaging"
   name   = "cappy-tf"
   consumers = {
-    catalog       = ["booking.rated", "payment.payouts_ready"]
+    catalog       = ["booking.rated", "payment.payouts_ready", "booking.renter_rated"]
     booking       = ["payment.authorised", "payment.failed", "listing.changed", "moderation.owner_suspended", "payment.identity_verified", "profile.deleted"]
     payments      = ["booking.status_changed", "profile.deleted"]
     notifications = ["booking.status_changed", "payment.payout_sent", "profile.deleted", "booking.message", "moderation.report_received", "moderation.decision"]

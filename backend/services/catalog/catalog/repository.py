@@ -75,6 +75,8 @@ def to_owner(r: OwnerRow) -> Owner:
         on_time_jobs=r.on_time_jobs,
         joined_year=r.joined_year,
         response_mins=r.response_mins,
+        renter_rating_sum=r.renter_rating_sum or 0,
+        renter_jobs=r.renter_jobs or 0,
     )
 
 
@@ -320,6 +322,14 @@ class CatalogRepository:
         row.name, row.initials, row.kind, row.district, row.updated_at = name, initials, kind, district, now
         await self.s.flush()
         return to_owner(row), False
+
+    async def apply_renter_rating(self, renter_id: str, quality: int) -> None:
+        """Atomic, like apply_outcome. A renter without a profile has no record to move."""
+        await self.s.execute(
+            update(OwnerRow)
+            .where(OwnerRow.id == renter_id)
+            .values(renter_rating_sum=OwnerRow.renter_rating_sum + quality, renter_jobs=OwnerRow.renter_jobs + 1)
+        )
 
     async def apply_outcome(self, owner_id: str, outcome: Outcome) -> None:
         """One atomic UPDATE: no read-modify-write, so concurrent ratings can

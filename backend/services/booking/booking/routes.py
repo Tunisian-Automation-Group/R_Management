@@ -27,7 +27,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from cappy_common.app import ApiRouter
 from cappy_common.auth import Principal, require_admin, require_internal, require_principal
 from cappy_common.errors import ApiError, Conflict, Forbidden, Invalid, NotFound, RateLimited, Unavailable
-from cappy_common.events import BOOKING_RATED
+from cappy_common.events import BOOKING_RATED, RENTER_RATED
 from cappy_common.ids import new_id
 from cappy_common.models import Booking, CamelModel, Iso, Outcome, Requirement
 from cappy_common.pagination import Page, clamp_limit
@@ -374,6 +374,37 @@ async def rate(
             "at": iso_from_datetime(min(row.window_end, row.updated_at)),
             "ratedAt": iso_from_datetime(row.updated_at),
         },
+    )
+    return to_booking(row, p.sub)
+
+
+class RenterRatingIn(CamelModel):
+    quality: int = Field(ge=1, le=5)
+
+
+@router.post("/bookings/{booking_id}/rate-renter", response_model=Booking)
+async def rate_renter(
+    booking_id: str,
+    body: RenterRatingIn,
+    repo: BookingRepository = Depends(get_repo),
+    p: Principal = Depends(require_principal),
+) -> Booking:
+    """Two-way reviews: the owner rates the renter after a completed booking,
+    once. Builds the renter's record other owners see before accepting."""
+    row = await repo.visible(booking_id, p.sub, lock=True)
+    if p.sub != row.owner_id:
+        raise Forbidden("only the owner can rate the renter")
+    if row.status != "completed":
+        raise Conflict("a renter can be rated once the booking is completed")
+    if row.renter_rating is not None:
+        raise Conflict("you already rated this renter")
+    row.renter_rating = body.quality
+    row.updated_at = _now()
+    await repo.s.flush()
+    await repo.outbox.add(
+        repo.s,
+        RENTER_RATED,
+        {"bookingId": row.id, "renterId": row.requester_id, "ownerId": row.owner_id, "quality": body.quality},
     )
     return to_booking(row, p.sub)
 

@@ -601,3 +601,19 @@ def test_instant_book_confirms_once_the_card_is_held(issuer, broker, payments):
         assert _authorise(app, bid)
         b = c.get(f"/bookings/{bid}", headers=issuer.headers(BUYER)).json()
         assert b["status"] == "accepted" and b["listing"]["instantBook"] is True
+
+
+def test_the_owner_rates_the_renter_once_after_completion(client, app, issuer, broker):
+    from cappy_common.events import RENTER_RATED
+
+    bid = _requested(client, app, issuer, start_h=0.25)
+    rate = lambda who, q: client.post(f"/bookings/{bid}/rate-renter", json={"quality": q}, headers=issuer.headers(who))  # noqa: E731
+    _do(client, issuer, HOST, bid, "accept")
+    assert rate(HOST, 5).status_code == 409, "not before completion"
+    _do(client, issuer, HOST, bid, "start")
+    _do(client, issuer, BUYER, bid, "complete")
+    assert rate(BUYER, 5).status_code == 403
+    assert rate(HOST, 4).json()["renterRating"] == 4
+    assert rate(HOST, 5).status_code == 409
+    call(app, app.state.relay.flush)
+    assert [(e.data["renterId"], e.data["quality"]) for e in broker.of_type(RENTER_RATED)] == [(BUYER, 4)]

@@ -4,12 +4,12 @@ from fastapi import FastAPI
 
 from cappy_common.app import create_app
 from cappy_common.auth import TokenVerifier
-from cappy_common.events import BOOKING_RATED, PAYOUTS_READY
+from cappy_common.events import BOOKING_RATED, PAYOUTS_READY, RENTER_RATED
 from cappy_common.runtime import Runtime
 
 from . import moderation
 from .clients import Bookings, HttpBookings
-from .handlers import on_booking_rated, on_payouts_ready
+from .handlers import on_booking_rated, on_payouts_ready, on_renter_rated
 from .jobs import sweep_orphans
 from .media import MediaStore, make_store
 from .routes import internal, router
@@ -30,7 +30,7 @@ def build_app(
     runtime = Runtime(
         settings,
         metadata=Base.metadata,
-        handlers={BOOKING_RATED: on_booking_rated, PAYOUTS_READY: on_payouts_ready},
+        handlers={BOOKING_RATED: on_booking_rated, PAYOUTS_READY: on_payouts_ready, RENTER_RATED: on_renter_rated},
         loops=[sweep_orphans],
         on_stop=close,
     )

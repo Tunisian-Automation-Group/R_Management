@@ -126,6 +126,9 @@ class Owner(CamelModel):
     on_time_jobs: int
     joined_year: int
     response_mins: int
+    # As a renter: what owners said after completed bookings (two-way reviews).
+    renter_rating_sum: int = 0
+    renter_jobs: int = 0
 
 
 class _ListingBase(CamelModel):
@@ -315,6 +318,8 @@ class Booking(CamelModel):
     handover: Handover | None = None
     # When either side may first mark the hand-over (the server's rule).
     can_start_from: Iso | None = None
+    # The owner's rating of the renter (1-5), once given.
+    renter_rating: int | None = None
 
 
 class World(CamelModel):

@@ -51,6 +51,8 @@ class OwnerRow(Base):
     verified: Mapped[bool] = mapped_column(Boolean, default=False)
     rating_sum: Mapped[int] = mapped_column(Integer, default=0)
     jobs_done: Mapped[int] = mapped_column(Integer, default=0)
+    renter_rating_sum: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
+    renter_jobs: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
     on_time_jobs: Mapped[int] = mapped_column(Integer, default=0)
     joined_year: Mapped[int] = mapped_column(Integer)
     response_mins: Mapped[int] = mapped_column(Integer, default=60)

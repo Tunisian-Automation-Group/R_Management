@@ -775,3 +775,20 @@ def test_new_listings_per_day_are_limited(issuer, broker, tmp_path, bookings):
             for _ in range(3)
         ]
         assert codes == [201, 201, 429]
+
+
+def test_renter_ratings_build_a_renter_record(client, app, issuer):
+    from cappy_common.events import RENTER_RATED
+
+    _profile(client, issuer)
+    for q in (4, 5):
+        e = Event(
+            id=new_id("ev"),
+            type=RENTER_RATED,
+            source="booking",
+            occurred_at=now_iso(),
+            data={"bookingId": new_id("bk"), "renterId": "user-a", "ownerId": "o1", "quality": q},
+        )
+        _run(app, lambda e=e: app.state.dispatcher.handle(e))
+    owner = client.get("/owners/user-a").json()
+    assert (owner["renterRatingSum"], owner["renterJobs"]) == (9, 2)
