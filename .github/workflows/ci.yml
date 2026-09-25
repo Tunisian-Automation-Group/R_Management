@@ -103,6 +103,9 @@ jobs:
           make up
           make e2e
           make infra-local
+          # A short run of the load test: racing buyers and concurrent browsing
+          # with no 5xx and one winner per window (it caught a deadlock once).
+          (cd backend && uv run python ../local/load.py 20 30)
       - name: logs on failure
         if: failure() && env.LOCALSTACK_AUTH_TOKEN != ''
         run: docker compose logs --tail 200
