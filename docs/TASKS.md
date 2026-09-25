@@ -86,7 +86,9 @@ Status: `[ ]` open · `[~]` in progress · `[x]` done (commit) · `[-]` dropped 
 - [x] T-35 SLOs and error budgets (docs/slo.md)
 - [x] T-35b Burn-rate alarms (14.4x over 1 h and 5 min pages; 6x over 6 h and 30 min tickets)
 - [~] T-36 Deploys roll back on the 5xx and fast-burn alarms (done); native ECS canary with an alternate target group once there is real AWS to verify it on
-- [ ] T-02, T-06 decided from the research (Bot Control, Cognito threat protection)
+- [x] T-02 WAF Bot Control (common) on in prod, scoped away from Stripe webhooks, non-browser user agents counted, not blocked
+- [-] T-06 Cognito threat protection: off (Plus tier, about $0.02/MAU = ~$20k/month at 1M users); a Terraform switch turns it on when account-takeover attempts show up
+- [x] B-5 WAF rate rules would have blocked Stripe's webhooks at scale (few source IPs): the webhook path is exempt; signatures protect it
 
 ## Found while doing these
 

@@ -7,6 +7,14 @@ resource "aws_cognito_user_pool" "main" {
   auto_verified_attributes = ["email"]
   deletion_protection      = var.env == "prod" ? "ACTIVE" : "INACTIVE"
   mfa_configuration        = "OPTIONAL"
+  user_pool_tier           = var.cognito_threat_protection ? "PLUS" : "ESSENTIALS"
+
+  dynamic "user_pool_add_ons" {
+    for_each = var.cognito_threat_protection ? [1] : []
+    content {
+      advanced_security_mode = "ENFORCED"
+    }
+  }
 
   software_token_mfa_configuration {
     enabled = true

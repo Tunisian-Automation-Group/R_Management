@@ -92,3 +92,15 @@ variable "switches" {
   })
   default = { bookings = true, payouts = true, listings = true }
 }
+
+variable "bot_control" {
+  description = "WAF Bot Control (common): about $10/month + $1 per million requests"
+  type        = bool
+  default     = false
+}
+
+variable "cognito_threat_protection" {
+  description = "Cognito Plus tier with threat protection: about $0.02 per monthly active user. Off until account-takeover attempts show up"
+  type        = bool
+  default     = false
+}

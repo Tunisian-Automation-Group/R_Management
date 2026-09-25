@@ -63,6 +63,7 @@ module "platform" {
   db_min_acu   = 1
   db_max_acu   = 64
   db_instances = 2
+  bot_control  = true
 }
 
 output "platform" {

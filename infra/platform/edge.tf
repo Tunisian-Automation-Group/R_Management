@@ -169,6 +169,25 @@ resource "aws_wafv2_web_acl" "edge" {
       rate_based_statement {
         limit              = var.waf_rate_limit
         aggregate_key_type = "IP"
+        # Stripe sends every webhook from a handful of addresses; at scale it
+        # would trip any per-IP limit. The endpoint verifies signatures instead.
+        scope_down_statement {
+          not_statement {
+            statement {
+              byte_match_statement {
+                search_string         = "/api/payments/webhooks/"
+                positional_constraint = "STARTS_WITH"
+                field_to_match {
+                  uri_path {}
+                }
+                text_transformation {
+                  priority = 0
+                  type     = "NONE"
+                }
+              }
+            }
+          }
+        }
       }
     }
     visibility_config {
@@ -190,15 +209,36 @@ resource "aws_wafv2_web_acl" "edge" {
         limit              = 300
         aggregate_key_type = "IP"
         scope_down_statement {
-          byte_match_statement {
-            search_string         = "POST"
-            positional_constraint = "EXACTLY"
-            field_to_match {
-              method {}
+          and_statement {
+            statement {
+              byte_match_statement {
+                search_string         = "POST"
+                positional_constraint = "EXACTLY"
+                field_to_match {
+                  method {}
+                }
+                text_transformation {
+                  priority = 0
+                  type     = "NONE"
+                }
+              }
             }
-            text_transformation {
-              priority = 0
-              type     = "NONE"
+            statement {
+              not_statement {
+                statement {
+                  byte_match_statement {
+                    search_string         = "/api/payments/webhooks/"
+                    positional_constraint = "STARTS_WITH"
+                    field_to_match {
+                      uri_path {}
+                    }
+                    text_transformation {
+                      priority = 0
+                      type     = "NONE"
+                    }
+                  }
+                }
+              }
             }
           }
         }
@@ -212,11 +252,14 @@ resource "aws_wafv2_web_acl" "edge" {
   }
 
   dynamic "rule" {
-    for_each = {
-      AWSManagedRulesAmazonIpReputationList = 10
-      AWSManagedRulesCommonRuleSet          = 11
-      AWSManagedRulesKnownBadInputsRuleSet  = 12
-    }
+    for_each = merge(
+      {
+        AWSManagedRulesAmazonIpReputationList = 10
+        AWSManagedRulesCommonRuleSet          = 11
+        AWSManagedRulesKnownBadInputsRuleSet  = 12
+      },
+      var.bot_control ? { AWSManagedRulesBotControlRuleSet = 13 } : {},
+    )
     content {
       name     = rule.key
       priority = rule.value
@@ -229,12 +272,48 @@ resource "aws_wafv2_web_acl" "edge" {
           name        = rule.key
           # Photo uploads are larger than the common rule set's body limit;
           # the gateway and catalog enforce their own.
+          # Counted, not blocked: photo uploads exceed the common set's body
+          # limit, and Bot Control would otherwise block every non-browser
+          # caller, including Stripe's webhooks, the store apps' own HTTP
+          # stack and our canary.
           dynamic "rule_action_override" {
-            for_each = rule.key == "AWSManagedRulesCommonRuleSet" ? ["SizeRestrictions_BODY"] : []
+            for_each = lookup({
+              AWSManagedRulesCommonRuleSet     = ["SizeRestrictions_BODY"]
+              AWSManagedRulesBotControlRuleSet = ["SignalNonBrowserUserAgent", "CategoryHttpLibrary", "CategoryMonitoring"]
+            }, rule.key, [])
             content {
               name = rule_action_override.value
               action_to_use {
                 count {}
+              }
+            }
+          }
+          dynamic "managed_rule_group_configs" {
+            for_each = rule.key == "AWSManagedRulesBotControlRuleSet" ? [1] : []
+            content {
+              aws_managed_rules_bot_control_rule_set {
+                inspection_level = "COMMON"
+              }
+            }
+          }
+          # Stripe's webhooks are never judged by Bot Control.
+          dynamic "scope_down_statement" {
+            for_each = rule.key == "AWSManagedRulesBotControlRuleSet" ? [1] : []
+            content {
+              not_statement {
+                statement {
+                  byte_match_statement {
+                    search_string         = "/api/payments/webhooks/"
+                    positional_constraint = "STARTS_WITH"
+                    field_to_match {
+                      uri_path {}
+                    }
+                    text_transformation {
+                      priority = 0
+                      type     = "NONE"
+                    }
+                  }
+                }
               }
             }
           }
