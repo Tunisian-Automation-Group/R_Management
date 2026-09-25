@@ -10,6 +10,27 @@ Read these first, every session:
 3. **[`docs/adr/`](docs/adr/)** — why the system is built the way it is.
    Changing a decision means a new ADR, not a silent edit.
 
+## Living docs — keep them true
+
+These describe the system as it is now. Any change that alters what one of
+them says updates it **in the same commit** (builders and agents included):
+
+- **[`docs/FEATURES.md`](docs/FEATURES.md)**: every feature, where it lives,
+  and its provider seam (for example ID checks, payments, email, push, maps),
+  with what swapping it for another third party takes.
+- **[`docs/INFRA.md`](docs/INFRA.md)**: the AWS resources and local stack,
+  per cell and environment, the kill switches, costs, and what is validated
+  vs applied (never real AWS, GOAL 12).
+- **[`docs/FLOWS.md`](docs/FLOWS.md)**: how the app flows work from the
+  user's side (welcome, sign-in, booking, payment, hand-over, disputes,
+  moderation, deletion), on web and in the store apps.
+- **[`docs/DATA.md`](docs/DATA.md)**: services, their tables, the events
+  between them, who reads what, retention and personal data.
+
+After each round of work, a docs-sync agent reads the round's commits
+(`git log -p <from>..HEAD`) and brings all four docs up to date, so a
+builder that missed one is caught.
+
 ## Rules
 
 - Work on the `prod-readiness` branch. Commit as the repo's configured identity
