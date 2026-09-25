@@ -10,7 +10,9 @@ import { PLATFORM_FEE_BPS } from '../../domain/pricing.ts'
 import { formatEur, formatEurExact } from '../../domain/money.ts'
 import {
   ApiError,
+  getIdentity,
   requestBooking,
+  startIdentity,
   useDistricts,
   useListing,
   useOffers,
@@ -40,7 +42,7 @@ import {
   oneDecimal,
   Stars,
 } from '../components/ui.tsx'
-import { day, distance, range, relative, responseTime, time } from '../format.ts'
+import { day, distance, policyName, policyText, range, relative, responseTime, time } from '../format.ts'
 import { locale, t } from '../../i18n.ts'
 
 const QUANTITY_STEPS = [10, 25, 50, 100, 250, 500, 1000]
@@ -78,6 +80,8 @@ export function Listing() {
   // One key per attempt: a retried tap is the same booking, a new attempt is a new one.
   const [attempt, setAttempt] = useState(() => crypto.randomUUID())
   const [paying, setPaying] = useState<BookingCreated | null>(null)
+  // A 'verification_required' booking: the one-time ID check, then the booking again.
+  const [verifying, setVerifying] = useState<'ask' | 'busy' | null>(null)
 
   // To the minute, so the quote's query key does not change every render.
   const now = useMemo(() => new Date(Math.floor(Date.now() / 60_000) * 60_000), [])
@@ -164,7 +168,7 @@ export function Listing() {
   }
 
   const sent = (bookingId: string) => {
-    toast(t('Request sent to {name}', { name: first }))
+    toast(listing?.instantBook ? t('Booked') : t('Request sent to {name}', { name: first }))
     void qc.invalidateQueries({ queryKey: ['bookings'] })
     setConfirming(false)
     startOver()
@@ -183,12 +187,42 @@ export function Listing() {
       if (made.payment && payments.data?.provider === 'stripe') setPaying(made)
       else sent(made.booking.id)
     } catch (err) {
+      if (err instanceof ApiError && err.code === 'verification_required') {
+        setVerifying('ask')
+        return
+      }
       toast(messageOf(err))
       // Taken by someone else a moment ago: show what is still free.
       if (err instanceof ApiError && err.status === 409) void offersQ.refetch()
       setAttempt(crypto.randomUUID())
     } finally {
       setSending(false)
+    }
+  }
+
+  // Stripe Identity's own modal when the provider is Stripe; the fake provider
+  // verifies at once. Either way, the same booking attempt (and key) is retried.
+  const verify = async () => {
+    setVerifying('busy')
+    try {
+      let id = await startIdentity()
+      if (id.status !== 'verified' && id.clientSecret && payments.data?.publishableKey) {
+        const { loadStripe } = await import('@stripe/stripe-js')
+        const stripe = await loadStripe(payments.data.publishableKey)
+        const res = await stripe?.verifyIdentity(id.clientSecret)
+        if (res?.error) throw new Error(res.error.message)
+        // The result arrives by webhook: wait for it, for up to a minute.
+        for (let i = 0; i < 30 && id.status !== 'verified'; i++) {
+          await new Promise((ok) => setTimeout(ok, 2000))
+          id = await getIdentity()
+        }
+      }
+      if (id.status !== 'verified') throw new Error(t('Your ID check is still being processed. Try booking again in a few minutes.'))
+      setVerifying(null)
+      await book()
+    } catch (err) {
+      toast(messageOf(err))
+      setVerifying('ask')
     }
   }
 
@@ -255,8 +289,14 @@ export function Listing() {
             {/* The worry in front of any red button is "am I paying now". Nothing
                 is charged here, so the box says so, and says who answers and when. */}
             <p className="t-sm mt-3 hidden text-center text-[var(--ink-4)] md:block">
-              {t('Your card is only held. Nothing is charged until {name} accepts', { name: first })} ·{' '}
-              {responseTime(owner.responseMins).replace(/^./, (c) => c.toLowerCase())}
+              {listing.instantBook ? (
+                t('Instant book: confirmed as soon as your card is held.')
+              ) : (
+                <>
+                  {t('Your card is only held. Nothing is charged until {name} accepts', { name: first })} ·{' '}
+                  {responseTime(owner.responseMins).replace(/^./, (c) => c.toLowerCase())}
+                </>
+              )}
             </p>
           </div>
         )
@@ -284,6 +324,12 @@ export function Listing() {
           >
             <Stars value={info.reviews.average} count={info.reviews.count} />
           </a>
+          {listing.instantBook && (
+            <span className="inline-flex items-center gap-1 rounded-full bg-[var(--sunken)] px-2.5 py-0.5 text-[13px] font-semibold text-[var(--ink-2)]">
+              <Icon name="bolt" size={13} />
+              {t('Instant book')}
+            </span>
+          )}
         </div>
       </header>
 
@@ -469,6 +515,13 @@ export function Listing() {
             />
             {quote.extra > 0 && <Row label={quote.extraLabel} value={formatEurExact(quote.extra)} />}
             <div className="my-2 border-t border-[var(--line)]" />
+            {(quote.discount ?? 0) > 0 && (
+              <Row
+                label={quote.discountLabel ?? t('Discount')}
+                value={`−${formatEurExact(quote.discount ?? 0)}`}
+                tone="accent"
+              />
+            )}
             <Row label={t('Total')} value={formatEurExact(quote.total)} strong />
             <p className="t-sm mt-3 border-t border-[var(--line)] pt-3 text-[var(--ink-4)]">
               {t('Includes the {pct} % Cappy fee of {fee}. {name} receives {net}. Paid by card when {name} accepts; if they decline, the hold is released.', {
@@ -481,6 +534,14 @@ export function Listing() {
           </Card>
         </>
       )}
+
+      <SectionHead title={t('Cancellation')} className="mt-7" />
+      <Card className="p-5">
+        <p className="text-[15px] font-semibold">{policyName(listing.cancellationPolicy)}</p>
+        <p className="t-sm mt-1 text-[var(--ink-3)]">
+          {policyText(listing.cancellationPolicy)} {t('If the owner cancels, you get everything back.')}
+        </p>
+      </Card>
 
       {/* ---------------------------------------------------- house rules */}
       {/* ---------------------------------------------------------- reviews */}
@@ -575,13 +636,44 @@ export function Listing() {
               />
             </Card>
 
-            <Banner
-              tone="warn"
-              title={t('Nothing is charged yet')}
-              body={t('Your card is held for the total. {name} has to accept first, usually within {n} minutes; if they decline or do not answer, the hold is released.', { name: first, n: owner.responseMins })}
-            />
+            {listing.instantBook ? (
+              <Banner
+                tone="warn"
+                title={t('Instant book')}
+                body={t('Confirmed as soon as your card is held; {name} does not need to accept first.', { name: first })}
+              />
+            ) : (
+              <Banner
+                tone="warn"
+                title={t('Nothing is charged yet')}
+                body={t('Your card is held for the total. {name} has to accept first, usually within {n} minutes; if they decline or do not answer, the hold is released.', { name: first, n: owner.responseMins })}
+              />
+            )}
+            <p className="t-sm text-[var(--ink-3)]">
+              {t('Cancellation')}: {policyText(listing.cancellationPolicy)}
+            </p>
           </div>
         )}
+      </Sheet>
+
+      <Sheet
+        open={verifying !== null}
+        onClose={() => setVerifying(null)}
+        title={t('Check your ID once')}
+        footer={
+          <div className="space-y-2">
+            <Button block size="lg" disabled={verifying === 'busy'} onClick={() => void verify()}>
+              {verifying === 'busy' ? t('Checking…') : t('Check my ID')}
+            </Button>
+            <Button block variant="quiet" onClick={() => setVerifying(null)}>
+              {t('Not yet')}
+            </Button>
+          </div>
+        }
+      >
+        <p className="pb-2 text-[15px] text-[var(--ink-2)]">
+          {t('This booking needs a one-time ID check. You photograph an ID document and your face; it takes about two minutes and is never needed again. Your booking is sent as soon as it is done.')}
+        </p>
       </Sheet>
     </Screen>
   )

@@ -4,7 +4,7 @@ import { useQueries, useQueryClient } from '@tanstack/react-query'
 import type { Booking, Listing, Owner, Slot } from '../../domain/types.ts'
 import { durationLabel } from '../../domain/categories.ts'
 import { idleHours } from '../../domain/availability.ts'
-import { formatEur } from '../../domain/money.ts'
+import { formatEur, formatEurExact } from '../../domain/money.ts'
 import * as repo from '../../data/repo.ts'
 import { useAuthReady, useSession } from '../../data/auth.ts'
 import { messageOf, useToast } from '../store.tsx'
@@ -14,8 +14,8 @@ import { CapacityBar } from '../components/CapacityBar.tsx'
 import { Photo } from '../components/Photo.tsx'
 import { Icon } from '../components/Icon.tsx'
 import { Avatar, Banner, Button, Card, Chip, EmptyState, oneDecimal, Pill, Sheet, Skeleton } from '../components/ui.tsx'
-import { ago, range } from '../format.ts'
-import { plural, t } from '../../i18n.ts'
+import { ago, range, renterRecord } from '../format.ts'
+import { locale, plural, t } from '../../i18n.ts'
 
 export const DECLINE_REASONS = [
   'Already promised it to someone',
@@ -47,6 +47,8 @@ export function Earn() {
   const [removing, setRemoving] = useState<Listing | null>(null)
 
   const mine = listingsQ.data?.items.map((v) => v.listing) ?? []
+  const held = new Set((listingsQ.data?.items ?? []).filter((v) => v.held).map((v) => v.listing.id))
+  const invoices = repo.useInvoices()
   const active = mine.filter((l) => l.active)
   // Each listing's upcoming windows come with it, for the idle-hours figures.
   const slotsById = new Map((listingsQ.data?.items ?? []).map((v) => [v.listing.id, v.slots ?? []] as const))
@@ -237,6 +239,9 @@ export function Earn() {
                         <p className="text-[15.5px] font-semibold">
                           {who?.name ?? t('Someone nearby')}
                         </p>
+                        {who && (
+                          <p className="t-sm text-[var(--ink-3)]">{renterRecord(who.renterRatingSum, who.renterJobs)}</p>
+                        )}
                         <p className="t-sm text-[var(--ink-3)]">
                           {t('wants {what}', { what: b.listing?.title ?? t('your listing') })} ·{' '}
                           {durationLabel(b.match.quote.hours)}
@@ -337,7 +342,11 @@ export function Earn() {
                         {l.active ? t('{h} h free this week', { h: Math.round(h) }) : t('Paused')}
                       </p>
                     </div>
-                    {!l.active && <Pill tone="warn">{t('Paused')}</Pill>}
+                    {held.has(l.id) ? (
+                      <Pill tone="warn">{t('Waiting for a quick check')}</Pill>
+                    ) : (
+                      !l.active && <Pill tone="warn">{t('Paused')}</Pill>
+                    )}
                   </div>
 
                   {l.active && week.length > 0 && (
@@ -378,6 +387,31 @@ export function Earn() {
           })}
         </ul>
       </section>
+
+      {/* -------------------------------------------------------- invoices */}
+      {(invoices.data?.length ?? 0) > 0 && (
+        <section>
+          <SectionHead title={t('Invoices')} aside={`${invoices.data!.length}`} className="mt-7" />
+          <ul className="ruled border-t border-[var(--line)]">
+            {invoices.data!.map((inv) => (
+              <li key={inv.number}>
+                <button
+                  onClick={() => void repo.openInvoice(inv.number).catch((err) => toast(messageOf(err)))}
+                  className="flex w-full items-center gap-4 py-3.5 text-left transition-opacity duration-[160ms] hover:opacity-70"
+                >
+                  <span className="min-w-0 flex-1">
+                    <span className="block truncate text-[15px] font-semibold">{inv.number}</span>
+                    <span className="t-sm block text-[var(--ink-3)]">
+                      {new Date(inv.issuedAt).toLocaleDateString(locale())}
+                    </span>
+                  </span>
+                  <span className="tnum shrink-0 text-[15px] font-semibold">{formatEurExact(inv.gross)}</span>
+                </button>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
 
       {/* ----------------------------------------------------- your record */}
       {you && (

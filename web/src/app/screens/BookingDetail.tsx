@@ -18,6 +18,8 @@ import {
   disputeBooking,
   getBookingPayment,
   rateBooking,
+  rateRenter,
+  useCancellationQuote,
   useBooking,
   useListing,
   useOwner,
@@ -35,7 +37,7 @@ import { Photo } from '../components/Photo.tsx'
 import { Icon } from '../components/Icon.tsx'
 import { Avatar, Banner, Button, Card, Chip, Field, Row, Sheet, Stars, Textarea } from '../components/ui.tsx'
 import { REVIEW_TAGS } from '../../domain/reviews.ts'
-import { distance, range, relative, responseTime } from '../format.ts'
+import { distance, range, relative, renterRecord, responseTime } from '../format.ts'
 import { locale, plural, t } from '../../i18n.ts'
 
 const STEPS: { id: BookingStatus; label: string; note: string; ownerNote: string }[] = [
@@ -111,6 +113,7 @@ function Detail({
   const [busy, setBusy] = useState(false)
   const [evidencePrompt, setEvidencePrompt] = useState<EvidenceStage | null>(null)
   const [blocking, setBlocking] = useState(false)
+  const [ratingRenter, setRatingRenter] = useState(false)
 
   const { quote } = booking.match
   const title = booking.listing?.title ?? listing?.title ?? t('Booked listing')
@@ -128,6 +131,8 @@ function Detail({
   const canStart = Date.now() >= startFrom
   const begun = Date.now() >= startsAt
 
+  // What cancelling now would refund, fetched only while the sheet is open.
+  const refund = useCancellationQuote(booking.id, cancelling && booking.status === 'accepted')
   const payments = usePaymentsConfig()
   const payNow =
     !asOwner && booking.status === 'awaiting_payment' && payments.data?.provider === 'stripe'
@@ -161,6 +166,8 @@ function Detail({
       void qc.invalidateQueries({ queryKey: ['listing', booking.match.listingId] })
       void qc.invalidateQueries({ queryKey: ['reviews', booking.match.listingId] })
     }, t('Review posted on {title}', { title }))
+  const rateTheRenter = (quality: number) =>
+    done(() => rateRenter(booking.id, quality), t('Thanks. {name} will see it once they have rated too.', { name: buyer }))
 
   // For the buyer, cancelling before the start is also their right of
   // withdrawal (EU consumer law), so the button says so.
@@ -278,6 +285,13 @@ function Detail({
         </Button>
       )
       break
+    case 'owner:completed':
+      footer = booking.renterRating ? home : (
+        <Button block size="lg" onClick={() => setRatingRenter(true)}>
+          {t('Rate {name}', { name: buyer })}
+        </Button>
+      )
+      break
     default:
       footer = home
   }
@@ -333,9 +347,11 @@ function Detail({
           tone="warn"
           title={t('This booking was cancelled')}
           body={
-            asOwner
-              ? t('The buyer gets back everything they paid, and the window is free again.')
-              : t('The hold on your card is released, and anything already charged is refunded in full.')
+            booking.refundAmount
+              ? t('{amount} is refunded to the card.', { amount: formatEurExact(booking.refundAmount) })
+              : asOwner
+                ? t('The buyer gets back everything they paid, and the window is free again.')
+                : t('The hold on your card is released, and anything already charged is refunded in full.')
           }
         />
       ) : booking.status === 'expired' ? (
@@ -454,7 +470,9 @@ function Detail({
             <Avatar initials={other.initials} size={44} business={other.kind === 'business'} />
             <div className="min-w-0 flex-1">
               <p className="truncate text-[15.5px] font-semibold">{other.name}</p>
-              <p className="t-sm text-[var(--ink-3)]">{asOwner ? t('Booked this window') : trackRecord(other)}</p>
+              <p className="t-sm text-[var(--ink-3)]">
+                {asOwner ? renterRecord(other.renterRatingSum, other.renterJobs) : trackRecord(other)}
+              </p>
             </div>
             {!asOwner && <Stars value={rating(other)} count={other.jobsDone} />}
           </div>
@@ -496,11 +514,15 @@ function Detail({
         />
         <div className="my-2 border-t border-[var(--line)]" />
         {dead ? (
-          <Row
-            label={t('Charged')}
-            value={booking.status === 'cancelled' ? t('Nothing: released or refunded') : t('Nothing: hold released')}
-            strong
-          />
+          booking.status === 'cancelled' && booking.refundAmount ? (
+            <Row label={t('Refunded')} value={formatEurExact(booking.refundAmount)} strong />
+          ) : (
+            <Row
+              label={t('Charged')}
+              value={booking.status === 'cancelled' ? t('Nothing: released or refunded') : t('Nothing: hold released')}
+              strong
+            />
+          )
         ) : (
           <>
             <Row label={t('Total')} value={formatEurExact(quote.total)} strong />
@@ -608,10 +630,26 @@ function Detail({
         <p className="t-body pb-3 text-[var(--ink-2)]">
           {asOwner
             ? t('{name} will be told, and gets back everything they paid.', { name: buyer })
-            : booking.status === 'accepted'
+            : booking.status === 'accepted' && refund.data && refund.data.refundAmount < quote.total
+              ? t('This is your withdrawal from the booking. {name} will be told the window is free again. What you get back is below.', { name: first })
+              : booking.status === 'accepted'
               ? t('This is your withdrawal from the booking. {name} will be told the window is free again, and you get back everything you paid, in full.', { name: first })
               : t('This is your withdrawal from the booking. {name} will be told the window is free again. The hold on your card is released; nothing is charged.', { name: first })}
         </p>
+        {booking.status === 'accepted' && (
+          <Card className="mb-3 bg-[var(--sunken)] p-4 shadow-none">
+            <Row
+              label={asOwner ? t('{name} gets back', { name: buyer }) : t('You get back')}
+              value={refund.data ? formatEurExact(refund.data.refundAmount) : '…'}
+              strong
+            />
+            {refund.data && refund.data.refundAmount < quote.total && (
+              <p className="t-sm mt-1 text-[var(--ink-3)]">
+                {t('Of {total}, under the listing\'s cancellation policy.', { total: formatEurExact(quote.total) })}
+              </p>
+            )}
+          </Card>
+        )}
       </Sheet>
 
       <Sheet
@@ -802,9 +840,32 @@ function Detail({
           </Field>
 
           <p className="t-sm text-[var(--ink-4)]">
-            {t('Your rating changes who shows up first for the next person searching, and your words are what they read before they decide.')}
+            {t('Your rating changes who shows up first for the next person searching, and your words are what they read before they decide.')}{' '}
+            {t('Reviews are blind: yours is published once you have both rated, or 14 days after the booking.')}
           </p>
         </div>
+      </Sheet>
+
+      <Sheet open={ratingRenter} onClose={() => setRatingRenter(false)} title={t('How was {name} as a renter?', { name: buyer })}>
+        <div className="flex justify-between gap-1 pb-3">
+          {[1, 2, 3, 4, 5].map((n) => (
+            <button
+              key={n}
+              disabled={busy}
+              onClick={() => {
+                void rateTheRenter(n)
+                setRatingRenter(false)
+              }}
+              aria-label={plural(n, '{n} star', '{n} stars')}
+              className="grid h-12 w-12 place-items-center rounded-[var(--radius-control)] transition-colors duration-[160ms] hover:bg-[var(--sunken)]"
+            >
+              <Icon name="star" size={30} strokeWidth={0} className="fill-[var(--line-strong)] hover:fill-[var(--ink)]" />
+            </button>
+          ))}
+        </div>
+        <p className="t-sm pb-3 text-[var(--ink-4)]">
+          {t('Only owners see renter ratings, when that person asks to book. Reviews are blind: yours is published once you have both rated, or 14 days after the booking.')}
+        </p>
       </Sheet>
     </Screen>
   )

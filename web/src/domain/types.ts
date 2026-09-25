@@ -100,7 +100,12 @@ export type Owner = {
   joinedYear: number
   /** Median minutes to respond to a request. Buyers care about this more than stars. */
   responseMins: number
+  /** As a renter: stars owners gave after completed bookings (two-way reviews). */
+  renterRatingSum?: number
+  renterJobs?: number
 }
+
+export type CancellationPolicy = 'flexible' | 'moderate' | 'strict'
 
 type ListingBase = {
   id: string
@@ -126,6 +131,12 @@ type ListingBase = {
   instructions: string
   rules: string[]
   active: boolean
+  /** Confirmed as soon as the card is held; the owner does not answer each request. */
+  instantBook?: boolean
+  cancellationPolicy?: CancellationPolicy
+  /** Percent off the hourly base from 8 h (day) and 40 h (week), 0–50. */
+  dayDiscountPct?: number
+  weekDiscountPct?: number
 }
 
 export type WindowListing = ListingBase & {
@@ -194,6 +205,9 @@ export type Quote = {
   hours: number
   /** rate × hours */
   base: Cents
+  /** A duration discount already taken out of `total`. */
+  discount?: Cents
+  discountLabel?: string
   extra: Cents
   extraLabel: string
   /** What the buyer pays. */
@@ -283,6 +297,10 @@ export type Booking = {
   canStartFrom?: Iso
   /** Where and how to collect it: only once the booking is accepted, for both parties. */
   handover?: { address: string; instructions: string }
+  /** The owner's 1–5 stars for the renter (hidden from the renter until both reviews are out). */
+  renterRating?: number
+  /** Cents refunded when it was cancelled. */
+  refundAmount?: Cents
 }
 
 export type ListingSnapshot = {
@@ -291,6 +309,8 @@ export type ListingSnapshot = {
   category: CategoryId
   ownerName: string
   photo?: string
+  instantBook?: boolean
+  cancellationPolicy?: CancellationPolicy
 }
 
 /** A concrete bookable window: not the whole idle gap, the bit you would take. */

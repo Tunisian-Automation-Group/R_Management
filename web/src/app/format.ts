@@ -77,3 +77,20 @@ export const distance = (km: number) =>
     : km < 1
       ? `${Math.round(km * 1000)} m`
       : `${km.toLocaleString(locale(), { minimumFractionDigits: 1, maximumFractionDigits: 1 })} km`
+
+/** The cancellation policies, as booking/cancellation.py applies them. */
+export const POLICIES = ['flexible', 'moderate', 'strict'] as const
+export function policyName(p: string | undefined): string {
+  return p === 'moderate' ? t('Moderate') : p === 'strict' ? t('Strict') : t('Flexible')
+}
+export function policyText(p: string | undefined): string {
+  if (p === 'moderate') return t('Full refund until 24 hours before, then half.')
+  if (p === 'strict') return t('Full refund until 7 days before, half until 24 hours before, then nothing.')
+  return t('Full refund until the booked time starts.')
+}
+
+/** A renter's record from owners' ratings: "4.8 from 5 bookings" or "New renter". */
+export function renterRecord(sum: number | undefined, jobs: number | undefined): string {
+  if (!jobs) return t('New renter')
+  return t('Renter {stars} from {n} bookings', { stars: ((sum ?? 0) / jobs).toFixed(1), n: jobs })
+}

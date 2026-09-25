@@ -128,7 +128,15 @@ export type Me = { id: string; homeDistrict: string; owner?: Owner }
 export type City = { city: string; country: string; lat: number; lng: number; listings: number }
 export type MatchView = { match: Match; listing: Listing; owner: Owner }
 /** `slots` and `address` only on the owner's own listings (GET /me/listings). */
-export type ListingView = { listing: Listing; owner: Owner; saved?: boolean; slots?: Slot[]; address?: string }
+export type ListingView = {
+  listing: Listing
+  owner: Owner
+  saved?: boolean
+  slots?: Slot[]
+  address?: string
+  /** Waiting for a quick staff check before anyone else can see it. */
+  held?: boolean
+}
 export type ListingDetail = {
   listing: Listing
   owner: Owner
@@ -377,6 +385,51 @@ export const disputeBooking = (id: string, reason: string) => post<Booking>(`/bo
 /** The card step for a booking still awaiting payment (404 once there is nothing to pay). */
 export const getBookingPayment = (id: string) => get<PaymentStart>(`/bookings/${id}/payment`)
 export const rateBooking = (id: string, outcome: Outcome) => post<Booking>(`/bookings/${id}/rate`, outcome)
+/** Two-way reviews: the owner rates the renter once the booking is completed. */
+export const rateRenter = (id: string, quality: number) => post<Booking>(`/bookings/${id}/rate-renter`, { quality })
+
+export type CancellationQuote = { refundAmount: number; currency: string; policy: string }
+/** What cancelling now would refund, straight from the server's rule. */
+export const useCancellationQuote = (id: string, enabled: boolean) =>
+  useQuery({
+    queryKey: ['cancellation', id],
+    queryFn: () => get<CancellationQuote>(`/bookings/${id}/cancellation`),
+    enabled,
+    staleTime: 0,
+  })
+
+export type Invoice = {
+  number: string
+  bookingId: string
+  net: number
+  vatRateBps: number
+  vat: number
+  gross: number
+  currency: string
+  issuedAt: string
+}
+export const useInvoices = () => {
+  const session = useSession()
+  return useQuery({ queryKey: ['invoices', session?.sub], queryFn: () => get<Invoice[]>('/payments/invoices'), enabled: Boolean(session) })
+}
+/** The printable invoice needs the token, so it is fetched and opened as a blob. */
+export async function openInvoice(number: string): Promise<void> {
+  const win = window.open('', '_blank') // opened in the click, or popup blockers step in
+  const res = await send('GET', `/payments/invoices/${encodeURIComponent(number)}`)
+  if (!res.ok) {
+    win?.close()
+    throw new ApiError(t('Could not open the invoice. Try again.'), res.status, 'error')
+  }
+  const url = URL.createObjectURL(new Blob([await res.text()], { type: 'text/html' }))
+  if (win) win.location.href = url
+  else window.location.href = url
+  setTimeout(() => URL.revokeObjectURL(url), 60_000)
+}
+
+export type Identity = { status: 'none' | 'pending' | 'requires_input' | 'verified'; clientSecret?: string }
+/** Stripe Identity: a one-time document and selfie check (payments service). */
+export const startIdentity = () => post<Identity>('/payments/identity/session')
+export const getIdentity = () => get<Identity>('/payments/identity')
 
 /** A listing as the owner writes it: ids and the owner come from the server. */
 export type ListingDraft = Listing extends infer L ? (L extends Listing ? Omit<L, 'id' | 'ownerId'> : never) : never

@@ -1,6 +1,6 @@
 import { useRef, useState } from 'react'
 import { Navigate, useNavigate, useParams } from 'react-router-dom'
-import type { CategoryId, Material, Slot } from '../../domain/types.ts'
+import type { CancellationPolicy, CategoryId, Material, Slot } from '../../domain/types.ts'
 import { CATEGORIES, category } from '../../domain/categories.ts'
 import { formatEur } from '../../domain/money.ts'
 import { messageOf, useCappy, useToast } from '../store.tsx'
@@ -18,11 +18,12 @@ import {
   Field,
   Input,
   MoneyInput,
+  Segmented,
   Textarea,
 } from '../components/ui.tsx'
 import { DistrictSelect } from '../components/DistrictSelect.tsx'
 import { NotFound } from './NotFound.tsx'
-import { range } from '../format.ts'
+import { POLICIES, policyName, policyText, range } from '../format.ts'
 import { lang, locale, plural, t } from '../../i18n.ts'
 
 const MATERIALS: Material[] = [
@@ -154,6 +155,8 @@ type Errors = Partial<
 type PhotoDraft = { key: string; preview: string; url?: string; error?: string }
 
 /** New listing at /earn/new; editing one of yours at /earn/edit/:id. */
+const clampPct = (v: string) => Math.max(0, Math.min(50, Math.round(Number(v) || 0)))
+
 export function AddListing() {
   const { id } = useParams()
   const session = useSession()
@@ -198,6 +201,10 @@ function ListingForm({ edit }: { edit?: repo.ListingView }) {
   const [custom, setCustom] = useState<CustomWindow>(defaultCustom)
   const [keptSlots, setKeptSlots] = useState<Slot[]>(edit?.slots ?? [])
   const [instructions, setInstructions] = useState(was?.instructions ?? '')
+  const [instantBook, setInstantBook] = useState(was?.instantBook ?? false)
+  const [policy, setPolicy] = useState<CancellationPolicy>(was?.cancellationPolicy ?? 'flexible')
+  const [dayPct, setDayPct] = useState(was?.dayDiscountPct ?? 0)
+  const [weekPct, setWeekPct] = useState(was?.weekDiscountPct ?? 0)
   const [rules, setRules] = useState<string[]>(was?.rules.filter((r) => r !== 'Cash or bank transfer') ?? [])
   const [photos, setPhotos] = useState<PhotoDraft[]>(
     (was?.photos ?? []).map((url, i) => ({ key: `was-${i}`, preview: repo.mediaUrl(url), url })),
@@ -365,6 +372,10 @@ function ListingForm({ edit }: { edit?: repo.ListingView }) {
       rules,
       active: was?.active ?? true,
       photos: photos.flatMap((p) => (p.url ? [p.url] : [])),
+      instantBook,
+      cancellationPolicy: policy,
+      dayDiscountPct: dayPct,
+      weekDiscountPct: weekPct,
     }
 
     // Ids and the owner come from the server and the caller's token.
@@ -753,6 +764,59 @@ function ListingForm({ edit }: { edit?: repo.ListingView }) {
             </Field>
           </>
         )}
+
+        <Field
+          label={t('Longer bookings')}
+          hint={t('Percent off the hourly price from a day (8 h) and from a week (40 h) of use. 0 to 50.')}
+        >
+          <div className="flex items-center gap-3">
+            <Input
+              inputMode="numeric"
+              aria-label={t('Day discount, percent')}
+              className="tnum"
+              value={dayPct}
+              onChange={(e) => setDayPct(clampPct(e.target.value))}
+            />
+            <span className="shrink-0 text-[14px] text-[var(--ink-4)]">{t('% from 8 h')}</span>
+            <Input
+              inputMode="numeric"
+              aria-label={t('Week discount, percent')}
+              className="tnum"
+              value={weekPct}
+              onChange={(e) => setWeekPct(clampPct(e.target.value))}
+            />
+            <span className="shrink-0 text-[14px] text-[var(--ink-4)]">{t('% from 40 h')}</span>
+          </div>
+        </Field>
+
+        <Field label={t('Cancellation policy')} hint={policyText(policy)}>
+          <Segmented
+            label={t('Cancellation policy')}
+            options={POLICIES.map((p) => ({ value: p, label: policyName(p) }))}
+            value={policy}
+            onChange={setPolicy}
+          />
+          {policy !== 'flexible' && (
+            <p className="t-sm mt-2 text-[var(--ink-3)]">
+              {t('Moderate and strict apply once Cappy switches them on; until then every booking can be cancelled for a full refund before it starts.')}
+            </p>
+          )}
+        </Field>
+
+        <label className="flex items-start gap-3 rounded-[var(--radius-control)] border border-[var(--line)] p-4">
+          <input
+            type="checkbox"
+            className="mt-1 h-5 w-5 shrink-0 accent-[var(--ink)]"
+            checked={instantBook}
+            onChange={(e) => setInstantBook(e.target.checked)}
+          />
+          <span>
+            <span className="block text-[15px] font-semibold text-[var(--ink)]">{t('Instant book')}</span>
+            <span className="t-sm block text-[var(--ink-3)]">
+              {t('Bookings are confirmed as soon as the card is held, without waiting for you to accept. You can still cancel, with a full refund to the renter.')}
+            </span>
+          </span>
+        </label>
 
         {was && (
           <Field label={t('Windows already listed')} hint={t('Remove any that are no longer free.')}>
