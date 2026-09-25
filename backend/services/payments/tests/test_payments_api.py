@@ -21,6 +21,7 @@ from cappy_common.events import (
     PAYMENT_CAPTURED,
     PAYMENT_REFUNDED,
     PAYOUT_SENT,
+    PAYOUTS_READY,
     Event,
     reset_memory_broker,
 )
@@ -168,6 +169,13 @@ def test_payment_is_visible_to_its_two_parties_only(client, issuer):
     assert client.get("/payments/bookings/bk_1").status_code == 401
 
 
+def test_payout_readiness_is_announced_once_per_change(client, app, broker):
+    _intent(client, "bk_a", owner="new-host")
+    _intent(client, "bk_b", owner="new-host")
+    call(app, app.state.relay.flush)
+    assert [e.data for e in broker.of_type(PAYOUTS_READY)] == [{"ownerId": "new-host", "ready": True}]
+
+
 def test_config_and_onboarding(client, issuer):
     assert client.get("/payments/config").json() == {"provider": "fake"}
     h = issuer.headers("new-owner")
@@ -250,7 +258,7 @@ def test_webhook_authorises_once_and_rejects_forgeries(stripe_app, broker):
     assert len(broker.of_type(PAYMENT_AUTHORISED)) == 1
 
 
-def test_webhook_keeps_accounts_current(stripe_app, issuer):
+def test_webhook_keeps_accounts_current(stripe_app, issuer, broker):
     app, c = stripe_app
 
     async def connect():
@@ -265,6 +273,8 @@ def test_webhook_keeps_accounts_current(stripe_app, issuer):
     )
     assert c.post("/payments/webhooks/stripe", content=body, headers=headers).status_code == 200
     assert c.get("/payments/connect/status", headers=issuer.headers("host")).json()["payoutsEnabled"] is True
+    call(app, app.state.relay.flush)
+    assert [e.data for e in broker.of_type(PAYOUTS_READY)] == [{"ownerId": "host", "ready": True}]
 
 
 def test_deployed_payments_require_stripe():

@@ -30,10 +30,17 @@ class Settings(CommonSettings):
     # the nearest ones matching the category and time window.
     candidate_cap: int = 300
 
+    # Only list owners who can be paid (ADR 0005), so a buyer never picks a
+    # listing that checkout will then refuse. Off locally, where the fake
+    # payments provider pays anyone.
+    require_payable_owners: bool = False
+
     def unsafe_reasons(self) -> list[str]:
         problems = super().unsafe_reasons()
         if not self.database_url.startswith("postgresql"):
             problems.append("DATABASE_URL must be Postgres")
         if not self.media_bucket:
             problems.append("MEDIA_BUCKET must be set; a local directory is not shared between tasks")
+        if not self.require_payable_owners:
+            problems.append("REQUIRE_PAYABLE_OWNERS must be true")
         return problems

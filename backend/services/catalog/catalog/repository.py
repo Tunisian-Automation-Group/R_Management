@@ -30,7 +30,7 @@ from cappy_common.models import (
 from cappy_common.pagination import decode_cursor, encode_cursor
 from cappy_common.timeutil import dt_from_iso, iso_from_datetime
 
-from .tables import DistrictRow, ListingRow, MediaRow, OwnerRow, ReviewRow, SavedRow, SlotRow
+from .tables import DistrictRow, ListingRow, MediaRow, OwnerRow, PayableOwnerRow, ReviewRow, SavedRow, SlotRow
 
 _listing = TypeAdapter(Listing)
 
@@ -146,8 +146,24 @@ class CityRow:
 
 
 class CatalogRepository:
-    def __init__(self, session: AsyncSession) -> None:
+    def __init__(self, session: AsyncSession, *, bookable_only: bool = False) -> None:
         self.s = session
+        self.bookable_only = bookable_only
+
+    def _bookable(self) -> list:
+        """With ``bookable_only``, listings of owners payments cannot pay are
+        not offered to buyers at all."""
+        if not self.bookable_only:
+            return []
+        return [ListingRow.owner_id.in_(select(PayableOwnerRow.owner_id))]
+
+    async def set_payable(self, owner_id: str, ready: bool) -> None:
+        row = await self.s.get(PayableOwnerRow, owner_id)
+        if ready and row is None:
+            self.s.add(PayableOwnerRow(owner_id=owner_id, since=_now()))
+        elif not ready and row is not None:
+            await self.s.delete(row)
+        await self.s.flush()
 
     # --- districts and places ---------------------------------------------------
 
@@ -410,6 +426,7 @@ class CatalogRepository:
             DistrictRow.lat.between(origin.lat - dlat, origin.lat + dlat),
             DistrictRow.lng.between(origin.lng - dlng, origin.lng + dlng),
             open_window,
+            *self._bookable(),
         ]
         if category:
             conds.append(ListingRow.category == category)
@@ -464,6 +481,7 @@ class CatalogRepository:
         conds = [
             self._live(),
             ListingRow.active.is_(True),
+            *self._bookable(),
             or_(
                 func.lower(ListingRow.title).like(needle, escape="\\"),
                 func.lower(ListingRow.blurb).like(needle, escape="\\"),

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import re
+from datetime import UTC, datetime
 
 from fastapi import Depends, Query, Request, Response, UploadFile, status
 from pydantic import Field, TypeAdapter, ValidationError
@@ -27,8 +28,8 @@ MAX_RULES = 12
 MAX_SLOTS_PER_CALL = 200
 
 
-async def get_repo(session=Tx) -> CatalogRepository:
-    return CatalogRepository(session)
+async def get_repo(request: Request, session=Tx) -> CatalogRepository:
+    return CatalogRepository(session, bookable_only=request.app.state.settings.require_payable_owners)
 
 
 def _outbox(request: Request):
@@ -44,6 +45,8 @@ class ListingView(CamelModel):
     listing: Listing
     owner: Owner
     saved: bool | None = None
+    # Only on the owner's own listings: their upcoming idle windows.
+    slots: list[Slot] | None = None
 
 
 class TagCount(CamelModel):
@@ -318,7 +321,13 @@ async def my_listings(
     p: Principal = Depends(require_principal),
 ) -> Page[ListingView]:
     items, nxt = await repo.listings_by_owner(p.sub, cursor=cursor, limit=clamp_limit(limit))
-    return Page(items=await _views(repo, items, p.sub), next_cursor=nxt)
+    views = await _views(repo, items, p.sub)
+    slots: dict[str, list[Slot]] = {}
+    for s in await repo.upcoming_slots({v.listing.id for v in views}, after=datetime.now(UTC)):
+        slots.setdefault(s.listing_id, []).append(s)
+    for v in views:
+        v.slots = slots.get(v.listing.id, [])
+    return Page(items=views, next_cursor=nxt)
 
 
 class CreatedListing(CamelModel):

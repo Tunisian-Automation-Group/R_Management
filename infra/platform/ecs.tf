@@ -21,7 +21,7 @@ locals {
   }
   service_env = {
     gateway  = {}
-    catalog  = { MEDIA_BUCKET = aws_s3_bucket.media.bucket }
+    catalog  = { MEDIA_BUCKET = aws_s3_bucket.media.bucket, REQUIRE_PAYABLE_OWNERS = "true" }
     matching = {}
     booking  = {}
     payments = {

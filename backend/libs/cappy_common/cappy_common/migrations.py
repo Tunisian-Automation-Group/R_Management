@@ -46,6 +46,13 @@ def _render_item(type_: str, obj, autogen_context):  # noqa: ANN001
     return False
 
 
+def _include(obj, name, type_, reflected, compare_to) -> bool:  # noqa: ANN001
+    """Indexes a migration made with raw SQL (Postgres-only expressions such as
+    trigram GIN indexes) have no model counterpart; autogenerate must not
+    propose dropping them. By convention their names end in ``_trgm``."""
+    return not (type_ == "index" and reflected and compare_to is None and (name or "").endswith("_trgm"))
+
+
 def run_env(metadata: MetaData) -> None:
     """The body of every service's ``env.py``."""
     url = context.config.get_main_option("sqlalchemy.url") or os.environ["DATABASE_URL"]
@@ -56,6 +63,7 @@ def run_env(metadata: MetaData) -> None:
             target_metadata=metadata,
             compare_type=True,
             render_item=_render_item,
+            include_object=_include,
             # One transaction per migration file: a failure leaves the schema at
             # the last good revision, not half-way through one.
             transaction_per_migration=True,

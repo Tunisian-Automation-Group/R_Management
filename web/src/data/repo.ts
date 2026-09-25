@@ -102,7 +102,8 @@ export type Page<T> = { items: T[]; nextCursor?: string }
 export type Me = { id: string; homeDistrict: string; owner?: Owner }
 export type City = { city: string; country: string; lat: number; lng: number; listings: number }
 export type MatchView = { match: Match; listing: Listing; owner: Owner }
-export type ListingView = { listing: Listing; owner: Owner; saved?: boolean }
+/** `slots` only on the owner's own listings (GET /me/listings). */
+export type ListingView = { listing: Listing; owner: Owner; saved?: boolean; slots?: Slot[] }
 export type ListingDetail = {
   listing: Listing
   owner: Owner

@@ -146,6 +146,15 @@ class SavedRow(Base):
 Index("ix_saved_user_at", SavedRow.user_id, SavedRow.saved_at)
 
 
+class PayableOwnerRow(Base):
+    """Owners payments can pay out to, as payments last told us. Kept apart
+    from profiles so it does not matter which of the two arrives first."""
+
+    __tablename__ = "payable_owners"
+    owner_id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    since: Mapped[datetime] = mapped_column(UtcDateTime)
+
+
 class MediaRow(Base):
     """A photograph someone uploaded. Tracks who owns which object, so a
     listing can only show its owner's own uploads and orphans can be swept."""

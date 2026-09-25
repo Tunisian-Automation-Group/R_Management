@@ -10,6 +10,10 @@ from cappy_common.models import Outcome, Review
 from .repository import CatalogRepository
 
 
+async def on_payouts_ready(session: AsyncSession, event: Event) -> None:
+    await CatalogRepository(session).set_payable(event.data["ownerId"], bool(event.data["ready"]))
+
+
 async def on_booking_rated(session: AsyncSession, event: Event) -> None:
     """The write half of the loop. A rated booking moves its owner's record
     (which moves where they rank for everyone) and becomes a review the next

@@ -14,7 +14,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from cappy_common.app import ApiRouter
 from cappy_common.auth import Principal, require_internal, require_principal
 from cappy_common.errors import Conflict, Invalid, NotFound
-from cappy_common.events import PAYMENT_AUTHORISED
+from cappy_common.events import PAYMENT_AUTHORISED, PAYOUTS_READY
 from cappy_common.models import CamelModel
 from cappy_common.runtime import Tx
 
@@ -70,6 +70,18 @@ class PaymentView(CamelModel):
     currency: str
 
 
+async def _update_account(
+    request: Request, session: AsyncSession, account: ConnectAccountRow, payouts: bool, submitted: bool
+) -> None:
+    """Record what Stripe says about an owner's account, and tell the catalog
+    when that changes whether they can be booked."""
+    changed = account.payouts_enabled != payouts
+    account.payouts_enabled, account.details_submitted = payouts, submitted
+    account.updated_at = _now()
+    if changed:
+        await request.app.state.outbox.add(session, PAYOUTS_READY, {"ownerId": account.owner_id, "ready": payouts})
+
+
 async def _authorised(request: Request, session: AsyncSession, row: PaymentRow) -> bool:
     """Mark authorised and tell booking. False if it already was."""
     if row.status != "created":
@@ -98,11 +110,12 @@ async def create_intent(body: IntentIn, request: Request, session: AsyncSession 
         account = ConnectAccountRow(
             owner_id=body.owner_id,
             account_id=await provider.create_account(body.owner_id),
-            payouts_enabled=True,
-            details_submitted=True,
+            payouts_enabled=False,
+            details_submitted=False,
             updated_at=_now(),
         )
         session.add(account)
+        await _update_account(request, session, account, True, True)
     if account is None or not account.payouts_enabled:
         # ADR 0005: nobody books an owner we could not pay.
         raise Conflict("this owner has not finished setting up payments yet, so they cannot take bookings")
@@ -178,8 +191,7 @@ async def connect_status(request: Request, session: AsyncSession = Tx, p: Princi
         # Webhooks keep this current; asking here as well means an owner
         # coming back from onboarding sees the result without waiting for one.
         status = await _provider(request).account_status(account.account_id)
-        account.payouts_enabled, account.details_submitted = status.payouts_enabled, status.details_submitted
-        account.updated_at = _now()
+        await _update_account(request, session, account, status.payouts_enabled, status.details_submitted)
     return ConnectStatus(
         connected=True, payouts_enabled=account.payouts_enabled, details_submitted=account.details_submitted
     )
@@ -211,9 +223,9 @@ async def stripe_webhook(request: Request, session: AsyncSession = Tx) -> dict:
         q = select(ConnectAccountRow).where(ConnectAccountRow.account_id == obj["id"])
         account = (await session.execute(q)).scalar_one_or_none()
         if account is not None:
-            account.payouts_enabled = bool(obj.get("payouts_enabled"))
-            account.details_submitted = bool(obj.get("details_submitted"))
-            account.updated_at = _now()
+            await _update_account(
+                request, session, account, bool(obj.get("payouts_enabled")), bool(obj.get("details_submitted"))
+            )
     else:
         log.info("ignoring stripe event %s", kind)
     return {"received": True}

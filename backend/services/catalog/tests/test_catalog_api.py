@@ -8,7 +8,14 @@ import pytest
 from fastapi.testclient import TestClient
 from PIL import Image
 
-from cappy_common.events import BOOKING_RATED, LISTING_CHANGED, PROFILE_CREATED, Event, reset_memory_broker
+from cappy_common.events import (
+    BOOKING_RATED,
+    LISTING_CHANGED,
+    PAYOUTS_READY,
+    PROFILE_CREATED,
+    Event,
+    reset_memory_broker,
+)
 from cappy_common.fixtures import build_world
 from cappy_common.ids import new_id
 from cappy_common.testing import TestIssuer
@@ -257,6 +264,16 @@ def test_my_listings_are_paginated(client, issuer):
     assert seen == ids
 
 
+def test_my_listings_carry_their_upcoming_windows(client, issuer):
+    _profile(client, issuer)
+    h = issuer.headers("user-a")
+    client.post("/listings", json={"listing": _window_listing(), "slots": [_slot()]}, headers=h)
+    [view] = client.get("/me/listings", headers=h).json()["items"]
+    assert len(view["slots"]) == 1 and view["slots"][0]["hoursUsable"] == 18
+    # Nobody else's view of a listing carries them.
+    assert "slots" not in client.get("/search", params={"q": "drill"}).json()["items"][0]
+
+
 # --- photos ---------------------------------------------------------------------------------
 
 
@@ -413,3 +430,46 @@ def test_a_rating_applies_exactly_once_and_becomes_a_review(client, app):
     reviews = client.get("/listings/l9/reviews", params={"limit": 100}).json()["items"]
     mine = [r for r in reviews if r["id"] == f"rv_{booking_id}"]
     assert len(mine) == 1 and mine[0]["text"] == "Spot on" and mine[0]["authorId"] == "o17"
+
+
+def test_only_owners_who_can_be_paid_are_offered(issuer, broker, tmp_path):
+    """Deployed, a listing appears in search and candidates only once payments
+    has said its owner can be paid, and disappears if that stops."""
+    settings = Settings(
+        app_env="test",
+        database_url="sqlite+aiosqlite://",
+        internal_token="i" * 40,
+        require_payable_owners=True,
+    )
+    app = build_app(settings, media_store=DirectoryStore(str(tmp_path)), verifier=issuer.verifier())
+    with TestClient(app) as c:
+
+        async def seed():
+            async with app.state.db.transaction() as s:
+                await CatalogRepository(s).load_seed(build_world())
+
+        c.portal.call(seed)
+        body = {"origin": "Kreuzberg", "maxKm": 2000, "start": now_iso(), "until": _hours_from_now(24 * 30)}
+
+        def offered():
+            return {
+                l["ownerId"] for l in c.post("/internal/candidates", json=body, headers=INTERNAL).json()["listings"]
+            }
+
+        def ready(owner, ok):
+            e = Event(
+                id=new_id("ev"),
+                type=PAYOUTS_READY,
+                source="payments",
+                occurred_at=now_iso(),
+                data={"ownerId": owner, "ready": ok},
+            )
+            c.portal.call(app.state.dispatcher.handle, e)
+
+        assert offered() == set()
+        assert c.get("/search", params={"q": "saw"}).json()["items"] == []
+        ready("o1", True)
+        assert offered() == {"o1"}
+        assert c.get("/search", params={"q": "saw"}).json()["items"]
+        ready("o1", False)
+        assert offered() == set()

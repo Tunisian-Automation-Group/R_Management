@@ -43,12 +43,8 @@ export function Earn() {
 
   const mine = listingsQ.data?.items.map((v) => v.listing) ?? []
   const active = mine.filter((l) => l.active)
-  // Each listing's windows, for the idle-hours figures. ponytail: one request per
-  // listing; a /me/slots endpoint if owners start listing dozens of things.
-  const details = useQueries({
-    queries: mine.map((l) => ({ queryKey: ['listing', l.id], queryFn: () => repo.getListing(l.id) })),
-  })
-  const slotsById = new Map(details.flatMap((d) => (d.data ? [[d.data.listing.id, d.data.slots] as const] : [])))
+  // Each listing's upcoming windows come with it, for the idle-hours figures.
+  const slotsById = new Map((listingsQ.data?.items ?? []).map((v) => [v.listing.id, v.slots ?? []] as const))
   const slotsFor = (id: string): Slot[] => slotsById.get(id) ?? []
 
   const inbound = inboundQ.data?.items ?? []
