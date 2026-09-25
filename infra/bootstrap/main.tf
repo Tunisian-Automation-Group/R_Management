@@ -59,7 +59,19 @@ locals {
   # Only deploy jobs, in a protected GitHub environment and running the
   # workflow from main, may assume a role. Pull requests get no AWS access at
   # all: CI needs none, and state holds secrets.
+  # The deploy roles run only Terraform and the AWS CLI: third-party code
+  # (package installs, image builds) never runs holding them (P-2). Images are
+  # built under a role that can do nothing but push to ECR; the web app is
+  # built with no AWS access at all.
   roles = {
+    images-staging = {
+      subjects = ["repo:${var.github_repo}:environment:staging"]
+      policy   = "arn:aws:iam::aws:policy/AmazonEC2ContainerRegistryPowerUser"
+    }
+    images-prod = {
+      subjects = ["repo:${var.github_repo}:environment:prod"]
+      policy   = "arn:aws:iam::aws:policy/AmazonEC2ContainerRegistryPowerUser"
+    }
     deploy-staging = {
       subjects = ["repo:${var.github_repo}:environment:staging"]
       policy   = "arn:aws:iam::aws:policy/AdministratorAccess"

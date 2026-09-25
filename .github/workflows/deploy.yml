@@ -13,9 +13,9 @@ on:
         options: [staging, prod]
         default: staging
 
+# Each job asks for AWS (id-token) only if it needs it; see P-2.
 permissions:
   contents: read
-  id-token: write
 
 concurrency:
   group: deploy-${{ inputs.env || 'staging' }}
@@ -27,17 +27,20 @@ env:
   TAG: ${{ github.sha }}
 
 jobs:
-  deploy:
+  images:
     # Only main is ever deployed (the AWS roles also refuse any other ref).
     if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     environment: ${{ inputs.env || 'staging' }}
+    permissions: { contents: read, id-token: write }
     steps:
       - uses: actions/checkout@v5
 
+      # Image builds install third-party packages: they get a role that can
+      # only push to ECR, never the deploy role.
       - uses: aws-actions/configure-aws-credentials@v5
         with:
-          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
+          role-to-assume: ${{ vars.AWS_IMAGES_ROLE_ARN }}
           aws-region: ${{ env.AWS_REGION }}
 
       - uses: aws-actions/amazon-ecr-login@v2
@@ -54,6 +57,21 @@ jobs:
                 --cache-from type=gha,scope=$s --cache-to type=gha,mode=max,scope=$s backend
             fi
           done
+
+  deploy:
+    needs: images
+    runs-on: ubuntu-latest
+    environment: ${{ inputs.env || 'staging' }}
+    permissions: { contents: read, id-token: write }
+    outputs:
+      web_config: ${{ steps.web.outputs.config }}
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: aws-actions/configure-aws-credentials@v5
+        with:
+          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
 
       - uses: hashicorp/setup-terraform@v3
         with: { terraform_version: 1.12.2, terraform_wrapper: false }
@@ -105,15 +123,57 @@ jobs:
             fi
           done
 
+      - name: The web app's build settings, public values (region, client id)
+        id: web
+        working-directory: infra/envs/${{ env.ENV }}
+        run: echo "config=$(terraform output -json platform | jq -c .web_config)" >> "$GITHUB_OUTPUT"
+
+  web:
+    # No AWS here: npm packages run in this job, so it holds no credentials.
+    needs: deploy
+    runs-on: ubuntu-latest
+    permissions: { contents: read }
+    steps:
+      - uses: actions/checkout@v5
       - uses: actions/setup-node@v5
         with: { node-version: 22, cache: npm, cache-dependency-path: web/package-lock.json }
+      - name: Build the web app
+        working-directory: web
+        env:
+          WEB_CONFIG: ${{ needs.deploy.outputs.web_config }}
+        run: |
+          export $(echo "$WEB_CONFIG" | jq -r 'to_entries[] | "\(.key)=\(.value)"')
+          npm ci --ignore-scripts && npm run build
+      - uses: actions/upload-artifact@v4
+        with: { name: web-dist, path: web/dist, include-hidden-files: true, retention-days: 7 }
 
-      - name: Build and publish the web app
+  publish:
+    needs: web
+    runs-on: ubuntu-latest
+    environment: ${{ inputs.env || 'staging' }}
+    permissions: { contents: read, id-token: write }
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/download-artifact@v4
+        with: { name: web-dist, path: web/dist }
+
+      - uses: aws-actions/configure-aws-credentials@v5
+        with:
+          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - uses: hashicorp/setup-terraform@v3
+        with: { terraform_version: 1.12.2, terraform_wrapper: false }
+
+      - name: terraform init
+        working-directory: infra/envs/${{ env.ENV }}
+        run: terraform init -input=false
+
+      - name: Publish the web app
         working-directory: infra/envs/${{ env.ENV }}
         run: |
           out=$(terraform output -json platform)
-          export $(echo "$out" | jq -r '.web_config | to_entries[] | "\(.key)=\(.value)"')
-          (cd ../../../web && npm ci && npm run build)
           bucket=$(echo "$out" | jq -r .web_bucket)
           # Hashed assets forever; the entry points never, or clients miss releases.
           aws s3 sync ../../../web/dist "s3://$bucket" --delete --cache-control "public,max-age=31536000,immutable" \

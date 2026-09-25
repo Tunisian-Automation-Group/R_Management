@@ -9,7 +9,8 @@
    that GitHub environment, can assume.
 2. **GitHub**: create the environments `staging` and `prod`, and require a
    reviewer on `prod`. In each environment set these variables:
-   - `AWS_DEPLOY_ROLE_ARN`, from the bootstrap output
+   - `AWS_DEPLOY_ROLE_ARN`, from the bootstrap output (`deploy-<env>`)
+   - `AWS_IMAGES_ROLE_ARN`, from the bootstrap output (`images-<env>`): image builds push with it and can do nothing else; the web app is built with no AWS access (P-2)
    - `ZONE_ID`, the Route 53 hosted zone of the domain
    - `ALARM_EMAIL`
 
