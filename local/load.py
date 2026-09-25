@@ -65,14 +65,17 @@ async def browser(c: httpx.AsyncClient, listing_ids: list[str], until: float) ->
         await call(c, "spotlight", "GET", "/browse/spotlight", params={"district": "Kreuzberg", "maxKm": 20})
 
 
+IDP = boto3.client(
+    "cognito-idp",
+    region_name="eu-central-1",
+    endpoint_url="http://localhost:9229",
+    aws_access_key_id="x",
+    aws_secret_access_key="x",
+)
+
+
 def token(email: str, password: str) -> str:
-    idp = boto3.client(
-        "cognito-idp",
-        region_name="eu-central-1",
-        endpoint_url="http://localhost:9229",
-        aws_access_key_id="x",
-        aws_secret_access_key="x",
-    )
+    idp = IDP
     try:
         idp.sign_up(
             ClientId=ENV["AUTH_CLIENT_IDS"],
@@ -122,7 +125,11 @@ async def contested_bookings(c: httpx.AsyncClient, buyers: list[str], listing_id
             for b in buyers
         )
     )
-    return sum(1 for r in rs if r is not None and r.status_code == 201)
+    won = [(r, b) for r, b in zip(rs, buyers, strict=True) if r is not None and r.status_code == 201]
+    # Leave nothing behind: the demo data stays the demo data.
+    for r, b in won:
+        await c.post(f"/bookings/{r.json()['booking']['id']}/cancel", headers={"Authorization": f"Bearer {b}"})
+    return len(won)
 
 
 async def open_model(
@@ -203,6 +210,14 @@ async def main() -> None:
             for lid in workshop[:5]:
                 contested.append(await contested_bookings(c, buyers, lid))
             await asyncio.gather(*browsing)
+
+        for b in buyers:
+            await c.delete("/me", headers={"Authorization": f"Bearer {b}"})
+    for i in range(10):
+        try:
+            IDP.admin_delete_user(UserPoolId=ENV["USER_POOL_ID"], Username=f"load-{run}-{i}@example.com")
+        except Exception:  # noqa: BLE001
+            pass
 
     print(f"{'call':12} {'n':>6} {'p50 ms':>8} {'p95 ms':>8} {'p99 ms':>8}")
     for name, ts in sorted(timings.items()):

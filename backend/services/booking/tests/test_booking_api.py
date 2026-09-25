@@ -431,3 +431,32 @@ def test_a_job_finished_early_keeps_its_window_sold(client, app, issuer):
     assert held == {"l9": [[b["match"]["start"], b["match"]["end"]]]}
     r = client.post("/bookings", json=_body(start_h=0.25), headers=issuer.headers("someone-else"))
     assert r.status_code == 409
+
+
+def test_removing_a_listing_declines_its_pending_requests(client, app, issuer):
+    from cappy_common.events import LISTING_CHANGED
+
+    pending = _requested(client, app, issuer, start_h=30)
+    unpaid = _book(client, issuer, start_h=40)["booking"]["id"]
+    accepted = _requested(client, app, issuer, start_h=50)
+    _do(client, issuer, HOST, accepted, "accept")
+    ev = Event(
+        id=new_id("ev"),
+        type=LISTING_CHANGED,
+        source="catalog",
+        occurred_at=now_iso(),
+        data={"listingId": "l9", "change": "removed"},
+    )
+    assert call(app, app.state.dispatcher.handle, ev)
+    for bid in (pending, unpaid):
+        b = client.get(f"/bookings/{bid}", headers=issuer.headers(BUYER)).json()
+        assert b["status"] == "declined" and "removed" in b["declineReason"]
+    assert client.get(f"/bookings/{accepted}", headers=issuer.headers(BUYER)).json()["status"] == "accepted"
+
+
+def test_an_accepted_booking_says_when_the_hand_over_opens(client, app, issuer):
+    bid = _requested(client, app, issuer, start_h=48)
+    b = _do(client, issuer, HOST, bid, "accept").json()
+    start = datetime.fromisoformat(b["match"]["start"].replace("Z", "+00:00"))
+    opens = datetime.fromisoformat(b["canStartFrom"].replace("Z", "+00:00"))
+    assert start - opens == timedelta(minutes=30)

@@ -11,6 +11,12 @@ from cappy_common.timeutil import dt_from_iso
 from .repository import CatalogRepository
 
 
+def short_name(name: str) -> str:
+    """How a reviewer is shown to strangers: "Ada L.", never a full name."""
+    parts = name.split()
+    return parts[0] if len(parts) < 2 else f"{parts[0]} {parts[-1][0]}."
+
+
 async def on_payouts_ready(session: AsyncSession, event: Event) -> None:
     d = event.data
     as_of = dt_from_iso(d.get("asOf") or event.occurred_at)
@@ -40,7 +46,7 @@ async def on_booking_rated(session: AsyncSession, event: Event) -> None:
             id=review_id,
             listing_id=d["listingId"],
             owner_id=d["ownerId"],
-            author=author.name if author else "A buyer",
+            author=short_name(author.name) if author else "A buyer",
             initials=author.initials if author else "??",
             author_id=d.get("requesterId"),
             rating=outcome.quality,

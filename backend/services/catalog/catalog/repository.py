@@ -173,10 +173,14 @@ class CatalogRepository:
         await self.s.execute(delete(SavedRow).where(SavedRow.user_id == owner_id))
         await self.s.execute(delete(PayableOwnerRow).where(PayableOwnerRow.owner_id == owner_id))
         await self.s.execute(
-            update(OwnerRow).where(OwnerRow.id == owner_id).values(name="Former member", initials="—", updated_at=now)
+            update(OwnerRow)
+            .where(OwnerRow.id == owner_id)
+            .values(name="Former member", initials="—", updated_at=now, deleted_at=now)
         )
         await self.s.execute(
-            update(ReviewRow).where(ReviewRow.author_id == owner_id).values(author="Former member", initials="—")
+            update(ReviewRow)
+            .where(ReviewRow.author_id == owner_id)
+            .values(author="Former member", initials="—", author_id=None)
         )
 
     async def export(self, owner_id: str) -> dict:
@@ -253,7 +257,7 @@ class CatalogRepository:
 
     async def find_owner(self, owner_id: str) -> Owner | None:
         row = await self.s.get(OwnerRow, owner_id)
-        return to_owner(row) if row else None
+        return to_owner(row) if row and row.deleted_at is None else None
 
     async def owner(self, owner_id: str) -> Owner:
         found = await self.find_owner(owner_id)

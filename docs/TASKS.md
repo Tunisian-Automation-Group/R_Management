@@ -81,12 +81,12 @@ Web:
 - [ ] V2-19 "3D printing" capitalisation; one price format; label the owner rating on search rows
 
 Backend:
-- [ ] V2-2 Double booking: a completed or disputed booking still holds its window (busy windows and the exclusion constraint)
-- [ ] V2-7b Removing a listing declines its pending requests
-- [ ] V2-9 Save/unsave answered 503 while the change succeeded
-- [ ] V2-12 Deleted accounts: owner page 404, no `authorId` on their reviews; reviewers shown as "First L."
-- [ ] V2-16 A review is dated when it was written, never in the future
-- [ ] V2-20 The load test cancels the bookings it makes; demo data rebuilt clean
+- [x] V2-2 Double booking: a completed or disputed booking still holds its window (busy windows and the exclusion constraint)
+- [x] V2-7b Removing a listing declines its pending requests
+- [x] V2-9 Save/unsave 503: not reproducible (four saves and unsaves 204, direct and through the proxy); it coincided with a service restart, when 503 + Retry-After is right. The web must show the failure and retry (web task)
+- [x] V2-12 Deleted accounts: owner page 404, no `authorId` on their reviews; reviewers shown as "First L."
+- [x] V2-16 A review is dated when it was written, never in the future
+- [x] V2-20 The load test cancels the bookings it makes; demo data rebuilt clean
 - [-] V2-19b Seed photos that match their listings: demo data only
 
 ## Verification round 1 — backend and data (V1)

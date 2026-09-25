@@ -267,7 +267,7 @@ def main() -> None:
     for who in (buyer, host):
         assert http.delete("/me", headers=who).status_code == 204
     assert http.get(f"/listings/{listing_id}").status_code == 404, "the host's listing is gone"
-    assert ok(http.get(f"/owners/{host_sub}"))["name"] == "Former member"
+    assert http.get(f"/owners/{host_sub}").status_code == 404, "the host is gone from public pages"
     for address in (email, host_email):
         idp.admin_delete_user(UserPoolId=ENV["USER_POOL_ID"], Username=address)
     print("e2e passed")

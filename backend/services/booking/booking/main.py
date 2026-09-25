@@ -1,11 +1,14 @@
 from __future__ import annotations
 
+from datetime import timedelta
+
 from fastapi import FastAPI
 
 from cappy_common.app import create_app
 from cappy_common.auth import TokenVerifier
 from cappy_common.runtime import Runtime
 
+from . import repository
 from .clients import Catalog, HttpCatalog, HttpMatching, HttpPayments, Matching, Payments
 from .handlers import handlers
 from .jobs import sweep
@@ -23,6 +26,7 @@ def build_app(
     verifier: TokenVerifier | None = None,
 ) -> FastAPI:
     token = settings.internal_token.get_secret_value()
+    repository.START_EARLY = timedelta(minutes=settings.start_early_minutes)
 
     async def close(app: FastAPI) -> None:
         await app.state.matching.aclose()

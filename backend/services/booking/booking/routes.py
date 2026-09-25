@@ -263,7 +263,7 @@ async def _transition(
     if action == "dispute" and not started:
         raise Conflict("nothing to report before the booked time; cancel instead")
     early = timedelta(minutes=request.app.state.settings.start_early_minutes)
-    if action == "start" and now < row.window_start - early:
+    if action == "start" and now < row.window_start - early:  # the same rule as Booking.canStartFrom
         raise Conflict("the hand-over can be marked from 30 minutes before the booked time")
     if to not in ("awaiting_payment", "requested"):
         fields["expires_at"] = None
@@ -355,7 +355,8 @@ async def rate(
             "listingId": row.listing_id,
             "requesterId": row.requester_id,
             "outcome": row.outcome,
-            "at": iso_from_datetime(row.window_end),
+            # When the review was written; a job finished early is not reviewed "in the future".
+            "at": iso_from_datetime(min(row.window_end, row.updated_at)),
             "ratedAt": iso_from_datetime(row.updated_at),
         },
     )

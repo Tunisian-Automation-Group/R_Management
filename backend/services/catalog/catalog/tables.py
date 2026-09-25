@@ -56,6 +56,10 @@ class OwnerRow(Base):
     response_mins: Mapped[int] = mapped_column(Integer, default=60)
     created_at: Mapped[datetime] = mapped_column(UtcDateTime)
     updated_at: Mapped[datetime] = mapped_column(UtcDateTime)
+    # Set when the person deleted their account: the row stays (as "Former
+    # member") so other people's bookings still make sense, but it is gone
+    # from every public page.
+    deleted_at: Mapped[datetime | None] = mapped_column(UtcDateTime, nullable=True)
 
 
 class ListingRow(Base):

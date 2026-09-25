@@ -7,7 +7,7 @@ from datetime import UTC, datetime
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from cappy_common.events import PAYMENT_AUTHORISED, PAYMENT_FAILED, Event, Handler, Outbox
+from cappy_common.events import LISTING_CHANGED, PAYMENT_AUTHORISED, PAYMENT_FAILED, Event, Handler, Outbox
 
 from .repository import BookingRepository
 from .settings import Settings
@@ -46,4 +46,16 @@ def handlers(settings: Settings) -> dict[str, Handler]:
     async def on_failed(session: AsyncSession, event: Event) -> None:
         await apply(session, event, "payment_failed")
 
-    return {PAYMENT_AUTHORISED: on_authorised, PAYMENT_FAILED: on_failed}
+    async def on_listing_changed(session: AsyncSession, event: Event) -> None:
+        if event.data.get("change") != "removed":
+            return
+        repo = BookingRepository(session, outbox)
+        now = datetime.now(UTC)
+        for row in await repo.pending_for_listing(event.data["listingId"]):
+            to = system_status("listing_removed", row.status)
+            if to:
+                await repo.move(
+                    row, to, "system", now, expires_at=None, decline_reason="The listing was removed by its owner"
+                )
+
+    return {PAYMENT_AUTHORISED: on_authorised, PAYMENT_FAILED: on_failed, LISTING_CHANGED: on_listing_changed}

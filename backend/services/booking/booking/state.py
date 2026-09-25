@@ -48,7 +48,7 @@ OPEN: frozenset[str] = frozenset({"awaiting_payment", "requested", "accepted", "
 FINAL: frozenset[str] = frozenset({"completed", "declined", "cancelled", "expired", "payment_failed"})
 
 Action = Literal["accept", "decline", "start", "complete", "cancel", "dispute"]
-SystemAction = Literal["authorised", "payment_failed", "expire", "auto_complete"]
+SystemAction = Literal["authorised", "payment_failed", "expire", "auto_complete", "listing_removed"]
 Role = Literal["requester", "owner", "either"]
 
 
@@ -76,6 +76,9 @@ SYSTEM: dict[SystemAction, tuple[frozenset[str], Status]] = {
     "payment_failed": (frozenset({"awaiting_payment", "accepted"}), "payment_failed"),
     "expire": (frozenset({"awaiting_payment", "requested"}), "expired"),
     "auto_complete": (frozenset({"accepted", "active"}), "completed"),
+    # The owner took the listing down: requests nobody accepted are declined.
+    # Accepted bookings stand; the owner still owes them.
+    "listing_removed": (frozenset({"awaiting_payment", "requested"}), "declined"),
 }
 
 

@@ -527,7 +527,7 @@ def test_deleting_an_account_forgets_what_is_theirs(client, app, issuer, booking
     assert client.delete("/me", headers=h).status_code == 204
     assert client.get(f"/listings/{lid}").status_code == 404
     assert client.get("/search", params={"q": "unique lathe"}).json()["items"] == []
-    assert client.get("/owners/user-a").json()["name"] == "Former member"
+    assert client.get("/owners/user-a").status_code == 404, "gone from public pages"
     assert client.get("/saved", headers=h).json()["items"] == []
     flush(app)
     assert [e.data["ownerId"] for e in broker.of_type(PROFILE_DELETED)] == ["user-a"]
@@ -662,3 +662,11 @@ def test_unused_uploads_are_swept_and_shared_ones_kept(client, app, issuer, tmp_
     assert _run(app, lambda: sweep_orphans_once(app)) == 1, "only the photo nobody holds is deleted"
     assert client.get(lonely).status_code == 404
     assert client.get(urls["user-b"]).status_code == 200
+
+
+def test_reviewers_are_shown_by_first_name_and_initial():
+    from catalog.handlers import short_name
+
+    assert short_name("Ada Lovelace") == "Ada L."
+    assert short_name("Jean Claude van Damme") == "Jean D."
+    assert short_name("Cher") == "Cher"

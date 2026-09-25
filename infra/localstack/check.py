@@ -24,7 +24,7 @@ for t in types:
 time.sleep(2)
 expected = {
     "catalog": {"booking.rated", "payment.payouts_ready"},
-    "booking": {"payment.authorised"},
+    "booking": {"payment.authorised", "listing.changed"},
     "payments": {"booking.status_changed", "profile.deleted"},
     "notifications": {"booking.status_changed", "payment.payout_sent", "profile.deleted"},
 }

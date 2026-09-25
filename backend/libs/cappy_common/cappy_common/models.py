@@ -310,6 +310,8 @@ class Booking(CamelModel):
     expires_at: Iso | None = None
     # Once accepted: where and how the hand-over happens.
     handover: Handover | None = None
+    # When either side may first mark the hand-over (the server's rule).
+    can_start_from: Iso | None = None
 
 
 class World(CamelModel):

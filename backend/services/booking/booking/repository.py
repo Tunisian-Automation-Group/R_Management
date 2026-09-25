@@ -40,7 +40,13 @@ def to_booking(row: BookingRow, viewer: str) -> Booking:
         listing=ListingSnapshot.model_validate(row.listing_snapshot),
         expires_at=iso_from_datetime(row.expires_at) if row.expires_at else None,
         handover=Handover.model_validate(row.handover) if row.handover and row.status in SHOWS_HANDOVER else None,
+        can_start_from=iso_from_datetime(row.window_start - START_EARLY) if row.status == "accepted" else None,
     )
+
+
+# How long before the window the hand-over may be marked; set from settings
+# when the app is built (booking.main).
+START_EARLY = timedelta(minutes=30)
 
 
 # The two sides see where to meet once the booking is on, and afterwards.
@@ -85,6 +91,14 @@ class BookingRepository:
     async def by_idempotency_key(self, requester_id: str, key: str) -> BookingRow | None:
         q = select(BookingRow).where(BookingRow.requester_id == requester_id, BookingRow.idempotency_key == key)
         return (await self.s.execute(q)).scalar_one_or_none()
+
+    async def pending_for_listing(self, listing_id: str) -> list[BookingRow]:
+        q = (
+            select(BookingRow)
+            .where(BookingRow.listing_id == listing_id, BookingRow.status.in_(("awaiting_payment", "requested")))
+            .with_for_update()
+        )
+        return list((await self.s.execute(q)).scalars())
 
     async def unpaid_count(self, requester_id: str) -> int:
         q = select(func.count()).where(BookingRow.requester_id == requester_id, BookingRow.status == "awaiting_payment")
