@@ -28,12 +28,15 @@ ENV = dict(
     for line in (Path(__file__).parents[1] / ".local" / "local.env").read_text().splitlines()
     if "=" in line
 )
-USERS = int(sys.argv[1]) if len(sys.argv) > 1 else 50
-SECONDS = float(sys.argv[2]) if len(sys.argv) > 2 else 60
+MODE = sys.argv[1] if len(sys.argv) > 1 and not sys.argv[1].isdigit() else "closed"
+ARGS = [a for a in sys.argv[1:] if a.isdigit()]
+USERS = int(ARGS[0]) if ARGS else 50
+SECONDS = float(ARGS[1]) if len(ARGS) > 1 else 60
 QUERIES = ["saw", "drill", "printer", "van", "laser", "kitchen", "studio", "storage", "lathe", "cnc"]
 
 timings: dict[str, list[float]] = defaultdict(list)
 failures: list[str] = []
+shed = 0
 
 
 async def call(c: httpx.AsyncClient, name: str, method: str, path: str, **kw) -> httpx.Response | None:
@@ -44,7 +47,10 @@ async def call(c: httpx.AsyncClient, name: str, method: str, path: str, **kw) ->
         failures.append(f"{name}: {type(e).__name__}")
         return None
     timings[name].append((time.perf_counter() - t) * 1000)
-    if r.status_code >= 500:
+    if r.status_code == 503 and "overloaded" in r.text:
+        global shed
+        shed += 1  # load shedding doing its job: fast, and says when to come back
+    elif r.status_code >= 500:
         failures.append(f"{name}: {r.status_code} {r.text[:120]}")
     return r
 
@@ -60,16 +66,28 @@ async def browser(c: httpx.AsyncClient, listing_ids: list[str], until: float) ->
 
 
 def token(email: str, password: str) -> str:
-    idp = boto3.client("cognito-idp", region_name="eu-central-1", endpoint_url="http://localhost:9229",
-                       aws_access_key_id="x", aws_secret_access_key="x")
+    idp = boto3.client(
+        "cognito-idp",
+        region_name="eu-central-1",
+        endpoint_url="http://localhost:9229",
+        aws_access_key_id="x",
+        aws_secret_access_key="x",
+    )
     try:
-        idp.sign_up(ClientId=ENV["AUTH_CLIENT_IDS"], Username=email, Password=password,
-                    UserAttributes=[{"Name": "email", "Value": email}])
+        idp.sign_up(
+            ClientId=ENV["AUTH_CLIENT_IDS"],
+            Username=email,
+            Password=password,
+            UserAttributes=[{"Name": "email", "Value": email}],
+        )
         idp.admin_confirm_sign_up(UserPoolId=ENV["USER_POOL_ID"], Username=email)
     except idp.exceptions.UsernameExistsException:
         pass
-    auth = idp.initiate_auth(ClientId=ENV["AUTH_CLIENT_IDS"], AuthFlow="USER_PASSWORD_AUTH",
-                             AuthParameters={"USERNAME": email, "PASSWORD": password})
+    auth = idp.initiate_auth(
+        ClientId=ENV["AUTH_CLIENT_IDS"],
+        AuthFlow="USER_PASSWORD_AUTH",
+        AuthParameters={"USERNAME": email, "PASSWORD": password},
+    )
     return auth["AuthenticationResult"]["AccessToken"]
 
 
@@ -79,38 +97,112 @@ async def contested_bookings(c: httpx.AsyncClient, buyers: list[str], listing_id
         return -1
     now = datetime.now(UTC)
     body = {
-        "requirement": {"mode": "window", "category": "workshop", "hours": 2, "earliest": now.isoformat(),
-                        "latest": (now + timedelta(days=28)).isoformat(), "district": "Kreuzberg", "maxDistanceKm": 50},
+        "requirement": {
+            "mode": "window",
+            "category": "workshop",
+            "hours": 2,
+            "earliest": now.isoformat(),
+            "latest": (now + timedelta(days=28)).isoformat(),
+            "district": "Kreuzberg",
+            "maxDistanceKm": 50,
+        },
         "listingId": listing_id,
         **offers[0],
     }
-    rs = await asyncio.gather(*(
-        call(c, "book", "POST", "/bookings", json=body,
-             headers={"Authorization": f"Bearer {b}", "Idempotency-Key": uuid.uuid4().hex})
-        for b in buyers
-    ))
+    rs = await asyncio.gather(
+        *(
+            call(
+                c,
+                "book",
+                "POST",
+                "/bookings",
+                json=body,
+                headers={"Authorization": f"Bearer {b}", "Idempotency-Key": uuid.uuid4().hex},
+            )
+            for b in buyers
+        )
+    )
     return sum(1 for r in rs if r is not None and r.status_code == 201)
+
+
+async def open_model(
+    c: httpx.AsyncClient, listing_ids: list[str], rate: float, seconds: float, buyers: list[str]
+) -> None:
+    """Requests arrive at `rate` per second whatever the system does (open
+    model): a slow system cannot slow its own load down and hide."""
+    tasks = []
+    workshop = listing_ids
+
+    async def one() -> None:
+        roll = random.random()
+        lid = random.choice(workshop)
+        if roll < 0.90:
+            await random.choice(
+                [
+                    lambda: call(c, "search", "GET", "/search", params={"q": random.choice(QUERIES)}),
+                    lambda: call(c, "listing", "GET", f"/listings/{lid}"),
+                    lambda: call(c, "offers", "GET", f"/listings/{lid}/offers", params={"hours": 2}),
+                    lambda: call(
+                        c, "spotlight", "GET", "/browse/spotlight", params={"district": "Kreuzberg", "maxKm": 20}
+                    ),
+                ]
+            )()
+        elif roll < 0.98 and buyers:
+            await call(
+                c, "my-bookings", "GET", "/bookings", headers={"Authorization": f"Bearer {random.choice(buyers)}"}
+            )
+        else:
+            await call(c, "categories", "GET", "/categories")
+
+    end = time.time() + seconds
+    while time.time() < end:
+        tasks.append(asyncio.create_task(one()))
+        await asyncio.sleep(random.expovariate(rate))
+    await asyncio.gather(*tasks)
 
 
 async def main() -> None:
     limits = httpx.Limits(max_connections=USERS * 2)
     async with httpx.AsyncClient(base_url=API, timeout=30, limits=limits) as c:
-        listings = [v["listing"]["id"] for q in ("saw", "drill", "printer") for v in
-                    (await c.get("/search", params={"q": q, "limit": 50})).json()["items"]]
-        workshop = [v["listing"]["id"] for v in (await c.get("/search", params={"q": "saw", "limit": 50})).json()["items"]
-                    if v["listing"]["mode"] == "window"]
+        listings = [
+            v["listing"]["id"]
+            for q in ("saw", "drill", "printer")
+            for v in (await c.get("/search", params={"q": q, "limit": 50})).json()["items"]
+        ]
+        workshop = [
+            v["listing"]["id"]
+            for v in (await c.get("/search", params={"q": "saw", "limit": 50})).json()["items"]
+            if v["listing"]["mode"] == "window"
+        ]
         print(f"{USERS} browsers for {SECONDS:.0f}s over {len(listings)} listings")
         run = uuid.uuid4().hex[:6]
         buyers = [token(f"load-{run}-{i}@example.com", "Load-test-123!") for i in range(10)]
         for b in buyers:
-            await c.put("/me", json={"name": "Load Tester", "kind": "person", "district": "Kreuzberg"},
-                        headers={"Authorization": f"Bearer {b}"})
-        until = time.time() + SECONDS
-        browsing = [asyncio.create_task(browser(c, listings, until)) for _ in range(USERS)]
+            await c.put(
+                "/me",
+                json={"name": "Load Tester", "kind": "person", "district": "Kreuzberg"},
+                headers={"Authorization": f"Bearer {b}"},
+            )
         contested = []
-        for lid in workshop[:5]:
-            contested.append(await contested_bookings(c, buyers, lid))
-        await asyncio.gather(*browsing)
+        if MODE == "spike":
+            # Baseline, a 10x spike, then baseline again.
+            base = USERS
+            print(f"spike: {base}/s for 20 s, {base * 10}/s for {SECONDS:.0f} s, {base}/s for 20 s")
+            await open_model(c, listings, base, 20, buyers)
+            await open_model(c, listings, base * 10, SECONDS, buyers)
+            await open_model(c, listings, base, 20, buyers)
+        elif MODE in ("mixed", "soak"):
+            print(f"{MODE}: open model at {USERS}/s for {SECONDS:.0f} s")
+            runner = asyncio.create_task(open_model(c, listings, USERS, SECONDS, buyers))
+            for lid in workshop[:5]:
+                contested.append(await contested_bookings(c, buyers, lid))
+            await runner
+        else:
+            until = time.time() + SECONDS
+            browsing = [asyncio.create_task(browser(c, listings, until)) for _ in range(USERS)]
+            for lid in workshop[:5]:
+                contested.append(await contested_bookings(c, buyers, lid))
+            await asyncio.gather(*browsing)
 
     print(f"{'call':12} {'n':>6} {'p50 ms':>8} {'p95 ms':>8} {'p99 ms':>8}")
     for name, ts in sorted(timings.items()):
@@ -119,7 +211,7 @@ async def main() -> None:
         print(f"{name:12} {len(ts):6d} {statistics.median(ts):8.1f} {q(0.95):8.1f} {q(0.99):8.1f}")
     print("contested windows, bookings won each:", contested)
     total = sum(len(t) for t in timings.values())
-    print(f"{total} requests, {len(failures)} failures")
+    print(f"{total} requests, {len(failures)} failures, {shed} shed with 503 + Retry-After")
     for f in sorted(set(failures))[:20]:
         print("  ", f)
     ok = not failures and all(n in (1, -1) for n in contested)

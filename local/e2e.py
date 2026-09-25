@@ -67,7 +67,9 @@ def sign_in(email: str) -> dict:
 
 def emailed_code(email: str) -> str | None:
     """cognito-local prints the code it would have emailed."""
-    logs = subprocess.run(["docker", "compose", "logs", "cognito"], capture_output=True, text=True, cwd=Path(__file__).parents[1]).stdout
+    logs = subprocess.run(
+        ["docker", "compose", "logs", "cognito"], capture_output=True, text=True, cwd=Path(__file__).parents[1]
+    ).stdout
     block = logs[logs.rfind(email) :] if email in logs else ""
     m = re.search(r"Code:\s+(\d{6})", block)
     return m.group(1) if m else None
@@ -91,7 +93,10 @@ def confirm_with_test_card(intent_id: str) -> None:
 def sign_up(email: str) -> dict:
     """Sign up, confirm with the emailed code, sign in: as the app does."""
     idp.sign_up(
-        ClientId=ENV["AUTH_CLIENT_IDS"], Username=email, Password=PASSWORD, UserAttributes=[{"Name": "email", "Value": email}]
+        ClientId=ENV["AUTH_CLIENT_IDS"],
+        Username=email,
+        Password=PASSWORD,
+        UserAttributes=[{"Name": "email", "Value": email}],
     )
     deadline = time.time() + 20
     while (code := emailed_code(email)) is None and time.time() < deadline:
@@ -141,12 +146,16 @@ def main() -> None:
         # A verified Stripe test account, as Connect onboarding would give them.
         subprocess.run(
             ["docker", "compose", "exec", "-T", "payments", "python", "-m", "payments.cli", "demo-payouts", host_sub],
-            check=True, capture_output=True, cwd=Path(__file__).parents[1],
+            check=True,
+            capture_output=True,
+            cwd=Path(__file__).parents[1],
         )
 
     step("the host lists a machine with a photo and a private hand-over address")
     up = ok(http.post("/uploads", files={"file": ("p.jpg", photo(), "image/jpeg")}, headers=host), 201)
-    assert http.get(up["url"].replace("/api", "") if up["url"].startswith("/api") else up["url"].replace(API, "")).status_code in (200, 404)
+    assert http.get(
+        up["url"].replace("/api", "") if up["url"].startswith("/api") else up["url"].replace(API, "")
+    ).status_code in (200, 404)
     start = datetime.now(UTC).replace(minute=0, second=0, microsecond=0) + timedelta(days=2)
     title = f"Track saw {run}"
     created = ok(
@@ -211,7 +220,11 @@ def main() -> None:
         confirm_with_test_card(made["payment"]["intentId"])
 
     step("payment authorises; the owner sees the request")
-    until("requested", timeout=60, fn=lambda: ok(http.get(f"/bookings/{booking_id}", headers=host))["status"] == "requested")
+    until(
+        "requested",
+        timeout=60,
+        fn=lambda: ok(http.get(f"/bookings/{booking_id}", headers=host))["status"] == "requested",
+    )
     inbox = ok(http.get("/bookings", params={"role": "owner"}, headers=host))["items"]
     assert booking_id in [b["id"] for b in inbox]
 
@@ -223,18 +236,24 @@ def main() -> None:
     ok(http.post(f"/bookings/{booking_id}/start", headers=host))
     assert ok(http.post(f"/bookings/{booking_id}/complete", headers=buyer))["status"] == "completed"
     until(
-        "paid out", lambda: ok(http.get(f"/payments/bookings/{booking_id}", headers=host))["status"] == "transferred",
+        "paid out",
+        lambda: ok(http.get(f"/payments/bookings/{booking_id}", headers=host))["status"] == "transferred",
         timeout=60,
     )
 
     step("the rating becomes a review on the listing")
-    ok(http.post(f"/bookings/{booking_id}/rate", json={"onTime": True, "quality": 5, "note": f"Great {run}"}, headers=buyer))
+    ok(
+        http.post(
+            f"/bookings/{booking_id}/rate", json={"onTime": True, "quality": 5, "note": f"Great {run}"}, headers=buyer
+        )
+    )
     until(
         "review",
         lambda: any(run in (r.get("text") or "") for r in ok(http.get(f"/listings/{listing_id}/reviews"))["items"]),
     )
 
     step("both sides were emailed")
+
     def mails_to(address: str) -> list[str]:
         sent = httpx.get(f"{LOCALSTACK}/_aws/ses").json()["messages"]
         return [m["Subject"] for m in sent if address in m["Destination"]["ToAddresses"]]

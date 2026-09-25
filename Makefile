@@ -69,3 +69,14 @@ load: ## Sustained concurrent use of the running stack: no errors, no double boo
 	$(BACKEND) uv run python ../local/load.py 50 60
 
 .PHONY: load
+
+load-spike: ## 10x the arrival rate for 60 s: shedding may answer 503, nothing else fails
+	$(BACKEND) uv run python ../local/load.py spike 30 60
+
+load-mixed: ## Open-model mixed journeys (90% browse, 8% signed-in, contested bookings)
+	$(BACKEND) uv run python ../local/load.py mixed 40 120
+
+load-soak: ## An hour at a steady rate: connections, memory and queue ages must stay flat
+	$(BACKEND) uv run python ../local/load.py soak 20 3600
+
+.PHONY: load-spike load-mixed load-soak
