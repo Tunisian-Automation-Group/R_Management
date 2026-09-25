@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import pytest
 
-from booking.state import FINAL, HOLDING, check_can_rate, next_status, system_status
+from booking.state import HOLDING, check_can_rate, next_status, system_status
 from cappy_common.errors import Conflict, Forbidden
 
 REQ, OWN = "buyer", "host"
