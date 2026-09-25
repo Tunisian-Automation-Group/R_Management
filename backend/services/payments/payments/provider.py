@@ -56,6 +56,9 @@ class Provider:
         self, *, booking_id: str, amount: int, currency: str, account_id: str, charge_id: str
     ) -> str: ...
     async def create_account(self, owner_id: str) -> str: ...
+    async def verification_session(self, person_id: str) -> tuple[str, str]:
+        """(session id, client secret) for Stripe Identity: document and selfie."""
+
     async def onboarding_link(self, account_id: str, return_url: str, refresh_url: str) -> str: ...
     async def account_status(self, account_id: str) -> AccountStatus: ...
     def parse_webhook(self, payload: bytes, signature: str) -> dict: ...
@@ -144,6 +147,16 @@ class StripeProvider(Provider):
         )
         return t.id
 
+    async def verification_session(self, person_id: str) -> tuple[str, str]:
+        v = await self._c.v1.identity.verification_sessions.create_async(
+            {
+                "type": "document",
+                "options": {"document": {"require_matching_selfie": True, "require_live_capture": True}},
+                "metadata": {"personId": person_id},
+            }
+        )
+        return v.id, v.client_secret or ""
+
     async def create_account(self, owner_id: str) -> str:
         a = await self._c.v1.accounts.create_async(
             {
@@ -218,6 +231,9 @@ class FakeProvider(Provider):
 
     async def create_account(self, owner_id: str) -> str:
         return f"{FAKE_ACCOUNT_PREFIX}{owner_id}"[:80]
+
+    async def verification_session(self, person_id: str) -> tuple[str, str]:
+        return f"vs_fake_{person_id}"[:80], "vs_fake_secret"
 
     async def onboarding_link(self, account_id: str, return_url: str, refresh_url: str) -> str:
         return return_url

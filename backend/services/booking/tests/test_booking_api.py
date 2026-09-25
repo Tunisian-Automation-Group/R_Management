@@ -551,3 +551,22 @@ def test_booking_requests_per_day_are_limited(client, app, issuer):
         _authorise(app, bid)
     r = client.post("/bookings", json=_body(start_h=60), headers=issuer.headers(BUYER))
     assert r.status_code == 429 and "a lot of booking requests" in r.json()["error"]["message"]
+
+
+def test_expensive_bookings_need_a_verified_renter(issuer, broker, payments):
+    from cappy_common.events import IDENTITY_VERIFIED
+
+    settings = Settings(
+        app_env="test", database_url="sqlite+aiosqlite://", internal_token="i" * 40, verify_above_cents=1000
+    )
+    app = build_app(
+        settings, matching=FakeMatching(), payments=payments, catalog=FakeCatalog(), verifier=issuer.verifier()
+    )
+    with TestClient(app) as c:
+        r = c.post("/bookings", json=_body(), headers=issuer.headers(BUYER))
+        assert r.status_code == 403 and r.json()["error"]["code"] == "verification_required"
+        ev = Event(
+            id=new_id("ev"), type=IDENTITY_VERIFIED, source="payments", occurred_at=now_iso(), data={"personId": BUYER}
+        )
+        c.portal.call(app.state.dispatcher.handle, ev)
+        assert c.post("/bookings", json=_body(), headers=issuer.headers(BUYER)).status_code == 201

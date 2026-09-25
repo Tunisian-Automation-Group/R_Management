@@ -420,3 +420,37 @@ def test_the_payouts_kill_switch_holds_payouts_on_the_queue(issuer, broker):
         with pytest.raises(NotReady):
             _status(app, "bk_1", "completed")
         assert "transfer" not in [op for op, _ in provider.calls]
+
+
+def test_identity_is_verified_once_and_announced(client, app, issuer, broker):
+    from cappy_common.events import IDENTITY_VERIFIED
+
+    h = issuer.headers("renter-1")
+    assert client.get("/payments/identity", headers=h).json() == {"status": "none"}
+    assert (
+        client.post("/payments/identity/session", headers=h).json()["status"] == "verified"
+    )  # the fake verifies at once
+    assert client.post("/payments/identity/session", headers=h).json() == {"status": "verified"}
+    call(app, app.state.relay.flush)
+    assert [e.data["personId"] for e in broker.of_type(IDENTITY_VERIFIED)] == ["renter-1"]
+
+
+def test_stripe_identity_outcome_comes_by_webhook(stripe_app, issuer, broker):
+    from cappy_common.events import IDENTITY_VERIFIED
+
+    app, c = stripe_app
+
+    async def session_for(person_id):
+        return "vs_123", "vs_123_secret"
+
+    app.state.provider.verification_session = session_for
+    h = issuer.headers("renter-2")
+    started = c.post("/payments/identity/session", headers=h).json()
+    assert started == {"status": "pending", "clientSecret": "vs_123_secret"}
+    body, headers = _signed(
+        _event("identity.verification_session.verified", {"id": "vs_123", "metadata": {"personId": "renter-2"}})
+    )
+    assert c.post("/payments/webhooks/stripe", content=body, headers=headers).status_code == 200
+    assert c.get("/payments/identity", headers=h).json()["status"] == "verified"
+    call(app, app.state.relay.flush)
+    assert len(broker.of_type(IDENTITY_VERIFIED)) == 1

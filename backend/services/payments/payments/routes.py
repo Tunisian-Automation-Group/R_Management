@@ -15,12 +15,12 @@ from cappy_common.app import ApiRouter
 from cappy_common.auth import Principal, require_internal, require_principal
 from cappy_common.db import insert_or_ignore
 from cappy_common.errors import Conflict, Invalid, NotFound, Unavailable
-from cappy_common.events import PAYMENT_AUTHORISED, PAYOUTS_READY
+from cappy_common.events import IDENTITY_VERIFIED, PAYMENT_AUTHORISED, PAYOUTS_READY
 from cappy_common.models import CamelModel
 from cappy_common.runtime import Tx
 
 from .provider import FAKE_ACCOUNT_PREFIX, Provider
-from .tables import PROCESSED, ConnectAccountRow, PaymentRow
+from .tables import PROCESSED, ConnectAccountRow, IdentityRow, PaymentRow
 
 log = logging.getLogger(__name__)
 router = ApiRouter(prefix="/payments")
@@ -230,6 +230,47 @@ async def connect_status(request: Request, session: AsyncSession = Tx, p: Princi
     )
 
 
+# --- identity (Stripe Identity) ---------------------------------------------------------------
+
+
+class IdentityOut(CamelModel):
+    status: str
+    client_secret: str | None = None
+
+
+async def _verified(request: Request, session: AsyncSession, row: IdentityRow) -> None:
+    if row.status != "verified":
+        row.status, row.verified_at = "verified", _now()
+        await request.app.state.outbox.add(session, IDENTITY_VERIFIED, {"personId": row.person_id})
+
+
+@router.post("/identity/session", response_model=IdentityOut)
+async def identity_session(request: Request, session: AsyncSession = Tx, p: Principal = Depends(require_principal)):
+    """Starts (or continues) verifying who the caller is. The app hands the
+    client secret to Stripe.js (verifyIdentity); the outcome comes by webhook."""
+    row = await session.get(IdentityRow, p.sub, with_for_update=True)
+    if row is not None and row.status == "verified":
+        return IdentityOut(status="verified")
+    provider = _provider(request)
+    session_id, secret = await provider.verification_session(p.sub)
+    if row is None:
+        row = IdentityRow(person_id=p.sub, session_id=session_id, status="pending", updated_at=_now())
+        session.add(row)
+    else:
+        row.session_id, row.status, row.updated_at = session_id, "pending", _now()
+    await session.flush()
+    if provider.authorises_immediately:  # the fake: verified at once
+        await _verified(request, session, row)
+        return IdentityOut(status="verified")
+    return IdentityOut(status="pending", client_secret=secret)
+
+
+@router.get("/identity", response_model=IdentityOut)
+async def identity_status(session: AsyncSession = Tx, p: Principal = Depends(require_principal)) -> IdentityOut:
+    row = await session.get(IdentityRow, p.sub)
+    return IdentityOut(status=row.status if row else "none")
+
+
 # --- Stripe -----------------------------------------------------------------------------------
 
 
@@ -261,6 +302,15 @@ async def stripe_webhook(request: Request, session: AsyncSession = Tx) -> dict:
             # state rather than trusting this event's copy of it.
             status = await _provider(request).account_status(account.account_id)
             await _update_account(request, session, account, status.payouts_enabled, status.details_submitted)
+    elif kind.startswith("identity.verification_session."):
+        pid = (obj.get("metadata") or {}).get("personId")
+        row = await session.get(IdentityRow, pid, with_for_update=True) if pid else None
+        if row is not None:
+            if kind.endswith(".verified"):
+                await _verified(request, session, row)
+            elif kind.endswith(".requires_input"):
+                row.status = "requires_input"
+            row.updated_at = _now()
     elif kind == "charge.dispute.created":
         q = select(PaymentRow).where(PaymentRow.charge_id == obj["charge"]).with_for_update()
         row = (await session.execute(q)).scalar_one_or_none()

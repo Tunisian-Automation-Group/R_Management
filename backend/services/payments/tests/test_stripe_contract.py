@@ -38,3 +38,10 @@ async def test_the_whole_money_path_is_accepted_by_stripe(stripe_provider):
     await p.account_status(account)
     transfer = await p.transfer(booking_id="bk_1", amount=4000, currency="eur", account_id=account, charge_id=charge)
     assert transfer.startswith("tr_")
+
+
+async def test_identity_sessions_are_accepted_by_stripe(stripe_provider):
+    session_id, _secret = await stripe_provider.verification_session("renter-1")
+    # The request shape is what this checks; stripe-mock's fixture has no
+    # client secret, which real Stripe always returns for a new session.
+    assert session_id.startswith("vs_")

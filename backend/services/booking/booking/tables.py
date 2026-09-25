@@ -92,6 +92,14 @@ class BlockRow(Base):
     at: Mapped[datetime] = mapped_column(UtcDateTime)
 
 
+class VerifiedRow(Base):
+    """People Stripe Identity verified (payments' payment.identity_verified)."""
+
+    __tablename__ = "verified_people"
+    person_id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    at: Mapped[datetime] = mapped_column(UtcDateTime)
+
+
 class SuspendedRow(Base):
     """People moderation suspended (catalog's moderation.owner_suspended)."""
 

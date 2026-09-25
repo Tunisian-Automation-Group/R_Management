@@ -153,7 +153,7 @@ Engineering, before launch:
 - [x] G-5 (API) Check-in and check-out photos on a booking (`/api/bookings/{id}/evidence`), the parties' own uploads, never swept
 - [ ] G-6 Checkout compliance: total price including the fee; "zahlungspflichtig buchen"; trader/private owner label; withdrawal information and the withdrawal button; review-verification statement; ranking parameters page
 - [ ] G-7 German localisation (UI, emails, legal pages), English kept
-- [ ] G-8 Renter identity verification with Stripe Identity for high-value listings and vans (needs a DPIA)
+- [x] G-8 (API) Renter identity verification with Stripe Identity (document + live selfie) for bookings above 300 € (and configurable categories); only the outcome is stored. Needs a DPIA before launch (G-B3)
 - [x] G-9 Fraud rules: 10 booking requests and 20 new listings per person per day; a new owner's listing above 100 €/h waits for a staff check (`/api/admin/listings/held`, approve)
 - [ ] G-10 Stripe Connect platform tax reporting (DAC7) switched on; categories tagged in or out of scope; payouts blocked when tax data is missing after reminders
 

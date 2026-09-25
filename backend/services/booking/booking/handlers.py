@@ -8,6 +8,7 @@ from datetime import UTC, datetime
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from cappy_common.events import (
+    IDENTITY_VERIFIED,
     LISTING_CHANGED,
     OWNER_SUSPENDED,
     PAYMENT_AUTHORISED,
@@ -20,7 +21,7 @@ from cappy_common.events import (
 from .repository import BookingRepository
 from .settings import Settings
 from .state import SystemAction, system_status
-from .tables import OUTBOX, BookingRow, SuspendedRow
+from .tables import OUTBOX, BookingRow, SuspendedRow, VerifiedRow
 
 log = logging.getLogger(__name__)
 
@@ -71,7 +72,13 @@ def handlers(settings: Settings) -> dict[str, Handler]:
 
         await insert_or_ignore(session, SuspendedRow, person_id=event.data["ownerId"], at=datetime.now(UTC))
 
+    async def on_verified(session: AsyncSession, event: Event) -> None:
+        from cappy_common.db import insert_or_ignore
+
+        await insert_or_ignore(session, VerifiedRow, person_id=event.data["personId"], at=datetime.now(UTC))
+
     return {
+        IDENTITY_VERIFIED: on_verified,
         PAYMENT_AUTHORISED: on_authorised,
         PAYMENT_FAILED: on_failed,
         LISTING_CHANGED: on_listing_changed,

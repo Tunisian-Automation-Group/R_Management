@@ -39,7 +39,7 @@ from .messages import blocked_between
 from .repository import SHOWS_HANDOVER, BookingRepository, to_booking
 from .settings import Settings
 from .state import Action, check_can_rate, next_status
-from .tables import BookingRow, SuspendedRow
+from .tables import BookingRow, SuspendedRow, VerifiedRow
 
 log = logging.getLogger(__name__)
 router = ApiRouter()
@@ -153,6 +153,11 @@ async def create_booking(
             raise Forbidden("this listing is not available to you")
         if await s.get(SuspendedRow, p.sub) is not None:
             raise Forbidden("your account is suspended; see the email we sent you")
+        needs_id = view.listing.category in {c for c in settings.verify_categories.split(",") if c} or (
+            view.match.quote.total > settings.verify_above_cents
+        )
+        if needs_id and await s.get(VerifiedRow, p.sub) is None:
+            raise Forbidden("verify your identity once before booking this", code="verification_required")
 
     now = _now()
     m = view.match

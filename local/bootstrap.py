@@ -29,7 +29,13 @@ MAIL_FROM = "no-reply@cappy.local"
 # Which events each service's queue receives (Terraform: modules/messaging).
 CONSUMERS = {
     "catalog": ["booking.rated", "payment.payouts_ready"],
-    "booking": ["payment.authorised", "payment.failed", "listing.changed", "moderation.owner_suspended"],
+    "booking": [
+        "payment.authorised",
+        "payment.failed",
+        "listing.changed",
+        "moderation.owner_suspended",
+        "payment.identity_verified",
+    ],
     "payments": ["booking.status_changed", "profile.deleted"],
     "notifications": [
         "booking.status_changed",

@@ -27,6 +27,11 @@ class Settings(CommonSettings):
     max_unpaid: int = 3
     # Booking requests one person may make in 24 hours (velocity limit).
     max_requests_per_day: int = 10
+    # Renter identity verification (Stripe Identity) for any booking above this
+    # total, and for these categories (comma-separated; none today: freight is
+    # space on runs already going, nobody drives someone else's van).
+    verify_categories: str = ""
+    verify_above_cents: int = 30_000
     # Kill switch (docs/runbook.md): false stops new bookings; everything
     # already booked carries on.
     accepting_bookings: bool = True

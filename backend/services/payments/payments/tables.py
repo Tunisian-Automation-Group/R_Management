@@ -41,6 +41,18 @@ class PaymentRow(Base):
     updated_at: Mapped[datetime] = mapped_column(UtcDateTime)
 
 
+class IdentityRow(Base):
+    """Whether Stripe Identity has verified who someone is. The document and
+    selfie stay with Stripe; we keep only the outcome."""
+
+    __tablename__ = "identities"
+    person_id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    session_id: Mapped[str] = mapped_column(String(80), unique=True)
+    status: Mapped[str] = mapped_column(String(20))
+    verified_at: Mapped[datetime | None] = mapped_column(UtcDateTime, nullable=True)
+    updated_at: Mapped[datetime] = mapped_column(UtcDateTime)
+
+
 class ConnectAccountRow(Base):
     """An owner's Stripe Express account. Stripe holds their identity and bank
     details; we keep the id and whether they can be paid."""

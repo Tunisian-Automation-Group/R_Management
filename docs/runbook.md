@@ -24,8 +24,8 @@
    ```
    In the Stripe dashboard, add a webhook endpoint
    `https://<domain>/api/payments/webhooks/stripe` for the events
-   `payment_intent.amount_capturable_updated`, `account.updated` and `charge.dispute.created`. Enable
-   Connect with Express accounts.
+   `payment_intent.amount_capturable_updated`, `account.updated`, `charge.dispute.created`, `identity.verification_session.verified` and `identity.verification_session.requires_input`. Enable
+   Connect with Express accounts, and Stripe Identity.
 5. **Push notifications** (once, when the store apps are ready): create two SNS
    platform applications, APNs with the Apple push key (`.p8`, key id, team id)
    and FCM with the Firebase service-account JSON (FCM HTTP v1). Pass their ARNs

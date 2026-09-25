@@ -60,6 +60,8 @@ PAYMENT_FAILED = "payment.failed"
 PAYMENT_CAPTURED = "payment.captured"
 PAYMENT_REFUNDED = "payment.refunded"
 PAYOUT_SENT = "payment.payout_sent"
+# Stripe Identity verified who someone is (document and selfie).
+IDENTITY_VERIFIED = "payment.identity_verified"
 # An owner can (ready=true) or can no longer (false) be paid, so be booked.
 PAYOUTS_READY = "payment.payouts_ready"
 PROFILE_CREATED = "profile.created"
@@ -90,6 +92,7 @@ ALL_TYPES = frozenset(
         OWNER_SUSPENDED,
         LISTING_CHANGED,
         PAYOUTS_READY,
+        IDENTITY_VERIFIED,
     }
 )
 
