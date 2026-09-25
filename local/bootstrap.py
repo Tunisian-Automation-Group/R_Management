@@ -41,7 +41,12 @@ CONSUMERS = {
     ],
 }
 DEMO_PASSWORD = "Demo-pass-123!"
-DEMO = {"host": ("host@demo.cappy.local", "o1"), "buyer": ("buyer@demo.cappy.local", None)}
+DEMO = {
+    "host": ("host@demo.cappy.local", "o1"),
+    "buyer": ("buyer@demo.cappy.local", None),
+    # A moderator, for the admin console (member of the "admin" group).
+    "staff": ("staff@demo.cappy.local", None),
+}
 
 
 def client(name: str, endpoint: str = LOCALSTACK):
@@ -107,6 +112,11 @@ def identity() -> dict:
     app_client = clients[0]["ClientId"] if clients else idp.create_user_pool_client(
         UserPoolId=pool, ClientName="web", ExplicitAuthFlows=["ALLOW_USER_PASSWORD_AUTH", "ALLOW_REFRESH_TOKEN_AUTH"]
     )["UserPoolClient"]["ClientId"]
+    try:
+        idp.create_group(GroupName="admin", UserPoolId=pool, Description="Cappy staff")
+    except Exception as e:  # noqa: BLE001 - cognito-local and AWS name "already exists" differently
+        if "exist" not in str(e).lower():
+            raise
     subs = {}
     for role, (email, _) in DEMO.items():
         found = idp.list_users(UserPoolId=pool, Filter=f'email = "{email}"')["Users"]
@@ -119,6 +129,8 @@ def identity() -> dict:
         )["User"]
         idp.admin_set_user_password(UserPoolId=pool, Username=email, Password=DEMO_PASSWORD, Permanent=True)
         subs[role] = next(a["Value"] for a in user["Attributes"] if a["Name"] == "sub")
+        if role == "staff":
+            idp.admin_add_user_to_group(UserPoolId=pool, Username=email, GroupName="admin")
     return {"pool": pool, "client": app_client, "subs": subs}
 
 
