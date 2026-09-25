@@ -854,3 +854,30 @@ def test_taking_down_declines_requests_and_owners_manage_held_listings(client, a
         == 200
     )
     assert client.delete(f"/listings/{lid}", headers=h).status_code == 204
+
+
+def test_a_take_down_purges_the_listing_from_the_cdn(issuer, broker, tmp_path, bookings, monkeypatch):
+    import cappy_common.events as events
+
+    calls = []
+
+    class FakeCloudFront:
+        def create_invalidation(self, **kw):
+            calls.append(kw)
+
+    monkeypatch.setattr(events, "aws_client", lambda *a, **k: FakeCloudFront())
+    settings = Settings(
+        app_env="test", database_url="sqlite+aiosqlite://", internal_token="i" * 40, cdn_distribution_id="E123"
+    )
+    app = build_app(settings, media_store=DirectoryStore(str(tmp_path)), bookings=bookings, verifier=issuer.verifier())
+    with TestClient(app) as c:
+
+        async def seed():
+            async with app.state.db.transaction() as s:
+                await CatalogRepository(s).load_seed(build_world())
+
+        c.portal.call(seed)
+        why = {"statement": "Counterfeit machinery offered under a known brand (terms 4)."}
+        assert c.post("/admin/listings/l9/take-down", json=why, headers=_staff(issuer)).status_code == 204
+    [call_] = calls
+    assert call_["DistributionId"] == "E123" and "/api/listings/l9*" in call_["InvalidationBatch"]["Paths"]["Items"]

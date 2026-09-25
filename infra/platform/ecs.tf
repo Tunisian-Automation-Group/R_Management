@@ -31,6 +31,7 @@ locals {
       MEDIA_BUCKET           = aws_s3_bucket.media.bucket
       REQUIRE_PAYABLE_OWNERS = "true"
       ACCEPTING_LISTINGS     = tostring(var.switches.listings)
+      CDN_DISTRIBUTION_ID    = aws_cloudfront_distribution.main.id
     }
     matching = {}
     booking  = { ACCEPTING_BOOKINGS = tostring(var.switches.bookings) }
@@ -192,7 +193,8 @@ locals {
     gateway  = []
     matching = []
     catalog = [
-      { Effect = "Allow", Action = ["s3:PutObject", "s3:GetObject"], Resource = "${aws_s3_bucket.media.arn}/media/*" },
+      { Effect = "Allow", Action = ["s3:PutObject", "s3:GetObject", "s3:DeleteObject"], Resource = "${aws_s3_bucket.media.arn}/media/*" },
+      { Effect = "Allow", Action = "cloudfront:CreateInvalidation", Resource = aws_cloudfront_distribution.main.arn },
     ]
     booking  = []
     payments = []

@@ -9,6 +9,7 @@ hears the outcome.
 
 from __future__ import annotations
 
+import logging
 from datetime import UTC, datetime, timedelta
 
 from fastapi import Depends, Query, Request, status
@@ -28,6 +29,7 @@ from cappy_common.timeutil import dt_from_iso, iso_from_datetime
 
 from .tables import ListingRow, ModerationActionRow, OwnerRow, ReportRow
 
+log = logging.getLogger(__name__)
 public = ApiRouter()
 admin = ApiRouter(prefix="/admin")
 
@@ -157,6 +159,31 @@ async def queue(
     return Page(items=[_view(r) for r in rows], next_cursor=nxt)
 
 
+async def purge(request: Request, listing_ids: list[str]) -> None:
+    """Take a removed listing out of the CDN now, not when its cache expires."""
+    import asyncio
+    import time
+
+    from cappy_common.events import aws_client
+
+    settings = request.app.state.settings
+    if not settings.cdn_distribution_id or not listing_ids:
+        return
+    paths = [f"/api/listings/{lid}*" for lid in listing_ids[:100]] + ["/api/search*"]
+    try:
+        cf = aws_client("cloudfront", settings)
+        await asyncio.to_thread(
+            cf.create_invalidation,
+            DistributionId=settings.cdn_distribution_id,
+            InvalidationBatch={
+                "Paths": {"Quantity": len(paths), "Items": paths},
+                "CallerReference": f"mod-{time.time_ns()}",
+            },
+        )
+    except Exception as e:  # noqa: BLE001 - the cache expires by itself within minutes anyway
+        log.warning("could not purge the CDN for %s: %s", listing_ids, e)
+
+
 async def _removed(request: Request, session: AsyncSession, listing_ids: list[str]) -> None:
     """Booking declines these listings' pending requests (their card holds are
     released): nobody can accept a request on a listing that was taken down."""
@@ -164,6 +191,7 @@ async def _removed(request: Request, session: AsyncSession, listing_ids: list[st
 
     for lid in listing_ids:
         await _outbox(request).add(session, LISTING_CHANGED, {"listingId": lid, "change": "removed"})
+    await purge(request, listing_ids)
 
 
 async def _take_down(session: AsyncSession, listing_id: str) -> ListingRow:

@@ -44,6 +44,9 @@ class Settings(CommonSettings):
     # for a staff check.
     max_listings_per_day: int = 20
     review_above_cents: int = 10_000
+    # CloudFront distribution to purge when moderation takes something down
+    # (it would otherwise stay cached for up to 10 minutes). Empty locally.
+    cdn_distribution_id: str = ""
 
     def unsafe_reasons(self) -> list[str]:
         problems = super().unsafe_reasons()
