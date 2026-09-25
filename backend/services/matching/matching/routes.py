@@ -15,7 +15,7 @@ from fastapi import Depends, Query, Request, Response
 from pydantic import Field
 
 from cappy_common.app import ApiRouter
-from cappy_common.auth import Principal, optional_principal, require_internal
+from cappy_common.auth import Principal, optional_principal, require_internal, require_principal
 from cappy_common.errors import Conflict, Invalid, NotFound
 from cappy_common.models import CamelModel, Iso, MatchView, Quote, Requirement, World
 from cappy_common.timeutil import HOUR_MS, iso_from_ms, ms_from_iso, now_iso
@@ -30,7 +30,10 @@ from .domain.pricing import hours_for, quote_for
 from .domain.reviews import REVIEW_TAGS
 
 log = logging.getLogger(__name__)
-router = ApiRouter()
+# The shared vocabulary is public (no user data; the welcome screen shows it).
+# Everything else is signed-in only (GOAL 13).
+vocab = ApiRouter()
+router = ApiRouter(dependencies=[Depends(require_principal)])
 # The same for everyone and rarely changing: CloudFront answers these for five minutes.
 PUBLIC_CACHE = "public, max-age=300"
 internal = ApiRouter(prefix="/internal", dependencies=[Depends(require_internal)])
@@ -132,7 +135,7 @@ class QuoteOut(CamelModel):
 # --- vocabulary ------------------------------------------------------------------------
 
 
-@router.get("/groups", response_model=list[GroupMeta])
+@vocab.get("/groups", response_model=list[GroupMeta])
 async def list_groups(
     response: Response,
 ) -> list[GroupMeta]:
@@ -140,7 +143,7 @@ async def list_groups(
     return GROUPS
 
 
-@router.get("/categories", response_model=list[CategoryMeta])
+@vocab.get("/categories", response_model=list[CategoryMeta])
 async def list_categories(response: Response, group: str | None = None) -> list[CategoryMeta]:
     response.headers["Cache-Control"] = PUBLIC_CACHE
     if group is None:
@@ -150,7 +153,7 @@ async def list_categories(response: Response, group: str | None = None) -> list[
     return categories_in(group)
 
 
-@router.get("/review-tags", response_model=list[str])
+@vocab.get("/review-tags", response_model=list[str])
 async def list_review_tags(
     response: Response,
 ) -> list[str]:

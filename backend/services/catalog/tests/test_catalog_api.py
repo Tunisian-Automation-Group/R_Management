@@ -26,6 +26,8 @@ from catalog.repository import CatalogRepository
 from catalog.settings import Settings
 
 INTERNAL = {"X-Internal-Token": "i" * 40}
+# The test client signs in by default; this is how a test is anonymous.
+ANON = {"Authorization": ""}
 
 
 @pytest.fixture()
@@ -82,8 +84,8 @@ def _run(app, coro_fn):
 
 
 @pytest.fixture()
-def client(app):
-    with TestClient(app) as c:
+def client(app, issuer):
+    with TestClient(app, headers=issuer.headers("viewer-1")) as c:
         app.state._portal = c.portal
 
         async def seed():
@@ -151,9 +153,9 @@ def _jpeg_with_gps() -> bytes:
 
 
 def test_nobody_is_anybody_without_a_token(client):
-    assert client.get("/me").status_code == 401
-    assert client.get("/me", headers={"X-Cappy-User": "o1"}).status_code == 401
-    assert client.get("/saved").status_code == 401
+    assert client.get("/me", headers=ANON).status_code == 401
+    assert client.get("/me", headers={**ANON, "X-Cappy-User": "o1"}).status_code == 401
+    assert client.get("/saved", headers=ANON).status_code == 401
 
 
 def test_profile_is_created_once_and_a_record_cannot_be_declared(client, issuer, app, broker):
@@ -357,7 +359,7 @@ def test_decompression_bombs_are_refused_before_decoding(client, issuer, app):
 
 
 def test_uploads_need_a_session(client):
-    assert client.post("/uploads", files={"file": ("p.jpg", b"x", "image/jpeg")}).status_code == 401
+    assert client.post("/uploads", files={"file": ("p.jpg", b"x", "image/jpeg")}, headers=ANON).status_code == 401
 
 
 # --- search, cities, saved ----------------------------------------------------------------------
@@ -475,7 +477,7 @@ def test_only_owners_who_can_be_paid_are_offered(issuer, broker, tmp_path):
         require_payable_owners=True,
     )
     app = build_app(settings, media_store=DirectoryStore(str(tmp_path)), verifier=issuer.verifier())
-    with TestClient(app) as c:
+    with TestClient(app, headers=issuer.headers("viewer-1")) as c:
 
         async def seed():
             async with app.state.db.transaction() as s:
@@ -537,7 +539,7 @@ def test_deleting_an_account_forgets_what_is_theirs(client, app, issuer, booking
     assert client.get("/saved", headers=h).json()["items"] == []
     flush(app)
     assert [e.data["ownerId"] for e in broker.of_type(PROFILE_DELETED)] == ["user-a"]
-    assert client.delete("/me").status_code == 401
+    assert client.delete("/me", headers=ANON).status_code == 401
 
 
 def test_the_handover_address_stays_private(client, issuer):
@@ -570,15 +572,15 @@ def test_search_needs_three_characters(client):
     assert client.get("/search", params={"q": "saw"}).status_code == 200
 
 
-def test_public_reads_are_cacheable_at_the_edge_and_personal_ones_never(client, issuer):
-    anon = client.get("/listings/l9")
-    assert "s-maxage=30" in anon.headers["cache-control"] and "stale-if-error" in anon.headers["cache-control"]
-    assert "s-maxage" in client.get("/search", params={"q": "saw"}).headers["cache-control"]
-    mine = client.get("/listings/l9", headers=issuer.headers("user-a"))
-    assert mine.headers["cache-control"] == "private, no-store"
-    assert "cache-control" not in client.get("/listings/nope").headers, "errors are not cached"
-    assert client.get("/saved", headers=issuer.headers("user-a")).headers["cache-control"] == "private, no-store"
-
+def test_nothing_of_the_product_is_served_before_sign_in(client, issuer):
+    """GOAL 13: signed-in only, enforced here, not just hidden in the app."""
+    for path in ("/listings/l9", "/listings/l9/reviews", "/search?q=saw", "/owners/o1", "/districts", "/cities"):
+        assert client.get(path, headers=ANON).status_code == 401, path
+    signed_in = client.get("/listings/l9", headers=issuer.headers("user-a"))
+    assert signed_in.status_code == 200 and signed_in.headers["cache-control"] == "private, no-store"
+    # What law or the stores need stays public: reporting (DSA Art. 16).
+    body = {"targetType": "listing", "targetId": "l9", "reason": "spam", "details": "Looks like spam to me", "email": "a@example.com"}
+    assert client.post("/reports", json=body, headers=ANON).status_code == 201
 
 def test_two_people_can_upload_the_same_picture(client, issuer):
     same = _jpeg_with_gps()
@@ -610,7 +612,7 @@ def test_the_listings_kill_switch(issuer, broker, tmp_path, bookings):
         app_env="test", database_url="sqlite+aiosqlite://", internal_token="i" * 40, accepting_listings=False
     )
     app = build_app(settings, media_store=DirectoryStore(str(tmp_path)), bookings=bookings, verifier=issuer.verifier())
-    with TestClient(app) as c:
+    with TestClient(app, headers=issuer.headers("viewer-1")) as c:
 
         async def seed():
             async with app.state.db.transaction() as s:
@@ -627,7 +629,7 @@ def test_upload_quota(issuer, broker, tmp_path, bookings):
         app_env="test", database_url="sqlite+aiosqlite://", internal_token="i" * 40, media_daily_quota=2
     )
     app = build_app(settings, media_store=DirectoryStore(str(tmp_path)), bookings=bookings, verifier=issuer.verifier())
-    with TestClient(app) as c:
+    with TestClient(app, headers=issuer.headers("viewer-1")) as c:
         h = issuer.headers("user-a")
         codes = [
             c.post("/uploads", files={"file": ("p.png", _png(shade), "image/png")}, headers=h).status_code
@@ -691,8 +693,8 @@ def test_anyone_can_report_and_staff_decide_with_reasons(client, app, issuer, br
         "reason": "fraud",
         "details": "The photos are stolen from a shop",
     }
-    assert client.post("/reports", json=body).status_code == 422, "anonymous needs an email"
-    anon = client.post("/reports", json={**body, "email": "neighbour@example.com"}).json()
+    assert client.post("/reports", json=body, headers=ANON).status_code == 422, "anonymous needs an email"
+    anon = client.post("/reports", json={**body, "email": "neighbour@example.com"}, headers=ANON).json()
     mine = client.post("/reports", json={**body, "reason": "spam"}, headers=issuer.headers("user-a")).json()
     assert anon["status"] == "open" and mine["id"] != anon["id"]
 
@@ -768,7 +770,7 @@ def test_new_listings_per_day_are_limited(issuer, broker, tmp_path, bookings):
         app_env="test", database_url="sqlite+aiosqlite://", internal_token="i" * 40, max_listings_per_day=2
     )
     app = build_app(settings, media_store=DirectoryStore(str(tmp_path)), bookings=bookings, verifier=issuer.verifier())
-    with TestClient(app) as c:
+    with TestClient(app, headers=issuer.headers("viewer-1")) as c:
 
         async def seed():
             async with app.state.db.transaction() as s:
@@ -831,7 +833,7 @@ def test_reports_cannot_be_used_to_flood_an_inbox(client, issuer):
         "details": "Looks like spam to me",
         "email": "victim@example.com",
     }
-    codes = [client.post("/reports", json=body).status_code for _ in range(4)]
+    codes = [client.post("/reports", json=body, headers=ANON).status_code for _ in range(4)]
     assert codes == [201, 201, 201, 429]
     mine = client.post("/reports", json={**body, "email": "elsewhere@example.com"}, headers=issuer.headers("user-a"))
     assert mine.status_code == 201
@@ -870,7 +872,7 @@ def test_a_take_down_purges_the_listing_from_the_cdn(issuer, broker, tmp_path, b
         app_env="test", database_url="sqlite+aiosqlite://", internal_token="i" * 40, cdn_distribution_id="E123"
     )
     app = build_app(settings, media_store=DirectoryStore(str(tmp_path)), bookings=bookings, verifier=issuer.verifier())
-    with TestClient(app) as c:
+    with TestClient(app, headers=issuer.headers("viewer-1")) as c:
 
         async def seed():
             async with app.state.db.transaction() as s:

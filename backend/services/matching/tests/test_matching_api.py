@@ -75,7 +75,7 @@ def client(fakes, issuer):
         bookings=bookings,
         verifier=issuer.verifier(),
     )
-    with TestClient(app) as c:
+    with TestClient(app, headers=issuer.headers("viewer-1")) as c:
         yield c
 
 

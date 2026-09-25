@@ -12,7 +12,7 @@ from .clients import Bookings, HttpBookings, HttpPayments, Payments
 from .handlers import on_booking_rated, on_payouts_ready, on_renter_rated
 from .jobs import sweep_orphans
 from .media import MediaStore, make_store
-from .routes import internal, router
+from .routes import internal, media_router, router
 from .settings import Settings
 from .tables import Base
 
@@ -42,14 +42,13 @@ def build_app(
         lifespan=runtime.lifespan(),
         # Photos are the one large body; everything else keeps the default.
         body_limits={"/uploads": settings.media_max_bytes + 64_000},
-        # Listing pages, their reviews, search and owner cards (resilience F7).
-        public_cache=("/listings/", "/search", "/owners/"),
     )
     app.state.verifier = verifier
     app.state.media = media_store or make_store(settings)
     app.state.bookings = bookings or HttpBookings(settings.booking_url, settings.internal_token.get_secret_value())
     app.state.payments = payments or HttpPayments(settings.payments_url, settings.internal_token.get_secret_value())
     app.include_router(router)
+    app.include_router(media_router)
     app.include_router(moderation.public)
     app.include_router(moderation.admin)
     app.include_router(internal)

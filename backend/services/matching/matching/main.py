@@ -7,7 +7,7 @@ from cappy_common.auth import TokenVerifier
 from cappy_common.runtime import Runtime
 
 from .clients import Bookings, Catalog, HttpBookings, HttpCatalog
-from .routes import internal, router
+from .routes import internal, router, vocab
 from .settings import Settings
 
 
@@ -26,14 +26,11 @@ def build_app(
 
     # Stateless: no database, no events. Two upstreams, both per request.
     runtime = Runtime(settings, on_stop=close)
-    # Offers and spotlight: a few seconds stale is fine, because booking
-    # refuses a window that was taken meanwhile.
-    app = create_app(
-        settings, title="Cappy matching", lifespan=runtime.lifespan(), public_cache=("/listings/", "/browse/")
-    )
+    app = create_app(settings, title="Cappy matching", lifespan=runtime.lifespan())
     app.state.verifier = verifier
     app.state.catalog = catalog or HttpCatalog(settings.catalog_url, token)
     app.state.bookings = bookings or HttpBookings(settings.booking_url, token)
+    app.include_router(vocab)
     app.include_router(router)
     app.include_router(internal)
     return app

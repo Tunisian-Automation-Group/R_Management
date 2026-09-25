@@ -21,7 +21,11 @@ from cappy_common.timeutil import HOUR_MS, dt_from_iso, ms_from_iso, now_iso
 from . import media
 from .repository import CatalogRepository
 
-router = ApiRouter()
+# Signed-in only (GOAL 13): nothing of the product is served to anonymous
+# callers. Photos are the exception (an <img> cannot send a token; their names
+# are unguessable content hashes), and so are the legal duties in moderation.
+router = ApiRouter(dependencies=[Depends(require_principal)])
+media_router = ApiRouter()
 # The same for everyone and rarely changing: CloudFront answers these for five minutes.
 PUBLIC_CACHE = "public, max-age=300"
 internal = ApiRouter(prefix="/internal", dependencies=[Depends(require_internal)])
@@ -534,7 +538,7 @@ async def upload(
     )
 
 
-@router.get("/media/{name}", include_in_schema=False)
+@media_router.get("/media/{name}", include_in_schema=False)
 async def serve_media(name: str, request: Request) -> Response:
     """Only used where no CDN fronts the bucket (local development). In AWS,
     CloudFront serves ``/media/*`` from S3 and this is never reached."""

@@ -210,8 +210,8 @@ def create_app(
         )
     # Added innermost first: security headers wrap everything, so even a 413 or
     # a 500 written by an outer layer carries them.
-    if public_cache:
-        app.add_middleware(PublicCacheMiddleware, prefixes=public_cache)
+    # Always: whatever is answered to a signed-in caller is marked private.
+    app.add_middleware(PublicCacheMiddleware, prefixes=public_cache)
     app.add_middleware(BodyLimitMiddleware, default=settings.max_body_bytes, overrides=body_limits)
     app.add_middleware(RequestContextMiddleware)
     app.add_middleware(SecurityHeadersMiddleware)

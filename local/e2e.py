@@ -131,6 +131,10 @@ def main() -> None:
     step("the edge refuses what it must")
     assert http.post("/internal/busy", json={}).status_code == 404
     assert http.get("/bookings").status_code == 401
+    # Signed-in only (GOAL 13): nothing of the product before sign-in.
+    for path in ("/search?q=saw", "/listings/l9", "/owners/o1", "/browse/spotlight?district=Kreuzberg"):
+        assert http.get(path).status_code == 401, path
+    assert http.get("/categories").status_code == 200, "the vocabulary stays public (welcome screen)"
     assert http.get("/bookings", headers={"X-Cappy-User": "o1"}).status_code == 401
     assert http.get("/bookings", headers={"Authorization": "Bearer forged.token.here"}).status_code == 401
 
@@ -190,9 +194,9 @@ def main() -> None:
     listing_id = created["listing"]["id"]
 
     step("search finds it; offers exist")
-    found = ok(http.get("/search", params={"q": run}))["items"]
+    found = ok(http.get("/search", params={"q": run}, headers=buyer))["items"]
     assert [v["listing"]["id"] for v in found] == [listing_id], found
-    offers = ok(http.get(f"/listings/{listing_id}/offers", params={"hours": 2}))
+    offers = ok(http.get(f"/listings/{listing_id}/offers", params={"hours": 2}, headers=buyer))
     assert offers
 
     step("the buyer books a window (idempotently)")
@@ -250,7 +254,10 @@ def main() -> None:
     ok(http.post(f"/bookings/{booking_id}/rate-renter", json={"quality": 5}, headers=host))
     until(
         "review",
-        lambda: any(run in (r.get("text") or "") for r in ok(http.get(f"/listings/{listing_id}/reviews"))["items"]),
+        lambda: any(
+            run in (r.get("text") or "")
+            for r in ok(http.get(f"/listings/{listing_id}/reviews", headers=buyer))["items"]
+        ),
     )
 
     step("both sides were emailed")
@@ -267,8 +274,8 @@ def main() -> None:
     assert export.status_code == 200 and any(b["id"] == booking_id for b in export.json()["bookings"])
     for who in (buyer, host):
         assert http.delete("/me", headers=who).status_code == 204
-    assert http.get(f"/listings/{listing_id}").status_code == 404, "the host's listing is gone"
-    assert http.get(f"/owners/{host_sub}").status_code == 404, "the host is gone from public pages"
+    assert http.get(f"/listings/{listing_id}", headers=other).status_code == 404, "the host's listing is gone"
+    assert http.get(f"/owners/{host_sub}", headers=other).status_code == 404, "the host is gone from every page"
     for address in (email, host_email):
         idp.admin_delete_user(UserPoolId=ENV["USER_POOL_ID"], Username=address)
     print("e2e passed")

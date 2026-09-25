@@ -39,6 +39,16 @@ failures: list[str] = []
 shed = 0
 
 
+class SignedIn:
+    """Signed-in only (GOAL 13): every browser carries a token."""
+
+    def __init__(self, c: httpx.AsyncClient, token: str) -> None:
+        self._c, self._h = c, {"Authorization": f"Bearer {token}"}
+
+    async def request(self, method: str, path: str, **kw):  # noqa: ANN003, ANN201
+        return await self._c.request(method, path, headers={**self._h, **kw.pop("headers", {})}, **kw)
+
+
 async def call(c: httpx.AsyncClient, name: str, method: str, path: str, **kw) -> httpx.Response | None:
     t = time.perf_counter()
     try:
@@ -55,7 +65,8 @@ async def call(c: httpx.AsyncClient, name: str, method: str, path: str, **kw) ->
     return r
 
 
-async def browser(c: httpx.AsyncClient, listing_ids: list[str], until: float) -> None:
+async def browser(c: httpx.AsyncClient, listing_ids: list[str], until: float, token: str) -> None:
+    c = SignedIn(c, token)
     while time.time() < until:
         await call(c, "categories", "GET", "/categories")
         await call(c, "search", "GET", "/search", params={"q": random.choice(QUERIES)})
@@ -95,7 +106,7 @@ def token(email: str, password: str) -> str:
 
 
 async def contested_bookings(c: httpx.AsyncClient, buyers: list[str], listing_id: str) -> int:
-    offers = (await c.get(f"/listings/{listing_id}/offers", params={"hours": 2})).json()
+    offers = (await SignedIn(c, buyers[0]).request("GET", f"/listings/{listing_id}/offers", params={"hours": 2})).json()
     if not offers:
         return -1
     now = datetime.now(UTC)
@@ -141,25 +152,24 @@ async def open_model(
     workshop = listing_ids
 
     async def one() -> None:
+        c_ = SignedIn(c, random.choice(buyers))
         roll = random.random()
         lid = random.choice(workshop)
         if roll < 0.90:
             await random.choice(
                 [
-                    lambda: call(c, "search", "GET", "/search", params={"q": random.choice(QUERIES)}),
-                    lambda: call(c, "listing", "GET", f"/listings/{lid}"),
-                    lambda: call(c, "offers", "GET", f"/listings/{lid}/offers", params={"hours": 2}),
+                    lambda: call(c_, "search", "GET", "/search", params={"q": random.choice(QUERIES)}),
+                    lambda: call(c_, "listing", "GET", f"/listings/{lid}"),
+                    lambda: call(c_, "offers", "GET", f"/listings/{lid}/offers", params={"hours": 2}),
                     lambda: call(
-                        c, "spotlight", "GET", "/browse/spotlight", params={"district": "Kreuzberg", "maxKm": 20}
+                        c_, "spotlight", "GET", "/browse/spotlight", params={"district": "Kreuzberg", "maxKm": 20}
                     ),
                 ]
             )()
         elif roll < 0.98 and buyers:
-            await call(
-                c, "my-bookings", "GET", "/bookings", headers={"Authorization": f"Bearer {random.choice(buyers)}"}
-            )
+            await call(c_, "my-bookings", "GET", "/bookings")
         else:
-            await call(c, "categories", "GET", "/categories")
+            await call(c_, "categories", "GET", "/categories")
 
     end = time.time() + seconds
     while time.time() < end:
@@ -171,19 +181,20 @@ async def open_model(
 async def main() -> None:
     limits = httpx.Limits(max_connections=USERS * 2)
     async with httpx.AsyncClient(base_url=API, timeout=30, limits=limits) as c:
+        run = uuid.uuid4().hex[:6]
+        buyers = [token(f"load-{run}-{i}@example.com", "Load-test-123!") for i in range(10)]
+        me = SignedIn(c, buyers[0])
         listings = [
             v["listing"]["id"]
             for q in ("saw", "drill", "printer")
-            for v in (await c.get("/search", params={"q": q, "limit": 50})).json()["items"]
+            for v in (await me.request("GET", "/search", params={"q": q, "limit": 50})).json()["items"]
         ]
         workshop = [
             v["listing"]["id"]
-            for v in (await c.get("/search", params={"q": "saw", "limit": 50})).json()["items"]
+            for v in (await me.request("GET", "/search", params={"q": "saw", "limit": 50})).json()["items"]
             if v["listing"]["mode"] == "window"
         ]
         print(f"{USERS} browsers for {SECONDS:.0f}s over {len(listings)} listings")
-        run = uuid.uuid4().hex[:6]
-        buyers = [token(f"load-{run}-{i}@example.com", "Load-test-123!") for i in range(10)]
         for b in buyers:
             await c.put(
                 "/me",
@@ -206,7 +217,7 @@ async def main() -> None:
             await runner
         else:
             until = time.time() + SECONDS
-            browsing = [asyncio.create_task(browser(c, listings, until)) for _ in range(USERS)]
+            browsing = [asyncio.create_task(browser(c, listings, until, buyers[i % len(buyers)])) for i in range(USERS)]
             for lid in workshop[:5]:
                 contested.append(await contested_bookings(c, buyers, lid))
             await asyncio.gather(*browsing)
