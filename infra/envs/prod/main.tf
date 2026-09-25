@@ -50,9 +50,18 @@ variable "switches" {
   default = { bookings = true, payouts = true, listings = true }
 }
 
+# Feature flags (S-26): terraform apply -var 'feature_flags=newcheckout:25,chat:100'
+variable "feature_flags" {
+  type    = string
+  default = ""
+}
+
 module "platform" {
   source    = "../../platform"
   providers = { aws = aws, aws.us_east_1 = aws.us_east_1 }
+
+  switches      = var.switches
+  feature_flags = var.feature_flags
 
   env          = "prod"
   image_tag    = var.image_tag

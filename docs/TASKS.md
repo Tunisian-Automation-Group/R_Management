@@ -19,6 +19,71 @@ Status: `[ ]` open · `[~]` in progress · `[x]` done (commit) · `[-]` dropped 
   below `minVersion` the app shows a forced-update screen.
 - A `503` carries `Retry-After` (seconds); clients wait at least that long before retrying.
 
+### Batch S (stores and marketplace), backend shipped, web to build
+
+Fields that are null are left out of answers, as everywhere in the API.
+
+- **S-5 age.** `PUT /me` needs `adult: true` when the profile is first created (checkbox "I am 18 or
+  older" at onboarding). Without it: `422 {error: {code: "invalid", message: "Cappy is for people aged
+  18 or over: confirm your age to continue"}}`. Later edits need not send it. Existing profiles are
+  grandfathered.
+- **S-4 traders.** `PUT /me` with `kind: "business"` needs
+  `business: {legalName (2–160), address (8–300), registerNumber? (≤60), vatId? (≤20)}`, else 422.
+  The VAT ID is normalised (spaces, dots and dashes removed, upper case). A German one must be
+  `DE` + 9 digits; other EU ones are checked loosely; a bad one gives 422. Every `Owner` answer
+  (`/me`, `/owners/{id}`, listing and search answers) carries `owner.business` with the same four
+  fields for businesses only. A person never has one, even if they send it. Show it on the listing and
+  at checkout with "Your contract is with {legalName}; Cappy is not your contract partner".
+- **S-18 reliability.** `Owner.cancellationRate` is 0–1: the share of accepted bookings in 12 months
+  the owner cancelled or did not show up for. It is absent under 5 accepted bookings. Show it only
+  when it is above 0 ("Cancelled 2 of 10 bookings"). Ranking multiplies trust by
+  `1 − 0.5 × cancellationRate`, so the ranking page (`web/src/app/screens/Legal.tsx`, "How ranking
+  works") must say that owners who cancel accepted bookings rank lower.
+- **S-11 no-shows.** `POST /bookings/{id}/no-show` (no body), by either side about the other, only on
+  an `accepted` booking.
+  - The renter reports the owner from the booked start until start + 2 h. The owner reports the renter
+    from start + 30 min until start + 2 h. Outside these times it gives 409 with a message.
+  - Result `status: "cancelled"`, `noShow: "owner" | "renter"`, `refundAmount`: the full amount when the
+    owner did not come, `0` when the renter did not. An owner no-show counts against the owner.
+  - Suggested UI: on an accepted booking once the time has started and nobody marked the hand-over,
+    "They didn't show up", with a confirm sheet that shows the refund.
+- **S-13 reports and statements of reasons.**
+  - `POST /reports` needs `goodFaith: true`, else 422 "confirm that what you report is accurate and
+    complete…". Add a required checkbox: "I confirm this report is accurate and complete to the best of
+    my knowledge."
+  - The admin decide endpoints (`POST /admin/reports/{id}/decide`, `/admin/listings/{id}/take-down`,
+    `/admin/owners/{id}/suspend`) accept, besides `statement` (the facts, ≥ 20 chars):
+    - `ground: "law" | "terms"`, default `terms`;
+    - `clause?` (≤ 200; default "Terms of use: rules for listings and conduct", or "the applicable law");
+    - `automated?: bool`, default false.
+  - `Report` answers carry `statementOfReasons: {restriction, facts, automated, ground, clause,
+    redress}` after a take-down or suspension (never after a dismissal). The affected person's email
+    spells all of it out in their language.
+- **S-17 and S-18 staff queue.** `GET /admin/reports` now also lists notices from the system:
+  `targetType: "owner"` with `reason: "reliability"` (3 or more owner cancellations or no-shows in 30
+  days) or `reason: "linked_to_suspended"` (paid with a card a suspended account used). Their
+  `details` say why. They are decided like any report. Give the two reasons readable labels in the
+  admin console.
+- **S-30 DSA numbers.** `GET /api/admin/dsa-stats?month=YYYY-MM` (staff) returns
+  `{month, activeRecipients, notices: {byReason: {reason: n}, byDecision: {dismiss|take_down|suspend|open:
+  n}}, medianHoursToDecision}`. `activeRecipients` is a lower bound (parties to bookings made in the
+  month); `docs/analytics.md` has the exact Athena query.
+- **S-26 feature flags.** `GET /api/app-config` → `{minVersion, latestVersion, flags: {name: bool},
+  rollouts: {name: percent}}` (set with `FEATURE_FLAGS="name:percent,…"`).
+  - A flag at 100 is `true`; at 0, or while rolling out, it is `false`. Rollouts are evaluated by the
+    app for the signed-in user, so the answer stays cacheable: `bucket = fnv1a32(name + ":" + userId)
+    % 100`, and the user is in when `bucket < percent`.
+  - FNV-1a 32-bit starts with offset `0x811C9DC5` and uses prime `0x01000193` over the UTF-8 bytes.
+  - Test vector: `bucket("newcheckout", "user-1") == 16`.
+  - A deviation from the brief: the flags are not evaluated on the server per user, because the CDN
+    caches this answer for everyone.
+- **S-7 crash reports.** `POST /api/client-errors`, signed in or not, body ≤ 8 KB:
+  `{message (≤2000), stack? (≤6000), route? (≤300), appVersion? (≤40), platform?: "web"|"ios"|"android"}`.
+  - Returns 202, including when the per-address limit of 10 a minute drops a report. A body over the
+    size limit gives 413; one that isn't a valid error report gives 422.
+  - Send from the `ErrorBoundary`, `window.onerror` and `unhandledrejection`, at most once per distinct
+    message per session. Never include device ids or user data.
+
 ## Verification round 1 — web (V1)
 
 - [x] V1-1 Owners reach their accepted, active and completed bookings: `/bookings` has an "I'm hosting" view (`role=owner`), and Earn links each confirmed booking
@@ -226,21 +291,21 @@ Signed-in only is a deliberate choice against Apple 5.1.1(v); U-1 carries the ar
 - [x] S-1 [app] Add `PrivacyInfo.xcprivacy` to the App target: UserDefaults `CA92.1`, file timestamp `C617.1`, disk space `E174.1` if filesystem uses it, `NSPrivacyTracking=false`, the collected data types. Check with an Xcode privacy report — https://developer.apple.com/documentation/bundleresources/describing-use-of-required-reason-api (63e6c1c; UserDefaults CA92.1 and file timestamps C617.1 for @capacitor/filesystem; no disk-space API used; Xcode privacy report still to run)
 - [ ] S-2 [app] `NSCameraUsageDescription` (and `NSPhotoLibraryAddUsageDescription` if saving) in `Info.plist`, DE/EN via `InfoPlist.strings`. Test evidence "Take Photo" on a device — https://developer.apple.com/forums/thread/772332 — English strings done (63e6c1c); German InfoPlist.strings and a device test left
 - [ ] S-3 [legal/business] Data inventory → Apple app privacy label + Play Data safety form (Stripe.js/Identity signals, payment, ID images, photos, messages, location district, crash data), matching the privacy policy — https://developer.apple.com/app-store/app-privacy-details/ · https://support.google.com/googleplay/android-developer/answer/10787469
-- [ ] S-4 [backend]+[web] Business owners: collect legal name, address, register number and VAT ID. Show them on the listing and at checkout, with "Cappy is not your contract partner" (§ 5b UWG, § 312l BGB). This is also the base for KYBC later — https://www.gesetze-im-internet.de/uwg_2004/__5b.html
-- [ ] S-5 [legal/business] Minimum age 18 in the terms, an "I am 18+" confirmation at sign-up, and 18+ in both store questionnaires, including Apple's September 2026 social-media question — https://developer.apple.com/news/?id=tlur8uvi
+- [ ] S-4 [backend]+[web] Business owners: collect legal name, address, register number and VAT ID. Show them on the listing and at checkout, with "Cappy is not your contract partner" (§ 5b UWG, § 312l BGB). This is also the base for KYBC later — https://www.gesetze-im-internet.de/uwg_2004/__5b.html — **backend done (uncommitted)**, web and the rest open
+- [ ] S-5 [legal/business] Minimum age 18 in the terms, an "I am 18+" confirmation at sign-up, and 18+ in both store questionnaires, including Apple's September 2026 social-media question — https://developer.apple.com/news/?id=tlur8uvi — **backend: adult at sign-up done (uncommitted)**, web and the rest open
 - [ ] S-6 [legal/business] App Store Connect DSA trader status (address, phone and email published) and a Play organisation account with a D-U-N-S number (avoids the 12-tester/14-day gate) — https://developer.apple.com/help/app-store-connect/manage-compliance-information/manage-european-union-digital-services-act-trader-requirements/ · https://support.google.com/googleplay/android-developer/answer/14151465
-- [ ] S-7 [web] Crash and error reporting: `@sentry/capacitor` (or a self-hosted `/api/client-errors` endpoint) from `ErrorBoundary`, `window.onerror` and `unhandledrejection`. Upload source maps per release. No replay or device id without consent (§ 25 TDDDG) — https://docs.sentry.io/platforms/javascript/guides/capacitor/
+- [ ] S-7 [web] Crash and error reporting: `@sentry/capacitor` (or a self-hosted `/api/client-errors` endpoint) from `ErrorBoundary`, `window.onerror` and `unhandledrejection`. Upload source maps per release. No replay or device id without consent (§ 25 TDDDG) — https://docs.sentry.io/platforms/javascript/guides/capacitor/ — **backend endpoint done (uncommitted)**, web and the rest open
 - [ ] S-8 [backend]+[web] Owner damage claim: owners report within 24 h of the end with evidence. The payout is held while a claim is open, the renter has 72 h to answer, then staff decide with reasons — https://www.airbnb.com/help/article/1415 · https://faq.fatllama.com/en/articles/10391171-what-are-the-criteria-for-the-lender-guarantee — **blocked on S-9/G-B1**: without a saved card or deposit an upheld claim cannot collect
 - [ ] S-9 [backend]+[legal/business] Collecting on a claim: save the card for off-session use at booking (`setup_future_usage`), or a separate deposit hold per category (vans). The amount is shown in the total and the terms. Depends on G-B1 — https://docs.stripe.com/payments/save-during-payment
 - [x] S-10 [app] `android:allowBackup="false"` (or `dataExtractionRules` excluding the token prefs), and `arm64` instead of `armv7` in `UIRequiredDeviceCapabilities` — https://developer.android.com/identity/data/autobackup (63e6c1c)
-- [ ] S-11 [backend]+[web] No-show reports: either side within 2 h of the start. A renter no-show counts as a late cancellation under the policy. An owner no-show means a full refund and counts against the owner — https://www.airbnb.com/help/article/3591
+- [ ] S-11 [backend]+[web] No-show reports: either side within 2 h of the start. A renter no-show counts as a late cancellation under the policy. An owner no-show means a full refund and counts against the owner — https://www.airbnb.com/help/article/3591 — **backend done (uncommitted)**, web and the rest open
 - [ ] S-12 [backend]+[web] Late return: "extend booking" when the next window is free. Otherwise, after 30 min grace, the normal rate for the extra time plus a capped late fee, reported by the owner within 24 h — https://getaround.com/help/articles/b075d5c22795
-- [ ] S-13 [backend]+[web] Structured Art. 17 statement: restriction, facts, automated yes/no, legal ground or T&C clause, redress text (reply to contest, courts). A good-faith checkbox in the report form (Art. 16(2)(d)) — https://dsa-library.com/article/17/ · https://dsa-library.com/article/16/
+- [ ] S-13 [backend]+[web] Structured Art. 17 statement: restriction, facts, automated yes/no, legal ground or T&C clause, redress text (reply to contest, courts). A good-faith checkbox in the report form (Art. 16(2)(d)) — https://dsa-library.com/article/17/ · https://dsa-library.com/article/16/ — **backend done (uncommitted)**, web and the rest open
 - [ ] S-14 [app] Android 16 edge-to-edge check at targetSdk 36: Capacitor SystemBars / insets for the dock, sheets and toasts, with gesture and 3-button navigation on API 35 and 36 (with U-26) — https://developer.android.com/about/versions/16/behavior-changes-16
 - [ ] S-15 [web] Route-level code splitting (`React.lazy` for Admin, AddListing, Earn, Profile, Legal). A CI budget of ≤170 KB gz for the entry chunk — https://web.dev/articles/performance-budgets-101
 - [x] S-16 [all] Review notes for 3.1.3(e) (physical services, card/Apple Pay, no IAP) and 4.2 (the native features list), added to U-1 — https://developer.apple.com/app-store/review/guidelines/ (073ccf1, docs/app-review.md)
-- [ ] S-17 [backend] Ban-evasion linkage: store the Stripe card fingerprint and the Connect bank fingerprint. A new account sharing one with a suspended account is held for review — https://docs.stripe.com/api/cards/object#card_object-fingerprint
-- [ ] S-18 [backend] Owner cancellation consequences: counted per owner, shown as a rate on the profile, a ranking signal (and the ranking page updated), repeat cancellations queued for staff. A fee **(counsel)** — https://www.airbnb.com/help/article/990
+- [x] S-17 [backend] Ban-evasion linkage: store the Stripe card fingerprint and the Connect bank fingerprint. A new account sharing one with a suspended account is held for review — https://docs.stripe.com/api/cards/object#card_object-fingerprint (backend, uncommitted) — cards only: the Connect bank-account fingerprint is left for when payouts read the external account
+- [x] S-18 [backend] Owner cancellation consequences: counted per owner, shown as a rate on the profile, a ranking signal (and the ranking page updated), repeat cancellations queued for staff. A fee **(counsel)** — https://www.airbnb.com/help/article/990 (backend, uncommitted) — the fee waits for counsel; the ranking-page text is for web
 - [ ] S-19 [legal/business] Withdrawal right by category: vehicle rental and fixed-date leisure services are exempt (§ 312g(2) Nr. 9 BGB). The checkout text and button follow the category **(counsel, G-B2)** — https://www.gesetze-im-internet.de/bgb/__312g.html
 - [ ] S-20 [backend] Duplicate-listing detection: a perceptual hash (pHash) per photo. Matches across different owners go to the held queue (G-9) — https://github.com/JohannesBuchner/imagehash
 - [ ] S-21 [backend]+[web] Dispute flow between the parties: a 72 h response window, an offer or counter-offer for a partial refund, auto-escalation to staff after the deadline — https://www.airbnb.com/help/article/767
@@ -248,10 +313,10 @@ Signed-in only is a deliberate choice against Apple 5.1.1(v); U-1 carries the ar
 - [ ] S-23 [web] Core Web Vitals field data (`web-vitals` → the analytics event pipeline). Targets: LCP 2.5 s, INP 200 ms, CLS 0.1 at p75 — https://web.dev/articles/vitals
 - [ ] S-24 [app] Cold-start measurement on a mid-range Android (TTID in Play vitals, Xcode Organizer launch time). Budget 2 s; the splash screen hides on the first render — https://developer.android.com/topic/performance/vitals/launch-time
 - [ ] S-25 [infra]+[docs] Release runbook: Play staged rollout 5→20→50→100% and App Store phased release, with a gate on crash-free sessions ≥99.5% and Android vitals below 1.09%/0.47%, and a halt procedure — https://support.google.com/googleplay/android-developer/answer/6346149 · https://developer.apple.com/help/app-store-connect/update-your-app/release-a-version-update-in-phases
-- [ ] S-26 [backend]+[web] Percentage and per-user feature flags (on top of R-10 kill switches), read at app start from `/api/app-config` — https://martinfowler.com/articles/feature-toggles.html
+- [ ] S-26 [backend]+[web] Percentage and per-user feature flags (on top of R-10 kill switches), read at app start from `/api/app-config` — https://martinfowler.com/articles/feature-toggles.html — **backend done (uncommitted)**, web and the rest open
 - [ ] S-27 [app] In-app review prompt (`@capacitor-community/in-app-review` or similar) after a completed booking the user rated 4★ or more, at most once per 120 days — https://developer.apple.com/documentation/storekit/requesting-app-store-reviews · https://developer.android.com/guide/playcore/in-app-review
 - [ ] S-28 [backend] Review-collusion signals: reciprocal 5★ pairs, reviews between accounts that share a payment fingerprint, bursts from new accounts. Flag for staff, never auto-delete (Omnibus) — https://www.gesetze-im-internet.de/uwg_2004/anlage.html
 - [ ] S-29 [app] 16 KB alignment check of the release AAB (`zipalign -c -P 16`, Play bundle explorer) once per plugin upgrade — https://developer.android.com/guide/practices/page-sizes
-- [ ] S-30 [backend] DSA counts derivable on request: monthly active recipients (Art. 24(3)), notices by reason and decision, median time to decision — https://prighter.com/resources/dsa-reporting-obligations/
+- [x] S-30 [backend] DSA counts derivable on request: monthly active recipients (Art. 24(3)), notices by reason and decision, median time to decision — https://prighter.com/resources/dsa-reporting-obligations/ (backend, uncommitted)
 - [ ] S-31 [legal/business] DAC7: switch on Stripe payout withholding for sellers who don't provide their TIN, and document the two-reminder rule (with G-10) — https://docs.stripe.com/connect/platform-tax-reporting
 - [x] S-32 [docs] Tick R-13 in TASKS: `/account/delete` already works signed-out (`web/src/app/App.tsx:55`) — https://support.google.com/googleplay/android-developer/answer/13327111 (R-13 ticked)

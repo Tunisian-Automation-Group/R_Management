@@ -37,6 +37,9 @@ class PaymentRow(Base):
     # The card holder disputed the charge with their bank (a chargeback).
     # While set, the owner is not paid out; support settles it.
     chargeback_at: Mapped[datetime | None] = mapped_column(UtcDateTime, nullable=True)
+    # Stripe's fingerprint of the card (the same for the same card on any
+    # account): booking links it to suspended accounts (S-17).
+    card_fingerprint: Mapped[str | None] = mapped_column(String(64), nullable=True)
     created_at: Mapped[datetime] = mapped_column(UtcDateTime)
     updated_at: Mapped[datetime] = mapped_column(UtcDateTime)
 

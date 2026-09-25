@@ -26,7 +26,10 @@ locals {
   }
   service_env = {
     # The App Store and Google Play shells call the API cross-origin (ADR 0012).
-    gateway = { CORS_ORIGINS = "capacitor://localhost,https://localhost" }
+    gateway = {
+      CORS_ORIGINS  = "capacitor://localhost,https://localhost"
+      FEATURE_FLAGS = var.feature_flags
+    }
     catalog = {
       MEDIA_BUCKET           = aws_s3_bucket.media.bucket
       REQUIRE_PAYABLE_OWNERS = "true"

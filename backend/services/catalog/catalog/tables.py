@@ -66,6 +66,13 @@ class OwnerRow(Base):
     deleted_at: Mapped[datetime | None] = mapped_column(UtcDateTime, nullable=True)
     # Suspended by moderation: listings taken down, no new ones.
     suspended_at: Mapped[datetime | None] = mapped_column(UtcDateTime, nullable=True)
+    # Traders only (§ 5b UWG): legal name, address, register number, VAT ID.
+    business: Mapped[dict | None] = mapped_column(JsonType, nullable=True)
+    # When they confirmed they are 18 or older (the terms' minimum age).
+    adult_confirmed_at: Mapped[datetime | None] = mapped_column(UtcDateTime, nullable=True)
+    # Kept by booking (booking.owner_reliability): cancelled or missed accepted
+    # bookings over 12 months, None under 5 bookings.
+    cancellation_rate: Mapped[float | None] = mapped_column(Float, nullable=True)
 
 
 class ListingRow(Base):
@@ -199,6 +206,8 @@ class ReportRow(Base):
     decided_by: Mapped[str | None] = mapped_column(String(64), nullable=True)
     decision: Mapped[str | None] = mapped_column(String(20), nullable=True)
     statement: Mapped[str | None] = mapped_column(String(2000), nullable=True)
+    # DSA Art. 17(3): restriction, facts, automated, ground, clause, redress.
+    statement_of_reasons: Mapped[dict | None] = mapped_column(JsonType, nullable=True)
 
 
 Index("ix_reports_status_created", ReportRow.status, ReportRow.created_at)
@@ -215,6 +224,7 @@ class ModerationActionRow(Base):
     target_id: Mapped[str] = mapped_column(String(64))
     report_id: Mapped[str | None] = mapped_column(String(40), nullable=True)
     statement: Mapped[str] = mapped_column(String(2000))
+    statement_of_reasons: Mapped[dict | None] = mapped_column(JsonType, nullable=True)
     at: Mapped[datetime] = mapped_column(UtcDateTime)
 
 

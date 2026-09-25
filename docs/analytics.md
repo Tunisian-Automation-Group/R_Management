@@ -35,6 +35,18 @@ SELECT date_trunc('week', date(dt)) AS week, type, count(*) AS n
 FROM cappy_events
 WHERE type IN ('moderation.report_received', 'moderation.decision')
 GROUP BY 1, 2 ORDER BY 1;
+
+-- DSA Art. 24(2): average monthly active recipients (anyone whose id appears
+-- in an event of the month, on either side). /admin/dsa-stats gives a lower
+-- bound from bookings alone; this is the number for the report.
+SELECT substr(dt, 1, 7) AS month, count(DISTINCT person) AS active
+FROM (
+  SELECT dt, json_extract_scalar(data, '$.requesterId') AS person FROM cappy_events
+  UNION ALL SELECT dt, json_extract_scalar(data, '$.ownerId') FROM cappy_events
+  UNION ALL SELECT dt, json_extract_scalar(data, '$.reporterId') FROM cappy_events
+)
+WHERE person IS NOT NULL
+GROUP BY 1 ORDER BY 1;
 ```
 
 Marketplace health to watch every week:

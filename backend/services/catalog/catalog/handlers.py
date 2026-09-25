@@ -60,3 +60,22 @@ async def on_booking_rated(session: AsyncSession, event: Event) -> None:
             at=d["at"],
         )
     )
+
+
+async def on_owner_reliability(session: AsyncSession, event: Event) -> None:
+    """Booking counted an owner's cancellations and no-shows (S-18)."""
+    from .tables import OwnerRow
+
+    d = event.data
+    row = await session.get(OwnerRow, d["ownerId"], with_for_update=True)
+    if row is not None:
+        row.cancellation_rate = d.get("rate")
+
+
+async def on_person_flagged(session: AsyncSession, event: Event) -> None:
+    """Something for staff nobody reported (S-17, S-18): it joins the reports
+    queue as a notice from the system, once while an earlier one is open."""
+    from .moderation import flag
+
+    d = event.data
+    await flag(session, d["personId"], d["reason"], d["details"])

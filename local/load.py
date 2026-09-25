@@ -198,7 +198,7 @@ async def main() -> None:
         for b in buyers:
             await c.put(
                 "/me",
-                json={"name": "Load Tester", "kind": "person", "district": "Kreuzberg"},
+                json={"adult": True, "name": "Load Tester", "kind": "person", "district": "Kreuzberg"},
                 headers={"Authorization": f"Bearer {b}"},
             )
         contested = []

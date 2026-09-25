@@ -14,6 +14,7 @@ from cappy_common.events import (
     OWNER_SUSPENDED,
     PAYMENT_AUTHORISED,
     PAYMENT_FAILED,
+    PERSON_FLAGGED,
     PROFILE_DELETED,
     Event,
     Handler,
@@ -55,6 +56,26 @@ def handlers(settings: Settings) -> dict[str, Handler]:
         row = await session.get(BookingRow, event.data["bookingId"])
         instant = bool(row and (row.listing_snapshot or {}).get("instantBook"))
         await apply(session, event, "authorised_instant" if instant else "authorised")
+        fp = event.data.get("cardFingerprint")
+        if row is not None and fp:
+            await linked_card(session, row, fp)
+
+    async def linked_card(session: AsyncSession, row: BookingRow, fp: str) -> None:
+        """S-17: a card a suspended account paid with, now on a new account.
+        The booking goes ahead (a shared family card is not fraud); staff look."""
+        row.card_fingerprint = fp
+        linked = await BookingRepository(session, outbox).card_linked_to_suspended(fp, row.requester_id)
+        if linked:
+            log.warning("booking %s paid with a card a suspended account used", row.id)
+            await outbox.add(
+                session,
+                PERSON_FLAGGED,
+                {
+                    "personId": row.requester_id,
+                    "reason": "linked_to_suspended",
+                    "details": f"Paid booking {row.id} with a card that suspended account {linked} also used.",
+                },
+            )
 
     async def on_failed(session: AsyncSession, event: Event) -> None:
         await apply(session, event, "payment_failed")

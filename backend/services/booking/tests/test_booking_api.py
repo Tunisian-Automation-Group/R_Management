@@ -707,3 +707,110 @@ def test_a_retried_message_is_sent_once_and_pay_outside_is_flagged(client, app, 
     assert len(page) == 1 and page[0]["flagged"] is True
     changed = client.post(f"/bookings/{bid}/messages", json={"body": "something else"}, headers=h)
     assert changed.status_code == 422
+
+
+# --- no-shows, owner reliability, cards shared with suspended accounts (S-11, S-17, S-18) ---
+
+
+def _accepted(client, app, issuer, start_h: float = 40) -> str:
+    bid = _requested(client, app, issuer, start_h=start_h)
+    assert _do(client, issuer, HOST, bid, "accept").json()["status"] == "accepted"
+    return bid
+
+
+def _started(app, bid: str, minutes_ago: float) -> None:
+    started = datetime.now(UTC) - timedelta(minutes=minutes_ago)
+    call(app, _age, app, bid, window_start=started, window_end=started + timedelta(hours=3))
+
+
+def _events(app, broker, type_: str) -> list[dict]:
+    call(app, app.state.relay.flush)
+    return [e.data for e in broker.of_type(type_)]
+
+
+def test_an_owner_no_show_refunds_the_renter_in_full(client, app, issuer, broker):
+    from cappy_common.events import OWNER_RELIABILITY
+
+    bid = _accepted(client, app, issuer)
+    assert _do(client, issuer, BUYER, bid, "no-show").status_code == 409, "not before the booked time"
+    _started(app, bid, 5)
+    assert _do(client, issuer, "stranger", bid, "no-show").status_code == 404
+    b = _do(client, issuer, BUYER, bid, "no-show").json()
+    assert (b["status"], b["noShow"], b["refundAmount"]) == ("cancelled", "owner", 4600)
+    changed = _events(app, broker, BOOKING_STATUS_CHANGED)[-1]
+    assert changed["noShow"] == "owner" and changed["refundAmount"] == 4600
+    assert _events(app, broker, OWNER_RELIABILITY)[-1] == {"ownerId": HOST, "rate": None, "bookings": 1, "failures": 1}
+
+
+def test_a_renter_no_show_is_reported_after_a_grace_and_refunds_nothing(client, app, issuer, broker):
+    from cappy_common.events import OWNER_RELIABILITY
+
+    bid = _accepted(client, app, issuer)
+    _started(app, bid, 10)
+    assert _do(client, issuer, HOST, bid, "no-show").status_code == 409, "the renter may be running late"
+    _started(app, bid, 40)
+    b = _do(client, issuer, HOST, bid, "no-show").json()
+    assert (b["status"], b["noShow"], b["refundAmount"]) == ("cancelled", "renter", 0)
+    # A renter's no-show says nothing about the owner.
+    assert _events(app, broker, OWNER_RELIABILITY)[-1]["failures"] == 0
+
+
+def test_no_shows_are_reported_in_the_first_two_hours_only(client, app, issuer):
+    bid = _accepted(client, app, issuer)
+    _started(app, bid, 130)
+    assert _do(client, issuer, BUYER, bid, "no-show").status_code == 409
+    other = _requested(client, app, issuer, start_h=60)
+    assert _do(client, issuer, BUYER, other, "no-show").status_code == 409, "only an accepted booking"
+
+
+def test_owner_cancellations_set_a_rate_and_three_in_a_month_reach_staff(client, app, issuer, broker):
+    from cappy_common.events import OWNER_RELIABILITY, PERSON_FLAGGED
+
+    bids = [_accepted(client, app, issuer, start_h=40 + 3 * i) for i in range(5)]
+    for bid in bids[:2]:
+        assert _do(client, issuer, HOST, bid, "cancel").json()["status"] == "cancelled"
+    assert _events(app, broker, PERSON_FLAGGED) == []
+    # The renter cancelling is not the owner's fault.
+    _do(client, issuer, BUYER, bids[4], "cancel")
+    assert _events(app, broker, OWNER_RELIABILITY)[-1]["failures"] == 2
+    _do(client, issuer, HOST, bids[2], "cancel")
+    assert _events(app, broker, OWNER_RELIABILITY)[-1] == {"ownerId": HOST, "rate": 0.6, "bookings": 5, "failures": 3}
+    [flag] = _events(app, broker, PERSON_FLAGGED)
+    assert flag["personId"] == HOST and flag["reason"] == "reliability"
+
+
+def test_a_card_a_suspended_account_used_puts_the_new_account_in_front_of_staff(client, app, issuer, broker):
+    from cappy_common.events import OWNER_SUSPENDED, PERSON_FLAGGED
+
+    def authorise(bid: str, fp: str) -> None:
+        data = {"bookingId": bid, "cardFingerprint": fp}
+        ev = Event(id=new_id("ev"), type=PAYMENT_AUTHORISED, source="payments", occurred_at=now_iso(), data=data)
+        assert call(app, app.state.dispatcher.handle, ev)
+
+    first = client.post("/bookings", json=_body(start_h=40), headers=issuer.headers("banned-1")).json()
+    authorise(first["booking"]["id"], "fp_card_1")
+    ev = Event(
+        id=new_id("ev"), type=OWNER_SUSPENDED, source="catalog", occurred_at=now_iso(), data={"ownerId": "banned-1"}
+    )
+    assert call(app, app.state.dispatcher.handle, ev)
+    assert _events(app, broker, PERSON_FLAGGED) == []
+
+    mine = _book(client, issuer, start_h=60)["booking"]["id"]
+    authorise(mine, "fp_card_1")
+    assert client.get(f"/bookings/{mine}", headers=issuer.headers(BUYER)).json()["status"] == "requested"
+    [flag] = _events(app, broker, PERSON_FLAGGED)
+    assert flag["personId"] == BUYER and flag["reason"] == "linked_to_suspended" and "banned-1" in flag["details"]
+
+    theirs_too = _book(client, issuer, start_h=80)["booking"]["id"]
+    authorise(theirs_too, "fp_other_card")
+    assert len(_events(app, broker, PERSON_FLAGGED)) == 1, "a different card links nobody"
+
+
+def test_active_people_for_the_transparency_numbers(client, app, issuer):
+    _book(client, issuer)
+    since = (datetime.now(UTC) - timedelta(days=1)).isoformat()
+    until = (datetime.now(UTC) + timedelta(days=1)).isoformat()
+    params = {"from": since, "until": until}
+    assert client.get("/internal/stats/active-people", params=params).status_code == 403
+    r = client.get("/internal/stats/active-people", params=params, headers=INTERNAL)
+    assert r.json() == {"people": 2}

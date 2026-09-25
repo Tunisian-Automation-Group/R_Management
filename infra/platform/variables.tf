@@ -93,6 +93,12 @@ variable "switches" {
   default = { bookings = true, payouts = true, listings = true }
 }
 
+variable "feature_flags" {
+  description = "Feature flags for the apps, \"name:percent,...\" (backend/libs/cappy_common/cappy_common/flags.py)"
+  type        = string
+  default     = ""
+}
+
 variable "bot_control" {
   description = "WAF Bot Control (common): about $10/month + $1 per million requests"
   type        = bool

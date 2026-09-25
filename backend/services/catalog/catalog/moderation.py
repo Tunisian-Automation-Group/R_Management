@@ -45,6 +45,33 @@ class ReportIn(CamelModel):
     details: str = Field(min_length=10, max_length=2000, description="What is wrong, and where exactly")
     # Required without an account (DSA Art. 16(2)(c)), so we can reply.
     email: EmailStr | None = None
+    # Art. 16(2)(d): the notifier confirms the notice is accurate and complete.
+    good_faith: bool | None = None
+
+
+# Art. 17(3)(f): what the person affected can do about a decision. The
+# notifications service sends it in their language; this is the record.
+REDRESS = (
+    "You can contest this decision by replying to this email within 6 months; a person who was not "
+    "involved will look at it again. You can also turn to a certified out-of-court dispute settlement "
+    "body (DSA Art. 21) or to the courts."
+)
+RESTRICTIONS = {
+    "take_down": "The listing was removed and can no longer be seen or booked.",
+    "suspend": "The account was suspended: its listings were removed, and it can no longer list or book.",
+}
+DEFAULT_CLAUSE = "Terms of use: rules for listings and conduct"
+
+
+class StatementOfReasons(CamelModel):
+    """DSA Art. 17(3), one field per point the article lists."""
+
+    restriction: str
+    facts: str
+    automated: bool
+    ground: str
+    clause: str
+    redress: str
 
 
 class Report(CamelModel):
@@ -57,12 +84,35 @@ class Report(CamelModel):
     created_at: Iso
     decision: str | None = None
     statement: str | None = None
+    statement_of_reasons: StatementOfReasons | None = None
 
 
-class DecisionIn(CamelModel):
-    action: str = Field(pattern="^(dismiss|take_down|suspend)$")
-    # The statement of reasons (DSA Art. 17): what was decided, on what grounds.
+class Grounds(CamelModel):
+    # The facts and circumstances relied on (Art. 17(3)(b)).
     statement: str = Field(min_length=20, max_length=2000)
+    # Illegal content (a law) or incompatible with the terms (a clause), (d)/(e).
+    ground: str = Field(default="terms", pattern="^(law|terms)$")
+    clause: str | None = Field(default=None, max_length=200)
+    # Whether automated means took or detected it (Art. 17(3)(c)).
+    automated: bool = False
+
+
+class DecisionIn(Grounds):
+    action: str = Field(pattern="^(dismiss|take_down|suspend)$")
+
+
+def statement_of_reasons(action: str, g: Grounds) -> dict | None:
+    """Only a restriction needs one; a dismissal restricts nobody."""
+    if action not in RESTRICTIONS:
+        return None
+    return StatementOfReasons(
+        restriction=RESTRICTIONS[action],
+        facts=g.statement.strip(),
+        automated=g.automated,
+        ground=g.ground,
+        clause=(g.clause or "").strip() or (DEFAULT_CLAUSE if g.ground == "terms" else "the applicable law"),
+        redress=REDRESS,
+    ).model_dump(mode="json", by_alias=True)
 
 
 def _outbox(request: Request):
@@ -80,6 +130,7 @@ def _view(r: ReportRow) -> Report:
         created_at=iso_from_datetime(r.created_at),
         decision=r.decision,
         statement=r.statement,
+        statement_of_reasons=r.statement_of_reasons,
     )
 
 
@@ -96,6 +147,8 @@ async def report(
     key, fp = (key if p else None), fingerprint(request, body)
     if p and (done := await replayed(session, IDEMPOTENCY, p.sub, key, fp)) is not None:
         return done
+    if not body.good_faith:
+        raise Invalid("confirm that what you report is accurate and complete to the best of your knowledge")
     if p is None and body.email is None:
         raise Invalid("leave an email so we can tell you what we decide")
     # A signed-in reporter hears back on their own address, never one they type.
@@ -242,6 +295,7 @@ async def _record(
     target_id: str,
     statement: str,
     report_id: str | None = None,
+    reasons: dict | None = None,
 ) -> None:
     session.add(
         ModerationActionRow(
@@ -252,6 +306,7 @@ async def _record(
             target_id=target_id,
             report_id=report_id,
             statement=statement,
+            statement_of_reasons=reasons,
             at=datetime.now(UTC),
         )
     )
@@ -294,7 +349,8 @@ async def decide(
     now = datetime.now(UTC)
     r.status = "dismissed" if body.action == "dismiss" else "actioned"
     r.decided_at, r.decided_by, r.decision, r.statement = now, p.sub, body.action, body.statement.strip()
-    await _record(session, p.sub, body.action, r.target_type, r.target_id, r.statement, r.id)
+    r.statement_of_reasons = statement_of_reasons(body.action, body)
+    await _record(session, p.sub, body.action, r.target_type, r.target_id, r.statement, r.id, r.statement_of_reasons)
     await _outbox(request).add(
         session,
         MODERATION_DECISION,
@@ -308,13 +364,14 @@ async def decide(
             "reporterId": r.reporter_id,
             "reporterEmail": r.reporter_email,
             "statement": r.statement,
+            "statementOfReasons": r.statement_of_reasons,
         },
     )
     return _view(r)
 
 
-class ActionIn(CamelModel):
-    statement: str = Field(min_length=20, max_length=2000)
+class ActionIn(Grounds):
+    pass
 
 
 class AuditEntry(CamelModel):
@@ -334,7 +391,8 @@ async def take_down(
 ) -> None:
     row = await _take_down(session, listing_id)
     await _removed(request, session, [listing_id])
-    await _record(session, p.sub, "take_down", "listing", listing_id, body.statement)
+    reasons = statement_of_reasons("take_down", body)
+    await _record(session, p.sub, "take_down", "listing", listing_id, body.statement, reasons=reasons)
     await _outbox(request).add(
         session,
         MODERATION_DECISION,
@@ -344,6 +402,7 @@ async def take_down(
             "targetId": listing_id,
             "affectedId": row.owner_id,
             "statement": body.statement,
+            "statementOfReasons": reasons,
         },
     )
 
@@ -354,7 +413,8 @@ async def suspend(
 ) -> None:
     _, taken = await _suspend(session, owner_id)
     await _removed(request, session, taken)
-    await _record(session, p.sub, "suspend", "owner", owner_id, body.statement)
+    reasons = statement_of_reasons("suspend", body)
+    await _record(session, p.sub, "suspend", "owner", owner_id, body.statement, reasons=reasons)
     await _outbox(request).add(session, OWNER_SUSPENDED, {"ownerId": owner_id})
     await _outbox(request).add(
         session,
@@ -365,6 +425,7 @@ async def suspend(
             "targetId": owner_id,
             "affectedId": owner_id,
             "statement": body.statement,
+            "statementOfReasons": reasons,
         },
     )
 
@@ -446,3 +507,86 @@ async def approve(
     row.held_at, row.active, row.updated_at = None, True, datetime.now(UTC)
     await _record(session, p.sub, "approve", "listing", listing_id, "Checked and approved")
     await _outbox(request).add(session, LISTING_CHANGED, {"listingId": listing_id, "change": "approved"})
+
+
+# --- notices from the system (S-17, S-18) --------------------------------------------------
+
+FLAG_REASONS = {"reliability", "linked_to_suspended"}
+
+
+async def flag(session: AsyncSession, person_id: str, reason: str, details: str) -> None:
+    """Queue a person for staff as a report nobody sent. One open notice per
+    person and reason: a second signal while staff have not looked is noise."""
+    if reason not in FLAG_REASONS:
+        raise ValueError(f"unknown flag reason {reason}")
+    q = select(func.count()).where(
+        ReportRow.target_type == "owner",
+        ReportRow.target_id == person_id,
+        ReportRow.reason == reason,
+        ReportRow.status == "open",
+    )
+    if (await session.execute(q)).scalar_one():
+        return
+    session.add(
+        ReportRow(
+            id=new_id("rp"),
+            target_type="owner",
+            target_id=person_id,
+            reason=reason,
+            details=details[:2000],
+            status="open",
+            created_at=datetime.now(UTC),
+        )
+    )
+    await session.flush()
+
+
+# --- transparency (DSA Art. 15 and 24) ------------------------------------------------------
+
+
+class DsaStats(CamelModel):
+    month: str
+    # People who were a party to a booking made in the month: a lower bound
+    # for Art. 24(2); the exact count comes from analytics (docs/analytics.md).
+    active_recipients: int
+    notices: dict[str, dict[str, int]]
+    median_hours_to_decision: float | None = None
+
+
+@admin.get("/dsa-stats", response_model=DsaStats)
+async def dsa_stats(
+    request: Request,
+    month: str = Query(pattern=r"^\d{4}-(0[1-9]|1[0-2])$"),
+    session: AsyncSession = Tx,
+    _: Principal = Depends(require_admin),
+) -> DsaStats:
+    """What a transparency report needs for one month, on request (S-30)."""
+    import statistics
+
+    y, m = map(int, month.split("-"))
+    start = datetime(y, m, 1, tzinfo=UTC)
+    end = datetime(y + (m == 12), m % 12 + 1, 1, tzinfo=UTC)
+    rows = list(
+        (
+            await session.execute(
+                select(ReportRow.reason, ReportRow.decision, ReportRow.created_at, ReportRow.decided_at).where(
+                    ReportRow.created_at >= start, ReportRow.created_at < end
+                )
+            )
+        ).all()
+    )
+    by_reason: dict[str, int] = {}
+    by_decision: dict[str, int] = {}
+    hours = []
+    for reason, decision, created, decided in rows:
+        by_reason[reason] = by_reason.get(reason, 0) + 1
+        by_decision[decision or "open"] = by_decision.get(decision or "open", 0) + 1
+        if decided is not None:
+            hours.append((decided - created).total_seconds() / 3600)
+    active = await request.app.state.bookings.active_people(start, end)
+    return DsaStats(
+        month=month,
+        active_recipients=active,
+        notices={"byReason": by_reason, "byDecision": by_decision},
+        median_hours_to_decision=round(statistics.median(hours), 1) if hours else None,
+    )

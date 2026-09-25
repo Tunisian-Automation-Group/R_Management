@@ -41,6 +41,6 @@ for role, name in NAMES.items():
     h = {"Authorization": f"Bearer {auth['AuthenticationResult']['AccessToken']}"}
     if httpx.get(f"{API}/me", headers=h).raise_for_status().json().get("owner"):
         continue
-    r = httpx.put(f"{API}/me", headers=h, json={"name": name, "kind": "person", "district": "Kreuzberg"})
+    r = httpx.put(f"{API}/me", headers=h, json={"adult": True, "name": name, "kind": "person", "district": "Kreuzberg"})
     r.raise_for_status()
     print(f"demo {role}: profile created")

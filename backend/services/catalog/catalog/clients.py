@@ -2,7 +2,8 @@
 
 from __future__ import annotations
 
-from urllib.parse import quote
+from datetime import datetime
+from urllib.parse import quote, urlencode
 
 from cappy_common.http import ServiceClient
 
@@ -14,6 +15,10 @@ class Bookings:
 
     async def all_for(self, person: str) -> list[dict]:
         raise NotImplementedError
+
+    async def active_people(self, start: datetime, end: datetime) -> int:
+        """People who were a party to a booking made in [start, end)."""
+        return 0
 
     async def aclose(self) -> None:
         """Release resources."""
@@ -54,6 +59,10 @@ class HttpBookings(Bookings):
     async def all_for(self, person: str) -> dict:
         """Bookings, messages sent and hand-over photos, for an export."""
         return await self._c.get(f"/internal/people/{quote(person, safe='')}/export")
+
+    async def active_people(self, start: datetime, end: datetime) -> int:
+        q = urlencode({"from": start.isoformat(), "until": end.isoformat()})
+        return (await self._c.get(f"/internal/stats/active-people?{q}"))["people"]
 
     async def aclose(self) -> None:
         await self._c.aclose()

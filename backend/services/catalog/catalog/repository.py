@@ -15,7 +15,7 @@ from pydantic import TypeAdapter
 from sqlalchemy import Integer, and_, cast, delete, exists, func, insert, or_, select, true, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from cappy_common.errors import NotFound
+from cappy_common.errors import Invalid, NotFound
 from cappy_common.ids import new_id
 from cappy_common.models import (
     AnyListing,
@@ -77,6 +77,9 @@ def to_owner(r: OwnerRow) -> Owner:
         response_mins=r.response_mins,
         renter_rating_sum=r.renter_rating_sum or 0,
         renter_jobs=r.renter_jobs or 0,
+        # A person's address is never public; a trader's must be.
+        business=r.business if r.kind == "business" and r.business else None,
+        cancellation_rate=r.cancellation_rate,
     )
 
 
@@ -180,7 +183,7 @@ class CatalogRepository:
         await self.s.execute(
             update(OwnerRow)
             .where(OwnerRow.id == owner_id)
-            .values(name="Former member", initials="—", updated_at=now, deleted_at=now)
+            .values(name="Former member", initials="—", updated_at=now, deleted_at=now, business=None)
         )
         await self.s.execute(
             update(ReviewRow)
@@ -296,15 +299,29 @@ class CatalogRepository:
         return {r.id: to_owner(r) for r in rows}
 
     async def upsert_profile(
-        self, owner_id: str, *, name: str, initials: str, kind: str, district: str
+        self,
+        owner_id: str,
+        *,
+        name: str,
+        initials: str,
+        kind: str,
+        district: str,
+        business: dict | None = None,
+        adult: bool = False,
     ) -> tuple[Owner, bool]:
         """Create a person's profile on first use, or update the fields they
         control. A track record is earned, never set: rating and job counts are
-        untouched by an update. Returns (owner, created)."""
+        untouched by an update. Returns (owner, created). A new profile needs
+        the 18+ confirmation; one made before the question keeps its own."""
         now = _now()
         row = await self.s.get(OwnerRow, owner_id, with_for_update=True)
+        if row is None or row.adult_confirmed_at is None:
+            if not adult:
+                raise Invalid("Cappy is for people aged 18 or over: confirm your age to continue")
         if row is None:
             row = OwnerRow(
+                business=business,
+                adult_confirmed_at=now,
                 id=owner_id,
                 name=name,
                 initials=initials,
@@ -323,6 +340,8 @@ class CatalogRepository:
             await self.s.flush()
             return to_owner(row), True
         row.name, row.initials, row.kind, row.district, row.updated_at = name, initials, kind, district, now
+        row.business = business
+        row.adult_confirmed_at = row.adult_confirmed_at or now
         await self.s.flush()
         return to_owner(row), False
 
@@ -794,7 +813,7 @@ class CatalogRepository:
         for o in world.owners:
             if o.id not in have:
                 self.s.add(
-                    OwnerRow(**o.model_dump(by_alias=False), created_at=now, updated_at=now)  # type: ignore[arg-type]
+                    OwnerRow(**o.model_dump(by_alias=False), created_at=now, updated_at=now, adult_confirmed_at=now)  # type: ignore[arg-type]
                 )
                 added["owners"] += 1
         await self.s.flush()

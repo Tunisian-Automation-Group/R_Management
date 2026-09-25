@@ -33,6 +33,10 @@ class Settings(CommonSettings):
     # additively within a supported range.
     app_min_version: str = "1.0.0"
     app_latest_version: str = "1.0.0"
+    # Feature flags, "name:percent,..." (cappy_common/flags.py, S-26).
+    feature_flags: str = ""
+    # Crash and error reports from the apps (S-7), per client address.
+    client_errors_per_minute: int = 10
     # ponytail: no app-level rate limiting. WAF rate-based rules limit per IP
     # at the edge (ADR 0008); per-user limits need shared state (Redis) and
     # are worth adding once abuse shows up in the metrics.

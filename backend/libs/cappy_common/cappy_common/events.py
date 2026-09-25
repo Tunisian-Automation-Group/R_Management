@@ -75,6 +75,11 @@ MODERATION_DECISION = "moderation.decision"
 OWNER_SUSPENDED = "moderation.owner_suspended"
 OWNER_REINSTATED = "moderation.owner_reinstated"
 LISTING_CHANGED = "listing.changed"
+# Booking recomputed an owner's reliability (cancellations, no-shows; S-18).
+OWNER_RELIABILITY = "booking.owner_reliability"
+# Something for staff to look at that nobody reported: an owner cancelling a
+# lot, a card shared with a suspended account (S-17, S-18).
+PERSON_FLAGGED = "moderation.person_flagged"
 
 ALL_TYPES = frozenset(
     {
@@ -98,6 +103,8 @@ ALL_TYPES = frozenset(
         LISTING_CHANGED,
         PAYOUTS_READY,
         IDENTITY_VERIFIED,
+        OWNER_RELIABILITY,
+        PERSON_FLAGGED,
     }
 )
 

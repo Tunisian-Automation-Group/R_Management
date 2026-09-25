@@ -14,13 +14,20 @@ from sqlalchemy import and_, func, or_, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from cappy_common.errors import NotFound
-from cappy_common.events import BOOKING_RATED, BOOKING_STATUS_CHANGED, RENTER_RATED, Outbox
+from cappy_common.events import (
+    BOOKING_RATED,
+    BOOKING_STATUS_CHANGED,
+    OWNER_RELIABILITY,
+    PERSON_FLAGGED,
+    RENTER_RATED,
+    Outbox,
+)
 from cappy_common.models import Booking, Handover, ListingSnapshot, Match, Outcome, Requirement
 from cappy_common.pagination import decode_cursor, encode_cursor
 from cappy_common.timeutil import dt_from_iso, iso_from_datetime
 
 from .state import HOLDING, OPEN
-from .tables import BookingRow, TransitionRow
+from .tables import BookingRow, SuspendedRow, TransitionRow
 
 _requirement = TypeAdapter(Requirement)
 
@@ -47,6 +54,7 @@ def to_booking(row: BookingRow, viewer: str) -> Booking:
         can_start_from=iso_from_datetime(row.window_start - START_EARLY) if row.status == "accepted" else None,
         renter_rating=renter_rating,
         refund_amount=row.refund_amount,
+        no_show=row.no_show,
     )
 
 
@@ -54,6 +62,8 @@ def to_booking(row: BookingRow, viewer: str) -> Booking:
 # when the app is built (booking.main).
 START_EARLY = timedelta(minutes=30)
 REVIEW_WINDOW = timedelta(days=14)
+RELIABILITY_WINDOW = timedelta(days=365)
+RELIABILITY_MIN_BOOKINGS = 5
 
 
 # The two sides see where to meet once the booking is on, and afterwards.
@@ -73,6 +83,7 @@ def status_event(row: BookingRow, before: str | None, by: str) -> dict:
         "amount": row.amount,
         "currency": row.currency,
         "refundAmount": row.refund_amount,
+        "noShow": row.no_show,
         "windowStart": iso_from_datetime(row.window_start),
         "windowEnd": iso_from_datetime(row.window_end),
     }
@@ -163,6 +174,59 @@ class BookingRepository:
         self.s.add(TransitionRow(booking_id=row.id, from_status=before, to_status=to, by=by, at=now))
         await self.s.flush()
         await self.outbox.add(self.s, BOOKING_STATUS_CHANGED, status_event(row, before, by))
+        # The owner cancelling, or not turning up; reporting the renter's
+        # no-show is the owner doing their part.
+        by_owner = by == row.owner_id and row.no_show != "renter"
+        failed = before == "accepted" and to == "cancelled" and (by_owner or row.no_show == "owner")
+        if to == "accepted" or failed:
+            await self.owner_reliability(row.owner_id, now, failed=failed)
+
+    async def owner_reliability(self, owner_id: str, now: datetime, *, failed: bool) -> None:
+        """S-18: of the bookings an owner accepted in 12 months, the share they
+        cancelled or did not show up for. Catalog shows it and ranking uses it;
+        three in 30 days put the owner in front of staff."""
+        since = now - RELIABILITY_WINDOW
+        mine = and_(TransitionRow.booking_id == BookingRow.id, BookingRow.owner_id == owner_id)
+        accepted = (
+            await self.s.execute(
+                select(func.count(func.distinct(TransitionRow.booking_id))).where(
+                    mine, TransitionRow.to_status == "accepted", TransitionRow.at >= since
+                )
+            )
+        ).scalar_one()
+        misses = list(
+            (
+                await self.s.execute(
+                    select(TransitionRow.at).where(
+                        mine,
+                        TransitionRow.from_status == "accepted",
+                        TransitionRow.to_status == "cancelled",
+                        TransitionRow.at >= since,
+                        or_(
+                            and_(TransitionRow.by == owner_id, BookingRow.no_show.is_distinct_from("renter")),
+                            BookingRow.no_show == "owner",
+                        ),
+                    )
+                )
+            ).scalars()
+        )
+        rate = round(len(misses) / accepted, 4) if accepted >= RELIABILITY_MIN_BOOKINGS else None
+        await self.outbox.add(
+            self.s,
+            OWNER_RELIABILITY,
+            {"ownerId": owner_id, "rate": rate, "bookings": accepted, "failures": len(misses)},
+        )
+        recent = sum(1 for at in misses if at >= now - timedelta(days=30))
+        if failed and recent >= 3:
+            await self.outbox.add(
+                self.s,
+                PERSON_FLAGGED,
+                {
+                    "personId": owner_id,
+                    "reason": "reliability",
+                    "details": f"The owner cancelled or missed {recent} accepted bookings in the last 30 days.",
+                },
+            )
 
     async def busy(self, listing_ids: list[str], start: datetime, until: datetime) -> dict[str, list[tuple[str, str]]]:
         q = (
@@ -211,6 +275,26 @@ class BookingRepository:
         )
         n, until = (await self.s.execute(q)).one()
         return n, until
+
+    async def active_people(self, start: datetime, end: datetime) -> int:
+        """Both parties of bookings made in [start, end), counted once each."""
+        made = and_(BookingRow.created_at >= start, BookingRow.created_at < end)
+        people = (
+            select(BookingRow.requester_id.label("p"))
+            .where(made)
+            .union(select(BookingRow.owner_id.label("p")).where(made))
+        )
+        return (await self.s.execute(select(func.count()).select_from(people.subquery()))).scalar_one()
+
+    async def card_linked_to_suspended(self, fingerprint: str, person: str) -> str | None:
+        """Someone else, now suspended, who paid with this card (S-17)."""
+        q = (
+            select(BookingRow.requester_id)
+            .join(SuspendedRow, SuspendedRow.person_id == BookingRow.requester_id)
+            .where(BookingRow.card_fingerprint == fingerprint, BookingRow.requester_id != person)
+            .limit(1)
+        )
+        return (await self.s.execute(q)).scalar_one_or_none()
 
     async def all_for(self, person: str, limit: int = 10_000) -> list[BookingRow]:
         """Everything, for a data export. ponytail: capped at 10k; stream it if anyone gets near."""

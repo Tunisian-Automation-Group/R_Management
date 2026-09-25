@@ -43,6 +43,9 @@ from .state import Action, check_can_rate, next_status
 from .tables import IDEMPOTENCY, BookingRow, SuspendedRow, VerifiedRow
 
 log = logging.getLogger(__name__)
+# S-11: how long after the start a no-show can be reported, and the renter's grace.
+NO_SHOW_REPORTABLE = timedelta(hours=2)
+NO_SHOW_GRACE = timedelta(minutes=30)
 router = ApiRouter()
 internal = ApiRouter(prefix="/internal", dependencies=[Depends(require_internal)])
 
@@ -296,9 +299,23 @@ async def _transition(
     early = timedelta(minutes=request.app.state.settings.start_early_minutes)
     if action == "start" and now < row.window_start - early:  # the same rule as Booking.canStartFrom
         raise Conflict("the hand-over can be marked from 30 minutes before the booked time")
+    if action == "no_show":
+        missing = "owner" if user == row.requester_id else "renter"
+        # A renter running late gets half an hour before the owner may give up.
+        opens = row.window_start + (NO_SHOW_GRACE if missing == "renter" else timedelta(0))
+        if not opens <= now <= row.window_start + NO_SHOW_REPORTABLE:
+            raise Conflict(
+                "a no-show can be reported from the booked time"
+                + (" plus 30 minutes" if missing == "renter" else "")
+                + " until 2 hours after it starts"
+            )
+        # The owner not turning up refunds everything; the renter not turning
+        # up is a cancellation too late for any policy: nothing back (S-11).
+        fields["no_show"] = missing
+        fields["refund_amount"] = row.amount if missing == "owner" else 0
     if to not in ("awaiting_payment", "requested"):
         fields["expires_at"] = None
-    if to == "cancelled":
+    if to == "cancelled" and "refund_amount" not in fields:
         fields["refund_amount"] = _refund(request, row, user, now)
     await repo.move(row, to, user, now, **fields)
     return to_booking(row, user)
@@ -352,6 +369,13 @@ async def dispute(
     if not reason:
         raise Invalid("say what went wrong")
     return await _transition(request, repo, booking_id, "dispute", p.sub, decline_reason=reason)
+
+
+@router.post("/bookings/{booking_id}/no-show", response_model=Booking)
+async def no_show(booking_id: str, request: Request, repo: BookingRepository = Repo, p: Principal = Me):
+    """The other side never came. Either side reports it about the other, in
+    the first 2 hours of the booked time, while nobody marked the hand-over."""
+    return await _transition(request, repo, booking_id, "no_show", p.sub)
 
 
 @router.get("/bookings/{booking_id}/payment", response_model=PaymentStart)
@@ -495,6 +519,18 @@ async def open_bookings(person: str, repo: BookingRepository = Depends(get_repo)
     """Before an account is deleted: is anything still in flight for them?"""
     n, until = await repo.open_for(person)
     return OpenBookings(open=n, until=iso_from_datetime(until) if until else None)
+
+
+class ActivePeople(CamelModel):
+    people: int
+
+
+@internal.get("/stats/active-people", response_model=ActivePeople)
+async def active_people(
+    since: str = Query(alias="from"), until: str = Query(), repo: BookingRepository = Depends(get_repo)
+) -> ActivePeople:
+    """For the DSA transparency numbers (catalog's /admin/dsa-stats)."""
+    return ActivePeople(people=await repo.active_people(dt_from_iso(since), dt_from_iso(until)))
 
 
 class PersonExport(CamelModel):

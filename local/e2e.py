@@ -142,9 +142,9 @@ def main() -> None:
     email = f"buyer-{run}@example.com"
     host_email = f"host-{run}@example.com"
     buyer = sign_up(email)
-    ok(http.put("/me", json={"name": "Erin Buyer", "kind": "person", "district": "Kreuzberg"}, headers=buyer))
+    ok(http.put("/me", json={"adult": True, "name": "Erin Buyer", "kind": "person", "district": "Kreuzberg"}, headers=buyer))
     host = sign_up(host_email)
-    ok(http.put("/me", json={"name": "Hana Host", "kind": "person", "district": "Kreuzberg"}, headers=host))
+    ok(http.put("/me", json={"adult": True, "name": "Hana Host", "kind": "person", "district": "Kreuzberg"}, headers=host))
     host_sub = ok(http.get("/me", headers=host))["id"]
     if ok(http.get("/payments/config"))["provider"] == "stripe":
         # A verified Stripe test account, as Connect onboarding would give them.
@@ -216,7 +216,7 @@ def main() -> None:
     booking_id = made["booking"]["id"]
     assert again["booking"]["id"] == booking_id and made["payment"]["clientSecret"]
     other = sign_in("buyer@demo.cappy.local")
-    ok(http.put("/me", json={"name": "Demo Buyer", "kind": "person", "district": "Mitte"}, headers=other))
+    ok(http.put("/me", json={"adult": True, "name": "Demo Buyer", "kind": "person", "district": "Mitte"}, headers=other))
     assert http.post("/bookings", json=body, headers=other).status_code == 409, "the same window twice"
 
     if ok(http.get("/payments/config"))["provider"] == "stripe":

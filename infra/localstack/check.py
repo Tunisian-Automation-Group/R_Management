@@ -25,12 +25,14 @@ types = [
     "booking.renter_rated",
     "moderation.owner_reinstated",
     "listing.changed",
+    "booking.owner_reliability",
+    "moderation.person_flagged",
 ]
 for t in types:
     sns.publish(TopicArn=out["topic_arn"], Message=json.dumps({"type": t}), MessageAttributes={"type": {"DataType": "String", "StringValue": t}})
 time.sleep(2)
 expected = {
-    "catalog": {"booking.rated", "payment.payouts_ready", "booking.renter_rated"},
+    "catalog": {"booking.rated", "payment.payouts_ready", "booking.renter_rated", "booking.owner_reliability", "moderation.person_flagged"},
     "booking": {
         "payment.authorised",
         "listing.changed",

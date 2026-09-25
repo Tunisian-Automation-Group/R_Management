@@ -96,10 +96,39 @@ class Me(CamelModel):
     owner: Owner | None = None
 
 
+EU_VAT = re.compile(
+    r"^(AT|BE|BG|CY|CZ|DE|DK|EE|EL|ES|FI|FR|HR|HU|IE|IT|LT|LU|LV|MT|NL|PL|PT|RO|SE|SI|SK|XI)[0-9A-Z]{2,12}$"
+)
+
+
+class BusinessIn(CamelModel):
+    """What a trader has to tell renters (§ 5b UWG, § 312l BGB)."""
+
+    legal_name: str = Field(min_length=2, max_length=160)
+    address: str = Field(min_length=8, max_length=300)
+    register_number: str | None = Field(default=None, max_length=60)
+    vat_id: str | None = Field(default=None, max_length=20)
+
+    def normalised(self) -> dict:
+        vat = re.sub(r"[\s.-]", "", self.vat_id or "").upper() or None
+        if vat is not None and not (re.fullmatch(r"DE\d{9}", vat) if vat.startswith("DE") else EU_VAT.fullmatch(vat)):
+            raise Invalid("that VAT ID does not look right: a German one is DE and 9 digits")
+        return {
+            "legalName": self.legal_name.strip(),
+            "address": self.address.strip(),
+            "registerNumber": (self.register_number or "").strip() or None,
+            "vatId": vat,
+        }
+
+
 class ProfileIn(CamelModel):
     name: str = Field(min_length=2, max_length=80)
     kind: str = Field(pattern=r"^(person|business)$")
     district: str = Field(max_length=80)
+    # Required for a business: who renters contract with.
+    business: BusinessIn | None = None
+    # Required when the profile is created: Cappy is for adults (the terms).
+    adult: bool | None = None
 
 
 class City(CamelModel):
@@ -255,9 +284,20 @@ async def put_me(
     Idempotent: calling it twice with the same body is one profile."""
     if not await repo.has_district(body.district):
         raise Invalid(f"unknown district: {body.district}")
+    if body.kind == "business" and body.business is None:
+        raise Invalid(
+            "a business says who it is: legal name and address (and register number and VAT ID if it has them)"
+        )
+    business = body.business.normalised() if body.kind == "business" and body.business else None
     name = body.name.strip()
     owner, created = await repo.upsert_profile(
-        p.sub, name=name, initials=_initials(name), kind=body.kind, district=body.district
+        p.sub,
+        name=name,
+        initials=_initials(name),
+        kind=body.kind,
+        district=body.district,
+        business=business,
+        adult=bool(body.adult),
     )
     if created:
         await _outbox(request).add(repo.s, PROFILE_CREATED, {"ownerId": owner.id, "district": owner.district})

@@ -1,9 +1,12 @@
 from __future__ import annotations
 
+import logging
+
 import httpx
 import pytest
 from fastapi.testclient import TestClient
 
+from cappy_common.flags import bucket
 from gateway.main import build_app
 from gateway.routing import BOOKING, CATALOG, MATCHING, NOTIFICATIONS, PAYMENTS, resolve
 from gateway.settings import Settings
@@ -171,8 +174,38 @@ def test_the_native_apps_may_call_the_api_cross_origin():
 def test_app_config_for_the_store_apps(gateway):
     c, calls = gateway
     r = c.get("/api/app-config")
-    assert r.json() == {"minVersion": "1.0.0", "latestVersion": "1.0.0"} and "max-age" in r.headers["cache-control"]
+    assert r.json() == {"minVersion": "1.0.0", "latestVersion": "1.0.0", "flags": {}, "rollouts": {}}
+    assert "max-age" in r.headers["cache-control"]
     assert calls == []
+
+
+def test_feature_flags_are_on_off_or_a_rollout_the_app_evaluates():
+    settings = _settings(feature_flags="chat:100,dark:0,newcheckout:25")
+    with TestClient(build_app(settings, transport=_upstreams([]))) as c:
+        body = c.get("/api/app-config").json()
+    assert body["flags"] == {"chat": True, "dark": False, "newcheckout": False}
+    assert body["rollouts"] == {"newcheckout": 25}
+    # The vector the app's own implementation is checked against.
+    assert bucket("newcheckout", "user-1") == 16
+
+
+def test_the_apps_report_their_crashes_without_an_account(gateway, caplog):
+    c, calls = gateway
+    report = {"message": "TypeError: x is undefined", "stack": "at Listing.tsx:12", "route": "/listing/l9"}
+    r = c.post("/api/client-errors", json={**report, "appVersion": "1.0.0", "platform": "ios"})
+    assert r.status_code == 202 and calls == []
+    logged = [rec for rec in caplog.records if rec.getMessage().startswith("client error")]
+    assert logged and logged[-1].client["route"] == "/listing/l9"
+    assert c.post("/api/client-errors", content=b"x" * 9000).status_code == 413
+    assert c.post("/api/client-errors", json={"platform": "windows", "message": "?"}).status_code == 422
+
+
+def test_a_crash_loop_cannot_flood_the_logs(caplog):
+    with TestClient(build_app(_settings(client_errors_per_minute=3), transport=_upstreams([]))) as c:
+        logging.getLogger().addHandler(caplog.handler)  # starting the app configured logging afresh
+        for _ in range(10):
+            assert c.post("/api/client-errors", json={"message": "boom"}).status_code == 202
+    assert sum(r.getMessage().startswith("client error") for r in caplog.records) == 3
 
 
 def test_an_unreachable_service_says_when_to_retry(gateway):

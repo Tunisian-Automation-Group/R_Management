@@ -384,3 +384,11 @@ def test_a_booking_across_the_dst_change_is_the_hours_booked_and_priced(world, s
     assert [t.strftime("%H:%M %Z") for t in local] == ["02:00 CEST", "04:00 CET"], "02:00 to 04:00 on the wall is 3 h"
     q = quote_for(saw.model_copy(update={"hours": 3}), listing(world, "l8"))
     assert q and q.hours == 3 and q.base == 3 * listing(world, "l8").rate_per_hour
+
+
+def test_owners_who_cancel_accepted_bookings_lose_trust_in_proportion():
+    """S-18: a mild penalty, so one bad month does not bury a good owner."""
+    o = build_world().owners[0]
+    steady, flaky = o.model_copy(update={"cancellation_rate": 0.0}), o.model_copy(update={"cancellation_rate": 0.2})
+    assert trust_of(o) == trust_of(steady), "too few bookings to know (None) is no penalty"
+    assert trust_of(flaky) == pytest.approx(trust_of(o) * 0.9)

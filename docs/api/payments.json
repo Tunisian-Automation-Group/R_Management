@@ -148,6 +148,54 @@
     "title": "IntentOut",
     "type": "object"
    },
+   "Invoice": {
+    "properties": {
+     "bookingId": {
+      "title": "Bookingid",
+      "type": "string"
+     },
+     "currency": {
+      "title": "Currency",
+      "type": "string"
+     },
+     "gross": {
+      "title": "Gross",
+      "type": "integer"
+     },
+     "issuedAt": {
+      "title": "Issuedat",
+      "type": "string"
+     },
+     "net": {
+      "title": "Net",
+      "type": "integer"
+     },
+     "number": {
+      "title": "Number",
+      "type": "string"
+     },
+     "vat": {
+      "title": "Vat",
+      "type": "integer"
+     },
+     "vatRateBps": {
+      "title": "Vatratebps",
+      "type": "integer"
+     }
+    },
+    "required": [
+     "number",
+     "bookingId",
+     "net",
+     "vatRateBps",
+     "vat",
+     "gross",
+     "currency",
+     "issuedAt"
+    ],
+    "title": "Invoice",
+    "type": "object"
+   },
    "Onboarding": {
     "properties": {
      "url": {
@@ -274,6 +322,90 @@
      }
     },
     "summary": "Create Intent"
+   }
+  },
+  "/internal/people/{person}/export": {
+   "get": {
+    "description": "What payments holds about them (GDPR art. 15/20). Card details stay\nwith Stripe and are never here.",
+    "operationId": "export_person_internal_people__person__export_get",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "person",
+      "required": true,
+      "schema": {
+       "title": "Person",
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "additionalProperties": true,
+         "title": "Response Export Person Internal People  Person  Export Get",
+         "type": "object"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Export Person"
+   }
+  },
+  "/internal/people/{person}/open": {
+   "get": {
+    "description": "Before an account is deleted: money captured for them and not paid out\nyet (a completed booking waiting for its payout, or one held).",
+    "operationId": "open_payouts_internal_people__person__open_get",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "person",
+      "required": true,
+      "schema": {
+       "title": "Person",
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "additionalProperties": true,
+         "title": "Response Open Payouts Internal People  Person  Open Get",
+         "type": "object"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Open Payouts"
    }
   },
   "/payments/bookings/{booking_id}": {
@@ -406,6 +538,68 @@
      }
     },
     "summary": "Identity Session"
+   }
+  },
+  "/payments/invoices": {
+   "get": {
+    "operationId": "my_invoices_payments_invoices_get",
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "items": {
+          "$ref": "#/components/schemas/Invoice"
+         },
+         "title": "Response My Invoices Payments Invoices Get",
+         "type": "array"
+        }
+       }
+      },
+      "description": "Successful Response"
+     }
+    },
+    "summary": "My Invoices"
+   }
+  },
+  "/payments/invoices/{number}": {
+   "get": {
+    "description": "A printable invoice (the browser saves it as PDF).",
+    "operationId": "invoice_page_payments_invoices__number__get",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "number",
+      "required": true,
+      "schema": {
+       "title": "Number",
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "content": {
+       "text/html": {
+        "schema": {
+         "type": "string"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Invoice Page"
    }
   },
   "/payments/webhooks/stripe": {

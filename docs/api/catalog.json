@@ -3,6 +3,29 @@
   "schemas": {
    "ActionIn": {
     "properties": {
+     "automated": {
+      "default": false,
+      "title": "Automated",
+      "type": "boolean"
+     },
+     "clause": {
+      "anyOf": [
+       {
+        "maxLength": 200,
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Clause"
+     },
+     "ground": {
+      "default": "terms",
+      "pattern": "^(law|terms)$",
+      "title": "Ground",
+      "type": "string"
+     },
      "statement": {
       "maxLength": 2000,
       "minLength": 20,
@@ -80,6 +103,16 @@
       "title": "Blurb",
       "type": "string"
      },
+     "cancellationPolicy": {
+      "default": "flexible",
+      "enum": [
+       "flexible",
+       "moderate",
+       "strict"
+      ],
+      "title": "Cancellationpolicy",
+      "type": "string"
+     },
      "category": {
       "enum": [
        "fabrication",
@@ -95,6 +128,13 @@
       "title": "Category",
       "type": "string"
      },
+     "dayDiscountPct": {
+      "default": 0,
+      "maximum": 50.0,
+      "minimum": 0.0,
+      "title": "Daydiscountpct",
+      "type": "integer"
+     },
      "district": {
       "title": "District",
       "type": "string"
@@ -102,6 +142,11 @@
      "id": {
       "title": "Id",
       "type": "string"
+     },
+     "instantBook": {
+      "default": false,
+      "title": "Instantbook",
+      "type": "boolean"
      },
      "instructions": {
       "title": "Instructions",
@@ -204,6 +249,13 @@
      "unitsPerHour": {
       "title": "Unitsperhour",
       "type": "number"
+     },
+     "weekDiscountPct": {
+      "default": 0,
+      "maximum": 50.0,
+      "minimum": 0.0,
+      "title": "Weekdiscountpct",
+      "type": "integer"
      }
     },
     "required": [
@@ -239,6 +291,94 @@
      "file"
     ],
     "title": "Body_upload_uploads_post",
+    "type": "object"
+   },
+   "Business": {
+    "description": "A trader's identity (\u00a7 5b UWG, \u00a7 312l BGB): public, so a renter knows\nwho their contract is with. People never have one.",
+    "properties": {
+     "address": {
+      "title": "Address",
+      "type": "string"
+     },
+     "legalName": {
+      "title": "Legalname",
+      "type": "string"
+     },
+     "registerNumber": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Registernumber"
+     },
+     "vatId": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Vatid"
+     }
+    },
+    "required": [
+     "legalName",
+     "address"
+    ],
+    "title": "Business",
+    "type": "object"
+   },
+   "BusinessIn": {
+    "description": "What a trader has to tell renters (\u00a7 5b UWG, \u00a7 312l BGB).",
+    "properties": {
+     "address": {
+      "maxLength": 300,
+      "minLength": 8,
+      "title": "Address",
+      "type": "string"
+     },
+     "legalName": {
+      "maxLength": 160,
+      "minLength": 2,
+      "title": "Legalname",
+      "type": "string"
+     },
+     "registerNumber": {
+      "anyOf": [
+       {
+        "maxLength": 60,
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Registernumber"
+     },
+     "vatId": {
+      "anyOf": [
+       {
+        "maxLength": 20,
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Vatid"
+     }
+    },
+    "required": [
+     "legalName",
+     "address"
+    ],
+    "title": "BusinessIn",
     "type": "object"
    },
    "CandidatesIn": {
@@ -386,6 +526,29 @@
       "title": "Action",
       "type": "string"
      },
+     "automated": {
+      "default": false,
+      "title": "Automated",
+      "type": "boolean"
+     },
+     "clause": {
+      "anyOf": [
+       {
+        "maxLength": 200,
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Clause"
+     },
+     "ground": {
+      "default": "terms",
+      "pattern": "^(law|terms)$",
+      "title": "Ground",
+      "type": "string"
+     },
      "statement": {
       "maxLength": 2000,
       "minLength": 20,
@@ -394,8 +557,8 @@
      }
     },
     "required": [
-     "action",
-     "statement"
+     "statement",
+     "action"
     ],
     "title": "DecisionIn",
     "type": "object"
@@ -460,6 +623,46 @@
      "lng"
     ],
     "title": "District",
+    "type": "object"
+   },
+   "DsaStats": {
+    "properties": {
+     "activeRecipients": {
+      "title": "Activerecipients",
+      "type": "integer"
+     },
+     "medianHoursToDecision": {
+      "anyOf": [
+       {
+        "type": "number"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Medianhourstodecision"
+     },
+     "month": {
+      "title": "Month",
+      "type": "string"
+     },
+     "notices": {
+      "additionalProperties": {
+       "additionalProperties": {
+        "type": "integer"
+       },
+       "type": "object"
+      },
+      "title": "Notices",
+      "type": "object"
+     }
+    },
+    "required": [
+     "month",
+     "activeRecipients",
+     "notices"
+    ],
+    "title": "DsaStats",
     "type": "object"
    },
    "EvidenceIn": {
@@ -780,6 +983,27 @@
    },
    "Owner": {
     "properties": {
+     "business": {
+      "anyOf": [
+       {
+        "$ref": "#/components/schemas/Business"
+       },
+       {
+        "type": "null"
+       }
+      ]
+     },
+     "cancellationRate": {
+      "anyOf": [
+       {
+        "type": "number"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Cancellationrate"
+     },
      "district": {
       "title": "District",
       "type": "string"
@@ -818,6 +1042,16 @@
      },
      "ratingSum": {
       "title": "Ratingsum",
+      "type": "integer"
+     },
+     "renterJobs": {
+      "default": 0,
+      "title": "Renterjobs",
+      "type": "integer"
+     },
+     "renterRatingSum": {
+      "default": 0,
+      "title": "Renterratingsum",
       "type": "integer"
      },
      "responseMins": {
@@ -928,6 +1162,27 @@
    },
    "ProfileIn": {
     "properties": {
+     "adult": {
+      "anyOf": [
+       {
+        "type": "boolean"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Adult"
+     },
+     "business": {
+      "anyOf": [
+       {
+        "$ref": "#/components/schemas/BusinessIn"
+       },
+       {
+        "type": "null"
+       }
+      ]
+     },
      "district": {
       "maxLength": 80,
       "title": "District",
@@ -993,6 +1248,16 @@
       ],
       "title": "Statement"
      },
+     "statementOfReasons": {
+      "anyOf": [
+       {
+        "$ref": "#/components/schemas/StatementOfReasons"
+       },
+       {
+        "type": "null"
+       }
+      ]
+     },
      "status": {
       "title": "Status",
       "type": "string"
@@ -1038,6 +1303,17 @@
        }
       ],
       "title": "Email"
+     },
+     "goodFaith": {
+      "anyOf": [
+       {
+        "type": "boolean"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Goodfaith"
      },
      "reason": {
       "pattern": "^(illegal|fraud|unsafe|counterfeit|spam|offensive|privacy|other)$",
@@ -1242,6 +1518,45 @@
     "title": "SlotIn",
     "type": "object"
    },
+   "StatementOfReasons": {
+    "description": "DSA Art. 17(3), one field per point the article lists.",
+    "properties": {
+     "automated": {
+      "title": "Automated",
+      "type": "boolean"
+     },
+     "clause": {
+      "title": "Clause",
+      "type": "string"
+     },
+     "facts": {
+      "title": "Facts",
+      "type": "string"
+     },
+     "ground": {
+      "title": "Ground",
+      "type": "string"
+     },
+     "redress": {
+      "title": "Redress",
+      "type": "string"
+     },
+     "restriction": {
+      "title": "Restriction",
+      "type": "string"
+     }
+    },
+    "required": [
+     "restriction",
+     "facts",
+     "automated",
+     "ground",
+     "clause",
+     "redress"
+    ],
+    "title": "StatementOfReasons",
+    "type": "object"
+   },
    "TagCount": {
     "properties": {
      "n": {
@@ -1338,6 +1653,16 @@
       "title": "Blurb",
       "type": "string"
      },
+     "cancellationPolicy": {
+      "default": "flexible",
+      "enum": [
+       "flexible",
+       "moderate",
+       "strict"
+      ],
+      "title": "Cancellationpolicy",
+      "type": "string"
+     },
      "category": {
       "enum": [
        "fabrication",
@@ -1352,6 +1677,13 @@
       ],
       "title": "Category",
       "type": "string"
+     },
+     "dayDiscountPct": {
+      "default": 0,
+      "maximum": 50.0,
+      "minimum": 0.0,
+      "title": "Daydiscountpct",
+      "type": "integer"
      },
      "district": {
       "title": "District",
@@ -1368,6 +1700,11 @@
      "id": {
       "title": "Id",
       "type": "string"
+     },
+     "instantBook": {
+      "default": false,
+      "title": "Instantbook",
+      "type": "boolean"
      },
      "instructions": {
       "title": "Instructions",
@@ -1418,6 +1755,13 @@
      "title": {
       "title": "Title",
       "type": "string"
+     },
+     "weekDiscountPct": {
+      "default": 0,
+      "maximum": 50.0,
+      "minimum": 0.0,
+      "title": "Weekdiscountpct",
+      "type": "integer"
      }
     },
     "required": [
@@ -1557,6 +1901,47 @@
      }
     },
     "summary": "Audit"
+   }
+  },
+  "/admin/dsa-stats": {
+   "get": {
+    "description": "What a transparency report needs for one month, on request (S-30).",
+    "operationId": "dsa_stats_admin_dsa_stats_get",
+    "parameters": [
+     {
+      "in": "query",
+      "name": "month",
+      "required": true,
+      "schema": {
+       "pattern": "^\\d{4}-(0[1-9]|1[0-2])$",
+       "title": "Month",
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/DsaStats"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Dsa Stats"
    }
   },
   "/admin/listings/held": {
@@ -2183,6 +2568,25 @@
   "/listings": {
    "post": {
     "operationId": "create_listing_listings_post",
+    "parameters": [
+     {
+      "in": "header",
+      "name": "Idempotency-Key",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "maxLength": 80,
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "Idempotency-Key"
+      }
+     }
+    ],
     "requestBody": {
      "content": {
       "application/json": {
@@ -2813,6 +3217,25 @@
   "/reports": {
    "post": {
     "operationId": "report_reports_post",
+    "parameters": [
+     {
+      "in": "header",
+      "name": "Idempotency-Key",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "maxLength": 80,
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "Idempotency-Key"
+      }
+     }
+    ],
     "requestBody": {
      "content": {
       "application/json": {

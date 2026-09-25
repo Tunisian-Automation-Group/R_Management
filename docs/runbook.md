@@ -100,13 +100,19 @@ The console API is under `/api/admin/…`:
 | Call | What it does |
 |---|---|
 | `GET /api/admin/reports?status=open` | The queue of notices, oldest first |
-| `POST /api/admin/reports/{id}/decide` `{action: dismiss\|take_down\|suspend, statement}` | Decides. The person affected gets the statement of reasons (Art. 17); the reporter gets the outcome (Art. 16(5)) |
+| `POST /api/admin/reports/{id}/decide` `{action: dismiss\|take_down\|suspend, statement, ground?: law\|terms, clause?, automated?}` | Decides. The person affected gets the structured statement of reasons (Art. 17(3)): the restriction, the facts (`statement`), the legal ground or terms clause, whether it was automated, and how to contest it. The reporter gets the outcome (Art. 16(5)) |
+| `GET /api/admin/dsa-stats?month=YYYY-MM` | The numbers a transparency report needs (Art. 15/24); the exact active-recipient count is in `docs/analytics.md` |
 | `POST /api/admin/listings/{id}/take-down` `{statement}` | Takes a listing down without a report |
 | `POST /api/admin/owners/{id}/suspend` · `/reinstate` | Suspends: their listings come down, and they cannot list or book. To also stop sign-in: `aws cognito-idp admin-disable-user` |
 | `POST /api/admin/bookings/{id}/resolve` `{outcome: pay_owner\|refund_buyer}` | Settles a dispute |
 | `GET /api/admin/audit` | Every action: who, what, why |
 
 Aim to decide safety-related notices within 24 h.
+
+The queue also holds notices nobody sent: `reason: reliability` (an owner cancelled or missed 3
+accepted bookings in 30 days) and `reason: linked_to_suspended` (someone paid with a card a
+suspended account used; could be a family card, could be ban evasion). Look at their bookings and
+messages before acting; dismiss with a note if it is innocent.
 
 ## Kill switches
 
@@ -123,6 +129,10 @@ terraform apply -var image_tag=<the running tag> -var zone_id=… -var alarm_ema
 | `bookings` | New bookings get a 503 saying "paused". Booked ones carry on. | A card-testing wave, or a pricing bug |
 | `payouts` | Payouts wait on their queue, retried with backoff. Nothing is lost. When the wait gets long they reach the DLQ; redrive it after switching back on. | Suspected fraud by owners, a Connect problem |
 | `listings` | New listings get a 503. Existing ones stay bookable. | A spam wave |
+
+Feature flags (`cappy_common/flags.py`) roll a change out to a share of people, the same way:
+`-var 'feature_flags=newcheckout:5'`, then 25, 50, 100. `0` switches it off for everyone at once.
+The apps read them from `/api/app-config` (cached up to 5 minutes).
 
 ## Restoring the database (rehearse this every quarter)
 

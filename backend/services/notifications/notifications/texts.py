@@ -26,11 +26,11 @@ TEXTS: dict[str, dict[str, tuple[str, str]]] = {
         ),
         "taken_down": (
             "We removed your listing",
-            "{statement}\n\nIf you disagree, reply to this email or contact us via {web}/legal/impressum.",
+            "Your listing can no longer be seen or booked.\n\nWhy: {statement}\nGround: {ground_en}\nDecided by automated means: {automated_en}\n\nWhat you can do: contest this decision by replying to this email within 6 months; someone who was not involved will look at it again. You can also turn to a certified out-of-court dispute settlement body (DSA Art. 21) or to the courts. Contact: {web}/legal/impressum",
         ),
         "suspended": (
             "We suspended your account",
-            "{statement}\n\nIf you disagree, reply to this email or contact us via {web}/legal/impressum.",
+            "Your listings were removed, and you can no longer list or book.\n\nWhy: {statement}\nGround: {ground_en}\nDecided by automated means: {automated_en}\n\nWhat you can do: contest this decision by replying to this email within 6 months; someone who was not involved will look at it again. You can also turn to a certified out-of-court dispute settlement body (DSA Art. 21) or to the courts. Contact: {web}/legal/impressum",
         ),
         "report_outcome_action": (
             "Your report: our decision",
@@ -75,11 +75,11 @@ TEXTS: dict[str, dict[str, tuple[str, str]]] = {
         ),
         "taken_down": (
             "Wir haben dein Inserat entfernt",
-            "{statement}\n\nWenn du nicht einverstanden bist, antworte auf diese E-Mail oder kontaktiere uns über {web}/legal/impressum.",
+            "Dein Inserat ist nicht mehr sichtbar und kann nicht mehr gebucht werden.\n\nGrund: {statement}\nRechtsgrundlage: {ground_de}\nAutomatisiert entschieden: {automated_de}\n\nWas du tun kannst: Widersprich dieser Entscheidung, indem du innerhalb von 6 Monaten auf diese E-Mail antwortest; jemand, der nicht beteiligt war, prüft sie erneut. Du kannst dich auch an eine zertifizierte außergerichtliche Streitbeilegungsstelle (DSA Art. 21) oder an die Gerichte wenden. Kontakt: {web}/legal/impressum",
         ),
         "suspended": (
             "Wir haben dein Konto gesperrt",
-            "{statement}\n\nWenn du nicht einverstanden bist, antworte auf diese E-Mail oder kontaktiere uns über {web}/legal/impressum.",
+            "Deine Inserate wurden entfernt, und du kannst nichts mehr inserieren oder buchen.\n\nGrund: {statement}\nRechtsgrundlage: {ground_de}\nAutomatisiert entschieden: {automated_de}\n\nWas du tun kannst: Widersprich dieser Entscheidung, indem du innerhalb von 6 Monaten auf diese E-Mail antwortest; jemand, der nicht beteiligt war, prüft sie erneut. Du kannst dich auch an eine zertifizierte außergerichtliche Streitbeilegungsstelle (DSA Art. 21) oder an die Gerichte wenden. Kontakt: {web}/legal/impressum",
         ),
         "report_outcome_action": (
             "Deine Meldung: unsere Entscheidung",

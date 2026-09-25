@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import time
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -16,9 +17,12 @@ from pathlib import Path
 import httpx
 from fastapi import FastAPI, Request, Response
 from fastapi.responses import FileResponse, JSONResponse
+from pydantic import Field
 
 from cappy_common.app import create_app
 from cappy_common.errors import error_body
+from cappy_common.flags import parse as parse_flags
+from cappy_common.models import CamelModel
 from cappy_common.observability import request_id
 
 from .routing import BOOKING, CATALOG, MATCHING, NOTIFICATIONS, PAYMENTS, resolve
@@ -80,6 +84,35 @@ def _overloaded(retry_after: int = 2) -> JSONResponse:
         status_code=503,
         headers={"Retry-After": str(retry_after)},
     )
+
+
+CLIENT_ERROR_MAX_BYTES = 8 * 1024
+
+
+class ClientError(CamelModel):
+    message: str = Field(max_length=2000)
+    stack: str | None = Field(default=None, max_length=6000)
+    route: str = Field(default="", max_length=300)
+    app_version: str = Field(default="", max_length=40)
+    platform: str = Field(default="", pattern="^(|web|ios|android)$")
+
+
+class ClientErrorLimit:
+    """Per client address, per minute, in this task's memory. ponytail: a
+    fixed window per task, not shared; the WAF limits per IP at the edge, and
+    this only keeps one crash-looping app from flooding the logs."""
+
+    def __init__(self, per_minute: int) -> None:
+        self.per_minute = per_minute
+        self.window = 0
+        self.counts: dict[str, int] = {}
+
+    def allow(self, who: str) -> bool:
+        now = int(time.monotonic() // 60)
+        if now != self.window or len(self.counts) > 10_000:
+            self.window, self.counts = now, {}
+        self.counts[who] = self.counts.get(who, 0) + 1
+        return self.counts[who] <= self.per_minute
 
 
 def build_app(settings: Settings, transport: httpx.AsyncBaseTransport | None = None) -> FastAPI:
@@ -150,14 +183,47 @@ def build_app(settings: Settings, transport: httpx.AsyncBaseTransport | None = N
             headers={k: v for k, v in r.headers.items() if k.lower() in _FORWARD_RESPONSE},
         )
 
+    flags = parse_flags(settings.feature_flags)
+
     @app.get("/api/app-config", include_in_schema=False)
     async def app_config() -> JSONResponse:
         """What the store apps check at start: below minVersion they ask the
-        person to update rather than calling an API they may no longer match."""
+        person to update rather than calling an API they may no longer match.
+        ``flags`` are on or off for everyone; ``rollouts`` the app evaluates
+        per person with cappy_common/flags.py's hash, so this stays one
+        answer the CDN can cache."""
         return JSONResponse(
-            {"minVersion": settings.app_min_version, "latestVersion": settings.app_latest_version},
+            {
+                "minVersion": settings.app_min_version,
+                "latestVersion": settings.app_latest_version,
+                "flags": {name: pct >= 100 for name, pct in flags.items()},
+                "rollouts": {name: pct for name, pct in flags.items() if 0 < pct < 100},
+            },
             headers={"Cache-Control": "public, max-age=300"},
         )
+
+    errors_seen = ClientErrorLimit(settings.client_errors_per_minute)
+
+    @app.post("/api/client-errors", status_code=202, include_in_schema=False)
+    async def client_error(request: Request) -> Response:
+        """Crashes and unhandled errors from the apps (S-7), signed in or not.
+        Logged, never stored: no device id, no IP beyond the access log, no
+        replay, so no consent is needed (§ 25 TDDDG)."""
+        body = await request.body()
+        if len(body) > CLIENT_ERROR_MAX_BYTES:
+            return JSONResponse(error_body("too_large", "an error report is at most 8 KB"), 413)
+        # Behind CloudFront and the load balancer the peer is never the phone;
+        # the first X-Forwarded-For hop is (it can be forged, which only lets
+        # a sender dodge this limit, not the WAF's).
+        who = request.headers.get("x-forwarded-for", "").split(",")[0].strip()
+        if not errors_seen.allow(who or (request.client.host if request.client else "?")):
+            return Response(status_code=202)  # dropped quietly: a crash loop must not flood the logs
+        try:
+            report = ClientError.model_validate_json(body)
+        except ValueError:
+            return JSONResponse(error_body("invalid", "not an error report"), 422)
+        log.warning("client error: %s", report.message[:200], extra={"client": report.model_dump(by_alias=True)})
+        return Response(status_code=202)
 
     @app.api_route("/api/{path:path}", methods=_METHODS, include_in_schema=False)
     async def proxy(path: str, request: Request) -> Response:

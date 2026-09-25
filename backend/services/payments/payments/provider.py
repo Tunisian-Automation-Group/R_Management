@@ -51,6 +51,9 @@ class Provider:
         """Returns the charge id."""
 
     async def cancel(self, intent_id: str, booking_id: str) -> None: ...
+    async def card_fingerprint(self, intent_id: str, requester_id: str) -> str | None:
+        """The paying card's fingerprint, once authorised (None if not a card)."""
+
     async def refund(self, intent_id: str, booking_id: str, amount: int | None = None) -> str:
         """Refunds `amount` cents (all of it when None)."""
 
@@ -113,6 +116,11 @@ class StripeProvider(Provider):
                 raise Declined(str(e)) from e
         charge = pi.latest_charge
         return charge if isinstance(charge, str) else (charge.id if charge else "")
+
+    async def card_fingerprint(self, intent_id: str, requester_id: str) -> str | None:
+        pi = await self._c.v1.payment_intents.retrieve_async(intent_id, {"expand": ["payment_method"]})
+        card = getattr(pi.payment_method, "card", None) if pi.payment_method else None
+        return getattr(card, "fingerprint", None)
 
     async def cancel(self, intent_id: str, booking_id: str) -> None:
         try:
@@ -199,6 +207,8 @@ class FakeProvider(Provider):
         self.calls: list[tuple[str, str]] = []
         self.failing: set[str] = set()
         self.statuses: dict[str, str] = {}
+        # Tests put two people on one card; by default everyone has their own.
+        self.cards: dict[str, str] = {}
 
     def _call(self, op: str, key: str) -> None:
         if op in self.failing:
@@ -223,6 +233,9 @@ class FakeProvider(Provider):
 
     async def cancel(self, intent_id: str, booking_id: str) -> None:
         self._call("cancel", booking_id)
+
+    async def card_fingerprint(self, intent_id: str, requester_id: str) -> str | None:
+        return self.cards.get(requester_id, f"fp_fake_{requester_id}"[:64])
 
     async def refund(self, intent_id: str, booking_id: str, amount: int | None = None) -> str:
         self._call("refund", booking_id)

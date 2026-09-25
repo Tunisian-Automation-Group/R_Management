@@ -82,6 +82,21 @@ def chat_push(event: Event, web: str) -> Message | None:
     )
 
 
+def statement_params(d: dict) -> dict[str, str]:
+    """The Art. 17 statement of reasons, in both languages (render picks one)."""
+    sor = d.get("statementOfReasons") or {}
+    clause = sor.get("clause") or "Terms of use: rules for listings and conduct"
+    law = sor.get("ground") == "law"
+    auto = bool(sor.get("automated"))
+    return {
+        "statement": sor.get("facts") or d["statement"],
+        "ground_en": f"illegal content under {clause}" if law else f"incompatible with our terms ({clause})",
+        "ground_de": f"rechtswidrige Inhalte nach {clause}" if law else f"Verstoß gegen unsere Bedingungen ({clause})",
+        "automated_en": "yes" if auto else "no, by a person",
+        "automated_de": "ja" if auto else "nein, von einem Menschen",
+    }
+
+
 def moderation_mail(event: Event, web: str) -> list[Message]:
     """Acknowledging a notice and telling the reporter the outcome is DSA Art.
     16(4)/(5); telling the person affected why is Art. 17."""
@@ -93,7 +108,7 @@ def moderation_mail(event: Event, web: str) -> list[Message]:
     out: list[Message] = []
     if d.get("affectedId"):
         key = {"take_down": "taken_down", "suspend": "suspended"}.get(d["action"], "suspended")
-        out.append((d["affectedId"], None, key, {"statement": d["statement"], "web": web}))
+        out.append((d["affectedId"], None, key, {"web": web, **statement_params(d)}))
     if d.get("reportId") and (d.get("reporterId") or d.get("reporterEmail")):
         key = "report_outcome_none" if d["action"] == "dismiss" else "report_outcome_action"
         out.append(

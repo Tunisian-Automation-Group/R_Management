@@ -251,3 +251,34 @@ def test_signing_out_everywhere_revokes_tokens_and_forgets_devices():
         assert people.signed_out == ["host"]
         c.portal.call(app.state.dispatcher.handle, _change("requested", by="payments"))
         assert pusher.sent == [], "the lost phone gets nothing"
+
+
+def test_the_person_affected_gets_the_whole_statement_of_reasons(app):
+    """DSA Art. 17(3): the restriction, the facts, automated or not, the ground
+    and what they can do about it."""
+    from cappy_common.events import MODERATION_DECISION
+
+    sor = {
+        "restriction": "The listing was removed and can no longer be seen or booked.",
+        "facts": "The serial number matches a machine reported stolen.",
+        "automated": False,
+        "ground": "law",
+        "clause": "§ 259 StGB",
+        "redress": "…",
+    }
+    _sent(
+        app,
+        _event(
+            MODERATION_DECISION,
+            action="take_down",
+            targetType="listing",
+            targetId="l9",
+            affectedId="host",
+            statement=sor["facts"],
+            statementOfReasons=sor,
+        ),
+    )
+    [mail] = app.state.mailer.sent
+    body = mail.text
+    assert "The serial number matches" in body and "illegal content under § 259 StGB" in body
+    assert "automated means: no" in body and "6 months" in body and "Art. 21" in body

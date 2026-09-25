@@ -70,6 +70,11 @@ class BookingRow(Base):
     # A fingerprint of the create request, so a key reused for a different
     # request is refused rather than answered with the wrong booking.
     request_hash: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    # Who did not turn up ("owner" or "renter"), when a no-show ended it.
+    no_show: Mapped[str | None] = mapped_column(String(6), nullable=True)
+    # Stripe's fingerprint of the card that paid (the same card, whoever
+    # holds it): links a new account to a suspended one (S-17).
+    card_fingerprint: Mapped[str | None] = mapped_column(String(64), nullable=True)
 
     __table_args__ = (
         UniqueConstraint("requester_id", "idempotency_key", name="uq_bookings_requester_idempotency"),
@@ -154,3 +159,4 @@ Index("ix_bookings_listing_window", BookingRow.listing_id, BookingRow.window_sta
 # The sweeps: lapsed requests, and finished windows awaiting completion.
 Index("ix_bookings_status_expires", BookingRow.status, BookingRow.expires_at)
 Index("ix_bookings_status_window_end", BookingRow.status, BookingRow.window_end)
+Index("ix_bookings_card_fingerprint", BookingRow.card_fingerprint)

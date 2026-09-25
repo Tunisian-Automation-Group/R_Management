@@ -104,6 +104,7 @@ def test_intents_are_internal_and_idempotent(client, app, broker):
     call(app, app.state.relay.flush)
     # The fake has no card step: authorised at once, announced once.
     assert [e.data["bookingId"] for e in broker.of_type(PAYMENT_AUTHORISED)] == ["bk_1"]
+    assert broker.of_type(PAYMENT_AUTHORISED)[0].data["cardFingerprint"] == "fp_fake_buyer"
 
 
 def test_the_owner_share_cannot_exceed_the_price(client):
@@ -202,6 +203,9 @@ class _StripeShaped(StripeProvider):
 
     status = AccountStatus(False, False)
 
+    async def card_fingerprint(self, intent_id: str, requester_id: str) -> str | None:
+        return "fp_stripe_card"
+
     async def account_status(self, account_id: str) -> AccountStatus:
         return self.status
 
@@ -262,6 +266,9 @@ def test_webhook_authorises_once_and_rejects_forgeries(stripe_app, broker):
     assert call(app, _payment, app, "bk_1").status == "authorised"
     call(app, app.state.relay.flush)
     assert len(broker.of_type(PAYMENT_AUTHORISED)) == 1
+    # Booking links cards shared with suspended accounts (S-17).
+    assert broker.of_type(PAYMENT_AUTHORISED)[0].data["cardFingerprint"] == "fp_stripe_card"
+    assert call(app, _payment, app, "bk_1").card_fingerprint == "fp_stripe_card"
 
 
 def test_webhook_keeps_accounts_current(stripe_app, issuer, broker):

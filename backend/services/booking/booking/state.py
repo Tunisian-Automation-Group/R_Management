@@ -10,6 +10,9 @@
     start:  from 30 minutes before the window, by either party.
     dispute: from accepted or active once the window has started, by the buyer. The
             payout is held until support resolves it (docs/runbook.md).
+    no_show: from accepted, in the first 2 hours of the window, by either side about
+            the other: the booking is cancelled. The owner missing it refunds the
+            renter in full; the renter missing it refunds nothing (S-11).
 
 Transitions a person makes name who may make them. The rest are made by the
 system: a payment result, the expiry sweep, the auto-completion sweep.
@@ -47,7 +50,7 @@ HOLDING: frozenset[str] = frozenset(
 OPEN: frozenset[str] = frozenset({"awaiting_payment", "requested", "accepted", "active", "disputed"})
 FINAL: frozenset[str] = frozenset({"completed", "declined", "cancelled", "expired", "payment_failed"})
 
-Action = Literal["accept", "decline", "start", "complete", "cancel", "dispute"]
+Action = Literal["accept", "decline", "start", "complete", "cancel", "dispute", "no_show"]
 SystemAction = Literal[
     "authorised", "authorised_instant", "payment_failed", "expire", "auto_complete", "listing_removed"
 ]
@@ -70,6 +73,8 @@ TRANSITIONS: dict[Action, Transition] = {
     "complete": Transition(frozenset({"active"}), "completed", "requester"),
     "cancel": Transition(frozenset({"awaiting_payment", "requested", "accepted"}), "cancelled", "either"),
     "dispute": Transition(frozenset({"accepted", "active"}), "disputed", "requester"),
+    # Nobody marked the hand-over: the other side never came.
+    "no_show": Transition(frozenset({"accepted"}), "cancelled", "either"),
 }
 
 SYSTEM: dict[SystemAction, tuple[frozenset[str], Status]] = {

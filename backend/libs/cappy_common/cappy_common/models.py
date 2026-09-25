@@ -114,6 +114,16 @@ class District(CamelModel):
     lng: float
 
 
+class Business(CamelModel):
+    """A trader's identity (§ 5b UWG, § 312l BGB): public, so a renter knows
+    who their contract is with. People never have one."""
+
+    legal_name: str
+    address: str
+    register_number: str | None = None
+    vat_id: str | None = None
+
+
 class Owner(CamelModel):
     id: str
     name: str
@@ -129,6 +139,11 @@ class Owner(CamelModel):
     # As a renter: what owners said after completed bookings (two-way reviews).
     renter_rating_sum: int = 0
     renter_jobs: int = 0
+    # Businesses only: who the renter contracts with.
+    business: Business | None = None
+    # Share of accepted bookings the owner cancelled or did not show up for,
+    # over 12 months; None under 5 bookings (too few to mean anything).
+    cancellation_rate: float | None = None
 
 
 class _ListingBase(CamelModel):
@@ -334,6 +349,8 @@ class Booking(CamelModel):
     renter_rating: int | None = None
     # What a cancellation refunded (cents), once cancelled.
     refund_amount: int | None = None
+    # Who did not turn up, when a no-show ended the booking.
+    no_show: Literal["owner", "renter"] | None = None
 
 
 class World(CamelModel):

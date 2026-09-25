@@ -51,6 +51,9 @@ class FakeBookings:
     async def all_for(self, person):  # noqa: ANN001
         return {"bookings": [{"id": "bk_1", "status": "completed"}], "messagesSent": [], "evidence": []}
 
+    async def active_people(self, start, end):  # noqa: ANN001
+        return 7
+
     async def aclose(self) -> None:
         pass
 
@@ -130,7 +133,11 @@ def _slot(start_h=2, end_h=20, usable=18):
 
 
 def _profile(client, issuer, sub="user-a", name="Ada Lovelace"):
-    r = client.put("/me", json={"name": name, "kind": "person", "district": "Kreuzberg"}, headers=issuer.headers(sub))
+    r = client.put(
+        "/me",
+        json={"adult": True, "name": name, "kind": "person", "district": "Kreuzberg"},
+        headers=issuer.headers(sub),
+    )
     assert r.status_code == 200, r.text
     return r.json()
 
@@ -170,7 +177,14 @@ def test_profile_is_created_once_and_a_record_cannot_be_declared(client, issuer,
 
     again = client.put(
         "/me",
-        json={"name": "Ada L", "kind": "business", "district": "Neukölln", "ratingSum": 500, "jobsDone": 100},
+        json={
+            "name": "Ada L",
+            "kind": "business",
+            "district": "Neukölln",
+            "business": {"legalName": "Ada L GmbH", "address": "Oranienstraße 1, 10999 Berlin"},
+            "ratingSum": 500,
+            "jobsDone": 100,
+        },
         headers=issuer.headers("user-a"),
     ).json()
     assert again["kind"] == "business" and again["district"] == "Neukölln"
@@ -181,7 +195,11 @@ def test_profile_is_created_once_and_a_record_cannot_be_declared(client, issuer,
 
 
 def test_profile_needs_a_known_district(client, issuer):
-    r = client.put("/me", json={"name": "Ada", "kind": "person", "district": "Atlantis"}, headers=issuer.headers("u"))
+    r = client.put(
+        "/me",
+        json={"adult": True, "name": "Ada", "kind": "person", "district": "Atlantis"},
+        headers=issuer.headers("u"),
+    )
     assert r.status_code == 422
 
 
@@ -598,6 +616,7 @@ def test_nothing_of_the_product_is_served_before_sign_in(client, issuer):
     assert signed_in.status_code == 200 and signed_in.headers["cache-control"] == "private, no-store"
     # What law or the stores need stays public: reporting (DSA Art. 16).
     body = {
+        "goodFaith": True,
         "targetType": "listing",
         "targetId": "l9",
         "reason": "spam",
@@ -713,6 +732,7 @@ def test_anyone_can_report_and_staff_decide_with_reasons(client, app, issuer, br
     from cappy_common.events import MODERATION_DECISION, REPORT_RECEIVED
 
     body = {
+        "goodFaith": True,
         "targetType": "listing",
         "targetId": "l9",
         "reason": "fraud",
@@ -852,6 +872,7 @@ def test_raising_the_price_later_still_waits_for_review(client, issuer):
 
 def test_reports_cannot_be_used_to_flood_an_inbox(client, issuer):
     body = {
+        "goodFaith": True,
         "targetType": "listing",
         "targetId": "l9",
         "reason": "spam",
@@ -927,6 +948,155 @@ def test_a_retried_listing_create_makes_one_listing(client, issuer):
 
 def test_a_retried_report_files_one_report(client, issuer):
     h = {**issuer.headers("user-a"), "Idempotency-Key": "k-report-1"}
-    body = {"targetType": "listing", "targetId": "l9", "reason": "spam", "details": "Looks like spam to me"}
+    body = {
+        "goodFaith": True,
+        "targetType": "listing",
+        "targetId": "l9",
+        "reason": "spam",
+        "details": "Looks like spam to me",
+    }
     first, again = client.post("/reports", json=body, headers=h), client.post("/reports", json=body, headers=h)
     assert first.status_code == again.status_code == 201 and first.json()["id"] == again.json()["id"]
+
+
+# --- traders, the minimum age, reliability, statements of reasons, DSA numbers ---------
+# (S-4, S-5, S-13, S-17, S-18, S-30)
+
+PERSON = {"name": "Ada Lovelace", "kind": "person", "district": "Kreuzberg"}
+TRADER = {"legalName": "Werkstatt Lovelace GmbH", "address": "Oranienstraße 1, 10999 Berlin"}
+
+
+def _event(app, type_: str, data: dict) -> None:
+    from cappy_common.events import Event
+
+    e = Event(id=new_id("ev"), type=type_, source="booking", occurred_at=now_iso(), data=data)
+    app.state._portal.call(app.state.dispatcher.handle, e)
+
+
+def test_a_new_profile_needs_the_age_confirmation(client, issuer):
+    h = issuer.headers("teen-1")
+    r = client.put("/me", json=PERSON, headers=h)
+    assert r.status_code == 422 and "18" in r.json()["error"]["message"]
+    assert client.put("/me", json={**PERSON, "adult": False}, headers=h).status_code == 422
+    assert client.put("/me", json={**PERSON, "adult": True}, headers=h).status_code == 200
+    # Once confirmed, later edits need not say it again.
+    assert client.put("/me", json={**PERSON, "name": "Ada L."}, headers=h).status_code == 200
+
+
+def test_seeded_and_existing_profiles_are_grandfathered(client, issuer):
+    assert client.put("/me", json={**PERSON, "name": "Nadia B."}, headers=issuer.headers("o1")).status_code == 200
+
+
+def test_a_business_says_who_it_is_and_renters_see_it(client, issuer):
+    h = issuer.headers("trader-1")
+    base = {**PERSON, "adult": True, "kind": "business"}
+    assert client.put("/me", json=base, headers=h).status_code == 422, "legal name and address required"
+    bad = {**base, "business": {**TRADER, "vatId": "DE12345"}}
+    assert client.put("/me", json=bad, headers=h).status_code == 422
+    good = {**base, "business": {**TRADER, "registerNumber": "HRB 12345 B", "vatId": "de 123 456 789"}}
+    owner = client.put("/me", json=good, headers=h).json()
+    assert owner["business"] == {**TRADER, "registerNumber": "HRB 12345 B", "vatId": "DE123456789"}
+    assert client.get("/owners/trader-1", headers=issuer.headers("viewer-2")).json()["business"]["legalName"]
+    # Other EU VAT IDs are only checked loosely.
+    fr = {**base, "business": {**TRADER, "vatId": "FR12345678901"}}
+    assert client.put("/me", json=fr, headers=h).status_code == 200
+    # Becoming a person again drops the trader details from every answer.
+    person = client.put("/me", json={**PERSON}, headers=h).json()
+    assert person.get("business") is None
+
+
+def test_a_person_never_shows_an_address(client, issuer):
+    # Even if one is sent, a person has no trader block.
+    body = {**PERSON, "adult": True, "business": TRADER}
+    assert client.put("/me", json=body, headers=issuer.headers("p-1")).json().get("business") is None
+
+
+def test_owner_reliability_comes_from_booking_and_shows_on_the_owner(client, app):
+    from cappy_common.events import OWNER_RELIABILITY
+
+    assert client.get("/owners/o1").json().get("cancellationRate") is None
+    _event(app, OWNER_RELIABILITY, {"ownerId": "o1", "rate": 0.2, "bookings": 10, "failures": 2})
+    assert client.get("/owners/o1").json()["cancellationRate"] == 0.2
+    _event(app, OWNER_RELIABILITY, {"ownerId": "o1", "rate": None, "bookings": 3, "failures": 1})
+    assert client.get("/owners/o1").json().get("cancellationRate") is None
+
+
+def test_flags_join_the_queue_once_while_open(client, app, issuer):
+    from cappy_common.events import PERSON_FLAGGED
+
+    flagged = {"personId": "o1", "reason": "reliability", "details": "Cancelled 3 accepted bookings in 30 days."}
+    _event(app, PERSON_FLAGGED, flagged)
+    _event(app, PERSON_FLAGGED, flagged)
+    _event(app, PERSON_FLAGGED, {**flagged, "reason": "linked_to_suspended", "details": "Shares a card."})
+    queue = client.get("/admin/reports", headers=_staff(issuer)).json()["items"]
+    mine = [(r["reason"], r["targetId"]) for r in queue if r["targetId"] == "o1"]
+    assert sorted(mine) == [("linked_to_suspended", "o1"), ("reliability", "o1")]
+
+
+def test_reports_need_good_faith(client):
+    body = {"targetType": "listing", "targetId": "l9", "reason": "spam", "details": "Looks like spam to me"}
+    r = client.post("/reports", json={**body, "email": "a@example.com"}, headers=ANON)
+    assert r.status_code == 422 and "accurate" in r.json()["error"]["message"]
+    ok = {**body, "email": "a@example.com", "goodFaith": True}
+    assert client.post("/reports", json=ok, headers=ANON).status_code == 201
+
+
+def test_a_restriction_comes_with_a_structured_statement_of_reasons(client, app, issuer, broker):
+    from cappy_common.events import MODERATION_DECISION
+
+    body = {"goodFaith": True, "targetType": "listing", "targetId": "l9", "reason": "illegal"}
+    report = client.post("/reports", json={**body, "details": "This is a stolen machine"}).json()
+    decision = {
+        "action": "take_down",
+        "statement": "The serial number matches a machine reported stolen to the police.",
+        "ground": "law",
+        "clause": "§ 259 StGB (handling stolen goods)",
+    }
+    done = client.post(f"/admin/reports/{report['id']}/decide", json=decision, headers=_staff(issuer)).json()
+    sor = done["statementOfReasons"]
+    assert sor["restriction"].startswith("The listing was removed")
+    assert sor["facts"] == decision["statement"] and sor["ground"] == "law" and sor["automated"] is False
+    assert sor["clause"] == "§ 259 StGB (handling stolen goods)" and "6 months" in sor["redress"]
+    flush(app)
+    event = broker.of_type(MODERATION_DECISION)[-1]
+    assert event.data["statementOfReasons"] == sor
+
+    other = client.post("/reports", json={**body, "details": "Spam spam spam", "reason": "spam"}).json()
+    dismissed = client.post(
+        f"/admin/reports/{other['id']}/decide",
+        json={"action": "dismiss", "statement": "Nothing wrong with this listing on a second look."},
+        headers=_staff(issuer),
+    ).json()
+    assert dismissed.get("statementOfReasons") is None, "a dismissal restricts nobody"
+
+
+def test_staff_take_downs_default_to_the_terms(client, issuer):
+    r = client.post(
+        "/admin/listings/l9/take-down",
+        json={"statement": "Listing offers a service our terms do not allow."},
+        headers=_staff(issuer),
+    )
+    assert r.status_code == 204
+    audit = client.get("/admin/audit", headers=_staff(issuer)).json()
+    assert audit[0]["action"] == "take_down"
+
+
+def test_dsa_numbers_for_a_month(client, issuer):
+    from datetime import UTC, datetime
+
+    month = datetime.now(UTC).strftime("%Y-%m")
+    body = {"goodFaith": True, "targetType": "listing", "targetId": "l9", "details": "Stolen photos here"}
+    a = client.post("/reports", json={**body, "reason": "fraud"}).json()
+    client.post("/reports", json={**body, "reason": "spam"})
+    client.post(
+        f"/admin/reports/{a['id']}/decide",
+        json={"action": "dismiss", "statement": "The photos are the owner's own, checked."},
+        headers=_staff(issuer),
+    )
+    assert client.get(f"/admin/dsa-stats?month={month}").status_code == 403
+    stats = client.get(f"/admin/dsa-stats?month={month}", headers=_staff(issuer)).json()
+    assert stats["activeRecipients"] == 7
+    assert stats["notices"]["byReason"] == {"fraud": 1, "spam": 1}
+    assert stats["notices"]["byDecision"] == {"dismiss": 1, "open": 1}
+    assert stats["medianHoursToDecision"] is not None
+    assert client.get("/admin/dsa-stats?month=2026-13", headers=_staff(issuer)).status_code == 422

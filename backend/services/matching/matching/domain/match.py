@@ -55,9 +55,12 @@ W = {"price": 0.3, "soon": 0.2, "trust": 0.3, "near": 0.2}
 
 
 def trust_of(o: Owner) -> float:
-    """Reliability dominates; stars break ties; an unrated owner sits mid-scale."""
+    """Reliability dominates; stars break ties; an unrated owner sits mid-scale.
+    Owners who cancel accepted bookings (or do not show up) lose trust in
+    proportion: a 10% cancellation rate costs 5% of it (S-18)."""
     stars = rating(o)
-    return 0.6 * reliability(o) + 0.4 * (0.5 if stars is None else stars / 5)
+    base = 0.6 * reliability(o) + 0.4 * (0.5 if stars is None else stars / 5)
+    return base * (1 - 0.5 * (o.cancellation_rate or 0))
 
 
 def track_record(o: Owner) -> str:

@@ -95,7 +95,13 @@ async def _authorised(request: Request, session: AsyncSession, row: PaymentRow) 
         return False
     row.status = "authorised"
     row.updated_at = _now()
-    await request.app.state.outbox.add(session, PAYMENT_AUTHORISED, {"bookingId": row.booking_id})
+    try:
+        row.card_fingerprint = await _provider(request).card_fingerprint(row.intent_id, row.requester_id)
+    except Exception as e:  # noqa: BLE001 - a fraud signal, never a reason to fail a payment
+        log.warning("no card fingerprint for %s: %s", row.booking_id, e)
+    await request.app.state.outbox.add(
+        session, PAYMENT_AUTHORISED, {"bookingId": row.booking_id, "cardFingerprint": row.card_fingerprint}
+    )
     return True
 
 

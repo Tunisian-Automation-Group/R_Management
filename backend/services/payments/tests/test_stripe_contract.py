@@ -27,6 +27,9 @@ async def test_the_whole_money_path_is_accepted_by_stripe(stripe_provider):
     intent = await p.create_intent(booking_id="bk_1", amount=4600, currency="eur", metadata={"ownerId": "o1"})
     assert intent.id.startswith("pi_") and intent.client_secret
     assert await p.client_secret(intent.id)
+    # The expanded payment method's card fingerprint (S-17); stripe-mock's
+    # fixture may carry none, so only the request's shape is checked.
+    await p.card_fingerprint(intent.id, "buyer")
     # stripe-mock answers with static fixtures, which leave latest_charge empty;
     # real Stripe always sets it on a captured intent.
     charge = await p.capture(intent.id, "bk_1") or "ch_from_real_stripe"

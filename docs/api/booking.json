@@ -1,6 +1,19 @@
 {
  "components": {
   "schemas": {
+   "ActivePeople": {
+    "properties": {
+     "people": {
+      "title": "People",
+      "type": "integer"
+     }
+    },
+    "required": [
+     "people"
+    ],
+    "title": "ActivePeople",
+    "type": "object"
+   },
    "BatchRequest": {
     "properties": {
      "category": {
@@ -165,6 +178,21 @@
      "match": {
       "$ref": "#/components/schemas/Match"
      },
+     "noShow": {
+      "anyOf": [
+       {
+        "enum": [
+         "owner",
+         "renter"
+        ],
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Noshow"
+     },
      "outcome": {
       "anyOf": [
        {
@@ -174,6 +202,28 @@
         "type": "null"
        }
       ]
+     },
+     "refundAmount": {
+      "anyOf": [
+       {
+        "type": "integer"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Refundamount"
+     },
+     "renterRating": {
+      "anyOf": [
+       {
+        "type": "integer"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Renterrating"
      },
      "requesterId": {
       "anyOf": [
@@ -278,6 +328,29 @@
      "until"
     ],
     "title": "BusyIn",
+    "type": "object"
+   },
+   "CancellationQuote": {
+    "properties": {
+     "currency": {
+      "title": "Currency",
+      "type": "string"
+     },
+     "policy": {
+      "title": "Policy",
+      "type": "string"
+     },
+     "refundAmount": {
+      "title": "Refundamount",
+      "type": "integer"
+     }
+    },
+    "required": [
+     "refundAmount",
+     "currency",
+     "policy"
+    ],
+    "title": "CancellationQuote",
     "type": "object"
    },
    "CreateBookingIn": {
@@ -506,6 +579,11 @@
    "ListingSnapshot": {
     "description": "What the listing looked like when it was booked: enough to draw a\nbooking card without asking the catalog about every row, and the record of\nwhat was actually agreed even if the listing changes or is removed later.",
     "properties": {
+     "cancellationPolicy": {
+      "default": "flexible",
+      "title": "Cancellationpolicy",
+      "type": "string"
+     },
      "category": {
       "enum": [
        "fabrication",
@@ -524,6 +602,11 @@
      "district": {
       "title": "District",
       "type": "string"
+     },
+     "instantBook": {
+      "default": false,
+      "title": "Instantbook",
+      "type": "boolean"
      },
      "ownerName": {
       "title": "Ownername",
@@ -624,6 +707,11 @@
       "title": "Body",
       "type": "string"
      },
+     "flagged": {
+      "default": false,
+      "title": "Flagged",
+      "type": "boolean"
+     },
      "id": {
       "title": "Id",
       "type": "string"
@@ -667,6 +755,17 @@
      "open": {
       "title": "Open",
       "type": "integer"
+     },
+     "until": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Until"
      }
     },
     "required": [
@@ -834,6 +933,16 @@
       "title": "Base",
       "type": "integer"
      },
+     "discount": {
+      "default": 0,
+      "title": "Discount",
+      "type": "integer"
+     },
+     "discountLabel": {
+      "default": "",
+      "title": "Discountlabel",
+      "type": "string"
+     },
      "extra": {
       "title": "Extra",
       "type": "integer"
@@ -869,6 +978,21 @@
      "ownerNet"
     ],
     "title": "Quote",
+    "type": "object"
+   },
+   "RenterRatingIn": {
+    "properties": {
+     "quality": {
+      "maximum": 5.0,
+      "minimum": 1.0,
+      "title": "Quality",
+      "type": "integer"
+     }
+    },
+    "required": [
+     "quality"
+    ],
+    "title": "RenterRatingIn",
     "type": "object"
    },
    "ResolveIn": {
@@ -1300,6 +1424,46 @@
     "summary": "Cancel"
    }
   },
+  "/bookings/{booking_id}/cancellation": {
+   "get": {
+    "description": "What cancelling now would refund, shown before anyone confirms.",
+    "operationId": "cancellation_quote_bookings__booking_id__cancellation_get",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "booking_id",
+      "required": true,
+      "schema": {
+       "title": "Booking Id",
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/CancellationQuote"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Cancellation Quote"
+   }
+  },
   "/bookings/{booking_id}/complete": {
    "post": {
     "operationId": "complete_bookings__booking_id__complete_post",
@@ -1610,6 +1774,23 @@
        "title": "Booking Id",
        "type": "string"
       }
+     },
+     {
+      "in": "header",
+      "name": "Idempotency-Key",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "maxLength": 80,
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "Idempotency-Key"
+      }
      }
     ],
     "requestBody": {
@@ -1645,6 +1826,46 @@
      }
     },
     "summary": "Send"
+   }
+  },
+  "/bookings/{booking_id}/no-show": {
+   "post": {
+    "description": "The other side never came. Either side reports it about the other, in\nthe first 2 hours of the booked time, while nobody marked the hand-over.",
+    "operationId": "no_show_bookings__booking_id__no_show_post",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "booking_id",
+      "required": true,
+      "schema": {
+       "title": "Booking Id",
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Booking"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "No Show"
    }
   },
   "/bookings/{booking_id}/payment": {
@@ -1700,6 +1921,23 @@
        "title": "Booking Id",
        "type": "string"
       }
+     },
+     {
+      "in": "header",
+      "name": "Idempotency-Key",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "maxLength": 80,
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "Idempotency-Key"
+      }
      }
     ],
     "requestBody": {
@@ -1735,6 +1973,73 @@
      }
     },
     "summary": "Rate"
+   }
+  },
+  "/bookings/{booking_id}/rate-renter": {
+   "post": {
+    "description": "Two-way reviews: the owner rates the renter after a completed booking,\nonce. Builds the renter's record other owners see before accepting.",
+    "operationId": "rate_renter_bookings__booking_id__rate_renter_post",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "booking_id",
+      "required": true,
+      "schema": {
+       "title": "Booking Id",
+       "type": "string"
+      }
+     },
+     {
+      "in": "header",
+      "name": "Idempotency-Key",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "maxLength": 80,
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "Idempotency-Key"
+      }
+     }
+    ],
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/RenterRatingIn"
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Booking"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Rate Renter"
    }
   },
   "/bookings/{booking_id}/start": {
@@ -2004,6 +2309,55 @@
      }
     },
     "summary": "Open Bookings"
+   }
+  },
+  "/internal/stats/active-people": {
+   "get": {
+    "description": "For the DSA transparency numbers (catalog's /admin/dsa-stats).",
+    "operationId": "active_people_internal_stats_active_people_get",
+    "parameters": [
+     {
+      "in": "query",
+      "name": "from",
+      "required": true,
+      "schema": {
+       "title": "From",
+       "type": "string"
+      }
+     },
+     {
+      "in": "query",
+      "name": "until",
+      "required": true,
+      "schema": {
+       "title": "Until",
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ActivePeople"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Active People"
    }
   },
   "/me/blocks": {
