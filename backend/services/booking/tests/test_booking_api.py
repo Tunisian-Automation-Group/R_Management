@@ -656,3 +656,38 @@ def test_flexible_only_until_counsel_confirms(client, app, issuer):
     _do(client, issuer, HOST, bid, "accept")
     q = client.get(f"/bookings/{bid}/cancellation", headers=issuer.headers(BUYER)).json()
     assert q["policy"] == "flexible" and q["refundAmount"] == 4600
+
+
+def test_neither_side_sees_the_other_s_review_before_publication(client, app, issuer):
+    bid = _requested(client, app, issuer, start_h=0.25)
+    for who, action in ((HOST, "accept"), (HOST, "start"), (BUYER, "complete")):
+        _do(client, issuer, who, bid, action)
+    _do(client, issuer, BUYER, bid, "rate", onTime=True, quality=1)
+    assert "outcome" not in client.get(f"/bookings/{bid}", headers=issuer.headers(HOST)).json(), "blind to the owner"
+    assert client.get(f"/bookings/{bid}", headers=issuer.headers(BUYER)).json()["outcome"]["quality"] == 1
+    r = client.post(f"/bookings/{bid}/rate-renter", json={"quality": 5}, headers=issuer.headers(HOST)).json()
+    assert r["outcome"]["quality"] == 1 and r["renterRating"] == 5, "both published: both visible"
+
+
+def test_a_reinstated_person_can_book_again(client, app, issuer):
+    from cappy_common.events import OWNER_REINSTATED, OWNER_SUSPENDED
+
+    for t in (OWNER_SUSPENDED, OWNER_REINSTATED):
+        call(
+            app,
+            app.state.dispatcher.handle,
+            Event(id=new_id("ev"), type=t, source="catalog", occurred_at=now_iso(), data={"ownerId": BUYER}),
+        )
+    assert client.post("/bookings", json=_body(), headers=issuer.headers(BUYER)).status_code == 201
+
+
+def test_suspending_someone_declines_their_pending_requests(client, app, issuer):
+    from cappy_common.events import OWNER_SUSPENDED
+
+    bid = _requested(client, app, issuer)
+    call(
+        app,
+        app.state.dispatcher.handle,
+        Event(id=new_id("ev"), type=OWNER_SUSPENDED, source="catalog", occurred_at=now_iso(), data={"ownerId": BUYER}),
+    )
+    assert client.get(f"/bookings/{bid}", headers=issuer.headers(HOST)).json()["status"] == "declined"

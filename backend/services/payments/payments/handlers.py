@@ -86,6 +86,9 @@ def handlers(provider: Provider, service_name: str, payouts_on: bool = True) -> 
             kept = row.amount - refund
             owner_part = kept * row.owner_net // row.amount if row.amount else 0
             row.status = "refunded"
+            if owner_part > 0 and (not payouts_on or row.chargeback_at is not None):
+                # Refund done; the owner's share waits like any payout would.
+                raise NotReady(f"payout for {row.booking_id} held (payouts off or a chargeback)")
             if owner_part > 0:
                 # A late cancellation: the owner keeps their share of what was kept.
                 account = await session.get(ConnectAccountRow, row.owner_id)

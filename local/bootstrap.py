@@ -36,6 +36,7 @@ CONSUMERS = {
         "moderation.owner_suspended",
         "payment.identity_verified",
         "profile.deleted",
+        "moderation.owner_reinstated",
     ],
     "payments": ["booking.status_changed", "profile.deleted"],
     "notifications": [

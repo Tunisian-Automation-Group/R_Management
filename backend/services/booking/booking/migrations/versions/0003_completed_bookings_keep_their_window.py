@@ -32,6 +32,19 @@ def _constraint(statuses: str) -> None:
 
 
 def upgrade() -> None:
+    # Windows that were sold twice before this fix would make the constraint
+    # fail. Say which, so an operator resolves them (refund one) and reruns.
+    clash = (
+        op.get_bind()
+        .exec_driver_sql(
+            "SELECT a.id, b.id FROM bookings a JOIN bookings b ON a.listing_id = b.listing_id AND a.id < b.id "
+            f"WHERE a.status IN ({HOLDING}) AND b.status IN ({HOLDING}) "
+            "AND tstzrange(a.window_start, a.window_end, '[)') && tstzrange(b.window_start, b.window_end, '[)') LIMIT 20"
+        )
+        .fetchall()
+    )
+    if clash:
+        raise RuntimeError(f"bookings overlap on a listing and must be resolved first: {clash}")
     _constraint(HOLDING)
 
 

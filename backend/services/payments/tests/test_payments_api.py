@@ -484,3 +484,22 @@ def test_a_payout_issues_one_numbered_fee_invoice(client, app, issuer):
     page = client.get(f"/payments/invoices/{inv['number']}", headers=issuer.headers("host"))
     assert page.status_code == 200 and "Rechnung" in page.text and "6,00 €" in page.text
     assert client.get(f"/payments/invoices/{inv['number']}", headers=issuer.headers("buyer")).status_code == 404
+
+
+def test_a_late_cancellation_payout_waits_while_payouts_are_off(issuer, broker):
+    provider = FakeProvider()
+    app = build_app(_settings(payouts_on=False), provider=provider, verifier=issuer.verifier())
+    with TestClient(app) as c:
+        app.state._portal = c.portal
+        _intent(c)
+        _status(app, "bk_1", "accepted")
+        ev = Event(
+            id=new_id("ev"),
+            type=BOOKING_STATUS_CHANGED,
+            source="booking",
+            occurred_at=now_iso(),
+            data={"bookingId": "bk_1", "to": "cancelled", "refundAmount": 0},
+        )
+        with pytest.raises(NotReady):
+            call(app, app.state.dispatcher.handle, ev)
+        assert "transfer" not in [op for op, _ in provider.calls]

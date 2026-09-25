@@ -65,8 +65,14 @@ def app(issuer, broker, tmp_path, bookings):
         internal_token="i" * 40,
         media_dir=str(tmp_path / "media"),
     )
+    from catalog.clients import Payments
+
     return build_app(
-        settings, media_store=DirectoryStore(str(tmp_path / "media")), bookings=bookings, verifier=issuer.verifier()
+        settings,
+        media_store=DirectoryStore(str(tmp_path / "media")),
+        bookings=bookings,
+        payments=Payments(),
+        verifier=issuer.verifier(),
     )
 
 
@@ -792,3 +798,59 @@ def test_renter_ratings_build_a_renter_record(client, app, issuer):
         _run(app, lambda e=e: app.state.dispatcher.handle(e))
     owner = client.get("/owners/user-a").json()
     assert (owner["renterRatingSum"], owner["renterJobs"]) == (9, 2)
+
+
+def test_hand_over_instructions_are_never_public(client, issuer):
+    _profile(client, issuer)
+    h = issuer.headers("user-a")
+    body = {"listing": _window_listing(title="Secret door drill", instructions="Key under the blue pot, code 4471")}
+    lid = client.post("/listings", json=body, headers=h).json()["listing"]["id"]
+    assert "4471" not in client.get(f"/listings/{lid}").text
+    assert "4471" not in client.get("/search", params={"q": "secret door"}).text
+    assert "4471" in client.get("/me/listings", headers=h).text, "the owner sees their own"
+    assert client.get(f"/internal/listings/{lid}/handover", headers=INTERNAL).json()["instructions"].endswith("4471")
+
+
+def test_raising_the_price_later_still_waits_for_review(client, issuer):
+    _profile(client, issuer)
+    h = issuer.headers("user-a")
+    lid = client.post("/listings", json={"listing": _window_listing(), "slots": [_slot()]}, headers=h).json()[
+        "listing"
+    ]["id"]
+    assert client.get(f"/listings/{lid}").status_code == 200
+    client.put(f"/listings/{lid}", json={"listing": _window_listing(ratePerHour=50_000)}, headers=h)
+    assert client.get(f"/listings/{lid}").status_code == 404, "held for a staff check"
+    assert [x["id"] for x in client.get("/admin/listings/held", headers=_staff(issuer)).json()] == [lid]
+
+
+def test_reports_cannot_be_used_to_flood_an_inbox(client, issuer):
+    body = {
+        "targetType": "listing",
+        "targetId": "l9",
+        "reason": "spam",
+        "details": "Looks like spam to me",
+        "email": "victim@example.com",
+    }
+    codes = [client.post("/reports", json=body).status_code for _ in range(4)]
+    assert codes == [201, 201, 201, 429]
+    mine = client.post("/reports", json={**body, "email": "elsewhere@example.com"}, headers=issuer.headers("user-a"))
+    assert mine.status_code == 201
+
+
+def test_taking_down_declines_requests_and_owners_manage_held_listings(client, app, issuer, broker):
+    why = {"statement": "Counterfeit machinery offered under a known brand (terms 4)."}
+    assert client.post("/admin/listings/l9/take-down", json=why, headers=_staff(issuer)).status_code == 204
+    flush(app)
+    assert any(e.data == {"listingId": "l9", "change": "removed"} for e in broker.of_type(LISTING_CHANGED))
+    _profile(client, issuer)
+    h = issuer.headers("user-a")
+    lid = client.post("/listings", json={"listing": _window_listing(ratePerHour=90_000)}, headers=h).json()["listing"][
+        "id"
+    ]
+    assert (
+        client.put(
+            f"/listings/{lid}", json={"listing": _window_listing(ratePerHour=80_000, title="Fixed typo")}, headers=h
+        ).status_code
+        == 200
+    )
+    assert client.delete(f"/listings/{lid}", headers=h).status_code == 204

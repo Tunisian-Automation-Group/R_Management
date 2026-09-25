@@ -26,6 +26,10 @@ _requirement = TypeAdapter(Requirement)
 
 
 def to_booking(row: BookingRow, viewer: str) -> Booking:
+    # Blind reviews: until both are published, neither side sees the other's.
+    blind = row.reviews_published_at is None
+    outcome = row.outcome if not (blind and viewer == row.owner_id) else None
+    renter_rating = row.renter_rating if not (blind and viewer == row.requester_id) else None
     """``requesterId`` is absent when the viewer is the requester and present
     when someone is asking *them*: the app's Earn inbox keys on it."""
     return Booking(
@@ -36,12 +40,12 @@ def to_booking(row: BookingRow, viewer: str) -> Booking:
         created_at=iso_from_datetime(row.created_at),
         requester_id=None if row.requester_id == viewer else row.requester_id,
         decline_reason=row.decline_reason,
-        outcome=Outcome.model_validate(row.outcome) if row.outcome else None,
+        outcome=Outcome.model_validate(outcome) if outcome else None,
         listing=ListingSnapshot.model_validate(row.listing_snapshot),
         expires_at=iso_from_datetime(row.expires_at) if row.expires_at else None,
         handover=Handover.model_validate(row.handover) if row.handover and row.status in SHOWS_HANDOVER else None,
         can_start_from=iso_from_datetime(row.window_start - START_EARLY) if row.status == "accepted" else None,
-        renter_rating=row.renter_rating,
+        renter_rating=renter_rating,
         refund_amount=row.refund_amount,
     )
 
@@ -95,6 +99,14 @@ class BookingRepository:
     async def by_idempotency_key(self, requester_id: str, key: str) -> BookingRow | None:
         q = select(BookingRow).where(BookingRow.requester_id == requester_id, BookingRow.idempotency_key == key)
         return (await self.s.execute(q)).scalar_one_or_none()
+
+    async def pending_of_requester(self, requester_id: str) -> list[BookingRow]:
+        q = (
+            select(BookingRow)
+            .where(BookingRow.requester_id == requester_id, BookingRow.status.in_(("awaiting_payment", "requested")))
+            .with_for_update()
+        )
+        return list((await self.s.execute(q)).scalars())
 
     async def pending_for_listing(self, listing_id: str) -> list[BookingRow]:
         q = (

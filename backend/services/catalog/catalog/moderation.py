@@ -9,16 +9,16 @@ hears the outcome.
 
 from __future__ import annotations
 
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 
 from fastapi import Depends, Query, Request, status
 from pydantic import EmailStr, Field
-from sqlalchemy import and_, or_, select, update
+from sqlalchemy import and_, func, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from cappy_common.app import ApiRouter
 from cappy_common.auth import Principal, optional_principal, require_admin
-from cappy_common.errors import Conflict, Invalid, NotFound
+from cappy_common.errors import Conflict, Invalid, NotFound, RateLimited
 from cappy_common.events import MODERATION_DECISION, OWNER_SUSPENDED, REPORT_RECEIVED
 from cappy_common.ids import new_id
 from cappy_common.models import CamelModel, Iso
@@ -86,6 +86,26 @@ async def report(
 ) -> Report:
     if p is None and body.email is None:
         raise Invalid("leave an email so we can tell you what we decide")
+    # A signed-in reporter hears back on their own address, never one they type.
+    email = None if p is not None else str(body.email)
+    day = datetime.now(UTC) - timedelta(days=1)
+    if email is not None:
+        # Every report sends mail to the address given: bound it, so nobody can
+        # use Cappy to flood an inbox (or ruin its sending reputation).
+        sent = (
+            await session.execute(
+                select(func.count()).where(ReportRow.reporter_email == email, ReportRow.created_at >= day)
+            )
+        ).scalar_one()
+        if sent >= 3:
+            raise RateLimited("we already have your reports from today; we will be in touch")
+    about = (
+        await session.execute(
+            select(func.count()).where(ReportRow.target_id == body.target_id, ReportRow.created_at >= day)
+        )
+    ).scalar_one()
+    if about >= 20:
+        raise RateLimited("this has been reported many times today; it is already being looked at")
     row = ReportRow(
         id=new_id("rp"),
         target_type=body.target_type,
@@ -93,7 +113,7 @@ async def report(
         reason=body.reason,
         details=body.details.strip(),
         reporter_id=p.sub if p else None,
-        reporter_email=str(body.email) if body.email else None,
+        reporter_email=email,
         status="open",
         created_at=datetime.now(UTC),
     )
@@ -137,6 +157,15 @@ async def queue(
     return Page(items=[_view(r) for r in rows], next_cursor=nxt)
 
 
+async def _removed(request: Request, session: AsyncSession, listing_ids: list[str]) -> None:
+    """Booking declines these listings' pending requests (their card holds are
+    released): nobody can accept a request on a listing that was taken down."""
+    from cappy_common.events import LISTING_CHANGED
+
+    for lid in listing_ids:
+        await _outbox(request).add(session, LISTING_CHANGED, {"listingId": lid, "change": "removed"})
+
+
 async def _take_down(session: AsyncSession, listing_id: str) -> ListingRow:
     row = await session.get(ListingRow, listing_id, with_for_update=True)
     if row is None or row.deleted_at is not None:
@@ -146,18 +175,22 @@ async def _take_down(session: AsyncSession, listing_id: str) -> ListingRow:
     return row
 
 
-async def _suspend(session: AsyncSession, owner_id: str) -> OwnerRow:
+async def _suspend(session: AsyncSession, owner_id: str) -> tuple[OwnerRow, list[str]]:
     owner = await session.get(OwnerRow, owner_id, with_for_update=True)
     if owner is None or owner.deleted_at is not None:
         raise NotFound(f"owner {owner_id} not found")
     now = datetime.now(UTC)
     owner.suspended_at = now
+    live = select(ListingRow.id).where(
+        ListingRow.owner_id == owner_id, ListingRow.deleted_at.is_(None), ListingRow.moderated_at.is_(None)
+    )
+    taken = list((await session.execute(live)).scalars())
     await session.execute(
         update(ListingRow)
         .where(ListingRow.owner_id == owner_id, ListingRow.deleted_at.is_(None), ListingRow.moderated_at.is_(None))
         .values(moderated_at=now, active=False, updated_at=now)
     )
-    return owner
+    return owner, taken
 
 
 async def _record(
@@ -210,10 +243,12 @@ async def decide(
         if r.target_type != "listing":
             raise Invalid("only a listing can be taken down; suspend the owner for a profile")
         await _take_down(session, r.target_id)
+        await _removed(request, session, [r.target_id])
     elif body.action == "suspend":
         if affected is None:
             raise Invalid("this report does not point at an owner")
-        await _suspend(session, affected)
+        _, taken = await _suspend(session, affected)
+        await _removed(request, session, taken)
         await _outbox(request).add(session, OWNER_SUSPENDED, {"ownerId": affected})
     now = datetime.now(UTC)
     r.status = "dismissed" if body.action == "dismiss" else "actioned"
@@ -257,6 +292,7 @@ async def take_down(
     listing_id: str, body: ActionIn, request: Request, session: AsyncSession = Tx, p: Principal = Depends(require_admin)
 ) -> None:
     row = await _take_down(session, listing_id)
+    await _removed(request, session, [listing_id])
     await _record(session, p.sub, "take_down", "listing", listing_id, body.statement)
     await _outbox(request).add(
         session,
@@ -275,7 +311,8 @@ async def take_down(
 async def suspend(
     owner_id: str, body: ActionIn, request: Request, session: AsyncSession = Tx, p: Principal = Depends(require_admin)
 ) -> None:
-    await _suspend(session, owner_id)
+    _, taken = await _suspend(session, owner_id)
+    await _removed(request, session, taken)
     await _record(session, p.sub, "suspend", "owner", owner_id, body.statement)
     await _outbox(request).add(session, OWNER_SUSPENDED, {"ownerId": owner_id})
     await _outbox(request).add(
@@ -293,7 +330,7 @@ async def suspend(
 
 @admin.post("/owners/{owner_id}/reinstate", status_code=status.HTTP_204_NO_CONTENT)
 async def reinstate(
-    owner_id: str, body: ActionIn, session: AsyncSession = Tx, p: Principal = Depends(require_admin)
+    owner_id: str, body: ActionIn, request: Request, session: AsyncSession = Tx, p: Principal = Depends(require_admin)
 ) -> None:
     """Lifts the suspension. Their listings stay down; they can list again."""
     owner = await session.get(OwnerRow, owner_id, with_for_update=True)
@@ -301,6 +338,9 @@ async def reinstate(
         raise NotFound(f"owner {owner_id} not found")
     owner.suspended_at = None
     await _record(session, p.sub, "reinstate", "owner", owner_id, body.statement)
+    from cappy_common.events import OWNER_REINSTATED
+
+    await _outbox(request).add(session, OWNER_REINSTATED, {"ownerId": owner_id})
 
 
 @admin.get("/audit", response_model=list[AuditEntry])

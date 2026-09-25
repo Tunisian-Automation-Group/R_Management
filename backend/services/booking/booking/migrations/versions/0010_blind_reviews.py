@@ -19,6 +19,12 @@ depends_on = None
 def upgrade() -> None:
     op.add_column("bookings", sa.Column("rated_at", sa.DateTime(timezone=True), nullable=True))
     op.add_column("bookings", sa.Column("reviews_published_at", sa.DateTime(timezone=True), nullable=True))
+    # Bookings rated before blind reviews were published at the time: mark them
+    # so, or the sweep would publish (and count) them a second time.
+    op.execute(
+        "UPDATE bookings SET reviews_published_at = updated_at, rated_at = updated_at "
+        "WHERE outcome IS NOT NULL OR renter_rating IS NOT NULL"
+    )
 
 
 def downgrade() -> None:

@@ -35,11 +35,11 @@ async def on_booking_rated(session: AsyncSession, event: Event) -> None:
     d = event.data
     repo = CatalogRepository(session)
     outcome = Outcome.model_validate(d["outcome"])
-    await repo.apply_outcome(d["ownerId"], outcome)
-
     review_id = f"rv_{d['bookingId']}"
     if await repo.has_review(review_id):
+        # The same booking's rating again (a republished event): count it once.
         return
+    await repo.apply_outcome(d["ownerId"], outcome)
     try:
         await repo.listing_row(d["listingId"], include_deleted=True)
     except Exception:  # noqa: BLE001 - a listing that never existed has no page for the words

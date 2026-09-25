@@ -80,7 +80,10 @@ def to_owner(r: OwnerRow) -> Owner:
     )
 
 
-def to_listing(r: ListingRow) -> AnyListing:
+def to_listing(r: ListingRow, *, private: bool = False) -> AnyListing:
+    """``private`` for the owner's own views: hand-over instructions (door
+    codes, where the key is) are never in a public answer; renters get them
+    with the address once a booking is accepted (/internal/.../handover)."""
     data = {
         "id": r.id,
         "ownerId": r.owner_id,
@@ -89,7 +92,7 @@ def to_listing(r: ListingRow) -> AnyListing:
         "title": r.title,
         "blurb": r.blurb,
         "district": r.district,
-        "instructions": r.instructions,
+        "instructions": r.instructions if private else "",
         "rules": r.rules,
         "active": r.active,
         **r.spec,
@@ -194,7 +197,7 @@ class CatalogRepository:
         media = (await self.s.execute(select(MediaRow).where(MediaRow.owner_id == owner_id))).scalars()
         return {
             "profile": owner.model_dump(mode="json", by_alias=True) if owner else None,
-            "listings": [to_listing(r).model_dump(mode="json", by_alias=True) for r in listings],
+            "listings": [to_listing(r, private=True).model_dump(mode="json", by_alias=True) for r in listings],
             "saved": [{"listingId": r.listing_id, "savedAt": r.saved_at.isoformat()} for r in saved],
             "reviewsWritten": [
                 {"listingId": r.listing_id, "rating": r.rating, "text": r.text, "at": r.at.isoformat()} for r in reviews
@@ -352,9 +355,12 @@ class CatalogRepository:
     def _live(self):
         return ListingRow.deleted_at.is_(None) & ListingRow.moderated_at.is_(None) & ListingRow.held_at.is_(None)
 
-    async def listing_row(self, listing_id: str, *, include_deleted: bool = False) -> ListingRow:
+    async def listing_row(
+        self, listing_id: str, *, include_deleted: bool = False, include_held: bool = False
+    ) -> ListingRow:
         row = await self.s.get(ListingRow, listing_id)
-        hidden = row is not None and (row.deleted_at or row.moderated_at or row.held_at) is not None
+        held = row is not None and row.held_at is not None and not include_held
+        hidden = row is not None and ((row.deleted_at or row.moderated_at) is not None or held)
         if not row or (hidden and not include_deleted):
             raise NotFound(f"listing {listing_id} not found")
         return row
@@ -380,7 +386,7 @@ class CatalogRepository:
         more = len(rows) > limit
         rows = rows[:limit]
         nxt = encode_cursor({"at": rows[-1].created_at.isoformat(), "id": rows[-1].id}) if more else None
-        return [to_listing(r) for r in rows], nxt
+        return [to_listing(r, private=True) for r in rows], nxt
 
     async def create_listing(self, listing: AnyListing, slots: list[Slot]) -> tuple[AnyListing, list[Slot]]:
         """Mints the ids. Whatever ids the client sent are ignored."""
@@ -406,18 +412,18 @@ class CatalogRepository:
         await self.s.flush()
         saved = [await self._add_slot(listing_id, s) for s in slots]
         await self.s.flush()
-        return to_listing(row), saved
+        return to_listing(row, private=True), saved
 
     async def update_listing(self, listing_id: str, listing: AnyListing) -> AnyListing:
-        row = await self.listing_row(listing_id)
+        row = await self.listing_row(listing_id, include_held=True)
         row.title, row.blurb, row.instructions = listing.title, listing.blurb, listing.instructions
         row.rules, row.photos, row.district = listing.rules, listing.photos or [], listing.district
         row.spec, row.updated_at = _spec(listing), _now()
         await self.s.flush()
-        return to_listing(row)
+        return to_listing(row, private=True)
 
     async def set_address(self, listing_id: str, address: str | None) -> None:
-        row = await self.listing_row(listing_id)
+        row = await self.listing_row(listing_id, include_held=True)
         row.address = (address or "").strip() or None
         await self.s.flush()
 
@@ -430,13 +436,13 @@ class CatalogRepository:
         return dict((await self.s.execute(q)).all())
 
     async def set_active(self, listing_id: str, active: bool) -> AnyListing:
-        row = await self.listing_row(listing_id)
+        row = await self.listing_row(listing_id, include_held=True)
         row.active, row.updated_at = active, _now()
         await self.s.flush()
-        return to_listing(row)
+        return to_listing(row, private=True)
 
     async def soft_delete(self, listing_id: str) -> None:
-        row = await self.listing_row(listing_id)
+        row = await self.listing_row(listing_id, include_held=True)
         row.deleted_at = row.updated_at = _now()
         row.active = False
         # Hearts on something that is gone help nobody; its reviews stay, so the

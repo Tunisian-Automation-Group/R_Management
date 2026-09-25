@@ -23,6 +23,7 @@ types = [
     "moderation.owner_suspended",
     "payment.identity_verified",
     "booking.renter_rated",
+    "moderation.owner_reinstated",
     "listing.changed",
 ]
 for t in types:
@@ -36,6 +37,7 @@ expected = {
         "moderation.owner_suspended",
         "payment.identity_verified",
         "profile.deleted",
+        "moderation.owner_reinstated",
     },
     "payments": {"booking.status_changed", "profile.deleted"},
     "notifications": {

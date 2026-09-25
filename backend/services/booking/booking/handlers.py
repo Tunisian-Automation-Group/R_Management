@@ -10,6 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from cappy_common.events import (
     IDENTITY_VERIFIED,
     LISTING_CHANGED,
+    OWNER_REINSTATED,
     OWNER_SUSPENDED,
     PAYMENT_AUTHORISED,
     PAYMENT_FAILED,
@@ -74,6 +75,18 @@ def handlers(settings: Settings) -> dict[str, Handler]:
         from cappy_common.db import insert_or_ignore
 
         await insert_or_ignore(session, SuspendedRow, person_id=event.data["ownerId"], at=datetime.now(UTC))
+        # Their own pending requests go too (their listings' requests are
+        # declined through listing.changed).
+        repo = BookingRepository(session, outbox)
+        now = datetime.now(UTC)
+        for row in await repo.pending_of_requester(event.data["ownerId"]):
+            if to := system_status("listing_removed", row.status):
+                await repo.move(row, to, "system", now, expires_at=None, decline_reason="The account was suspended")
+
+    async def on_reinstated(session: AsyncSession, event: Event) -> None:
+        from sqlalchemy import delete
+
+        await session.execute(delete(SuspendedRow).where(SuspendedRow.person_id == event.data["ownerId"]))
 
     async def on_verified(session: AsyncSession, event: Event) -> None:
         from cappy_common.db import insert_or_ignore
@@ -82,11 +95,18 @@ def handlers(settings: Settings) -> dict[str, Handler]:
 
     async def on_profile_deleted(session: AsyncSession, event: Event) -> None:
         """Their blocks and flags go; bookings stay (financial records)."""
-        from sqlalchemy import delete, or_
+        from sqlalchemy import delete, or_, update
 
         person = event.data["ownerId"]
         await session.execute(delete(BlockRow).where(or_(BlockRow.blocker_id == person, BlockRow.blocked_id == person)))
         await session.execute(delete(VerifiedRow).where(VerifiedRow.person_id == person))
+        # What they wrote may name them or hold their number: the other side
+        # keeps the conversation's shape, not their words.
+        from .tables import MessageRow
+
+        await session.execute(
+            update(MessageRow).where(MessageRow.sender_id == person).values(body="[removed: the account was deleted]")
+        )
 
     return {
         PROFILE_DELETED: on_profile_deleted,
@@ -95,4 +115,5 @@ def handlers(settings: Settings) -> dict[str, Handler]:
         PAYMENT_FAILED: on_failed,
         LISTING_CHANGED: on_listing_changed,
         OWNER_SUSPENDED: on_suspended,
+        OWNER_REINSTATED: on_reinstated,
     }

@@ -73,6 +73,7 @@ PROFILE_DELETED = "profile.deleted"
 REPORT_RECEIVED = "moderation.report_received"
 MODERATION_DECISION = "moderation.decision"
 OWNER_SUSPENDED = "moderation.owner_suspended"
+OWNER_REINSTATED = "moderation.owner_reinstated"
 LISTING_CHANGED = "listing.changed"
 
 ALL_TYPES = frozenset(
@@ -93,6 +94,7 @@ ALL_TYPES = frozenset(
         REPORT_RECEIVED,
         MODERATION_DECISION,
         OWNER_SUSPENDED,
+        OWNER_REINSTATED,
         LISTING_CHANGED,
         PAYOUTS_READY,
         IDENTITY_VERIFIED,

@@ -68,3 +68,32 @@ def test_only_bookings_that_never_happened_release_their_window():
     # Used time stays sold (a job finished early); unused time is freed.
     assert {"completed", "disputed"} <= HOLDING
     assert HOLDING.isdisjoint({"declined", "cancelled", "expired", "payment_failed"})
+
+
+def test_masking_keeps_dates_and_catches_contact_details():
+    from booking.messages import mask
+
+    kept = [
+        "from 12.10.2026 to 14.10.2026",
+        "2026-10-12 to 2026-10-14",
+        "weights 100 200 300 kg",
+        "order #1234567",
+        "the signal light on the machine is broken, it blinks red",
+        "2 saws at 14:00 for 3 hours",
+        "1.250,00 EUR",
+        "Hauptstr. 12, 10115 Berlin",
+        "z.B. morgen",
+    ]
+    hidden = [
+        "Call me on +49 151 2345 6789",
+        "ring 0151 23456789",
+        "mail erin@example.com",
+        "bob at gmail dot com",
+        "bob(at)gmail.com",
+        "see www.mydeals.com",
+        "shop at example.berlin",
+        "whatsapp me +49 151 234 5678",
+        "insta @erin.makes",
+    ]
+    assert [t for t in kept if mask(t) != t] == []
+    assert [t for t in hidden if mask(t) == t] == []

@@ -271,6 +271,43 @@ async def identity_status(session: AsyncSession = Tx, p: Principal = Depends(req
     return IdentityOut(status=row.status if row else "none")
 
 
+# --- internal: a person's data export --------------------------------------------------------
+
+
+@internal.get("/people/{person}/export")
+async def export_person(person: str, session: AsyncSession = Tx) -> dict:
+    """What payments holds about them (GDPR art. 15/20). Card details stay
+    with Stripe and are never here."""
+    from .tables import InvoiceRow
+
+    account = await session.get(ConnectAccountRow, person)
+    identity = await session.get(IdentityRow, person)
+    invoices = (await session.execute(select(InvoiceRow).where(InvoiceRow.owner_id == person))).scalars()
+    paid = (
+        await session.execute(
+            select(PaymentRow)
+            .where((PaymentRow.requester_id == person) | (PaymentRow.owner_id == person))
+            .limit(10_000)
+        )
+    ).scalars()
+    return {
+        "payoutAccount": {"connected": True, "payoutsEnabled": account.payouts_enabled} if account else None,
+        "identity": {
+            "status": identity.status,
+            "verifiedAt": identity.verified_at.isoformat() if identity.verified_at else None,
+        }
+        if identity
+        else None,
+        "invoices": [
+            {"number": i.number, "bookingId": i.booking_id, "gross": i.gross, "issuedAt": i.issued_at.isoformat()}
+            for i in invoices
+        ],
+        "payments": [
+            {"bookingId": p.booking_id, "amount": p.amount, "currency": p.currency, "status": p.status} for p in paid
+        ],
+    }
+
+
 # --- Stripe -----------------------------------------------------------------------------------
 
 

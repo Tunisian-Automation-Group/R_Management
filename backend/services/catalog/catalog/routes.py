@@ -221,7 +221,8 @@ async def _validate_listing(
 
 
 async def _owned(repo: CatalogRepository, listing_id: str, user: str):
-    row = await repo.listing_row(listing_id)
+    # The owner may edit or withdraw a listing that waits for review.
+    row = await repo.listing_row(listing_id, include_held=True)
     if row.owner_id != user:
         # Someone else's listing is indistinguishable from none at all.
         raise NotFound(f"listing {listing_id} not found")
@@ -278,6 +279,7 @@ async def export_me(request: Request, repo=Depends(get_repo), p: Principal = Dep
     """A copy of everything held about me, as one JSON file."""
     data = await repo.export(p.sub)
     data.update(await request.app.state.bookings.all_for(p.sub))
+    data["payments"] = await request.app.state.payments.export_for(p.sub)
     data["exportedAt"] = now_iso()
     return Response(
         content=json.dumps(data, indent=1, ensure_ascii=False),
@@ -436,6 +438,12 @@ async def update_listing(
         already_shown=frozenset(row.photos or []),
     )
     updated = await repo.update_listing(listing_id, listing)
+    owner = await repo.owner(p.sub)
+    settings = request.app.state.settings
+    if owner.jobs_done == 0 and listing.rate_per_hour > settings.review_above_cents and row.held_at is None:
+        # Raising the price past the review threshold is a new listing as far
+        # as fraud goes: it waits for a staff check like one.
+        await repo.hold(listing_id)
     if "address" in body.model_fields_set:
         await repo.set_address(listing_id, body.address)
     await _outbox(request).add(repo.s, LISTING_CHANGED, {"listingId": listing_id, "change": "updated"})

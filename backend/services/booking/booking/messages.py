@@ -32,16 +32,37 @@ router = ApiRouter()
 HIDDEN = "[shared once the booking is accepted]"
 
 _EMAIL = re.compile(r"[\w.+-]+@[\w-]+(\.[\w-]+)+")
-_URL = re.compile(r"(https?://|www\.)\S+|\b[\w-]+\.(com|de|net|org|io|eu|co|me|info|app)(/\S*)?\b", re.I)
-# Seven or more digits, allowing the spaces, dots, dashes and brackets people type.
-_PHONE = re.compile(r"(\+?\d[\d\s().-]{5,}\d)")
-_HANDLES = re.compile(r"\b(whats\s*app|telegram|signal|instagram|insta|snap(chat)?)\b[^\n]{0,40}", re.I)
+# "bob at gmail dot com", "bob(at)gmail.com", "bob [at] gmail [dot] com"
+_EMAIL_SPELLED = re.compile(
+    r"\b[\w.+-]+\s*(\(at\)|\[at\]|\s+at\s+)\s*[\w-]+\s*(\.|\(dot\)|\[dot\]|\s+dot\s+)\s*[a-z]{2,24}\b", re.I
+)
+# Links, and bare domains on any ending (example.berlin, shop.io/…).
+_URL = re.compile(r"(https?://|www\.)\S+|\b[a-z0-9-]{2,}\.(?!\d)[a-z]{2,24}(/\S*)?\b", re.I)
+# Dates and times are what booking conversations are about: never masked.
+_DATE = re.compile(r"\b\d{1,4}[./-]\d{1,2}[./-]\d{1,4}\b|\b\d{1,2}:\d{2}\b")
+# A phone number is written like one: +49…, 0049…, or 0… with 7+ digits in all.
+_PHONE = re.compile(r"(?<![\w#])(\+|00|0)\d[\d\s()/.-]{5,}\d")
+# A messenger name counts only with a handle or number after it.
+_HANDLES = re.compile(
+    r"\b(whats\s*app|telegram|signal|instagram|insta|snap(chat)?)\b\s*(me|at|on|via|:)?\s*(@[\w.]+|\+?\d[\d\s-]{5,}\d)",
+    re.I,
+)
+_TOKEN = "\u0000{}\u0000"
 
 
 def mask(text: str) -> str:
-    for pattern in (_EMAIL, _URL, _HANDLES):
+    # Set dates aside so no phone or domain rule can take them.
+    kept: list[str] = []
+
+    def keep(m: re.Match) -> str:
+        kept.append(m.group(0))
+        return _TOKEN.format(len(kept) - 1)
+
+    text = _DATE.sub(keep, text)
+    for pattern in (_EMAIL, _EMAIL_SPELLED, _HANDLES, _URL):
         text = pattern.sub(HIDDEN, text)
-    return _PHONE.sub(lambda m: HIDDEN if sum(c.isdigit() for c in m.group(0)) >= 7 else m.group(0), text)
+    text = _PHONE.sub(lambda m: HIDDEN if sum(c.isdigit() for c in m.group(0)) >= 7 else m.group(0), text)
+    return re.sub("\u0000(\\d+)\u0000", lambda m: kept[int(m.group(1))], text)
 
 
 class MessageIn(CamelModel):
