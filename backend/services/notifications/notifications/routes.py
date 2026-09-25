@@ -16,7 +16,9 @@ from cappy_common.pagination import clamp_limit, decode_cursor, encode_cursor
 from cappy_common.runtime import Tx
 from cappy_common.timeutil import dt_from_iso, iso_from_datetime
 
+from .prefs import Prefs, prefs_of, save
 from .tables import DeviceRow, InboxRow
+from .texts import render
 
 router = ApiRouter(prefix="/notifications")
 me = ApiRouter(prefix="/me")
@@ -89,20 +91,29 @@ class Inbox(CamelModel):
     unread: int
 
 
-def _item(r: InboxRow) -> Item:
+def _item(r: InboxRow, locale: str | None) -> Item:
+    title, body = r.title, r.body
+    if r.params is not None:
+        try:
+            title, text = render(r.kind, locale, **r.params)
+            body = text.partition("\n\n")[0]
+        except (KeyError, ValueError):  # a text key or param that changed since: as sent
+            pass
     return Item(
-        id=r.id, kind=r.kind, title=r.title, body=r.body, link=r.link, at=iso_from_datetime(r.at), read=bool(r.read_at)
+        id=r.id, kind=r.kind, title=title, body=body, link=r.link, at=iso_from_datetime(r.at), read=bool(r.read_at)
     )
 
 
 @router.get("", response_model=Inbox)
 async def inbox(
+    request: Request,
     cursor: str | None = None,
     limit: int | None = None,
     session: AsyncSession = Tx,
     p: Principal = Depends(require_principal),
 ) -> Inbox:
-    """Newest first; ``next`` continues towards older ones."""
+    """Newest first; ``next`` continues towards older ones. In the language the
+    app asks for (``Accept-Language``: de… → German, else English)."""
     n = clamp_limit(limit)
     q = select(InboxRow).where(InboxRow.user_id == p.sub)
     if key := decode_cursor(cursor):
@@ -114,10 +125,21 @@ async def inbox(
         await session.execute(select(func.count()).where(InboxRow.user_id == p.sub, InboxRow.read_at.is_(None)))
     ).scalar_one()
     return Inbox(
-        items=[_item(r) for r in rows],
+        items=[_item(r, request.headers.get("accept-language")) for r in rows],
         next=encode_cursor({"at": rows[-1].at.isoformat(), "id": rows[-1].id}) if more else None,
         unread=unread,
     )
+
+
+@router.get("/settings", response_model=Prefs)
+async def get_settings(session: AsyncSession = Tx, p: Principal = Depends(require_principal)) -> Prefs:
+    return await prefs_of(session, p.sub)
+
+
+@router.put("/settings", response_model=Prefs)
+async def put_settings(body: Prefs, session: AsyncSession = Tx, p: Principal = Depends(require_principal)) -> Prefs:
+    """Every category, both channels. Some emails still come (prefs.py says which)."""
+    return await save(session, p.sub, body)
 
 
 class ReadIn(CamelModel):
@@ -135,14 +157,17 @@ async def mark_read(body: ReadIn, session: AsyncSession = Tx, p: Principal = Dep
 
 
 @internal.get("/people/{person}/export")
-async def export_person(person: str, session: AsyncSession = Tx) -> list[dict]:
-    """Their notifications, for a data export (GDPR art. 15/20)."""
+async def export_person(person: str, session: AsyncSession = Tx) -> dict:
+    """Their notifications and settings, for a data export (GDPR art. 15/20)."""
     rows = (
         await session.execute(
             select(InboxRow).where(InboxRow.user_id == person).order_by(InboxRow.at.desc()).limit(10_000)
         )
     ).scalars()
-    return [_item(r).model_dump(mode="json", by_alias=True) for r in rows]
+    return {
+        "items": [_item(r, None).model_dump(mode="json", by_alias=True) for r in rows],
+        "settings": (await prefs_of(session, person)).model_dump(mode="json", by_alias=True),
+    }
 
 
 # --- signing out everywhere ------------------------------------------------------------------

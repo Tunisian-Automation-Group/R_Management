@@ -24,6 +24,16 @@ class Settings(CommonSettings):
     # Kill switch (docs/runbook.md): false holds every payout on its queue
     # (retried with backoff) until switched back on. Nothing is lost.
     payouts_on: bool = True
+    # The issuer on fee invoices (§ 14 (4) UStG): the operator's legal name,
+    # postal address (comma-separated lines) and tax number and/or VAT ID.
+    legal_company: str = "Cappy (local, not a company)"
+    legal_address: str = "Musterstraße 1, 10115 Berlin"
+    legal_vat_id: str = ""
+    legal_tax_number: str = "00/000/00000 (local)"
+    # The issuer's calendar and tax (invoices.Issuer): Germany by default.
+    invoice_time_zone: str = "Europe/Berlin"
+    invoice_tax_rate_bps: int = 1900
+    invoice_tax_label: str = "USt"
 
     def unsafe_reasons(self) -> list[str]:
         problems = super().unsafe_reasons()
@@ -35,6 +45,10 @@ class Settings(CommonSettings):
             problems.append("STRIPE_SECRET_KEY and STRIPE_WEBHOOK_SECRET are required")
         if not self.stripe_publishable_key:
             problems.append("STRIPE_PUBLISHABLE_KEY is required")
+        if "local" in self.legal_company or "Muster" in self.legal_address:
+            problems.append("LEGAL_COMPANY and LEGAL_ADDRESS must be the operator's (invoices, § 14 UStG)")
+        if not self.legal_vat_id and (not self.legal_tax_number or "local" in self.legal_tax_number):
+            problems.append("LEGAL_VAT_ID or LEGAL_TAX_NUMBER is required (invoices, § 14 UStG)")
         if not self.web_base_url.startswith("https://"):
             problems.append("WEB_BASE_URL must be https")
         return problems

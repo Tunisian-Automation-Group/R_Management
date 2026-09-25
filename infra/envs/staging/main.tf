@@ -50,6 +50,12 @@ variable "switches" {
   default = { bookings = true, payouts = true, listings = true }
 }
 
+# The operator on fee invoices (§ 14 UStG), in the untracked tfvars:
+# legal = { company = "...", address = "..., ...", vat_id = "DE...", tax_number = "" }
+variable "legal" {
+  type = object({ company = string, address = string, vat_id = string, tax_number = string })
+}
+
 # Feature flags (S-26): terraform apply -var 'feature_flags=newcheckout:25,chat:100'
 variable "feature_flags" {
   type    = string
@@ -62,6 +68,7 @@ module "platform" {
 
   switches      = var.switches
   feature_flags = var.feature_flags
+  legal         = var.legal
 
   env          = "staging"
   image_tag    = var.image_tag

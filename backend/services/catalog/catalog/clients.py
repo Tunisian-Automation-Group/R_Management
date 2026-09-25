@@ -69,8 +69,8 @@ class HttpBookings(Bookings):
 
 
 class Notifications:
-    async def export_for(self, person: str) -> list[dict]:
-        return []
+    async def export_for(self, person: str) -> dict:
+        return {}
 
     async def aclose(self) -> None:
         """Release resources."""
@@ -80,8 +80,8 @@ class HttpNotifications(Notifications):
     def __init__(self, base_url: str, token: str) -> None:
         self._c = ServiceClient(base_url, internal_token=token)
 
-    async def export_for(self, person: str) -> list[dict]:
-        """The in-app notifications they were sent."""
+    async def export_for(self, person: str) -> dict:
+        """The in-app notifications they were sent, and their settings."""
         return await self._c.get(f"/internal/people/{quote(person, safe='')}/export")
 
     async def aclose(self) -> None:

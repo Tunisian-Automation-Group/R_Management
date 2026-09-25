@@ -83,15 +83,17 @@ class BookingRow(Base):
 
 
 class MessageRow(Base):
-    """What the two sides of a booking say to each other. Stored as shown:
-    contact details are masked before it is saved if the booking was not
-    accepted yet (docs/research/2026-09-launch-gaps.md)."""
+    """What the two sides of a booking say to each other. Sent before the
+    booking was accepted, contact details are masked in ``body``; the words as
+    written wait in ``unmasked`` and are shown once it is accepted
+    (docs/research/2026-09-launch-gaps.md)."""
 
     __tablename__ = "booking_messages"
     id: Mapped[str] = mapped_column(String(40), primary_key=True)
     booking_id: Mapped[str] = mapped_column(String(40), ForeignKey("bookings.id", ondelete="CASCADE"))
     sender_id: Mapped[str] = mapped_column(String(64))
     body: Mapped[str] = mapped_column(String(2000))
+    unmasked: Mapped[str | None] = mapped_column(String(2000), nullable=True)
     at: Mapped[datetime] = mapped_column(UtcDateTime)
     # Asks to pay around Cappy (messages.flagged): shown with a warning, kept for moderation.
     flagged: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")

@@ -31,7 +31,7 @@ from cappy_common.events import (
     Outbox,
 )
 
-from .invoices import issue
+from .invoices import GERMANY, Issuer, issue
 from .provider import Declined, Provider
 from .tables import OUTBOX, ConnectAccountRow, IdentityRow, PaymentRow
 
@@ -45,7 +45,9 @@ class NotReady(RuntimeError):
     (and alarmed on) if it never becomes possible."""
 
 
-def handlers(provider: Provider, service_name: str, payouts_on: bool = True) -> dict[str, Handler]:
+def handlers(
+    provider: Provider, service_name: str, payouts_on: bool = True, issuer: Issuer = GERMANY
+) -> dict[str, Handler]:
     outbox = Outbox(OUTBOX, service_name)
 
     async def on_status_changed(session: AsyncSession, event: Event) -> None:
@@ -108,6 +110,8 @@ def handlers(provider: Provider, service_name: str, payouts_on: bool = True) -> 
                     owner_id=row.owner_id,
                     fee_gross=kept - owner_part,
                     currency=row.currency,
+                    about=d,
+                    issuer=issuer,
                 )
         elif to == "completed" and row.status == "captured" and row.chargeback_at is not None:
             log.error("CHARGEBACK hold: not paying out booking %s", row.booking_id)
@@ -133,6 +137,8 @@ def handlers(provider: Provider, service_name: str, payouts_on: bool = True) -> 
                 owner_id=row.owner_id,
                 fee_gross=row.amount - row.owner_net,
                 currency=row.currency,
+                about=d,
+                issuer=issuer,
             )
         elif to == "completed" and row.status in ("created", "authorised"):
             # Completed without an accept (auto-completion of an accepted

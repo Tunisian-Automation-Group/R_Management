@@ -1,7 +1,7 @@
 """Messages between the two sides of a booking, and blocks between people.
 
 Until a booking is accepted, phone numbers, email addresses and links are
-masked: taking a deal off the platform before it is agreed is how renters
+masked (and shown to both sides once it is accepted): taking a deal off the platform before it is agreed is how renters
 get scammed and owners go unpaid (Airbnb and Vinted both enforce this).
 """
 
@@ -95,11 +95,13 @@ class Message(CamelModel):
     flagged: bool = False
 
 
-def _view(row: MessageRow, viewer: str) -> Message:
+def _view(row: MessageRow, viewer: str, agreed: bool) -> Message:
     return Message(
         id=row.id,
         sender_id=row.sender_id,
-        body=row.body,
+        # ponytail: "agreed" is the booking's status now, so contact details
+        # sent before an accept hide again if it is later cancelled.
+        body=row.unmasked if agreed and row.unmasked else row.body,
         at=iso_from_datetime(row.at),
         mine=row.sender_id == viewer,
         flagged=row.flagged,
@@ -136,13 +138,19 @@ async def send(
     text = body.body.strip()
     if not text:
         raise Invalid("say something")
-    if row.status not in SHOWS_HANDOVER:
-        text = mask(text)
+    agreed = row.status in SHOWS_HANDOVER
+    shown = text if agreed else mask(text)
     suspicious = flagged(body.body)
     if suspicious:
         log.warning("message on %s from %s asks to pay outside Cappy", row.id, p.sub)
     msg = MessageRow(
-        id=new_id("msg"), booking_id=row.id, sender_id=p.sub, body=text, at=datetime.now(UTC), flagged=suspicious
+        id=new_id("msg"),
+        booking_id=row.id,
+        sender_id=p.sub,
+        body=shown,
+        unmasked=text if shown != text else None,
+        at=datetime.now(UTC),
+        flagged=suspicious,
     )
     session.add(msg)
     await session.flush()
@@ -152,7 +160,7 @@ async def send(
         {"bookingId": row.id, "senderId": p.sub, "recipientId": other, "title": row.listing_snapshot["title"]},
     )
     request.app.state.relay.wake()
-    answer = _view(msg, p.sub)
+    answer = _view(msg, p.sub, agreed)
     await remember(session, IDEMPOTENCY, p.sub, key, fp, answer)
     return answer
 
@@ -167,7 +175,8 @@ async def conversation(
     p: Principal = Depends(require_principal),
 ) -> Page[Message]:
     """Oldest first; the cursor continues towards newer messages."""
-    await BookingRepository(session, request.app.state.outbox).visible(booking_id, p.sub)
+    booking = await BookingRepository(session, request.app.state.outbox).visible(booking_id, p.sub)
+    agreed = booking.status in SHOWS_HANDOVER
     n = clamp_limit(limit)
     q = select(MessageRow).where(MessageRow.booking_id == booking_id)
     key = decode_cursor(cursor)
@@ -178,7 +187,7 @@ async def conversation(
     more = len(rows) > n
     rows = rows[:n]
     nxt = encode_cursor({"at": rows[-1].at.isoformat(), "id": rows[-1].id}) if more else None
-    return Page(items=[_view(r, p.sub) for r in rows], next_cursor=nxt)
+    return Page(items=[_view(r, p.sub, agreed) for r in rows], next_cursor=nxt)
 
 
 @router.put("/me/blocks/{person}", status_code=status.HTTP_204_NO_CONTENT)

@@ -3,13 +3,21 @@ in the recipient's language: Cognito's `locale` attribute, which the app sets.""
 
 from __future__ import annotations
 
+from datetime import datetime
+from zoneinfo import ZoneInfo
+
+from cappy_common.timeutil import dt_from_iso
+
 TEXTS: dict[str, dict[str, tuple[str, str]]] = {
     "en": {
         "paid": (
             "You have been paid {amount}",
             "Your share for booking {booking} is on its way to your bank.\n\n{web}/earn",
         ),
-        "requested": ("New request: {title}", "Someone wants to book {title}. Answer within a day.\n\n{link}"),
+        "requested": (
+            "New request: {title}",
+            "Someone wants to book {title}. Answer by {deadline}, or the request lapses.\n\n{link}",
+        ),
         "accepted": ("Confirmed: {title}", "Your booking of {title} is confirmed.\n\n{link}"),
         "instant_booked": (
             "New booking: {title}",
@@ -48,7 +56,7 @@ TEXTS: dict[str, dict[str, tuple[str, str]]] = {
         ),
         "requested": (
             "Neue Anfrage: {title}",
-            "Jemand möchte {title} buchen. Bitte antworte innerhalb eines Tages.\n\n{link}",
+            "Jemand möchte {title} buchen. Bitte antworte bis {deadline}, sonst verfällt die Anfrage.\n\n{link}",
         ),
         "accepted": ("Bestätigt: {title}", "Deine Buchung von {title} ist bestätigt.\n\n{link}"),
         "instant_booked": (
@@ -98,9 +106,41 @@ def language(locale: str | None) -> str:
     return "de" if (locale or "").lower().startswith("de") else "en"
 
 
-def render(key: str, locale: str | None, **params: str) -> tuple[str, str]:
+def render(key: str, locale: str | None, **params) -> tuple[str, str]:
+    """Raw params (``_cents``, ``_deadline``, ``_tz``) are put in the reader's words here,
+    so an inbox item stored once reads right in whichever language it is read."""
+    params = dict(params)
+    if "_cents" in params:
+        params["amount"] = money(*params.pop("_cents"), locale)
+    zone = params.pop("_tz", None) or DEFAULT_TIME_ZONE
+    if "_deadline" in params:
+        at = params.pop("_deadline")
+        params["deadline"] = (
+            when(dt_from_iso(at), locale, zone)
+            if at
+            else ("the booked start" if language(locale) == "en" else "zum gebuchten Beginn")
+        )
     subject, body = TEXTS[language(locale)][key]
     return subject.format(**params), body.format(**params)
+
+
+# Times are told in the listing's zone when the event carries one
+# (``timeZone``). ponytail: listings have no zone yet (Germany only), so Berlin.
+DEFAULT_TIME_ZONE = "Europe/Berlin"
+_DAYS = {
+    "en": ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"],
+    "de": ["Mo.", "Di.", "Mi.", "Do.", "Fr.", "Sa.", "So."],
+}
+_MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
+
+
+def when(t: datetime, locale: str | None, zone: str = DEFAULT_TIME_ZONE) -> str:
+    """Sat 26 Sep, 14:00 · Sa., 26.09., 14:00 Uhr"""
+    t, lang = t.astimezone(ZoneInfo(zone)), language(locale)
+    day = _DAYS[lang][t.weekday()]
+    if lang == "de":
+        return f"{day}, {t:%d.%m.}, {t:%H:%M} Uhr"
+    return f"{day} {t.day} {_MONTHS[t.month - 1]}, {t:%H:%M}"
 
 
 def money(cents: int, currency: str, locale: str | None) -> str:

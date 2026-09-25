@@ -80,12 +80,16 @@ def status_event(row: BookingRow, before: str | None, by: str) -> dict:
         "ownerId": row.owner_id,
         "listingId": row.listing_id,
         "title": row.listing_snapshot["title"],
+        "ownerName": row.listing_snapshot.get("ownerName"),
+        "ownerBusiness": row.listing_snapshot.get("ownerBusiness"),
         "amount": row.amount,
         "currency": row.currency,
         "refundAmount": row.refund_amount,
         "noShow": row.no_show,
         "windowStart": iso_from_datetime(row.window_start),
         "windowEnd": iso_from_datetime(row.window_end),
+        # A request's answer-by (it lapses then): what the owner is told.
+        "expiresAt": iso_from_datetime(row.expires_at) if row.expires_at else None,
     }
 
 

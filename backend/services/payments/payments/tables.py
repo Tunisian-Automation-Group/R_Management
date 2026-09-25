@@ -70,6 +70,14 @@ class InvoiceRow(Base):
     gross: Mapped[int] = mapped_column(Integer)
     currency: Mapped[str] = mapped_column(String(3))
     issued_at: Mapped[datetime] = mapped_column(UtcDateTime)
+    # What and for whom, copied at issue (invoices never change). Null on
+    # invoices issued before 0006.
+    title: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    service_start: Mapped[datetime | None] = mapped_column(UtcDateTime, nullable=True)
+    service_end: Mapped[datetime | None] = mapped_column(UtcDateTime, nullable=True)
+    recipient_name: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    recipient_address: Mapped[str | None] = mapped_column(String(400), nullable=True)
+    recipient_vat_id: Mapped[str | None] = mapped_column(String(20), nullable=True)
 
 
 class InvoiceCounterRow(Base):

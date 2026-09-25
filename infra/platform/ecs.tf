@@ -43,6 +43,10 @@ locals {
       PAYOUTS_ON             = tostring(var.switches.payouts)
       WEB_BASE_URL           = "https://${var.domain}"
       STRIPE_PUBLISHABLE_KEY = "" # replaced from the secret below
+      LEGAL_COMPANY          = var.legal.company
+      LEGAL_ADDRESS          = var.legal.address
+      LEGAL_VAT_ID           = var.legal.vat_id
+      LEGAL_TAX_NUMBER       = var.legal.tax_number
     }
     notifications = {
       MAILER               = "ses"

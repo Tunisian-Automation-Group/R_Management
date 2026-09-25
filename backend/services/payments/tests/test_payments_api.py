@@ -496,6 +496,95 @@ def test_a_payout_issues_one_numbered_fee_invoice(client, app, issuer):
     assert client.get(f"/payments/invoices/{inv['number']}", headers=issuer.headers("buyer")).status_code == 404
 
 
+def test_the_fee_invoice_has_the_ustg_fields(client, app, issuer):
+    """§ 14 (4) UStG: issuer and recipient with addresses, a tax number or VAT
+    ID, the service and its date; dates are German days, not UTC."""
+    _intent(client)
+    _status(app, "bk_1", "accepted")
+    about = {
+        "title": "Band saw",
+        "windowStart": "2026-09-25T22:30:00Z",  # 00:30 on the 26th in Berlin
+        "windowEnd": "2026-09-26T01:00:00Z",
+        "ownerName": "Nadia",
+        "ownerBusiness": {
+            "legalName": "Brandt Werkstatt GmbH",
+            "address": "Ohlauer Str. 5, 10999 Berlin",
+            "vatId": "DE123456789",
+        },
+    }
+    ev = Event(
+        id=new_id("ev"),
+        type=BOOKING_STATUS_CHANGED,
+        source="booking",
+        occurred_at=now_iso(),
+        data={"bookingId": "bk_1", "from": "active", "to": "completed", "by": "x", **about},
+    )
+    assert call(app, app.state.dispatcher.handle, ev)
+    [inv] = client.get("/payments/invoices", headers=issuer.headers("host")).json()
+    assert inv["description"] == "Service fee · Band saw · 26.09.2026" and inv["title"] == "Band saw"
+    page = client.get(f"/payments/invoices/{inv['number']}", headers=issuer.headers("host")).text
+    for field in (
+        app.state.settings.legal_company,
+        "Musterstraße 1",
+        "Steuernummer",
+        "Brandt Werkstatt GmbH",
+        "Ohlauer Str. 5",
+        "DE123456789",
+        "Leistungsdatum: 26.09.2026",
+        "Band saw",
+    ):
+        assert field in page, field
+    assert "siehe Impressum" not in page
+
+
+def test_the_issuer_zone_and_tax_are_settings():
+    """Another market is settings, not code (GOAL 16): zone, rate and label."""
+    import asyncio
+
+    from payments.invoices import Issuer, issue
+
+    from cappy_common.db import Database
+
+    async def run():
+        db = Database("sqlite+aiosqlite://")
+        from payments.tables import Base
+
+        async with db.engine.begin() as c:
+            await c.run_sync(Base.metadata.create_all)
+        async with db.transaction() as s:
+            ca = Issuer(time_zone="America/Toronto", tax_rate_bps=1300, tax_label="HST")
+            # 02:00 UTC on 1 Jan 2027 is still 2026 in Toronto.
+            import payments.invoices as inv
+
+            real = inv.datetime
+
+            class Frozen(real):
+                @classmethod
+                def now(cls, tz=None):
+                    return real(2027, 1, 1, 2, 0, tzinfo=tz)
+
+            inv.datetime = Frozen
+            try:
+                row = await issue(s, booking_id="bk_ca", owner_id="o", fee_gross=1130, currency="cad", issuer=ca)
+            finally:
+                inv.datetime = real
+        await db.dispose()
+        return row
+
+    row = asyncio.run(run())
+    assert row.number.startswith("CAP-2026-") and row.vat_rate_bps == 1300 and row.net == 1000
+
+
+def test_production_needs_the_invoice_issuer():
+    from payments.settings import Settings
+
+    from cappy_common.settings import UnsafeSettings
+
+    with pytest.raises(UnsafeSettings) as e:
+        Settings(app_env="prod")
+    assert "LEGAL_COMPANY" in str(e.value) and "LEGAL_VAT_ID" in str(e.value)
+
+
 def test_a_late_cancellation_payout_waits_while_payouts_are_off(issuer, broker):
     provider = FakeProvider()
     app = build_app(_settings(payouts_on=False), provider=provider, verifier=issuer.verifier())

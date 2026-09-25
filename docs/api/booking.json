@@ -303,6 +303,47 @@
     "title": "BookingCreated",
     "type": "object"
    },
+   "Business": {
+    "description": "A trader's identity (\u00a7 5b UWG, \u00a7 312l BGB): public, so a renter knows\nwho their contract is with. People never have one.",
+    "properties": {
+     "address": {
+      "title": "Address",
+      "type": "string"
+     },
+     "legalName": {
+      "title": "Legalname",
+      "type": "string"
+     },
+     "registerNumber": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Registernumber"
+     },
+     "vatId": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Vatid"
+     }
+    },
+    "required": [
+     "legalName",
+     "address"
+    ],
+    "title": "Business",
+    "type": "object"
+   },
    "BusyIn": {
     "properties": {
      "listingIds": {
@@ -607,6 +648,16 @@
       "default": false,
       "title": "Instantbook",
       "type": "boolean"
+     },
+     "ownerBusiness": {
+      "anyOf": [
+       {
+        "$ref": "#/components/schemas/Business"
+       },
+       {
+        "type": "null"
+       }
+      ]
      },
      "ownerName": {
       "title": "Ownername",

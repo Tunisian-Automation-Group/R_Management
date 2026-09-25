@@ -25,9 +25,10 @@ from cappy_common.events import (
 )
 
 from .mail import Directory, Email, Mailer
+from .prefs import prefs_of, wanted
 from .push import Pusher
-from .tables import DeviceRow, InboxRow
-from .texts import money, render
+from .tables import DeviceRow, InboxRow, PrefsRow
+from .texts import render
 
 log = logging.getLogger(__name__)
 
@@ -51,6 +52,10 @@ def messages(event: Event, web: str) -> list[Message]:
     if event.type != BOOKING_STATUS_CHANGED:
         return []
     params = {"title": d.get("title", "your booking"), "link": f"{web}/bookings/{d['bookingId']}"}
+    if d["to"] == "requested":
+        params["_deadline"] = d.get("expiresAt")
+        if d.get("timeZone"):
+            params["_tz"] = d["timeZone"]
     requester, owner, to, by = d["requesterId"], d["ownerId"], d["to"], d.get("by")
     other = owner if by == requester else requester
     who = {
@@ -125,12 +130,11 @@ def handlers(directory: Directory, mailer: Mailer, web: str, pusher: Pusher | No
     ) -> None:
         sub, explicit, key, params = msg
         address, locale = (explicit, None) if explicit else await directory.person_of(sub) if sub else (None, None)
-        params = dict(params)
-        if "_cents" in params:
-            params["amount"] = money(*params.pop("_cents"), locale)
         subject, text = render(key, locale, **params)
         if sub:
-            await _keep(session, event, sub, key, subject, text, _app_path(params, web))
+            await _keep(session, event, sub, key, params, subject, text, _app_path(params, web))
+            want_push, want_email = wanted(await prefs_of(session, sub), key)
+            push, email = push and want_push, email and want_email
         if push and pusher is not None and sub:
             await _push(session, pusher, sub, subject, text)
         if email:
@@ -156,6 +160,7 @@ def handlers(directory: Directory, mailer: Mailer, web: str, pusher: Pusher | No
 
         await session.execute(delete(DeviceRow).where(DeviceRow.user_id == event.data["ownerId"]))
         await session.execute(delete(InboxRow).where(InboxRow.user_id == event.data["ownerId"]))
+        await session.execute(delete(PrefsRow).where(PrefsRow.user_id == event.data["ownerId"]))
 
     return {
         BOOKING_STATUS_CHANGED: notify,
@@ -186,10 +191,23 @@ def _app_path(params: dict, web: str) -> str | None:
     return "/earn" if "booking" in params else None
 
 
-async def _keep(session: AsyncSession, event: Event, sub: str, key: str, title: str, text: str, link: str | None):
+async def _keep(
+    session: AsyncSession, event: Event, sub: str, key: str, params: dict, title: str, text: str, link: str | None
+):
+    """The text key and its params are kept, so the bell renders each item in
+    the language it is read in (V3-13); title and body are the words as sent."""
     item_id = "ntf_" + hashlib.sha256(f"{event.id}:{sub}:{key}".encode()).hexdigest()[:32]
     if await session.get(InboxRow, item_id) is None:
         body = text.partition("\n\n")[0]
         session.add(
-            InboxRow(id=item_id, user_id=sub, kind=key, title=title, body=body, link=link, at=datetime.now(UTC))
+            InboxRow(
+                id=item_id,
+                user_id=sub,
+                kind=key,
+                params=params,
+                title=title,
+                body=body,
+                link=link,
+                at=datetime.now(UTC),
+            )
         )

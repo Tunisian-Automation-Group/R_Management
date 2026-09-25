@@ -126,7 +126,9 @@ def handlers(settings: Settings) -> dict[str, Handler]:
         from .tables import MessageRow
 
         await session.execute(
-            update(MessageRow).where(MessageRow.sender_id == person).values(body="[removed: the account was deleted]")
+            update(MessageRow)
+            .where(MessageRow.sender_id == person)
+            .values(body="[removed: the account was deleted]", unmasked=None)
         )
 
     return {

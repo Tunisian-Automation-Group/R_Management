@@ -26,7 +26,7 @@ def build_app(
     runtime = Runtime(
         settings,
         metadata=Base.metadata,
-        handlers=handlers(provider, settings.service_name, settings.payouts_on),
+        handlers=handlers(provider, settings.service_name, settings.payouts_on, invoices.issuer_of(settings)),
         loops=[reconcile],
         on_stop=close,
     )

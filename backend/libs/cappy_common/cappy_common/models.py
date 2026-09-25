@@ -313,6 +313,8 @@ class ListingSnapshot(CamelModel):
     photo: str | None = None
     instant_book: bool = False
     cancellation_policy: str = "flexible"
+    # Who the renter contracted with, when the owner is a trader (§ 5b UWG).
+    owner_business: Business | None = None
 
 
 class MatchView(CamelModel):

@@ -496,9 +496,22 @@ def test_contact_details_are_masked_until_the_booking_is_accepted(client, app, i
     assert "+49 151" in say(HOST, "Ring +49 151 9999 0000 at the gate").json()["body"], "shared once accepted"
     page = client.get(f"/bookings/{bid}/messages", headers=issuer.headers(HOST)).json()
     assert [m["mine"] for m in page["items"]] == [False, True, True]
+    # Accepted: what was masked before is shown as written, to both sides.
+    first = page["items"][0]["body"]
+    assert "+49 151 2345 6789" in first and "erin@example.com" in first and HIDDEN not in first
     assert client.get(f"/bookings/{bid}/messages", headers=issuer.headers("stranger")).status_code == 404
     call(app, app.state.relay.flush)
     assert [e.data["recipientId"] for e in broker.of_type(BOOKING_MESSAGE)] == [HOST, BUYER, BUYER]
+
+
+def test_contact_details_stay_masked_when_the_booking_is_never_accepted(client, app, issuer):
+    from booking.messages import HIDDEN
+
+    bid = _requested(client, app, issuer)
+    client.post(f"/bookings/{bid}/messages", json={"body": "Mail erin@example.com"}, headers=issuer.headers(BUYER))
+    _do(client, issuer, HOST, bid, "decline")
+    [m] = client.get(f"/bookings/{bid}/messages", headers=issuer.headers(HOST)).json()["items"]
+    assert HIDDEN in m["body"] and "example.com" not in m["body"]
 
 
 def test_a_block_stops_messages_and_new_bookings(client, app, issuer):

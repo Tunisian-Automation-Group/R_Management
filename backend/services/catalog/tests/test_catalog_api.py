@@ -552,7 +552,7 @@ def test_deleting_an_account_forgets_what_is_theirs(client, app, issuer, booking
     assert data["profile"]["name"] == "Ada Lovelace" and [l["id"] for l in data["listings"]] == [lid]
     assert data["saved"][0]["listingId"] == "l9" and data["bookings"]
 
-    assert data["notifications"] == []
+    assert data["notifications"] == {}
     bookings.open["user-a"] = 1
     refused = client.delete("/me", headers=h)
     assert refused.status_code == 409, "not while a booking is open"

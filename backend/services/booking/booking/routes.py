@@ -185,6 +185,8 @@ async def create_booking(
             "district": view.listing.district,
             "category": view.listing.category,
             "ownerName": view.owner.name,
+            # A trader's identity, for the fee invoice (§ 14 UStG) and the renter.
+            **({"ownerBusiness": view.owner.business.model_dump(by_alias=True)} if view.owner.business else {}),
             "instantBook": view.listing.instant_book,
             "cancellationPolicy": view.listing.cancellation_policy,
             **({"photo": view.listing.photos[0]} if view.listing.photos else {}),
@@ -561,7 +563,9 @@ async def export_person(person: str, repo: BookingRepository = Depends(get_repo)
     ).scalars()
     return PersonExport(
         bookings=[to_booking(r, person) for r in await repo.all_for(person)],
-        messages_sent=[{"bookingId": m.booking_id, "body": m.body, "at": iso_from_datetime(m.at)} for m in msgs],
+        messages_sent=[
+            {"bookingId": m.booking_id, "body": m.unmasked or m.body, "at": iso_from_datetime(m.at)} for m in msgs
+        ],
         evidence=[
             {"bookingId": e.booking_id, "stage": e.stage, "photos": e.photos, "at": iso_from_datetime(e.at)} for e in ev
         ],

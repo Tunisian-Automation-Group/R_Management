@@ -205,7 +205,10 @@ def test_the_notification_centre_lists_marks_read_exports_and_forgets():
             ("paid", "/earn", False),
             ("requested", "/bookings/bk_1", False),
         ], "newest first, links inside the app"
-        assert box["items"][1]["title"] == "New request: Table saw" and "Answer within a day" in box["items"][1]["body"]
+        assert (
+            box["items"][1]["title"] == "New request: Table saw"
+            and "Answer by the booked start" in box["items"][1]["body"]
+        )
         assert c.get("/notifications", headers=buyer).json() == {"items": [], "unread": 0}, "only their own"
 
         page = c.get("/notifications", params={"limit": 1}, headers=host).json()
@@ -221,9 +224,72 @@ def test_the_notification_centre_lists_marks_read_exports_and_forgets():
         assert c.get("/notifications", headers=host).json()["unread"] == 0
 
         assert c.get("/internal/people/host/export").status_code == 403
-        assert len(c.get("/internal/people/host/export", headers={"X-Internal-Token": "i" * 40}).json()) == 2
+        export = c.get("/internal/people/host/export", headers={"X-Internal-Token": "i" * 40}).json()
+        assert len(export["items"]) == 2 and export["settings"]["categories"]["marketing"]["email"] is False
         c.portal.call(app.state.dispatcher.handle, _event(PROFILE_DELETED, ownerId="host"))
         assert c.get("/notifications", headers=host).json()["items"] == [], "deleted with the account"
+
+
+def test_the_bell_speaks_the_readers_language_and_names_the_real_deadline():
+    """Stored once, rendered when read (V3-13): switching the app to German
+    turns every item German, and a request says when it lapses."""
+    from notifications.push import LogPusher
+
+    from cappy_common.testing import TestIssuer
+
+    issuer = TestIssuer()
+    settings = Settings(app_env="test", database_url="sqlite+aiosqlite://", internal_token="i" * 40)
+    app = build_app(settings, directory=People(), mailer=LogMailer(), pusher=LogPusher(), verifier=issuer.verifier())
+    host = issuer.headers("host")
+    with TestClient(app) as c:
+        # Lapses at 14:00 Berlin (12:00 UTC in summer time).
+        c.portal.call(
+            app.state.dispatcher.handle, _change("requested", by="payments", expiresAt="2026-09-26T12:00:00Z")
+        )
+        c.portal.call(
+            app.state.dispatcher.handle,
+            _event(PAYOUT_SENT, bookingId="bk_1", ownerId="host", amount=123456, currency="eur"),
+        )
+        assert app.state.mailer.sent[0].text.startswith("Someone wants to book Table saw. Answer by Sat 26 Sep, 14:00")
+        en = c.get("/notifications", headers={**host, "Accept-Language": "en-GB,en;q=0.9"}).json()["items"]
+        de = c.get("/notifications", headers={**host, "Accept-Language": "de-DE,de;q=0.9"}).json()["items"]
+    assert [i["title"] for i in en] == ["You have been paid €1,234.56", "New request: Table saw"]
+    assert [i["title"] for i in de] == ["Du hast 1.234,56 € erhalten", "Neue Anfrage: Table saw"]
+    assert "bis Sa., 26.09., 14:00 Uhr" in de[1]["body"]
+
+
+def test_settings_choose_channels_but_contract_emails_always_come():
+    from notifications.push import LogPusher
+
+    from cappy_common.events import PROFILE_DELETED
+    from cappy_common.testing import TestIssuer
+
+    issuer, pusher = TestIssuer(), LogPusher()
+    settings = Settings(app_env="test", database_url="sqlite+aiosqlite://", internal_token="i" * 40)
+    app = build_app(settings, directory=People(), mailer=LogMailer(), pusher=pusher, verifier=issuer.verifier())
+    host, buyer = issuer.headers("host"), issuer.headers("buyer")
+    with TestClient(app) as c:
+        assert c.get("/notifications/settings").status_code == 401
+        prefs = c.get("/notifications/settings", headers=host).json()
+        assert prefs["categories"]["bookings"] == {"push": True, "email": True}
+        assert prefs["categories"]["marketing"] == {"push": False, "email": False}
+        quiet = {"push": False, "email": False}
+        body = {"categories": {k: quiet for k in ("bookings", "messages", "payouts", "marketing")}}
+        for who in (host, buyer):
+            assert c.put("/notifications/settings", json=body, headers=who).json() == body
+        assert c.put("/notifications/settings", json={"categories": {}}, headers=host).status_code == 422
+        c.post("/notifications/devices", json={"platform": "ios", "token": "tok-host-phone"}, headers=host)
+        for ev in (
+            _change("requested", by="payments"),  # optional: not emailed, not pushed
+            _change("accepted", by="host", frm="requested"),  # the contract: emailed anyway
+            _event(PAYOUT_SENT, bookingId="bk_1", ownerId="host", amount=4000, currency="eur"),
+        ):
+            c.portal.call(app.state.dispatcher.handle, ev)
+        assert [(m.to, m.subject) for m in app.state.mailer.sent] == [("buyer@example.com", "Confirmed: Table saw")]
+        assert pusher.sent == []
+        assert c.get("/notifications", headers=host).json()["unread"] == 2, "the bell still has everything"
+        c.portal.call(app.state.dispatcher.handle, _event(PROFILE_DELETED, ownerId="host"))
+        assert c.get("/notifications/settings", headers=host).json()["categories"]["bookings"]["email"] is True
 
 
 def test_signing_out_everywhere_revokes_tokens_and_forgets_devices():
@@ -282,3 +348,12 @@ def test_the_person_affected_gets_the_whole_statement_of_reasons(app):
     body = mail.text
     assert "The serial number matches" in body and "illegal content under § 259 StGB" in body
     assert "automated means: no" in body and "6 months" in body and "Art. 21" in body
+
+
+def test_times_are_told_in_the_events_zone_berlin_by_default():
+    from notifications.texts import render
+
+    at = "2026-09-26T12:00:00Z"
+    _, berlin = render("requested", "en", title="Van", link="/", _deadline=at)
+    _, toronto = render("requested", "en", title="Van", link="/", _deadline=at, _tz="America/Toronto")
+    assert "Sat 26 Sep, 14:00" in berlin and "Sat 26 Sep, 08:00" in toronto

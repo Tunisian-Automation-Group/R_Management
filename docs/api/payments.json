@@ -158,6 +158,10 @@
       "title": "Currency",
       "type": "string"
      },
+     "description": {
+      "title": "Description",
+      "type": "string"
+     },
      "gross": {
       "title": "Gross",
       "type": "integer"
@@ -174,6 +178,39 @@
       "title": "Number",
       "type": "string"
      },
+     "serviceEnd": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Serviceend"
+     },
+     "serviceStart": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Servicestart"
+     },
+     "title": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Title"
+     },
      "vat": {
       "title": "Vat",
       "type": "integer"
@@ -186,6 +223,7 @@
     "required": [
      "number",
      "bookingId",
+     "description",
      "net",
      "vatRateBps",
      "vat",
@@ -564,7 +602,7 @@
   },
   "/payments/invoices/{number}": {
    "get": {
-    "description": "A printable invoice (the browser saves it as PDF).",
+    "description": "A printable invoice (the browser saves it as PDF) with the \u00a7 14 (4) UStG\nfields: issuer and recipient with addresses, the issuer's tax number or VAT\nID, date, number, the service and its date, net, rate, tax and total.",
     "operationId": "invoice_page_payments_invoices__number__get",
     "parameters": [
      {

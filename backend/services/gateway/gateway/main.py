@@ -33,6 +33,8 @@ log = logging.getLogger(__name__)
 _FORWARD_REQUEST = {
     "content-type",
     "accept",
+    # The app's chosen language, for text the server words (the bell, V3-13).
+    "accept-language",
     "authorization",
     "idempotency-key",
     "stripe-signature",

@@ -43,6 +43,7 @@ from gateway.settings import Settings
         ("/notifications/devices/tok-1", NOTIFICATIONS),
         ("/notifications", NOTIFICATIONS),
         ("/notifications/read", NOTIFICATIONS),
+        ("/notifications/settings", NOTIFICATIONS),
         ("/me/sign-out-everywhere", NOTIFICATIONS),
         ("/notifications/anything-else", None),
         # Never reachable from outside, however the path is dressed up.

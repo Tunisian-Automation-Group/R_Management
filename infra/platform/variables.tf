@@ -93,6 +93,11 @@ variable "switches" {
   default = { bookings = true, payouts = true, listings = true }
 }
 
+variable "legal" {
+  description = "The operator's identity for fee invoices (§ 14 UStG): legal name, address (comma-separated lines), VAT ID and/or tax number. Payments refuses to start without it."
+  type        = object({ company = string, address = string, vat_id = string, tax_number = string })
+}
+
 variable "feature_flags" {
   description = "Feature flags for the apps, \"name:percent,...\" (backend/libs/cappy_common/cappy_common/flags.py)"
   type        = string
