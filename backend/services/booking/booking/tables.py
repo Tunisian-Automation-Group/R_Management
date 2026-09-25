@@ -100,6 +100,20 @@ class SuspendedRow(Base):
     at: Mapped[datetime] = mapped_column(UtcDateTime)
 
 
+class EvidenceRow(Base):
+    """Photos either side takes at hand-over (check_in) and return
+    (check_out): what the machine looked like, for damage claims and disputes."""
+
+    __tablename__ = "booking_evidence"
+    id: Mapped[str] = mapped_column(String(40), primary_key=True)
+    booking_id: Mapped[str] = mapped_column(String(40), ForeignKey("bookings.id", ondelete="CASCADE"), index=True)
+    by: Mapped[str] = mapped_column(String(64))
+    stage: Mapped[str] = mapped_column(String(10))
+    photos: Mapped[list] = mapped_column(JsonType)
+    note: Mapped[str | None] = mapped_column(String(1000), nullable=True)
+    at: Mapped[datetime] = mapped_column(UtcDateTime)
+
+
 class TransitionRow(Base):
     """Every status change, by whom and when: the audit trail support and
     disputes need, and what a timeline on the booking screen is drawn from."""

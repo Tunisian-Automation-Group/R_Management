@@ -27,9 +27,9 @@ export class AuthError extends Error {
 /** Plain words for what Cognito says, so a person knows what to do next. */
 const FRIENDLY: Record<string, string> = {
   NotAuthorizedException: 'That email and password do not match.',
-  // Sign-in never says whether an address exists (Cognito answers NotAuthorized);
-  // this is what the reset and confirm flows get for an unknown address.
-  UserNotFoundException: 'There is no account with that email.',
+  // Never say whether an address exists: that tells an attacker which emails
+  // have accounts. (The reset flow swallows it and carries on.)
+  UserNotFoundException: 'Check the email and the code and try again.',
   UsernameExistsException: 'There is already an account with that email. Sign in instead.',
   CodeMismatchException: 'That code is not right. Check the email and try again.',
   ExpiredCodeException: 'That code has expired. Ask for a new one.',

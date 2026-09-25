@@ -24,7 +24,7 @@ const COPY: Record<Mode, { title: string; sub: string; submit: string }> = {
   up: { title: 'Join Cappy', sub: 'One account to buy hours and to sell them. It takes a minute.', submit: 'Create account' },
   confirm: { title: 'Check your email', sub: 'We sent you a six-digit code. It proves the address is yours.', submit: 'Confirm' },
   forgot: { title: 'Forgot your password?', sub: 'We will email you a code to set a new one.', submit: 'Send code' },
-  reset: { title: 'Set a new password', sub: 'Enter the code from the email and your new password.', submit: 'Save password' },
+  reset: { title: 'Set a new password', sub: 'If there is an account for that email, we have sent it a code. Enter it with your new password.', submit: 'Save password' },
 }
 
 /**
@@ -80,7 +80,13 @@ export function Login() {
         nav(next, { replace: true })
         return
       case 'forgot':
-        await auth.forgotPassword(who)
+        // Never say whether an account exists: an unknown address goes on to
+        // the code step like a known one (no code will arrive).
+        try {
+          await auth.forgotPassword(who)
+        } catch (e) {
+          if (!(e instanceof AuthError && e.code === 'UserNotFoundException')) throw e
+        }
         go('reset')
         return
       case 'reset':

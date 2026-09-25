@@ -570,6 +570,25 @@ async def listing_context(
     return await repo.listing_context(listing_id, after=dt_from_iso(after or now_iso()), origin=origin)
 
 
+class EvidenceIn(CamelModel):
+    owner_id: str = Field(max_length=64)
+    urls: list[str] = Field(min_length=1, max_length=12)
+
+
+@internal.post("/media/evidence", status_code=status.HTTP_204_NO_CONTENT)
+async def keep_evidence(body: EvidenceIn, request: Request, repo=Depends(get_repo)) -> Response:
+    """Booking keeps these as check-in/out evidence: they must be the person's
+    own uploads, and they are never swept as unused."""
+    names = [media.name_from_url(request.app.state.settings, u) for u in body.urls]
+    if any(n is None for n in names):
+        raise Invalid("photos must be uploaded to Cappy first (POST /uploads)")
+    owned = await repo.media_owned_by({n for n in names if n}, body.owner_id)
+    if len(owned) != len(set(names)):
+        raise Invalid("those photos were not uploaded by you")
+    await repo.mark_used(owned, body.owner_id)
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
 class Handover(CamelModel):
     address: str | None = None
     instructions: str

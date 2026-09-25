@@ -64,21 +64,21 @@ Contract changes for this round:
 - `GET /owners/{id}` is 404 for a deleted account. Reviews by deleted accounts carry no `authorId`.
 
 Web:
-- [ ] V2-1 BLOCKER: a listing with no reviews crashes (`reviews.average` undefined)
-- [ ] V2-3 Typing in a sheet (rating note, dispute) jumps focus to Close (Sheet effect re-runs on each render)
-- [ ] V2-4 Picking a city centres on its first district (Brandenburg for Berlin): use the district nearest the city's centre; district search in the picker
-- [ ] V2-5 The start button from `canStartFrom`, not a hard-coded 30 minutes
-- [ ] V2-6 The listing form saves values nobody chose (materials, rules, hidden spec defaults); category-specific placeholders and prices
-- [ ] V2-7 The decline sheet's "your listing stays live" is only said when true
-- [ ] V2-8 Data export that works in the store shells and Safari
-- [ ] V2-10 Forgot password never reveals whether an account exists
-- [ ] V2-11 Drop the EU ODR link (the platform closed in July 2025)
-- [ ] V2-13 Accessibility: no button inside a button; errors tied to fields (`aria-describedby`); navigation as links
-- [ ] V2-14 "Free now" only for what is bookable now (the 2-hour lead included)
-- [ ] V2-15 Sort, tabs and "needed within" in the URL, and matching the filter options
-- [ ] V2-17 Saving an edit needs one click
-- [ ] V2-18 Confirm "Mark as handed back"; toasts on sign-out and account deletion
-- [ ] V2-19 "3D printing" capitalisation; one price format; label the owner rating on search rows
+- [x] V2-1 BLOCKER: a listing with no reviews crashes (`reviews.average` undefined)
+- [x] V2-3 Typing in a sheet (rating note, dispute) jumps focus to Close (Sheet effect re-runs on each render)
+- [x] V2-4 Picking a city centres on its first district (Brandenburg for Berlin): use the district nearest the city's centre; district search in the picker
+- [x] V2-5 The start button from `canStartFrom`, not a hard-coded 30 minutes
+- [x] V2-6 The listing form saves values nobody chose (materials, rules, hidden spec defaults); category-specific placeholders and prices
+- [x] V2-7 The decline sheet's "your listing stays live" is only said when true
+- [x] V2-8 Data export that works in the store shells and Safari
+- [x] V2-10 Forgot password never reveals whether an account exists
+- [x] V2-11 Drop the EU ODR link (the platform closed in July 2025)
+- [x] V2-13 Accessibility: no button inside a button; errors tied to fields (`aria-describedby`); navigation as links
+- [x] V2-14 "Free now" only for what is bookable now (the 2-hour lead included)
+- [x] V2-15 Sort, tabs and "needed within" in the URL, and matching the filter options
+- [x] V2-17 Saving an edit needs one click
+- [x] V2-18 Confirm "Mark as handed back"; toasts on sign-out and account deletion
+- [x] V2-19 "3D printing" capitalisation; one price format; label the owner rating on search rows
 
 Backend:
 - [x] V2-2 Double booking: a completed or disputed booking still holds its window (busy windows and the exclusion constraint)
@@ -150,7 +150,7 @@ Engineering, before launch:
 - [x] G-2 (API) DSA Art. 16 notice-and-action ("report this" on listings and profiles) with acknowledgement and outcome email; Art. 17 statements of reasons; Art. 11/12 contact points on the legal pages
 - [x] G-3 Report (`POST /api/reports`, with G-2) and block users (`/api/me/blocks`): no messages or new bookings between them, either way. Reporting comes with G-2
 - [x] G-4 In-app messaging per booking (`/api/bookings/{id}/messages`); phone numbers, emails, links and messenger handles masked until accepted; pushed to the other side (never emailed)
-- [ ] G-5 Check-in and check-out photos on a booking (evidence for damage claims and disputes)
+- [x] G-5 (API) Check-in and check-out photos on a booking (`/api/bookings/{id}/evidence`), the parties' own uploads, never swept
 - [ ] G-6 Checkout compliance: total price including the fee; "zahlungspflichtig buchen"; trader/private owner label; withdrawal information and the withdrawal button; review-verification statement; ranking parameters page
 - [ ] G-7 German localisation (UI, emails, legal pages), English kept
 - [ ] G-8 Renter identity verification with Stripe Identity for high-value listings and vans (needs a DPIA)

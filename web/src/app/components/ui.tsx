@@ -8,6 +8,7 @@ import {
   type ReactNode,
   type TextareaHTMLAttributes,
 } from 'react'
+import { Link } from 'react-router-dom'
 import { Icon, type IconName } from './Icon.tsx'
 
 /** 160ms for micro-interactions, decelerating. Never linear. */
@@ -22,6 +23,8 @@ type ButtonProps = ButtonHTMLAttributes<HTMLButtonElement> & {
   icon?: IconName
   iconAfter?: IconName
   block?: boolean
+  /** Navigation: renders a real link (opens in a new tab, shows its address). */
+  to?: string
 }
 
 /**
@@ -37,6 +40,7 @@ export function Button({
   block,
   className = '',
   children,
+  to,
   ...rest
 }: ButtonProps) {
   const variants: Record<string, string> = {
@@ -56,15 +60,25 @@ export function Button({
     md: 'min-h-[44px] px-5 text-[14px] font-semibold gap-1.5',
     sm: 'tap min-h-[34px] px-3.5 text-[13px] font-semibold gap-1.5',
   }
-  return (
-    <button
-      {...rest}
-      className={`inline-flex items-center justify-center rounded-[var(--radius-control)] ${sizes[size]} ${variants[variant]} ${TR}
-        disabled:pointer-events-none disabled:opacity-30 ${block ? 'w-full' : ''} ${className}`}
-    >
+  const cls = `inline-flex items-center justify-center rounded-[var(--radius-control)] ${sizes[size]} ${variants[variant]} ${TR}
+        disabled:pointer-events-none disabled:opacity-30 ${block ? 'w-full' : ''} ${className}`
+  const inner = (
+    <>
       {icon && <Icon name={icon} size={size === 'lg' ? 19 : 17} strokeWidth={2} />}
       {children}
       {iconAfter && <Icon name={iconAfter} size={size === 'lg' ? 19 : 17} strokeWidth={2} />}
+    </>
+  )
+  if (to) {
+    return (
+      <Link to={to} className={cls} aria-label={rest['aria-label']}>
+        {inner}
+      </Link>
+    )
+  }
+  return (
+    <button {...rest} className={cls}>
+      {inner}
     </button>
   )
 }
@@ -189,8 +203,8 @@ export function Avatar({
 
 /* ------------------------------------------------------------------- Stars */
 
-export function Stars({ value, count }: { value: number | null; count: number }) {
-  if (value === null) {
+export function Stars({ value, count }: { value: number | null | undefined; count: number }) {
+  if (value == null) {
     return <span className="t-sm text-[var(--ink-4)]">New</span>
   }
   return (
@@ -238,12 +252,14 @@ export function Field({
       {children}
       {/* Error sits directly under its own field, never in a summary elsewhere. */}
       {error ? (
-        <p role="alert" className="mt-2 flex items-start gap-1.5 text-[13px] text-[var(--danger)]">
+        <p id={htmlFor && `${htmlFor}-msg`} role="alert" className="mt-2 flex items-start gap-1.5 text-[13px] text-[var(--danger)]">
           <Icon name="alert" size={14} className="mt-[2px] shrink-0" strokeWidth={2} />
           {error}
         </p>
       ) : hint ? (
-        <p className="mt-2 text-[13px] leading-[18px] text-[var(--ink-4)]">{hint}</p>
+        <p id={htmlFor && `${htmlFor}-msg`} className="mt-2 text-[13px] leading-[18px] text-[var(--ink-4)]">
+          {hint}
+        </p>
       ) : null}
     </div>
   )
@@ -263,6 +279,8 @@ export function Input({
 }: InputHTMLAttributes<HTMLInputElement> & { invalid?: boolean }) {
   return (
     <input
+      // The field's error or hint (Field gives it `<id>-msg`) is read with it.
+      aria-describedby={rest.id ? `${rest.id}-msg` : undefined}
       {...rest}
       aria-invalid={invalid || undefined}
       className={`${fieldBase} ${fieldTone(invalid)} ${className}`}
@@ -277,6 +295,7 @@ export function Textarea({
 }: TextareaHTMLAttributes<HTMLTextAreaElement> & { invalid?: boolean }) {
   return (
     <textarea
+      aria-describedby={rest.id ? `${rest.id}-msg` : undefined}
       {...rest}
       aria-invalid={invalid || undefined}
       className={`${fieldBase} resize-none py-3.5 leading-[23px] ${fieldTone(invalid)} ${className}`}
@@ -417,11 +436,16 @@ export function Sheet({
 }) {
   const panel = useRef<HTMLDivElement>(null)
   const titleId = useId()
+  // Callers pass a fresh arrow each render; keep it in a ref so the effect
+  // below runs only when the sheet opens, not on every keystroke inside it
+  // (which moved focus to the first button and closed the sheet on Space).
+  const close = useRef(onClose)
+  close.current = onClose
 
   useEffect(() => {
     if (!open) return
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onClose()
+      if (e.key === 'Escape') close.current()
       // A sheet is modal: keyboard focus must not escape behind it.
       if (e.key === 'Tab' && panel.current) {
         const f = panel.current.querySelectorAll<HTMLElement>(
@@ -447,7 +471,7 @@ export function Sheet({
       document.removeEventListener('keydown', onKey)
       document.body.style.overflow = prev
     }
-  }, [open, onClose])
+  }, [open])
 
   if (!open) return null
 
@@ -585,10 +609,13 @@ export function Row({
 /* ------------------------------------------------------------------ Toast */
 
 export function Toast({ message, onDone }: { message: string; onDone: () => void }) {
+  // As in Sheet: a fresh onDone each render must not restart the timer.
+  const done = useRef(onDone)
+  done.current = onDone
   useEffect(() => {
-    const t = setTimeout(onDone, 2800)
+    const t = setTimeout(() => done.current(), 2800)
     return () => clearTimeout(t)
-  }, [message, onDone])
+  }, [message])
   return (
     <div
       role="status"

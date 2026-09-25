@@ -107,10 +107,7 @@ export function Profile() {
               const id = l.id
               return (
                 <li key={id}>
-                  <button
-                    onClick={() => nav(`/listing/${id}`)}
-                    className="flex w-full items-center gap-4 py-3.5 text-left transition-opacity duration-[160ms] hover:opacity-70"
-                  >
+                  <div className="relative flex w-full items-center gap-4 py-3.5 text-left transition-opacity duration-[160ms] hover:opacity-70">
                     <Photo
                       src={l.photos?.[0]}
                       alt={l.title}
@@ -120,13 +117,18 @@ export function Profile() {
                       className="w-[56px] shrink-0 rounded-[var(--radius-plate)]"
                     />
                     <span className="min-w-0 flex-1">
-                      <span className="block truncate text-[15px] font-semibold">{l.title}</span>
+                      <button
+                        onClick={() => nav(`/listing/${id}`)}
+                        className="block w-full truncate text-left text-[15px] font-semibold after:absolute after:inset-0 after:content-['']"
+                      >
+                        {l.title}
+                      </button>
                       <span className="t-sm block truncate text-[var(--ink-3)]">
                         {o?.name}, {l.district}
                       </span>
                     </span>
                     <SaveButton id={id} title={l.title} className="relative shrink-0" />
-                  </button>
+                  </div>
                 </li>
               )
             })}
@@ -152,6 +154,7 @@ export function Profile() {
           <Button className="mt-4" variant="secondary" onClick={() =>
               void signOut().then(() => {
                 qc.clear()
+                toast('Signed out')
                 nav('/')
               })
             }>

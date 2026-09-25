@@ -1,11 +1,5 @@
 import type { Cents } from './types.ts'
 
-const whole = new Intl.NumberFormat('de-DE', {
-  style: 'currency',
-  currency: 'EUR',
-  maximumFractionDigits: 0,
-})
-
 const exact = new Intl.NumberFormat('de-DE', {
   style: 'currency',
   currency: 'EUR',
@@ -13,12 +7,8 @@ const exact = new Intl.NumberFormat('de-DE', {
   maximumFractionDigits: 2,
 })
 
-/**
- * Cents are dropped only when there are none. A €3.50 wash must never round to
- * €4, at consumer prices the cents are most of the decision.
- */
-export const formatEur = (c: Cents): string =>
-  c % 100 === 0 ? whole.format(c / 100) : exact.format(c / 100)
+/** One format everywhere ("8,00 €"), so the same price never reads two ways. */
+export const formatEur = (c: Cents): string => exact.format(c / 100)
 
 /** Always two decimals, for price breakdowns, where columns must line up. */
 export const formatEurExact = (c: Cents): string => exact.format(c / 100)

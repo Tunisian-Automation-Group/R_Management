@@ -206,7 +206,19 @@ export const useSearch = (q: string, metro?: string) =>
     placeholderData: keepPreviousData,
   })
 
-export const getListing = (id: string) => get<ListingDetail>(`/listings/${id}`)
+// The API leaves out fields it has no value for (no reviews yet: no average).
+// Fill them here, once, so no screen meets `undefined` where it expects null.
+export const getListing = (id: string) =>
+  get<ListingDetail>(`/listings/${id}`).then((d) => ({
+    ...d,
+    reviews: {
+      ...d.reviews,
+      count: d.reviews?.count ?? 0,
+      topTags: d.reviews?.topTags ?? [],
+      average: d.reviews?.average ?? null,
+      onTimeShare: d.reviews?.onTimeShare ?? null,
+    },
+  }))
 export const getOwner = (id: string) => get<Owner>(`/owners/${id}`)
 
 export const useListing = (id: string | undefined) =>
@@ -319,12 +331,29 @@ export const saveProfile = (p: Profile) => put<Owner>('/me', p)
 export async function exportMyData(): Promise<void> {
   const res = await send('GET', '/me/export')
   if (!res.ok) throw new ApiError('Could not prepare your data. Try again.', res.status, 'export')
-  const url = URL.createObjectURL(await res.blob())
+  const blob = await res.blob()
+  const file = new File([blob], 'cappy-my-data.json', { type: 'application/json' })
+  // Phones (and the store shells' web views) cannot save an <a download>; they
+  // can hand a file to the share sheet ("Save to Files", mail, AirDrop).
+  if (navigator.canShare?.({ files: [file] })) {
+    try {
+      await navigator.share({ files: [file], title: 'My Cappy data' })
+      return
+    } catch (e) {
+      if (e instanceof DOMException && e.name === 'AbortError') return // they closed the sheet
+    }
+  }
+  const url = URL.createObjectURL(file)
   const a = document.createElement('a')
   a.href = url
-  a.download = 'cappy-my-data.json'
+  a.download = file.name
+  a.rel = 'noopener'
+  document.body.appendChild(a)
   a.click()
-  URL.revokeObjectURL(url)
+  a.remove()
+  // Safari starts the download after the click returns: revoking at once
+  // cancels it. A minute is plenty.
+  setTimeout(() => URL.revokeObjectURL(url), 60_000)
 }
 
 /** The server side of deleting an account (409 while a booking is open). */

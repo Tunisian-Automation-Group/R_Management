@@ -71,7 +71,11 @@ export function ListingCard({
                 ? durationLabel(match.quote.hours)
                 : `${durationLabel(match.quote.hours)} incl. setup`}
             </span>
-            <Stars value={stars} count={owner.jobsDone} />
+            {/* The owner's record over all their jobs, not this listing's reviews: labelled so. */}
+            <span className="inline-flex items-baseline gap-1" title="The owner's rating across all their jobs">
+              <span className="text-[12px] text-[var(--ink-4)]">Host</span>
+              <Stars value={stars} count={owner.jobsDone} />
+            </span>
             {rank === 0 && (
               <span className="text-[12.5px] font-semibold text-[var(--accent-text)]">
                 Best match

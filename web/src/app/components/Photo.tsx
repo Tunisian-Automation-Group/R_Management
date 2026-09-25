@@ -1,7 +1,7 @@
 import { useState, type CSSProperties, type ReactNode } from 'react'
 import type { CategoryId, Iso, Slot } from '../../domain/types.ts'
 import { Plate } from './Cover.tsx'
-import { time } from '../format.ts'
+import { day, time } from '../format.ts'
 import { useNavigate } from 'react-router-dom'
 import { useSession } from '../../data/auth.ts'
 import { mediaUrl, useSaveToggle, useSaved } from '../../data/repo.ts'
@@ -102,8 +102,10 @@ export function WhenChip({
   state?: 'now' | 'later' | 'booked'
   className?: string
 }) {
-  const label =
-    state === 'now' ? 'Free now' : state === 'booked' ? `Booked ${time(start)}` : `From ${time(start)}`
+  // "From 21:30" today, "From tomorrow 09:00" otherwise: the earliest start
+  // anyone could actually book, never a time already out of reach.
+  const at = day(start) === 'today' ? time(start) : `${day(start)} ${time(start)}`
+  const label = state === 'now' ? 'Free now' : state === 'booked' ? `Booked ${at}` : `From ${at}`
 
   return (
     <span
@@ -167,9 +169,8 @@ export function SaveButton({
     )
   }
   return (
-    <span
-      role="button"
-      tabIndex={0}
+    <button
+      type="button"
       aria-pressed={on}
       aria-label={on ? `Remove ${title} from saved` : `Save ${title}`}
       onClick={(e) => {
@@ -177,13 +178,7 @@ export function SaveButton({
         e.stopPropagation()
         toggle()
       }}
-      onKeyDown={(e) => {
-        if (e.key !== 'Enter' && e.key !== ' ') return
-        e.preventDefault()
-        e.stopPropagation()
-        toggle()
-      }}
-      className={`glass glass-dark grid h-9 w-9 cursor-pointer place-items-center rounded-full
+      className={`glass glass-dark z-10 grid h-9 w-9 cursor-pointer place-items-center rounded-full
         transition-transform duration-[160ms] active:scale-90 ${className}`}
       style={{ ['--glass-tint-dark' as string]: 'rgba(20, 30, 19, 0.5)' }}
     >
@@ -193,6 +188,6 @@ export function SaveButton({
         strokeWidth={2}
         className={on ? 'fill-[var(--accent-bright)] text-[var(--accent-bright)]' : 'text-[var(--on-field)]'}
       />
-    </span>
+    </button>
   )
 }

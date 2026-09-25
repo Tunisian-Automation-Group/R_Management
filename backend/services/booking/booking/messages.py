@@ -146,3 +146,69 @@ async def unblock(person: str, session: AsyncSession = Tx, p: Principal = Depend
 async def my_blocks(session: AsyncSession = Tx, p: Principal = Depends(require_principal)) -> list[str]:
     q = select(BlockRow.blocked_id).where(BlockRow.blocker_id == p.sub).order_by(BlockRow.at.desc()).limit(500)
     return list((await session.execute(q)).scalars())
+
+
+# --- hand-over evidence ---------------------------------------------------------------------
+
+CHECK_IN_FROM = frozenset({"accepted", "active"})
+CHECK_OUT_FROM = frozenset({"active", "completed", "disputed"})
+
+
+class EvidenceIn(CamelModel):
+    stage: str = Field(pattern="^(check_in|check_out)$")
+    photos: list[str] = Field(min_length=1, max_length=12)
+    note: str | None = Field(default=None, max_length=1000)
+
+
+class Evidence(CamelModel):
+    id: str
+    by: str
+    stage: str
+    photos: list[str]
+    note: str | None = None
+    at: Iso
+
+
+@router.post("/bookings/{booking_id}/evidence", response_model=Evidence, status_code=status.HTTP_201_CREATED)
+async def add_evidence(
+    booking_id: str,
+    body: EvidenceIn,
+    request: Request,
+    session: AsyncSession = Tx,
+    p: Principal = Depends(require_principal),
+) -> Evidence:
+    from .tables import EvidenceRow
+
+    row = await BookingRepository(session, request.app.state.outbox).visible(booking_id, p.sub)
+    allowed = CHECK_IN_FROM if body.stage == "check_in" else CHECK_OUT_FROM
+    if row.status not in allowed:
+        raise Invalid(f"{body.stage.replace('_', '-')} photos are not possible while the booking is {row.status}")
+    await request.app.state.catalog.keep_evidence(p.sub, body.photos)
+    ev = EvidenceRow(
+        id=new_id("evd"),
+        booking_id=row.id,
+        by=p.sub,
+        stage=body.stage,
+        photos=body.photos,
+        note=(body.note or "").strip() or None,
+        at=datetime.now(UTC),
+    )
+    session.add(ev)
+    await session.flush()
+    return Evidence(id=ev.id, by=ev.by, stage=ev.stage, photos=ev.photos, note=ev.note, at=iso_from_datetime(ev.at))
+
+
+@router.get("/bookings/{booking_id}/evidence", response_model=list[Evidence])
+async def evidence(
+    booking_id: str, request: Request, session: AsyncSession = Tx, p: Principal = Depends(require_principal)
+) -> list[Evidence]:
+    from .tables import EvidenceRow
+
+    await BookingRepository(session, request.app.state.outbox).visible(booking_id, p.sub)
+    rows = (
+        await session.execute(select(EvidenceRow).where(EvidenceRow.booking_id == booking_id).order_by(EvidenceRow.at))
+    ).scalars()
+    return [
+        Evidence(id=r.id, by=r.by, stage=r.stage, photos=r.photos, note=r.note, at=iso_from_datetime(r.at))
+        for r in rows
+    ]

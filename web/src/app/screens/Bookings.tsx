@@ -1,4 +1,3 @@
-import { useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import type { Booking, BookingStatus } from '../../domain/types.ts'
 import { formatEur } from '../../domain/money.ts'
@@ -52,7 +51,14 @@ export function Bookings() {
   const role: 'requester' | 'owner' = params.get('as') === 'hosting' ? 'owner' : 'requester'
   const hosting = role === 'owner'
   const bookings = useBookings(role)
-  const [tab, setTab] = useState<'live' | 'past'>('live')
+  // Both switches live in the URL, so back and a shared link keep them.
+  const tab: 'live' | 'past' = params.get('tab') === 'past' ? 'past' : 'live'
+  const setTab = (t: 'live' | 'past') => {
+    const next = new URLSearchParams(params)
+    if (t === 'past') next.set('tab', 'past')
+    else next.delete('tab')
+    setParams(next, { replace: true })
+  }
 
   if (!authReady || (session && bookings.isPending)) {
     return (
@@ -88,10 +94,7 @@ export function Bookings() {
         <Segmented
           label="Whose bookings"
           value={role}
-          onChange={(r) => {
-            setTab('live')
-            setParams(r === 'owner' ? { as: 'hosting' } : {}, { replace: true })
-          }}
+          onChange={(r) => setParams(r === 'owner' ? { as: 'hosting' } : {}, { replace: true })}
           options={[
             { value: 'requester', label: 'I booked' },
             { value: 'owner', label: "I'm hosting" },
@@ -118,14 +121,14 @@ export function Bookings() {
             icon="wallet"
             title="Nobody has booked you yet"
             body="Accepted requests show up here, with the time and who is coming."
-            action={<Button onClick={() => nav('/earn')}>Go to Earn</Button>}
+            action={<Button to={'/earn'}>Go to Earn</Button>}
           />
         ) : (
           <EmptyState
             icon="ticket"
             title="No bookings yet"
             body="When you book someone's idle hour it shows up here. Once the owner accepts, you get the address and handover notes."
-            action={<Button onClick={() => nav('/')}>Find something nearby</Button>}
+            action={<Button to={'/'}>Find something nearby</Button>}
           />
         )
       ) : shown.length === 0 ? (
@@ -137,7 +140,7 @@ export function Bookings() {
               ? 'Your past bookings are under the Past tab.'
               : 'Bookings move here once they are done, declined or cancelled.'
           }
-          action={tab === 'live' ? <Button onClick={() => nav('/')}>Browse capacity</Button> : undefined}
+          action={tab === 'live' ? <Button to={'/'}>Browse capacity</Button> : undefined}
         />
       ) : (
         <ul className="ruled border-t border-[var(--line)]">

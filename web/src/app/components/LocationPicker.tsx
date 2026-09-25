@@ -27,6 +27,8 @@ export function LocationPicker({
   current,
   cities,
   onPick,
+  districts = [],
+  onPickDistrict,
 }: {
   /** What the trigger reads, "Kreuzberg, Berlin". */
   label: string
@@ -34,6 +36,9 @@ export function LocationPicker({
   current: string
   cities: CityStat[]
   onPick: (metro: string) => void
+  /** Districts, so typing "Kreuz" finds Kreuzberg as well as cities. */
+  districts?: { name: string; city: string }[]
+  onPickDistrict?: (district: string) => void
 }) {
   const [open, setOpen] = useState(false)
   const [q, setQ] = useState('')
@@ -68,6 +73,9 @@ export function LocationPicker({
       c.city.toLowerCase().includes(needle) ||
       (COUNTRY[c.country] ?? c.country).toLowerCase().includes(needle),
   )
+  const districtHits = needle
+    ? districts.filter((d) => d.name.toLowerCase().includes(needle) && d.name !== d.city).slice(0, 8)
+    : []
   const byCountry = shown.reduce<Record<string, CityStat[]>>((acc, c) => {
     ;(acc[c.country] ??= []).push(c)
     return acc
@@ -88,15 +96,41 @@ export function LocationPicker({
           autoFocus={wide}
           value={q}
           onChange={(e) => setQ(e.target.value)}
-          placeholder="City or country"
-          aria-label="Filter cities"
+          placeholder="City, district or country"
+          aria-label="Filter cities and districts"
           className="h-10 w-full rounded-[12px] border border-[var(--line)] bg-[var(--surface)] pl-9 pr-3
             text-[14px] outline-none placeholder:text-[var(--ink-4)] focus:border-[var(--ink-3)]
             focus-visible:outline-none"
         />
       </label>
 
-      {shown.length === 0 && (
+      {districtHits.length > 0 && onPickDistrict && (
+        <div className="mt-4">
+          <p className="t-label px-1">Districts</p>
+          <ul className="mt-1.5">
+            {districtHits.map((d) => (
+              <li key={d.name}>
+                <button
+                  onClick={() => {
+                    onPickDistrict(d.name)
+                    setOpen(false)
+                    setQ('')
+                  }}
+                  className="flex w-full items-center gap-3 rounded-[12px] px-3 py-2.5 text-left transition-colors duration-[140ms] hover:bg-[var(--sunken)]"
+                >
+                  <Icon name="pin" size={16} strokeWidth={1.8} className="shrink-0 text-[var(--ink-4)]" />
+                  <span className="min-w-0 flex-1">
+                    <span className="block text-[14.5px] font-semibold">{d.name}</span>
+                    <span className="t-sm block text-[var(--ink-4)]">{d.city}</span>
+                  </span>
+                </button>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
+      {shown.length === 0 && districtHits.length === 0 && (
         <p className="t-sm px-1 py-6 text-center text-[var(--ink-4)]">
           Nothing listed there yet.
         </p>

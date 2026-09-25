@@ -279,6 +279,8 @@ export type Booking = {
   listing?: ListingSnapshot
   /** While it waits for payment or for the owner: when it lapses. */
   expiresAt?: Iso
+  /** When the hand-over can first be marked; the server decides. */
+  canStartFrom?: Iso
   /** Where and how to collect it: only once the booking is accepted, for both parties. */
   handover?: { address: string; instructions: string }
 }

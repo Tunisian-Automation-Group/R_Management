@@ -73,7 +73,7 @@ export function Reviews({
           </p>
           <p className="t-sm tnum mt-1.5 text-[var(--ink-3)]">
             {s.count} {s.count === 1 ? 'review' : 'reviews'}
-            {s.onTimeShare !== null && ` · ${Math.round(s.onTimeShare * 100)}% ready on time`}
+            {s.onTimeShare != null && ` · ${Math.round(s.onTimeShare * 100)}% ready on time`}
           </p>
         </div>
         {s.topTags.length > 0 && (

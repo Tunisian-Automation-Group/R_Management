@@ -143,7 +143,7 @@ export function Earn() {
           title="Nothing listed yet"
           body="A printer running overnight, a PA rig between gigs, a treated room, a saw in the cupboard. If it is idle, somebody nearby needs it for an hour."
           action={
-            <Button size="lg" icon="plus" onClick={() => nav('/earn/new')}>
+            <Button size="lg" icon="plus" to={'/earn/new'}>
               List your first thing
             </Button>
           }
@@ -156,7 +156,7 @@ export function Earn() {
     <Screen
       title="Earn"
       action={
-        <Button size="sm" variant="secondary" icon="plus" onClick={() => nav('/earn/new')}>
+        <Button size="sm" variant="secondary" icon="plus" to={'/earn/new'}>
           Add
         </Button>
       }
@@ -348,10 +348,10 @@ export function Earn() {
                   )}
 
                   <div className="mt-4 flex flex-wrap gap-2 border-t border-[var(--line)] pt-4">
-                    <Button size="sm" variant="secondary" onClick={() => nav(`/listing/${l.id}`)}>
+                    <Button size="sm" variant="secondary" to={`/listing/${l.id}`}>
                       View as a guest
                     </Button>
-                    <Button size="sm" variant="secondary" onClick={() => nav(`/earn/edit/${l.id}`)}>
+                    <Button size="sm" variant="secondary" to={`/earn/edit/${l.id}`}>
                       Edit
                     </Button>
                     <Button
@@ -467,11 +467,19 @@ export function Earn() {
             ))}
           </div>
           <div className="mt-6">
-            <Banner
-              tone="warn"
-              title="The window goes back on the market"
-              body="Your listing stays live and the hours are offered to the next person searching. Their card hold is released."
-            />
+            {declining && mine.some((l) => l.id === declining.match.listingId && l.active) ? (
+              <Banner
+                tone="warn"
+                title="The window goes back on the market"
+                body="Your listing stays live and the hours are offered to the next person searching. Their card hold is released."
+              />
+            ) : (
+              <Banner
+                tone="warn"
+                title="Their card hold is released"
+                body="This listing is paused or removed, so the hours are not offered to anyone else."
+              />
+            )}
           </div>
         </div>
       </Sheet>

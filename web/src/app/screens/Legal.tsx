@@ -82,10 +82,9 @@ function Impressum() {
       {OPERATOR.register && <p>{OPERATOR.register}</p>}
       {OPERATOR.vat && <p>USt-IdNr.: {OPERATOR.vat}</p>}
       <p>
-        Plattform der EU-Kommission zur Online-Streitbeilegung:{' '}
-        <a href="https://ec.europa.eu/consumers/odr">ec.europa.eu/consumers/odr</a>. Wir sind nicht
-        verpflichtet und nicht bereit, an Streitbeilegungsverfahren vor einer
-        Verbraucherschlichtungsstelle teilzunehmen.
+        {/* The EU ODR platform was shut down in July 2025 (Regulation (EU) 2024/3228), so no link to it. */}
+        Wir sind nicht verpflichtet und nicht bereit, an Streitbeilegungsverfahren vor einer
+        Verbraucherschlichtungsstelle teilzunehmen (§ 36 VSBG).
       </p>
     </>
   )

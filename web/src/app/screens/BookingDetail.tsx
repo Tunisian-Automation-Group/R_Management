@@ -1,5 +1,5 @@
 import { useState, type ReactNode } from 'react'
-import { useNavigate, useParams } from 'react-router-dom'
+import { useParams } from 'react-router-dom'
 import { useAuthReady, useSession } from '../../data/auth.ts'
 import { SignedOut } from '../components/SignedOut.tsx'
 import { NotFound } from './NotFound.tsx'
@@ -40,7 +40,7 @@ const STEPS: { id: BookingStatus; label: string; note: string; ownerNote: string
 ]
 
 const DEAD: BookingStatus[] = ['declined', 'cancelled', 'expired', 'payment_failed']
-// Start may be marked from half an hour before the window; the backend refuses earlier.
+// Used only if the server does not say (canStartFrom): the deployed rule.
 const START_EARLY_MS = 30 * 60_000
 
 export function BookingDetail() {
@@ -88,7 +88,6 @@ function Detail({
   owner?: Owner
   requester?: Owner
 }) {
-  const nav = useNavigate()
   const qc = useQueryClient()
   const toast = useToast()
 
@@ -98,6 +97,7 @@ function Detail({
   const [disputing, setDisputing] = useState(false)
   const [problem, setProblem] = useState('')
   const [rateOpen, setRateOpen] = useState(false)
+  const [finishing, setFinishing] = useState(false)
   const [stars, setStars] = useState(0)
   const [onTime, setOnTime] = useState<boolean | null>(null)
   const [tags, setTags] = useState<string[]>([])
@@ -116,7 +116,8 @@ function Detail({
   const buyer = requester?.name.split(' ')[0] ?? 'The buyer'
   const other = asOwner ? requester : owner
   const startsAt = Date.parse(booking.match.start)
-  const canStart = Date.now() >= startsAt - START_EARLY_MS
+  const startFrom = booking.canStartFrom ? Date.parse(booking.canStartFrom) : startsAt - START_EARLY_MS
+  const canStart = Date.now() >= startFrom
   const begun = Date.now() >= startsAt
 
   const payments = usePaymentsConfig()
@@ -170,7 +171,7 @@ function Detail({
           ? asOwner
             ? 'I have handed it over'
             : 'I have collected it'
-          : `Hand-over opens ${relative(new Date(startsAt - START_EARLY_MS).toISOString())}`}
+          : `Hand-over opens ${relative(new Date(startFrom).toISOString())}`}
       </Button>
       {!canStart && (
         <p className="t-sm mt-2 text-center text-[var(--ink-3)]">
@@ -180,11 +181,11 @@ function Detail({
     </div>
   )
   const home = asOwner ? (
-    <Button block size="lg" variant="secondary" onClick={() => nav('/earn')}>
+    <Button block size="lg" variant="secondary" to={'/earn'}>
       Back to Earn
     </Button>
   ) : (
-    <Button block size="lg" variant="secondary" onClick={() => nav('/')}>
+    <Button block size="lg" variant="secondary" to={'/'}>
       Browse capacity
     </Button>
   )
@@ -230,10 +231,7 @@ function Detail({
             block
             size="lg"
             disabled={busy}
-            onClick={() => {
-              void act('complete')
-              setRateOpen(true)
-            }}
+            onClick={() => setFinishing(true)}
           >
             Mark as handed back
           </Button>
@@ -246,11 +244,11 @@ function Detail({
       footer = booking.outcome ? (
         <div className="space-y-2">
           {listing && listing.active && (
-            <Button block size="lg" onClick={() => nav(`/listing/${listing.id}`)}>
+            <Button block size="lg" to={`/listing/${listing.id}`}>
               Book again
             </Button>
           )}
-          <Button block variant="quiet" onClick={() => nav('/')}>
+          <Button block variant="quiet" to={'/'}>
             Find something else
           </Button>
         </div>
@@ -295,7 +293,7 @@ function Detail({
           title={asOwner ? 'You declined this request' : `${first} could not take this one`}
           body={`${booking.declineReason || 'No reason given.'} The hold on the card is released; nothing was charged.`}
           action={
-            <Button size="sm" variant="secondary" onClick={() => nav('/')}>
+            <Button size="sm" variant="secondary" to={'/'}>
               Find another
             </Button>
           }
@@ -329,7 +327,7 @@ function Detail({
           body="Nothing was charged, and the window is free again."
           action={
             asOwner ? undefined : (
-              <Button size="sm" variant="secondary" onClick={() => nav(`/listing/${booking.match.listingId}`)}>
+              <Button size="sm" variant="secondary" to={`/listing/${booking.match.listingId}`}>
                 Try again
               </Button>
             )
@@ -500,6 +498,36 @@ function Detail({
           </p>
         </Card>
       )}
+
+      <Sheet
+        open={finishing}
+        onClose={() => setFinishing(false)}
+        title="Handed back and all fine?"
+        footer={
+          <div className="space-y-2">
+            <Button
+              block
+              size="lg"
+              disabled={busy}
+              onClick={() => {
+                setFinishing(false)
+                void act('complete')
+                setRateOpen(true)
+              }}
+            >
+              Yes, it is done
+            </Button>
+            <Button block variant="quiet" onClick={() => setFinishing(false)}>
+              Not yet
+            </Button>
+          </div>
+        }
+      >
+        <p className="t-body pb-3 text-[var(--ink-2)]">
+          This completes the booking and pays {first}. If something went wrong, report a problem instead: the
+          payment is held until it is sorted out.
+        </p>
+      </Sheet>
 
       <Sheet
         open={cancelling}

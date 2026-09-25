@@ -273,7 +273,7 @@ export function Listing() {
           <a
             href="#reviews"
             aria-label={
-              info.reviews.average !== null
+              info.reviews.average != null
                 ? `This listing: ${info.reviews.average.toFixed(1)} from ${info.reviews.count} reviews`
                 : 'No reviews of this listing yet'
             }
@@ -291,7 +291,7 @@ export function Listing() {
             title="This is your listing"
             body="You are seeing it the way a buyer would. Manage availability from the Earn tab."
             action={
-              <Button size="sm" variant="secondary" onClick={() => nav('/earn')}>
+              <Button size="sm" variant="secondary" to={'/earn'}>
                 Go to Earn
               </Button>
             }

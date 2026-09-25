@@ -29,6 +29,28 @@ const MATERIALS: Material[] = [
   'Aluminium 6061', 'Stainless 304', 'Steel S235', 'Brass', 'POM', 'Acrylic', 'Plywood',
 ]
 
+// Examples that match what is being listed (a 3D printer is not a Haas mill),
+// and a starting price in cents per hour.
+const EXAMPLES: Partial<Record<CategoryId, { title: string; blurb: string; machine?: string; rate: number }>> = {
+  fabrication: { title: 'Haas VF-2SS', blurb: '3-axis, fast spindle, free most of August.', machine: 'Haas VF-2SS', rate: 6000 },
+  additive: { title: 'Bambu Lab X1 Carbon', blurb: 'Multi-colour, enclosed, free most nights.', machine: 'Bambu Lab X1 Carbon', rate: 800 },
+  finishing: { title: 'Powder-coating booth', blurb: 'RAL colours in stock, cured the same day.', machine: 'Powder-coating line', rate: 4500 },
+  print: { title: 'Roland large-format printer', blurb: 'Banners up to 1.6 m wide.', machine: 'Roland TrueVIS VG3', rate: 3500 },
+  freight: { title: '7.5 t box truck with driver', blurb: 'Tail lift, Berlin to anywhere in the EU.', machine: 'MAN TGL 7.5 t', rate: 5500 },
+}
+const DEFAULT_EXAMPLE: { title: string; blurb: string; machine?: string; rate: number } = {
+  title: 'Festool TS 55 plunge saw',
+  blurb: '8 kg, quiet, free most evenings.',
+  rate: 400,
+}
+// Materials make sense where parts are made.
+const TAKES_MATERIALS: CategoryId[] = ['fabrication', 'additive']
+
+/** "List your 3D printing", "List your event & AV": lowercase unless it starts an acronym. */
+function listYour(label: string): string {
+  return /^[A-Z][a-z]/.test(label) ? label[0].toLowerCase() + label.slice(1) : label
+}
+
 const RULE_SUGGESTIONS = [
   'Back the same day',
   'Leave it as you found it',
@@ -167,6 +189,8 @@ function ListingForm({ edit }: { edit?: repo.ListingView }) {
   const [materials, setMaterials] = useState<Material[]>(wasBatch?.materials ?? [])
   const [unitsPerHour, setUnitsPerHour] = useState(wasBatch?.unitsPerHour ?? 10)
   const [setupFee, setSetupFee] = useState(wasBatch?.setupFee ?? 1500)
+  const [setupHours, setSetupHours] = useState(wasBatch?.setupHours ?? 1)
+  const [dims, setDims] = useState(wasBatch?.maxDims ?? { x: 300, y: 300, z: 300 })
   // Editing: the windows already listed stay unless removed; new ones are optional.
   const [availability, setAvailability] = useState<Availability | 'none'>(edit ? 'none' : 'evenings')
   const [custom, setCustom] = useState<CustomWindow>(defaultCustom)
@@ -182,6 +206,7 @@ function ListingForm({ edit }: { edit?: repo.ListingView }) {
 
   const meta = categoryId ? category(categoryId) : null
   const isBatch = meta?.mode === 'batch'
+  const example = (categoryId && EXAMPLES[categoryId]) || DEFAULT_EXAMPLE
 
   // Validation runs on blur and on submit, never on every keystroke, which
   // shouts at people while they are still typing the first word.
@@ -334,7 +359,8 @@ function ListingForm({ edit }: { edit?: repo.ListingView }) {
       blurb: blurb.trim(),
       district,
       instructions: instructions.trim(),
-      rules: rules.length ? rules : ['Leave it as you found it'],
+      // Only what the owner chose: nothing is saved on their behalf.
+      rules,
       active: was?.active ?? true,
       photos: photos.flatMap((p) => (p.url ? [p.url] : [])),
     }
@@ -345,11 +371,11 @@ function ListingForm({ edit }: { edit?: repo.ListingView }) {
           ...shared,
           mode: 'batch',
           machine: machine.trim(),
-          materials: materials.length ? materials : ['PLA'],
-          maxDims: { x: 300, y: 300, z: 300 },
-          toleranceMm: 0.1,
+          ...(materials.length ? { materials } : {}),
+          maxDims: dims,
+          ...(wasBatch?.toleranceMm != null ? { toleranceMm: wasBatch.toleranceMm } : {}),
           unitsPerHour,
-          setupHours: 1,
+          setupHours,
           ratePerHour: rate,
           setupFee,
         }
@@ -403,7 +429,7 @@ function ListingForm({ edit }: { edit?: repo.ListingView }) {
               <button
                 onClick={() => {
                   setCategoryId(c.id)
-                  setRate(c.mode === 'batch' ? 6000 : 400)
+                  setRate((EXAMPLES[c.id] ?? DEFAULT_EXAMPLE).rate)
                 }}
                 className="flex w-full items-center gap-3 py-3.5 text-left transition-opacity duration-[160ms] hover:opacity-60"
               >
@@ -436,10 +462,18 @@ function ListingForm({ edit }: { edit?: repo.ListingView }) {
     <Screen
       back="/earn"
       eyebrow={was ? 'Edit listing' : 'New listing'}
-      title={was ? was.title : `List your ${meta!.label.toLowerCase()}`}
+      title={was ? was.title : `List your ${listYour(meta!.label)}`}
       sub={was ? 'Changes show on the listing at once. Bookings already made keep what was agreed.' : 'Four minutes now, and the idle hours start paying.'}
       footer={
-        <Button block size="lg" disabled={saving} onClick={() => void submit()}>
+        <Button
+          block
+          size="lg"
+          disabled={saving}
+          // Keep focus where it is on press: blurring a time field first re-rendered
+          // the form under the pointer and swallowed the click (submit validates anyway).
+          onMouseDown={(e) => e.preventDefault()}
+          onClick={() => void submit()}
+        >
           {was ? 'Save changes' : 'Publish listing'}
         </Button>
       }
@@ -463,7 +497,7 @@ function ListingForm({ edit }: { edit?: repo.ListingView }) {
             invalid={Boolean(errorFor('title'))}
             onChange={(e) => setTitle(e.target.value)}
             onBlur={blur('title')}
-            placeholder={isBatch ? 'Haas VF-2SS' : 'Festool TS 55 plunge saw'}
+            placeholder={example.title}
           />
         </Field>
 
@@ -560,7 +594,7 @@ function ListingForm({ edit }: { edit?: repo.ListingView }) {
             invalid={Boolean(errorFor('blurb'))}
             onChange={(e) => setBlurb(e.target.value)}
             onBlur={blur('blurb')}
-            placeholder={isBatch ? '3-axis, fast spindle, free most of August.' : '8 kg, quiet, free most evenings.'}
+            placeholder={example.blurb}
           />
         </Field>
 
@@ -573,11 +607,12 @@ function ListingForm({ edit }: { edit?: repo.ListingView }) {
                 invalid={Boolean(errorFor('machine'))}
                 onChange={(e) => setMachine(e.target.value)}
                 onBlur={blur('machine')}
-                placeholder="DMG Mori DMU 50"
+                placeholder={example.machine ?? example.title}
               />
             </Field>
 
-            <Field label="Materials you stock" hint="Tap all that apply.">
+            {categoryId && TAKES_MATERIALS.includes(categoryId) && (
+            <Field label="Materials you stock" hint="Tap all that apply, if any.">
               <div className="flex flex-wrap gap-2">
                 {MATERIALS.map((m) => (
                   <Chip
@@ -594,6 +629,7 @@ function ListingForm({ edit }: { edit?: repo.ListingView }) {
                 ))}
               </div>
             </Field>
+            )}
 
             <Field
               label="Parts per hour"
@@ -608,6 +644,33 @@ function ListingForm({ edit }: { edit?: repo.ListingView }) {
                 onChange={(e) => setUnitsPerHour(Math.max(0.1, Number(e.target.value) || 0.1))}
               />
             </Field>
+
+            <Field label="Setup time" hint="Hours to get a job going, before the first part." htmlFor="f-setup-hours">
+              <Input
+                id="f-setup-hours"
+                inputMode="decimal"
+                className="tnum"
+                value={setupHours}
+                onChange={(e) => setSetupHours(Math.max(0, Number(e.target.value.replace(',', '.')) || 0))}
+              />
+            </Field>
+
+            <fieldset>
+              <legend className="t-label">Largest job it takes (mm)</legend>
+              <div className="mt-2 grid grid-cols-3 gap-2">
+                {(['x', 'y', 'z'] as const).map((axis) => (
+                  <label key={axis} className="block">
+                    <span className="t-sm text-[var(--ink-3)]">{{ x: 'Length', y: 'Width', z: 'Height' }[axis]}</span>
+                    <Input
+                      inputMode="numeric"
+                      className="tnum"
+                      value={dims[axis]}
+                      onChange={(e) => setDims((d) => ({ ...d, [axis]: Math.max(1, Number(e.target.value) || 1) }))}
+                    />
+                  </label>
+                ))}
+              </div>
+            </fieldset>
           </>
         )}
 

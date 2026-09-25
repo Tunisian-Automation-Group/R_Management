@@ -71,8 +71,17 @@ class FakePayments(Payments):
 
 
 class FakeCatalog:
+    kept: list = []
+
     async def handover(self, listing_id):  # noqa: ANN001
         return {"address": "Tempelhofer Damm 1, 12101 Berlin", "instructions": "Ring the workshop bell"}
+
+    async def keep_evidence(self, owner_id, urls):  # noqa: ANN001
+        from cappy_common.errors import Invalid
+
+        if any("not-mine" in u for u in urls):
+            raise Invalid("those photos were not uploaded by you")
+        self.kept.append((owner_id, urls))
 
     async def aclose(self) -> None:
         pass
@@ -515,3 +524,21 @@ def test_staff_can_resolve_a_dispute_from_the_admin_console(client, app, issuer)
     assert client.post(f"/admin/bookings/{bid}/resolve", json=body, headers=issuer.headers(BUYER)).status_code == 403
     staff = {"Authorization": f"Bearer {issuer.token('staff-1', **{'cognito:groups': ['admin']})}"}
     assert client.post(f"/admin/bookings/{bid}/resolve", json=body, headers=staff).json()["status"] == "cancelled"
+
+
+def test_check_in_and_check_out_photos_are_kept_as_evidence(client, app, issuer):
+    bid = _requested(client, app, issuer, start_h=0.25)
+    photo = "/media/" + "a" * 40 + ".webp"
+    add = lambda who, stage, photos: client.post(  # noqa: E731
+        f"/bookings/{bid}/evidence", json={"stage": stage, "photos": photos}, headers=issuer.headers(who)
+    )
+    assert add(HOST, "check_in", [photo]).status_code == 422, "nothing to check in before it is accepted"
+    _do(client, issuer, HOST, bid, "accept")
+    assert add(HOST, "check_in", [photo]).status_code == 201
+    assert add(BUYER, "check_out", [photo]).status_code == 422, "check-out after the hand-over"
+    _do(client, issuer, HOST, bid, "start")
+    assert add(BUYER, "check_out", ["/media/not-mine.webp"]).status_code == 422
+    assert add(BUYER, "check_out", [photo]).status_code == 201
+    got = client.get(f"/bookings/{bid}/evidence", headers=issuer.headers(HOST)).json()
+    assert [(e["by"], e["stage"]) for e in got] == [(HOST, "check_in"), (BUYER, "check_out")]
+    assert client.get(f"/bookings/{bid}/evidence", headers=issuer.headers("stranger")).status_code == 404

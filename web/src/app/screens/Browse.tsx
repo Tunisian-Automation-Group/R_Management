@@ -19,6 +19,7 @@ import { Icon, categoryIcon } from '../components/Icon.tsx'
 import { ListingCard } from '../components/ListingCard.tsx'
 import { Photo, SaveButton, WhenChip } from '../components/Photo.tsx'
 import { LocationPicker } from '../components/LocationPicker.tsx'
+import { distanceKm } from '../../domain/match.ts'
 import { CapacityMap, type MapLevel } from '../components/CapacityMap.tsx'
 import { Banner, Button, Chip, EmptyState, Sheet, Skeleton } from '../components/ui.tsx'
 import { distance, relative, when } from '../format.ts'
@@ -27,7 +28,8 @@ import { distance, relative, when } from '../format.ts'
 // 75 km is the Berlin-Brandenburg belt the plan names as the first wedge, which
 // is what it takes to reach a machine shop; 10 km is what it takes to reach a saw.
 const RADII = [10, 30, 75, 150]
-const HORIZONS = [1, 3, 7, 21]
+const HORIZONS = [1, 3, 7, 14, 21]
+const SORTS: SortKey[] = ['best', 'price', 'soonest', 'nearest']
 const QUANTITIES = [10, 50, 200, 500]
 
 export function Browse() {
@@ -36,7 +38,15 @@ export function Browse() {
   const ME = useMe()
   const [filtersOpen, setFiltersOpen] = useState(false)
   const [showMap, setShowMap] = useState(false)
-  const [sort, setSort] = useState<SortKey>('best')
+  // The sort is part of the address like the rest of the search.
+  const [urlParams, setUrlParams] = useSearchParams()
+  const sort: SortKey = SORTS.find((k) => k === urlParams.get('sort')) ?? 'best'
+  const setSort = (k: SortKey) => {
+    const next = new URLSearchParams(urlParams)
+    if (k === 'best') next.delete('sort')
+    else next.set('sort', k)
+    setUrlParams(next, { replace: true })
+  }
   const [mapLevel, setMapLevel] = useState<MapLevel>('city')
   // Twenty-nine equal tiles is a wall, not a shortlist. Eight, then ask.
   const [allSpots, setAllSpots] = useState(false)
@@ -53,9 +63,17 @@ export function Browse() {
   // the map and the results all move together.
   const home = search.district
   const here = districts[home]
+  // A city starts from the district nearest its centre, not whichever comes
+  // first (for Berlin that was Brandenburg, 60 km out).
   const pickCity = (metro: string) => {
-    const first = Object.values(districts).find((d) => d.metro === metro)
-    if (first) send({ type: 'SEARCH_CHANGED', patch: { district: first.name, districtChosen: true } })
+    const inCity = Object.values(districts).filter((d) => d.metro === metro)
+    const centre = cityStats.find((c) => c.city === metro) ?? inCity[0]
+    if (!centre) return
+    const best = inCity.reduce<(typeof inCity)[number] | undefined>(
+      (a, d) => (!a || distanceKm(centre, d) < distanceKm(centre, a) ? d : a),
+      undefined,
+    )
+    if (best) send({ type: 'SEARCH_CHANGED', patch: { district: best.name, districtChosen: true } })
   }
 
   const meta = search.categoryId ? category(search.categoryId) : null
@@ -115,6 +133,8 @@ export function Browse() {
           current={here.metro}
           cities={cityStats}
           onPick={pickCity}
+          districts={Object.values(districts)}
+          onPickDistrict={(name) => send({ type: 'SEARCH_CHANGED', patch: { district: name, districtChosen: true } })}
         />
       </header>
 
@@ -555,6 +575,8 @@ function useSearchInUrl() {
 
   const urlFor = (s: typeof search) => {
     const next = new URLSearchParams()
+    const keptSort = params.get('sort')
+    if (keptSort) next.set('sort', keptSort)
     if (s.query.trim()) next.set('q', s.query.trim())
     if (s.categoryId) {
       next.set('cat', s.categoryId)
@@ -580,7 +602,10 @@ function useSearchInUrl() {
         ...(num('h') ? { hours: num('h')! } : {}),
         ...(num('n') ? { quantity: num('n')! } : {}),
         ...(num('km') ? { maxDistanceKm: num('km')! } : {}),
-        ...(num('days') ? { withinDays: num('days')! } : {}),
+        // Snapped to an option the filter sheet offers, so they always agree.
+        ...(num('days')
+          ? { withinDays: HORIZONS.reduce((a, d) => (Math.abs(d - num('days')!) < Math.abs(a - num('days')!) ? d : a)) }
+          : {}),
       },
     })
   }, [params, send])
@@ -614,9 +639,10 @@ function FilterGroup({ label, children }: { label: string; children: ReactNode }
  */
 function FeatureCard({ spot, onOpen }: { spot: Spotlight; onOpen: () => void }) {
   return (
-    <button
-      onClick={onOpen}
-      className="group block w-full text-left transition-opacity duration-[200ms] hover:opacity-90
+    // A card with a heart on it: the title is the one button, stretched over
+    // the whole card, and the heart sits above it (never a button in a button).
+    <div
+      className="group relative block w-full text-left transition-opacity duration-[200ms] hover:opacity-90
         md:grid md:grid-cols-[1.7fr_1fr] md:items-end md:gap-10"
     >
       <Photo
@@ -628,15 +654,17 @@ function FeatureCard({ spot, onOpen }: { spot: Spotlight; onOpen: () => void }) 
         className="w-full rounded-[var(--radius-plate)] shadow-[var(--shadow-plate)]"
       >
         <WhenChip
-          start={spot.windowStart}
-          state={spot.freeNow ? 'now' : 'later'}
+          // The first start that can be booked (the owner needs notice), not the window's opening.
+          start={spot.offer.start}
           className="bottom-4 left-4"
         />
         <SaveButton id={spot.listing.id} title={spot.listing.title} className="absolute right-4 top-4" />
       </Photo>
       {/* On a phone this sits under the photograph. On a page it sits beside it. */}
       <span className="mt-5 block md:mt-0 md:pb-2">
-        <span className="t-h2 block text-balance">{spot.listing.title}</span>
+        <button onClick={onOpen} className="t-h2 block text-balance text-left after:absolute after:inset-0 after:content-['']">
+          {spot.listing.title}
+        </button>
         <span className="t-sm mt-2 hidden text-[var(--ink-3)] md:block">
           {spot.listing.blurb}
         </span>
@@ -650,17 +678,14 @@ function FeatureCard({ spot, onOpen }: { spot: Spotlight; onOpen: () => void }) 
           </span>
         </span>
       </span>
-    </button>
+    </div>
   )
 }
 
 /** One thing that is free soon: what it is, when, and what it costs. */
 function SpotCard({ spot, onOpen }: { spot: Spotlight; onOpen: () => void }) {
   return (
-    <button
-      onClick={onOpen}
-      className="group w-[188px] text-left transition-opacity duration-[160ms] hover:opacity-75 md:w-full"
-    >
+    <div className="group relative w-[188px] text-left transition-opacity duration-[160ms] hover:opacity-75 md:w-full">
       <Photo
         src={spot.listing.photos?.[0]}
         alt={spot.listing.title}
@@ -668,23 +693,26 @@ function SpotCard({ spot, onOpen }: { spot: Spotlight; onOpen: () => void }) {
         aspect={4 / 3}
         className="rounded-[var(--radius-plate)]"
       >
-        <WhenChip start={spot.windowStart} state={spot.freeNow ? 'now' : 'later'} />
+        <WhenChip start={spot.offer.start} />
         <SaveButton id={spot.listing.id} title={spot.listing.title} />
       </Photo>
       <span className="block pt-3">
-        <span className="line-clamp-2 block min-h-[40px] text-[14.5px] font-semibold leading-[20px]">
+        <button
+          onClick={onOpen}
+          className="line-clamp-2 block min-h-[40px] text-left text-[14.5px] font-semibold leading-[20px] after:absolute after:inset-0 after:content-['']"
+        >
           {spot.listing.title}
-        </span>
+        </button>
         <span className="mt-1.5 flex items-baseline justify-between gap-2">
           <span className="t-sm tnum min-w-0 truncate text-[var(--ink-4)]">
             {/* Trust at a glance, before anyone opens the listing. */}
             {rating(spot.owner) !== null && (
-              <span className="mr-2 font-semibold text-[var(--ink-2)]">
-                ★ {rating(spot.owner)!.toFixed(1)}
+              <span className="mr-2 font-semibold text-[var(--ink-2)]" title="The owner's rating across all their jobs">
+                <span className="font-normal text-[var(--ink-4)]">Host </span>★ {rating(spot.owner)!.toFixed(1)}
               </span>
             )}
             {rating(spot.owner) === null && (
-              <span className="mr-2 font-semibold text-[var(--ink-2)]">New</span>
+              <span className="mr-2 font-semibold text-[var(--ink-2)]">New host</span>
             )}
             {distance(spot.distanceKm)}
           </span>
@@ -696,7 +724,7 @@ function SpotCard({ spot, onOpen }: { spot: Spotlight; onOpen: () => void }) {
           </span>
         </span>
       </span>
-    </button>
+    </div>
   )
 }
 
