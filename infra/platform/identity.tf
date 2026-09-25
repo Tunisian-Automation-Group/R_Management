@@ -32,6 +32,11 @@ resource "aws_cognito_user_pool" "main" {
     temporary_password_validity_days = 3
   }
 
+  # A changed email only takes effect once the new address is verified (P-25).
+  user_attribute_update_settings {
+    attributes_require_verification_before_update = ["email"]
+  }
+
   account_recovery_setting {
     recovery_mechanism {
       name     = "verified_email"
@@ -73,6 +78,10 @@ resource "aws_cognito_user_pool_client" "web" {
     "ALLOW_USER_PASSWORD_AUTH",
     "ALLOW_REFRESH_TOKEN_AUTH",
   ]
+  # The app writes only the email (at sign-up) and the language; nothing a
+  # user sets on themselves may look like something we vouch for (P-25).
+  read_attributes               = ["email", "email_verified", "locale"]
+  write_attributes              = ["email", "locale"]
   prevent_user_existence_errors = "ENABLED"
   enable_token_revocation       = true
   access_token_validity         = 60
@@ -105,4 +114,64 @@ resource "aws_cognito_user_group" "admin" {
   name         = "admin"
   user_pool_id = aws_cognito_user_pool.main.id
   description  = "Cappy staff: moderation, support, dispute resolution"
+}
+
+# Sign-in and sign-up go straight to Cognito, past CloudFront's WAF: a
+# regional web ACL of their own against credential stuffing (P-8).
+resource "aws_wafv2_web_acl" "cognito" {
+  name  = "${local.name}-cognito"
+  scope = "REGIONAL"
+
+  default_action {
+    allow {}
+  }
+
+  rule {
+    name     = "auth-per-ip"
+    priority = 1
+    action {
+      block {}
+    }
+    statement {
+      rate_based_statement {
+        limit              = 100
+        aggregate_key_type = "IP"
+      }
+    }
+    visibility_config {
+      cloudwatch_metrics_enabled = true
+      metric_name                = "cognito-auth-per-ip"
+      sampled_requests_enabled   = false
+    }
+  }
+
+  rule {
+    name     = "ip-reputation"
+    priority = 2
+    override_action {
+      none {}
+    }
+    statement {
+      managed_rule_group_statement {
+        vendor_name = "AWS"
+        name        = "AWSManagedRulesAmazonIpReputationList"
+      }
+    }
+    visibility_config {
+      cloudwatch_metrics_enabled = true
+      metric_name                = "cognito-ip-reputation"
+      sampled_requests_enabled   = false
+    }
+  }
+
+  visibility_config {
+    cloudwatch_metrics_enabled = true
+    metric_name                = "${local.name}-cognito"
+    sampled_requests_enabled   = false
+  }
+}
+
+resource "aws_wafv2_web_acl_association" "cognito" {
+  resource_arn = aws_cognito_user_pool.main.arn
+  web_acl_arn  = aws_wafv2_web_acl.cognito.arn
 }

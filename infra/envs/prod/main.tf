@@ -63,8 +63,11 @@ variable "feature_flags" {
 }
 
 module "platform" {
-  source    = "../../platform"
-  providers = { aws = aws, aws.us_east_1 = aws.us_east_1 }
+  source = "../../platform"
+  # Real money moves through these accounts: threat protection (compromised
+  # credentials, adaptive auth) is worth its per-user price in prod (P-8).
+  cognito_threat_protection = true
+  providers                 = { aws = aws, aws.us_east_1 = aws.us_east_1 }
 
   switches      = var.switches
   feature_flags = var.feature_flags

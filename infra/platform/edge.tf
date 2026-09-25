@@ -151,6 +151,8 @@ resource "aws_route53_record" "origin" {
 
 # --- WAF ------------------------------------------------------------------------------
 
+# Sampled requests stay off: they keep request headers, bearer tokens
+# included, in us-east-1 for three hours (P-20). Metrics and logs suffice.
 resource "aws_wafv2_web_acl" "edge" {
   provider = aws.us_east_1
   name     = local.name
@@ -193,7 +195,7 @@ resource "aws_wafv2_web_acl" "edge" {
     visibility_config {
       cloudwatch_metrics_enabled = true
       metric_name                = "rate-per-ip"
-      sampled_requests_enabled   = true
+      sampled_requests_enabled   = false
     }
   }
 
@@ -247,7 +249,7 @@ resource "aws_wafv2_web_acl" "edge" {
     visibility_config {
       cloudwatch_metrics_enabled = true
       metric_name                = "writes-per-ip"
-      sampled_requests_enabled   = true
+      sampled_requests_enabled   = false
     }
   }
 
@@ -322,7 +324,7 @@ resource "aws_wafv2_web_acl" "edge" {
       visibility_config {
         cloudwatch_metrics_enabled = true
         metric_name                = rule.key
-        sampled_requests_enabled   = true
+        sampled_requests_enabled   = false
       }
     }
   }
@@ -330,7 +332,7 @@ resource "aws_wafv2_web_acl" "edge" {
   visibility_config {
     cloudwatch_metrics_enabled = true
     metric_name                = local.name
-    sampled_requests_enabled   = true
+    sampled_requests_enabled   = false
   }
 }
 

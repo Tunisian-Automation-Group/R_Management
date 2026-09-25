@@ -3,7 +3,10 @@
 # http://<name>:8000; only the gateway is behind the load balancer.
 
 locals {
-  services = keys(var.scale)
+  # Before an operator creates the push apps there are none to name: any app of
+  # this account, still never the event topic.
+  push_apps = length(compact([var.push_app_arns.ios, var.push_app_arns.android])) > 0 ? compact([var.push_app_arns.ios, var.push_app_arns.android]) : ["arn:aws:sns:${var.region}:${data.aws_caller_identity.me.account_id}:app/*"]
+  services  = keys(var.scale)
   # Called by other services, so they get a Service Connect name.
   servers = ["catalog", "matching", "booking", "payments", "notifications"]
 
@@ -208,7 +211,9 @@ locals {
     notifications = [
       { Effect = "Allow", Action = ["ses:SendEmail", "ses:SendRawEmail"], Resource = "*", Condition = { StringEquals = { "ses:FromAddress" = "no-reply@${var.domain}" } } },
       { Effect = "Allow", Action = ["cognito-idp:AdminGetUser", "cognito-idp:ListUsers", "cognito-idp:AdminUserGlobalSignOut"], Resource = aws_cognito_user_pool.main.arn },
-      { Effect = "Allow", Action = ["sns:CreatePlatformEndpoint", "sns:Publish", "sns:DeleteEndpoint"], Resource = "*" },
+      # Push only: its own devices' endpoints, never the event topic (P-9).
+      { Effect = "Allow", Action = ["sns:CreatePlatformEndpoint"], Resource = local.push_apps },
+      { Effect = "Allow", Action = ["sns:Publish", "sns:DeleteEndpoint", "sns:GetEndpointAttributes", "sns:SetEndpointAttributes"], Resource = "arn:aws:sns:${var.region}:${data.aws_caller_identity.me.account_id}:endpoint/*" },
     ]
   }
 }
