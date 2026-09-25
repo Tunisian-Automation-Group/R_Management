@@ -1,6 +1,6 @@
 # 0013. Markets and regional cells
 
-Status: proposed
+Status: accepted (2026-09-26) for the market model and the two cells; the North America legal entity and Stripe platform (M-1) stay a business decision
 
 ## Context
 Cappy was built for Germany: every price is EUR, every fee carries 19 %
@@ -15,9 +15,13 @@ Three facts shape the design:
   reporting (DAC7, UK, 1099-K, Canada Part XX), consumer law and the
   contracting entity all follow the country, and in the US and Canada the
   state or province as well.
-- **Stripe accounts are per legal entity and region.** A European platform
-  cannot give US or Canadian owners full Connect accounts; the US and Canada
-  need a North American entity with its own Stripe platform account.
+- **Stripe platforms are per legal entity.** A German platform *can* pay
+  US and Canadian owners (cross-border payouts, full service agreement,
+  separate charges and transfers without `on_behalf_of`), but then Cappy
+  GmbH is the merchant of record for every North American charge: German
+  settlement, cross-border card fees, and US sales-tax and 1099-K duties on a
+  German company. A North American entity with its own Stripe platform is
+  the grown-up answer; the cross-border route is a way to start.
 - **The law does not require data to stay in a country**, but EU users
   expect EU hosting, Québec's Law 25 requires an assessment before personal
   information leaves Québec, and North American users are 90-150 ms from
@@ -40,8 +44,10 @@ Three facts shape the design:
    - **EU cell, eu-central-1**: the EEA, Switzerland and the UK; entity
      Cappy GmbH (DE); Stripe platform DE.
    - **North America cell, ca-central-1**: the US and Canada; a North
-     American entity (a US corporation, **[legal/business]**); Stripe
-     platform US. Montréal is ~10 ms from us-east-1, so US users lose
+     American entity (a US corporation, **[legal/business]**) with a US
+     Stripe platform. Until that entity exists, the cell can run on the DE
+     platform through cross-border payouts; `stripePlatform` in the market
+     config is what switches it. Montréal is ~10 ms from us-east-1, so US users lose
      nothing, and Canadian (and Québec) data stays in Canada.
    Nothing is replicated between cells. The only global pieces are the static
    web bundle, the market configuration and DNS.
@@ -60,6 +66,7 @@ Three facts shape the design:
 4. **Cross-market bookings are allowed inside a cell** (a Berlin renter books
    a Paris workshop, a Toronto renter books in Buffalo): the same Stripe
    platform can charge in the listing's currency and pay the owner.
+   Bookings are charged on the listing market's Stripe platform.
    **Across cells they are not, at first**: a Berlin member visiting New York
    creates a North America account. That keeps every booking, payment and
    message inside one database and one Stripe platform.
