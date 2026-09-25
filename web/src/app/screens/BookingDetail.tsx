@@ -19,6 +19,7 @@ import {
   getBookingPayment,
   rateBooking,
   rateRenter,
+  reportNoShow,
   useCancellationQuote,
   useBooking,
   useListing,
@@ -27,6 +28,7 @@ import {
   type BookingAction,
 } from '../../data/repo.ts'
 import { PayStep } from '../components/PayStep.tsx'
+import { TraderNote } from '../components/BusinessFields.tsx'
 import { Conversation } from '../components/Conversation.tsx'
 import { EvidencePanel } from '../components/Evidence.tsx'
 import { ReportButton } from '../components/Report.tsx'
@@ -37,7 +39,7 @@ import { Photo } from '../components/Photo.tsx'
 import { Icon } from '../components/Icon.tsx'
 import { Avatar, Banner, Button, Card, Chip, Field, Row, Sheet, Stars, Textarea } from '../components/ui.tsx'
 import { REVIEW_TAGS } from '../../domain/reviews.ts'
-import { distance, range, relative, renterRecord, responseTime } from '../format.ts'
+import { distance, range, relative, renterRecord, responseTime, sentence } from '../format.ts'
 import { useOnline } from '../components/Offline.tsx'
 import { supportHref } from './Help.tsx'
 import { locale, plural, t } from '../../i18n.ts'
@@ -117,6 +119,10 @@ function Detail({
   const [evidencePrompt, setEvidencePrompt] = useState<EvidenceStage | null>(null)
   const [blocking, setBlocking] = useState(false)
   const [ratingRenter, setRatingRenter] = useState(false)
+  const [renterStars, setRenterStars] = useState(0)
+  const [noShowOpen, setNoShowOpen] = useState(false)
+  // One key per rating form (U-6): a double tap or a retry posts one rating.
+  const [rateKey] = useState(() => crypto.randomUUID())
 
   const { quote } = booking.match
   const title = booking.listing?.title ?? listing?.title ?? t('Booked listing')
@@ -133,6 +139,11 @@ function Detail({
   const startFrom = booking.canStartFrom ? Date.parse(booking.canStartFrom) : startsAt - START_EARLY_MS
   const canStart = Date.now() >= startFrom
   const begun = Date.now() >= startsAt
+  // S-11: the renter may report the owner from the start, the owner the renter
+  // from 30 minutes in (they may just be late), both until 2 hours in.
+  const sinceStart = Date.now() - startsAt
+  const canReportNoShow =
+    booking.status === 'accepted' && sinceStart >= (asOwner ? 30 * 60_000 : 0) && sinceStart <= 2 * 3_600_000
 
   // What cancelling now would refund, fetched only while the sheet is open.
   const refund = useCancellationQuote(booking.id, cancelling && booking.status === 'accepted')
@@ -164,13 +175,13 @@ function Detail({
   const act = (action: BookingAction, message?: string) => done(() => actOnBooking(booking.id, action), message)
   const rate = (outcome: Outcome) =>
     done(async () => {
-      await rateBooking(booking.id, outcome)
+      await rateBooking(booking.id, outcome, rateKey)
       // The owner's record and the listing's reviews change a moment later.
       void qc.invalidateQueries({ queryKey: ['listing', booking.match.listingId] })
       void qc.invalidateQueries({ queryKey: ['reviews', booking.match.listingId] })
     }, t('Review posted on {title}', { title }))
   const rateTheRenter = (quality: number) =>
-    done(() => rateRenter(booking.id, quality), t('Thanks. {name} will see it once they have rated too.', { name: buyer }))
+    done(() => rateRenter(booking.id, quality, rateKey), t('Thanks. {name} will see it once they have rated too.', { name: buyer }))
 
   // For the buyer, cancelling before the start is also their right of
   // withdrawal (EU consumer law), so the button says so.
@@ -210,6 +221,11 @@ function Detail({
       )}
     </div>
   )
+  const noShowButton = canReportNoShow && (
+    <Button block variant="quiet" disabled={!online || busy} onClick={() => setNoShowOpen(true)}>
+      {asOwner ? t('{name} did not show up', { name: buyer }) : t('{name} did not show up', { name: first })}
+    </Button>
+  )
   const home = asOwner ? (
     <Button block size="lg" variant="secondary" to={'/earn'}>
       {t('Back to Earn')}
@@ -239,6 +255,7 @@ function Detail({
         <div className="space-y-2">
           {startButton}
           {!begun && cancelButton}
+          {noShowButton}
         </div>
       )
       break
@@ -251,6 +268,7 @@ function Detail({
         <div className="space-y-2">
           {startButton}
           {begun ? disputeButton : cancelButton}
+          {noShowButton}
         </div>
       )
       break
@@ -345,6 +363,26 @@ function Detail({
               : t('You reported a problem. The payment is on hold while Cappy looks into it; we will be in touch.')
           }
         />
+      ) : booking.status === 'cancelled' && booking.noShow ? (
+        <Banner
+          tone="warn"
+          title={
+            booking.noShow === 'owner'
+              ? asOwner
+                ? t('Reported: you did not show up')
+                : t('Reported: {name} did not show up', { name: first })
+              : asOwner
+                ? t('Reported: {name} did not show up', { name: buyer })
+                : t('Reported: you did not show up')
+          }
+          body={
+            booking.noShow === 'owner'
+              ? t('The renter gets everything back{amount}. A no-show counts against the owner.', {
+                  amount: booking.refundAmount ? ` (${formatEurExact(booking.refundAmount)})` : '',
+                })
+              : t('Nothing is refunded for a missed booking; the owner is paid. If this is wrong, get help with this booking.')
+          }
+        />
       ) : booking.status === 'cancelled' ? (
         <Banner
           tone="warn"
@@ -388,7 +426,7 @@ function Detail({
         <Banner
           tone="warn"
           title={t('Waiting for {name}', { name: first })}
-          body={`${owner ? `${responseTime(owner.responseMins)}. ` : ''}${t('Your card is held, and charged only if they accept.')}`}
+          body={`${owner ? sentence(responseTime(owner.responseMins)) : ''}${t('Your card is held, and charged only if they accept.')}`}
         />
       ) : booking.status === 'accepted' ? (
         <Banner
@@ -442,7 +480,11 @@ function Detail({
                   >
                     {t(step.label)}
                   </p>
-                  <p className="t-sm text-[var(--ink-3)]">{t(asOwner ? step.ownerNote : step.note)}</p>
+                  <p className="t-sm text-[var(--ink-3)]">
+                    {step.id === 'requested' && booking.listing?.instantBook
+                      ? t('Instant book: confirmed as soon as the card was held')
+                      : t(asOwner ? step.ownerNote : step.note)}
+                  </p>
                 </div>
               </li>
             )
@@ -493,6 +535,7 @@ function Detail({
           bookingId={booking.id}
           otherName={asOwner ? buyer : first}
           accepted={['accepted', 'active', 'completed', 'disputed'].includes(booking.status)}
+          closed={dead}
         />
       )}
 
@@ -518,6 +561,11 @@ function Detail({
 
       <Card className="mt-3 p-5">
         <h2 className="t-label mb-2">{t('What you agreed')}</h2>
+        {!asOwner && booking.listing?.ownerBusiness && (
+          <div className="mb-2">
+            <TraderNote business={booking.listing.ownerBusiness} />
+          </div>
+        )}
         <Row label={t('When')} value={range(booking.match.start, booking.match.end)} />
         <Row
           label={booking.requirement.mode === 'window' ? t('Duration') : t('Batch')}
@@ -800,24 +848,7 @@ function Detail({
             <p className="mb-3 text-[14px] font-semibold text-[var(--ink-2)]">
               {t('How was the thing itself?')}
             </p>
-            <div className="flex justify-between gap-1">
-              {[1, 2, 3, 4, 5].map((n) => (
-                <button
-                  key={n}
-                  onClick={() => setStars(n)}
-                  aria-label={plural(n, '{n} star', '{n} stars')}
-                  aria-pressed={stars === n}
-                  className="grid h-12 w-12 place-items-center rounded-[var(--radius-control)] transition-colors duration-[160ms] hover:bg-[var(--sunken)]"
-                >
-                  <Icon
-                    name="star"
-                    size={30}
-                    strokeWidth={0}
-                    className={`transition-colors duration-[160ms] ${n <= stars ? 'fill-[var(--ink)]' : 'fill-[var(--line-strong)]'}`}
-                  />
-                </button>
-              ))}
-            </div>
+            <StarPicker value={stars} onChange={setStars} label={t('How was the thing itself?')} />
           </div>
 
           <div>
@@ -861,27 +892,93 @@ function Detail({
         </div>
       </Sheet>
 
-      <Sheet open={ratingRenter} onClose={() => setRatingRenter(false)} title={t('How was {name} as a renter?', { name: buyer })}>
-        <div className="flex justify-between gap-1 pb-3">
-          {[1, 2, 3, 4, 5].map((n) => (
-            <button
-              key={n}
-              disabled={!online || busy}
-              onClick={() => {
-                void rateTheRenter(n)
-                setRatingRenter(false)
-              }}
-              aria-label={plural(n, '{n} star', '{n} stars')}
-              className="grid h-12 w-12 place-items-center rounded-[var(--radius-control)] transition-colors duration-[160ms] hover:bg-[var(--sunken)]"
-            >
-              <Icon name="star" size={30} strokeWidth={0} className="fill-[var(--line-strong)] hover:fill-[var(--ink)]" />
-            </button>
-          ))}
+      <Sheet
+        open={ratingRenter}
+        onClose={() => setRatingRenter(false)}
+        title={t('How was {name} as a renter?', { name: buyer })}
+        footer={
+          <Button
+            block
+            size="lg"
+            disabled={!online || busy || renterStars === 0}
+            onClick={() => {
+              void rateTheRenter(renterStars)
+              setRatingRenter(false)
+            }}
+          >
+            {t('Submit rating')}
+          </Button>
+        }
+      >
+        <div className="pb-3">
+          <StarPicker value={renterStars} onChange={setRenterStars} label={t('How was {name} as a renter?', { name: buyer })} />
         </div>
         <p className="t-sm pb-3 text-[var(--ink-4)]">
           {t('Only owners see renter ratings, when that person asks to book. Reviews are blind: yours is published once you have both rated, or 14 days after the booking.')}
         </p>
       </Sheet>
+      <Sheet
+        open={noShowOpen}
+        onClose={() => setNoShowOpen(false)}
+        title={t('{name} did not show up?', { name: asOwner ? buyer : first })}
+        footer={
+          <div className="space-y-2">
+            <Button
+              block
+              size="lg"
+              variant="danger"
+              disabled={!online || busy}
+              onClick={() => {
+                void done(() => reportNoShow(booking.id), t('Reported'))
+                setNoShowOpen(false)
+              }}
+            >
+              {t('Yes, report the no-show')}
+            </Button>
+            <Button block variant="quiet" onClick={() => setNoShowOpen(false)}>
+              {t('Not yet')}
+            </Button>
+          </div>
+        }
+      >
+        <p className="t-body pb-3 text-[var(--ink-2)]">
+          {asOwner
+            ? t('The booking ends and {name} gets nothing back; you are paid for it. Only report this if they really did not come: they can contest it.', { name: buyer })
+            : t('The booking ends and you get back everything you paid, {amount}. It counts against {name}. Only report this if they really did not come.', {
+                amount: formatEurExact(quote.total),
+                name: first,
+              })}
+        </p>
+      </Sheet>
     </Screen>
+  )
+}
+
+/** Tap a star, then submit: a mis-tap is corrected before anything is posted (V3-8). */
+function StarPicker({ value, onChange, label }: { value: number; onChange: (n: number) => void; label: string }) {
+  const [hover, setHover] = useState(0)
+  const shown = hover || value
+  return (
+    <div role="radiogroup" aria-label={label} className="flex justify-between gap-1" onMouseLeave={() => setHover(0)}>
+      {[1, 2, 3, 4, 5].map((n) => (
+        <button
+          key={n}
+          type="button"
+          role="radio"
+          aria-checked={value === n}
+          aria-label={plural(n, '{n} star', '{n} stars')}
+          onClick={() => onChange(n)}
+          onMouseEnter={() => setHover(n)}
+          className="grid h-12 w-12 place-items-center rounded-[var(--radius-control)] transition-colors duration-[160ms] hover:bg-[var(--sunken)]"
+        >
+          <Icon
+            name="star"
+            size={30}
+            strokeWidth={0}
+            className={`transition-colors duration-[160ms] ${n <= shown ? 'fill-[var(--ink)]' : 'fill-[var(--line-strong)]'}`}
+          />
+        </button>
+      ))}
+    </div>
   )
 }

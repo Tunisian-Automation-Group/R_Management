@@ -1,5 +1,6 @@
 import type { Iso, Slot } from '../../domain/types.ts'
-import { locale, t } from '../../i18n.ts'
+import { t } from '../../i18n.ts'
+import { weekday2 } from '../format.ts'
 
 type Props = {
   slots: Slot[]
@@ -128,7 +129,7 @@ export function CapacityBar({
                 col.isToday ? 'font-bold text-[var(--ink)]' : 'font-semibold text-[var(--ink-4)]'
               }`}
             >
-              {col.date.toLocaleDateString(locale(), { weekday: 'narrow' })}
+              {weekday2(col.date)}
               {size === 'md' && <span className="ml-0.5 opacity-80">{col.date.getDate()}</span>}
             </div>
           ))}

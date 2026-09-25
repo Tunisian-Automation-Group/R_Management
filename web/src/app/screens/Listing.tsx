@@ -16,6 +16,7 @@ import {
   useDistricts,
   useListing,
   useOffers,
+  useFlag,
   usePaymentsConfig,
   useQuote,
   useReviews,
@@ -29,6 +30,7 @@ import { Photo, SaveButton } from '../components/Photo.tsx'
 import { Reviews } from '../components/Reviews.tsx'
 import { BlockButton, ReportButton } from '../components/Report.tsx'
 import { PayStep } from '../components/PayStep.tsx'
+import { TraderNote } from '../components/BusinessFields.tsx'
 import { askForPush } from '../components/PushPrime.tsx'
 import { Icon } from '../components/Icon.tsx'
 import {
@@ -36,6 +38,7 @@ import {
   Banner,
   Button,
   Card,
+  Check,
   Chip,
   EmptyState,
   Row,
@@ -43,7 +46,7 @@ import {
   oneDecimal,
   Stars,
 } from '../components/ui.tsx'
-import { day, distance, policyName, policyText, range, relative, responseTime, time } from '../format.ts'
+import { cancelRate, day, distance, policyInForce, policyName, policyText, range, relative, responseTime, time } from '../format.ts'
 import { useOnline } from '../components/Offline.tsx'
 import { locale, t } from '../../i18n.ts'
 
@@ -61,6 +64,7 @@ export function Listing() {
   const districts = useDistricts()
   const reviews = useReviews(id)
   const payments = usePaymentsConfig()
+  const paidPolicies = useFlag('paidCancellationPolicies')
 
   const listing = detail.data?.listing
   const owner = detail.data?.owner
@@ -85,6 +89,8 @@ export function Listing() {
   const [paying, setPaying] = useState<BookingCreated | null>(null)
   // A 'verification_required' booking: the one-time ID check, then the booking again.
   const [verifying, setVerifying] = useState<'ask' | 'busy' | null>(null)
+  // P-18: the ID check is biometric data; it starts only after an explicit yes.
+  const [idConsent, setIdConsent] = useState(false)
 
   // To the minute, so the quote's query key does not change every render.
   const now = useMemo(() => new Date(Math.floor(Date.now() / 60_000) * 60_000), [])
@@ -145,6 +151,8 @@ export function Listing() {
   if (detail.isPending) return <Screen back="/">{null}</Screen>
   if (!detail.data || !listing || !owner) return <NotFound what="listing" />
   const info = detail.data
+  // The owner's policy only binds once Cappy switches paid policies on (V3-4).
+  const policy = policyInForce(listing.cancellationPolicy, paidPolicies)
 
   const meta = category(listing.category)
   const from = districts.data?.[origin]
@@ -211,7 +219,7 @@ export function Listing() {
     try {
       let id = await startIdentity()
       if (id.status !== 'verified' && id.clientSecret && payments.data?.publishableKey) {
-        const { loadStripe } = await import('@stripe/stripe-js')
+        const { loadStripe } = await import('@stripe/stripe-js/pure')
         const stripe = await loadStripe(payments.data.publishableKey)
         const res = await stripe?.verifyIdentity(id.clientSecret)
         if (res?.error) throw new Error(res.error.message)
@@ -285,10 +293,11 @@ export function Listing() {
             <Button
               size="lg"
               disabled={!selected || !quote || !online}
+              icon={listing.instantBook ? 'bolt' : undefined}
               onClick={request}
               className="md:mt-5 md:w-full"
             >
-              {t('Request')}
+              {listing.instantBook ? t('Book') : t('Request')}
             </Button>
             {/* The worry in front of any red button is "am I paying now". Nothing
                 is charged here, so the box says so, and says who answers and when. */}
@@ -366,6 +375,9 @@ export function Listing() {
             <p className="t-sm text-[var(--ink-3)]">
               {trackRecord(owner)} · {t('since {year}', { year: owner.joinedYear })}
             </p>
+            {cancelRate(owner.cancellationRate) && (
+              <p className="t-sm text-[var(--warn)]">{cancelRate(owner.cancellationRate)}</p>
+            )}
           </div>
           {/* The owner across all their listings, labelled so it is not read as this listing's. */}
           <span className="shrink-0 text-right">
@@ -384,6 +396,11 @@ export function Listing() {
             ? t('Business. EU consumer rights apply to your booking.')
             : t('Private person, not a business. EU consumer rights toward businesses do not apply; Cappy’s terms and payment protection do.')}
         </p>
+        {owner.business && (
+          <div className="mt-3">
+            <TraderNote business={owner.business} />
+          </div>
+        )}
         <div className="mt-3 flex flex-wrap gap-1 border-t border-[var(--line)] pt-3">
           <ReportButton targetType="owner" targetId={owner.id} />
           {ME && ME !== owner.id && <BlockButton sub={owner.id} name={first} />}
@@ -528,12 +545,17 @@ export function Listing() {
             )}
             <Row label={t('Total')} value={formatEurExact(quote.total)} strong />
             <p className="t-sm mt-3 border-t border-[var(--line)] pt-3 text-[var(--ink-4)]">
-              {t('Includes the {pct} % Cappy fee of {fee}. {name} receives {net}. Paid by card when {name} accepts; if they decline, the hold is released.', {
-                pct: (PLATFORM_FEE_BPS / 100).toLocaleString(locale()),
-                fee: formatEurExact(quote.platformFee),
-                net: formatEurExact(quote.ownerNet),
-                name: first,
-              })}
+              {t(
+                listing.instantBook
+                  ? 'Includes the {pct} % Cappy fee of {fee}. {name} receives {net}. Instant book: paid by card when you book, confirmed at once.'
+                  : 'Includes the {pct} % Cappy fee of {fee}. {name} receives {net}. Paid by card when {name} accepts; if they decline, the hold is released.',
+                {
+                  pct: (PLATFORM_FEE_BPS / 100).toLocaleString(locale()),
+                  fee: formatEurExact(quote.platformFee),
+                  net: formatEurExact(quote.ownerNet),
+                  name: first,
+                },
+              )}
             </p>
           </Card>
         </>
@@ -541,9 +563,9 @@ export function Listing() {
 
       <SectionHead title={t('Cancellation')} className="mt-7" />
       <Card className="p-5">
-        <p className="text-[15px] font-semibold">{policyName(listing.cancellationPolicy)}</p>
+        <p className="text-[15px] font-semibold">{policyName(policy)}</p>
         <p className="t-sm mt-1 text-[var(--ink-3)]">
-          {policyText(listing.cancellationPolicy)} {t('If the owner cancels, you get everything back.')}
+          {policyText(policy)} {t('If the owner cancels, you get everything back.')}
         </p>
       </Card>
 
@@ -582,7 +604,15 @@ export function Listing() {
           // The booking made so far can still be paid from its own page.
           startOver()
         }}
-        title={paying ? t('Pay to send your request') : t('Confirm request')}
+        title={
+          listing.instantBook
+            ? paying
+              ? t('Pay to book')
+              : t('Confirm booking')
+            : paying
+              ? t('Pay to send your request')
+              : t('Confirm request')
+        }
         footer={
           paying ? undefined : (
             <div className="space-y-2">
@@ -654,8 +684,9 @@ export function Listing() {
               />
             )}
             <p className="t-sm text-[var(--ink-3)]">
-              {t('Cancellation')}: {policyText(listing.cancellationPolicy)}
+              {t('Cancellation')}: {policyText(policy)}
             </p>
+            <TraderNote business={owner.business} />
           </div>
         )}
       </Sheet>
@@ -666,7 +697,7 @@ export function Listing() {
         title={t('Check your ID once')}
         footer={
           <div className="space-y-2">
-            <Button block size="lg" disabled={verifying === 'busy'} onClick={() => void verify()}>
+            <Button block size="lg" disabled={verifying === 'busy' || !idConsent} onClick={() => void verify()}>
               {verifying === 'busy' ? t('Checking…') : t('Check my ID')}
             </Button>
             <Button block variant="quiet" onClick={() => setVerifying(null)}>
@@ -678,6 +709,21 @@ export function Listing() {
         <p className="pb-2 text-[15px] text-[var(--ink-2)]">
           {t('This booking needs a one-time ID check. You photograph an ID document and your face; it takes about two minutes and is never needed again. Your booking is sent as soon as it is done.')}
         </p>
+        <div className="pb-3">
+          <Check
+            checked={idConsent}
+            onChange={setIdConsent}
+            label={t('I agree to the ID check')}
+            hint={
+              <>
+                {t('Stripe, our payment provider, checks a photo of your ID document against a selfie on Cappy’s behalf. You can refuse; then this booking cannot go ahead.')}{' '}
+                <a className="underline" href="/legal/privacy">
+                  {t('Privacy Policy')}
+                </a>
+              </>
+            }
+          />
+        </div>
       </Sheet>
     </Screen>
   )

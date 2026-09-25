@@ -4,7 +4,7 @@ import { Capacitor } from '@capacitor/core'
 import { closeTopSheet } from './app/sheets.ts'
 
 export const isNative = Capacitor.isNativePlatform()
-const platform = Capacitor.getPlatform() as 'ios' | 'android' | 'web'
+export const platform = Capacitor.getPlatform() as 'web' | 'ios' | 'android'
 
 const API: string = (import.meta.env.VITE_API_URL as string | undefined)?.replace(/\/$/, '') ?? '/api'
 const DEVICE_KEY = 'cappy.push.token.v1'

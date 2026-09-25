@@ -139,14 +139,26 @@ export function Bookings() {
         </div>
       )}
 
-      {tab === 'live' && next && (
-        <Card className="mb-5 p-5">
-          <p className="t-label mb-2">{t('Next up')}</p>
-          <p className="text-[16px] font-semibold">{next.booking.listing?.title ?? t('Listing removed')}</p>
-          <p className="t-sm mt-1 text-[var(--ink-3)]">{next.action}</p>
-          <Button className="mt-4" onClick={() => nav(`/bookings/${next.booking.id}`)}>
-            {t('Open booking')}
-          </Button>
+      {/* An unrated finished booking is past: its prompt lives on the Past tab,
+          never above "Nothing upcoming" (V3-11). */}
+      {next && LIVE.includes(next.booking.status) === (tab === 'live') && (
+        <Card className="mb-5 flex gap-4 p-5">
+          <Photo
+            src={next.booking.listing?.photo}
+            alt=""
+            categoryId={next.booking.requirement.category}
+            aspect={1}
+            className="w-[64px] shrink-0 rounded-[14px]"
+          />
+          <div className="min-w-0 flex-1">
+            <p className="t-label mb-1">{t('Next up')}</p>
+            <p className="truncate text-[16px] font-semibold">{next.booking.listing?.title ?? t('Listing removed')}</p>
+            <p className="t-sm tnum text-[var(--ink-3)]">{range(next.booking.match.start, next.booking.match.end)}</p>
+            <p className="t-sm mt-1 font-semibold text-[var(--ink-2)]">{next.action}</p>
+            <Button size="sm" className="mt-3" onClick={() => nav(`/bookings/${next.booking.id}`)}>
+              {t('Open booking')}
+            </Button>
+          </div>
         </Card>
       )}
 

@@ -120,6 +120,7 @@ function adopt(r: AuthResult): void {
   const c = claims(r.IdToken)
   const groups = claims(r.AccessToken)['cognito:groups']
   session = { sub: String(c.sub), email: String(c.email ?? ''), staff: Array.isArray(groups) && groups.includes('admin') }
+  announce(session.sub)
   // A returning device goes straight to sign-in, never the welcome again.
   setDevice({ signedInBefore: true, welcomeSeen: true })
   emit()
@@ -129,6 +130,7 @@ function forget(): void {
   tokens = null
   session = null
   writeRefresh(null)
+  announce(null)
   emit()
 }
 
@@ -175,6 +177,36 @@ void (async () => {
   ready = true
   emit()
 })
+
+// Another tab signed out, or in as someone else (V3-7). Tabs follow the
+// account's id under its own key, never the refresh token itself: with token
+// rotation every refresh rewrites that, and tabs would refresh each other forever.
+const WHO_KEY = 'cappy.who.v1'
+function announce(sub: string | null): void {
+  if (isNative) return
+  try {
+    if (localStorage.getItem(WHO_KEY) === sub) return
+    if (sub) localStorage.setItem(WHO_KEY, sub)
+    else localStorage.removeItem(WHO_KEY)
+  } catch {
+    // Storage blocked: this tab is on its own.
+  }
+}
+if (!isNative) {
+  addEventListener('storage', (e) => {
+    if (e.key !== WHO_KEY || e.newValue === (session?.sub ?? null)) return
+    if (!e.newValue) {
+      tokens = null
+      session = null
+      emit()
+    } else if (session) {
+      // A different account's data is on screen and in the cache: start clean.
+      location.reload()
+    } else {
+      void refresh()
+    }
+  })
+}
 
 const subscribe = (fn: () => void) => {
   listeners.add(fn)
@@ -273,12 +305,14 @@ export async function signOut(opts: { everywhere?: boolean } = {}): Promise<void
   const access = tokens?.access
   const stored = readRefresh()
   if (access && opts.everywhere) {
-    try {
-      const api = (import.meta.env.VITE_API_URL as string | undefined)?.replace(/\/$/, '') ?? '/api'
-      await fetch(`${api}/me/sign-out-everywhere`, { method: 'POST', headers: { Authorization: `Bearer ${access}` } })
-    } catch {
-      // Cognito's GlobalSignOut below still ends the sessions.
-    }
+    // Other devices are only signed out if the server says so; if it cannot,
+    // this device stays signed in so the person can try again (V3-23).
+    const api = (import.meta.env.VITE_API_URL as string | undefined)?.replace(/\/$/, '') ?? '/api'
+    const res = await fetch(`${api}/me/sign-out-everywhere`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${access}` },
+    }).catch(() => null)
+    if (!res?.ok) throw new AuthError(t('Your other devices could not be signed out. Check your connection and try again.'), 'everywhere')
   }
   if (access) await pushSignedOut(access)
   clearDrafts()

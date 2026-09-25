@@ -12,6 +12,9 @@ import {
   useBlocks,
   useBookings,
   useDistricts,
+  useNoticeSettings,
+  saveNoticeSettings,
+  type NoticeCategory,
   useMeQuery,
   useMyListings,
   useOwner,
@@ -19,6 +22,7 @@ import {
 } from '../../data/repo.ts'
 import type { Owner } from '../../domain/types.ts'
 import { messageOf, useToast } from '../store.tsx'
+import { BusinessFields, businessProblem, cleanBusiness, emptyBusiness } from '../components/BusinessFields.tsx'
 import { DistrictSelect } from '../components/DistrictSelect.tsx'
 import { accessToken, deleteAccount, signOut, useAuthReady, useSession } from '../../data/auth.ts'
 import { SignedOut } from '../components/SignedOut.tsx'
@@ -280,15 +284,18 @@ function EditProfile({ open, onClose, you }: { open: boolean; onClose: () => voi
   const [name, setName] = useState(you.name)
   const [kind, setKind] = useState<'person' | 'business'>(you.kind)
   const [district, setDistrict] = useState(you.district)
+  const [business, setBusiness] = useState(you.business ?? emptyBusiness)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
   const save = async () => {
     if (name.trim().length < 2) return setError(t('Tell people what to call you.'))
+    const bad = kind === 'business' ? businessProblem(business) : null
+    if (bad) return setError(bad)
     setBusy(true)
     setError(null)
     try {
-      await saveProfile({ name: name.trim(), kind, district })
+      await saveProfile({ name: name.trim(), kind, district, ...(kind === 'business' ? { business: cleanBusiness(business) } : {}) })
       await qc.invalidateQueries({ queryKey: ['me'] })
       toast(t('Profile saved'))
       onClose()
@@ -325,6 +332,7 @@ function EditProfile({ open, onClose, you }: { open: boolean; onClose: () => voi
             ]}
           />
         </Field>
+        {kind === 'business' && <BusinessFields id="p-biz" value={business} onChange={setBusiness} />}
         <Field label={t('Where are you?')} htmlFor="p-where">
           <DistrictSelect
             id="p-where"
@@ -482,11 +490,14 @@ function SignOutEverywhere() {
               block
               size="lg"
               onClick={() =>
-                void signOut({ everywhere: true }).then(() => {
-                  qc.clear()
-                  toast(t('Signed out on every device'))
-                  nav('/login', { replace: true })
-                })
+                void signOut({ everywhere: true }).then(
+                  () => {
+                    qc.clear()
+                    toast(t('Signed out on every device'))
+                    nav('/login', { replace: true })
+                  },
+                  (err: unknown) => toast(messageOf(err)),
+                )
               }
             >
               {t('Sign out everywhere')}
@@ -547,10 +558,69 @@ function NotificationSettings() {
             </Button>
           </div>
         )}
-        <p className="t-sm mt-4 text-[var(--ink-3)]">
-          {t('Only bookings and messages; never marketing. Everything also arrives by email.')}
-        </p>
+        <Channels />
       </Card>
     </section>
+  )
+}
+
+const CATEGORY_LABEL: Record<NoticeCategory, string> = {
+  bookings: 'Bookings and requests',
+  messages: 'Messages',
+  payouts: 'Payouts',
+  marketing: 'News and offers',
+}
+
+/** Push and email, per kind of notification (V3-21). Marketing stays off until chosen. */
+function Channels() {
+  const qc = useQueryClient()
+  const toast = useToast()
+  const session = useSession()
+  const q = useNoticeSettings()
+  if (!q.data) {
+    return (
+      <p className="t-sm mt-4 text-[var(--ink-3)]">
+        {t('Only bookings and messages; never marketing. Everything also arrives by email.')}
+      </p>
+    )
+  }
+  const settings = q.data
+  const flip = (c: NoticeCategory, ch: 'push' | 'email') => {
+    const next = { categories: { ...settings.categories, [c]: { ...settings.categories[c], [ch]: !settings.categories[c][ch] } } }
+    const key = ['noticeSettings', session?.sub]
+    qc.setQueryData(key, next)
+    saveNoticeSettings(next).catch((err: unknown) => {
+      qc.setQueryData(key, settings)
+      toast(messageOf(err))
+    })
+  }
+  return (
+    <table className="mt-4 w-full border-t border-[var(--line)] text-left">
+      <thead>
+        <tr className="t-sm text-[var(--ink-4)]">
+          <th className="py-2 font-semibold">{t('Tell me about')}</th>
+          <th className="w-16 py-2 text-center font-semibold">{t('Push')}</th>
+          <th className="w-16 py-2 text-center font-semibold">{t('Email')}</th>
+        </tr>
+      </thead>
+      <tbody>
+        {(Object.keys(CATEGORY_LABEL) as NoticeCategory[]).map((c) => (
+          <tr key={c} className="border-t border-[var(--line)]">
+            <td className="py-3 text-[14.5px]">{t(CATEGORY_LABEL[c])}</td>
+            {(['push', 'email'] as const).map((ch) => (
+              <td key={ch} className="py-3 text-center">
+                <input
+                  type="checkbox"
+                  className="h-5 w-5 accent-[var(--ink)]"
+                  aria-label={`${t(CATEGORY_LABEL[c])}: ${ch === 'push' ? t('Push') : t('Email')}`}
+                  checked={settings.categories[c]?.[ch] ?? false}
+                  onChange={() => flip(c, ch)}
+                />
+              </td>
+            ))}
+          </tr>
+        ))}
+      </tbody>
+    </table>
   )
 }

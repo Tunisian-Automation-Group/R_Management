@@ -180,45 +180,53 @@ function ListingForm({ edit }: { edit?: repo.ListingView }) {
   const districts = repo.useDistricts()
   const [saving, setSaving] = useState(false)
   const was = edit?.listing
-  // A new listing's words survive a session expiring mid-form (U-10).
-  const [draft] = useState<Partial<Record<'categoryId' | 'title' | 'blurb' | 'district' | 'address', string>>>(() => {
+  // The whole form survives a reload or a session expiring mid-form, for a new
+  // listing and for an edit alike, one draft per listing (U-10, V3-10).
+  const draftKey = `listing.${was?.id ?? 'new'}`
+  const [draft] = useState<Record<string, unknown>>(() => {
     try {
-      return was ? {} : (JSON.parse(drafts.get('listing') ?? '{}') as Record<string, string>)
+      return JSON.parse(drafts.get(draftKey) ?? '{}') as Record<string, unknown>
     } catch {
       return {}
     }
   })
+  /** The draft's value when there is one, else what the listing had, else the default. */
+  const init = <T,>(key: string, fallback: T): T => (key in draft ? (draft[key] as T) : fallback)
   const wasWindow = was?.mode === 'window' ? was : undefined
   const wasBatch = was?.mode === 'batch' ? was : undefined
 
-  const [categoryId, setCategoryId] = useState<CategoryId | null>(was?.category ?? ((draft.categoryId as CategoryId | undefined) || null))
-  const [title, setTitle] = useState(was?.title ?? draft.title ?? '')
-  const [blurb, setBlurb] = useState(was?.blurb ?? draft.blurb ?? '')
-  const [district, setDistrict] = useState(was?.district ?? draft.district ?? (state.search.district || 'Kreuzberg'))
-  const [address, setAddress] = useState(edit?.address ?? draft.address ?? '')
-  const [rate, setRate] = useState(was?.ratePerHour ?? 400)
-  const [extraFee, setExtraFee] = useState(wasWindow?.extraFee ?? 0)
-  const [extraLabel, setExtraLabel] = useState(wasWindow && wasWindow.extraFee > 0 ? wasWindow.extraLabel : t('Consumables'))
-  const [minHours, setMinHours] = useState(wasWindow?.minHours ?? 1)
-  const [maxHours, setMaxHours] = useState(wasWindow?.maxHours ?? 6)
-  const [machine, setMachine] = useState(wasBatch?.machine ?? '')
-  const [materials, setMaterials] = useState<Material[]>(wasBatch?.materials ?? [])
-  const [unitsPerHour, setUnitsPerHour] = useState(wasBatch?.unitsPerHour ?? 10)
-  const [setupFee, setSetupFee] = useState(wasBatch?.setupFee ?? 1500)
-  const [setupHours, setSetupHours] = useState(wasBatch?.setupHours ?? 1)
-  const [dims, setDims] = useState(wasBatch?.maxDims ?? { x: 300, y: 300, z: 300 })
+  const [categoryId, setCategoryId] = useState<CategoryId | null>(init('categoryId', was?.category ?? null))
+  const [title, setTitle] = useState(init('title', was?.title ?? ''))
+  const [blurb, setBlurb] = useState(init('blurb', was?.blurb ?? ''))
+  const [district, setDistrict] = useState(init('district', was?.district ?? (state.search.district || 'Kreuzberg')))
+  const [address, setAddress] = useState(init('address', edit?.address ?? ''))
+  const [rate, setRate] = useState(init('rate', was?.ratePerHour ?? 400))
+  const [extraFee, setExtraFee] = useState(init('extraFee', wasWindow?.extraFee ?? 0))
+  const [extraLabel, setExtraLabel] = useState(
+    init('extraLabel', wasWindow && wasWindow.extraFee > 0 ? wasWindow.extraLabel : t('Consumables')),
+  )
+  const [minHours, setMinHours] = useState(init('minHours', wasWindow?.minHours ?? 1))
+  const [maxHours, setMaxHours] = useState(init('maxHours', wasWindow?.maxHours ?? 6))
+  const [machine, setMachine] = useState(init('machine', wasBatch?.machine ?? ''))
+  const [materials, setMaterials] = useState<Material[]>(init('materials', wasBatch?.materials ?? []))
+  const [unitsPerHour, setUnitsPerHour] = useState(init('unitsPerHour', wasBatch?.unitsPerHour ?? 10))
+  const [setupFee, setSetupFee] = useState(init('setupFee', wasBatch?.setupFee ?? 1500))
+  const [setupHours, setSetupHours] = useState(init('setupHours', wasBatch?.setupHours ?? 1))
+  const [dims, setDims] = useState(init('dims', wasBatch?.maxDims ?? { x: 300, y: 300, z: 300 }))
   // Editing: the windows already listed stay unless removed; new ones are optional.
-  const [availability, setAvailability] = useState<Availability | 'none'>(edit ? 'none' : 'evenings')
-  const [custom, setCustom] = useState<CustomWindow>(defaultCustom)
-  const [keptSlots, setKeptSlots] = useState<Slot[]>(edit?.slots ?? [])
-  const [instructions, setInstructions] = useState(was?.instructions ?? '')
-  const [instantBook, setInstantBook] = useState(was?.instantBook ?? false)
-  const [policy, setPolicy] = useState<CancellationPolicy>(was?.cancellationPolicy ?? 'flexible')
-  const [dayPct, setDayPct] = useState(was?.dayDiscountPct ?? 0)
-  const [weekPct, setWeekPct] = useState(was?.weekDiscountPct ?? 0)
-  const [rules, setRules] = useState<string[]>(was?.rules.filter((r) => r !== 'Cash or bank transfer') ?? [])
+  const [availability, setAvailability] = useState<Availability | 'none'>(init('availability', edit ? 'none' : 'evenings'))
+  const [custom, setCustom] = useState<CustomWindow>(init('custom', defaultCustom))
+  const [keptSlots, setKeptSlots] = useState<Slot[]>(init('keptSlots', edit?.slots ?? []))
+  const [instructions, setInstructions] = useState(init('instructions', was?.instructions ?? ''))
+  const [instantBook, setInstantBook] = useState(init('instantBook', was?.instantBook ?? false))
+  const [policy, setPolicy] = useState<CancellationPolicy>(init('policy', was?.cancellationPolicy ?? 'flexible'))
+  const [dayPct, setDayPct] = useState(init('dayPct', was?.dayDiscountPct ?? 0))
+  const [weekPct, setWeekPct] = useState(init('weekPct', was?.weekDiscountPct ?? 0))
+  const [rules, setRules] = useState<string[]>(init('rules', was?.rules.filter((r) => r !== 'Cash or bank transfer') ?? []))
+  // Photos in the draft are the ones already uploaded (they have a url); one
+  // still uploading when the page went away has to be picked again.
   const [photos, setPhotos] = useState<PhotoDraft[]>(
-    (was?.photos ?? []).map((url, i) => ({ key: `was-${i}`, preview: repo.mediaUrl(url), url })),
+    init<string[]>('photos', was?.photos ?? []).map((url, i) => ({ key: `was-${i}`, preview: repo.mediaUrl(url), url })),
   )
   const fileInput = useRef<HTMLInputElement>(null)
   const [errors, setErrors] = useState<Errors>({})
@@ -226,10 +234,18 @@ function ListingForm({ edit }: { edit?: repo.ListingView }) {
 
   const meta = categoryId ? category(categoryId) : null
   const isBatch = meta?.mode === 'batch'
+  const form = {
+    categoryId, title, blurb, district, address, rate, extraFee, extraLabel, minHours, maxHours, machine, materials,
+    unitsPerHour, setupFee, setupHours, dims, availability, custom, keptSlots, instructions, instantBook, policy,
+    dayPct, weekPct, rules, photos: photos.flatMap((p) => (p.url ? [p.url] : [])),
+  }
+  const formJson = JSON.stringify(form)
+  // Written only once something changed, so an untouched edit never shadows the listing.
+  const firstJson = useRef(formJson)
   useEffect(() => {
-    if (was) return
-    drafts.set('listing', JSON.stringify({ categoryId: categoryId ?? '', title, blurb, district, address }))
-  }, [was, categoryId, title, blurb, district, address])
+    if (formJson !== firstJson.current) drafts.set(draftKey, formJson)
+  }, [draftKey, formJson])
+  const restored = Object.keys(draft).length > 0
   const example = (categoryId && EXAMPLES[categoryId]) || DEFAULT_EXAMPLE
 
   // Validation runs on blur and on submit, never on every keystroke, which
@@ -428,10 +444,11 @@ function ListingForm({ edit }: { edit?: repo.ListingView }) {
         await Promise.all(
           [['myListings'], ['listing', was.id], ['offers', was.id]].map((queryKey) => qc.invalidateQueries({ queryKey })),
         )
+        drafts.set(draftKey, '')
         toast(t('{title} updated', { title: listing.title }))
       } else {
         await repo.addListing(listing, buildSlots(), address.trim(), createKey)
-        drafts.set('listing', '')
+        drafts.set(draftKey, '')
         await qc.invalidateQueries({ queryKey: ['myListings'] })
         toast(t('{title} is live', { title: listing.title }))
         askForPush('listing')
@@ -449,7 +466,7 @@ function ListingForm({ edit }: { edit?: repo.ListingView }) {
     return (
       <Screen
         back="/earn"
-        eyebrow="New listing"
+        eyebrow={t('New listing')}
         title={t('What are you lending?')}
         sub={t('Pick the closest thing. You can be specific on the next screen.')}
       >
@@ -508,6 +525,27 @@ function ListingForm({ edit }: { edit?: repo.ListingView }) {
         </Button>
       }
     >
+      {restored && (
+        <div className="mb-6">
+          <Banner
+            tone="warn"
+            title={t('Your unsaved changes are back')}
+            body={was ? t('They are not on the listing yet: save to publish them.') : t('Carry on where you left off.')}
+            action={
+              <Button
+                size="sm"
+                variant="secondary"
+                onClick={() => {
+                  drafts.set(draftKey, '')
+                  location.reload()
+                }}
+              >
+                {t('Discard')}
+              </Button>
+            }
+          />
+        </div>
+      )}
       <button
         disabled={Boolean(was)}
         onClick={() => setCategoryId(null)}

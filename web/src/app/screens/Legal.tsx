@@ -286,7 +286,12 @@ function Ranking() {
         <li><strong>Distance</strong> from where you search.</li>
         <li><strong>Price</strong> for the job you described, fee included.</li>
         <li><strong>Rating</strong> from completed bookings.</li>
-        <li><strong>Reliability</strong>: finishing on time, answering quickly, not cancelling.</li>
+        <li>
+          <strong>Reliability</strong>: finishing on time and answering quickly. Owners who cancel confirmed bookings or
+          do not show up rank lower: their trust score is reduced by up to half, in proportion to the share of confirmed
+          bookings they cancelled or missed in the last 12 months (counted from five bookings). That share is shown on
+          their listings.
+        </li>
       </ul>
       <p>
         You can re-sort by price, distance or soonest. Nobody can pay for a better position: Cappy has no
@@ -610,7 +615,12 @@ function RankingDe() {
         <li><strong>Entfernung</strong> vom Ort deiner Suche.</li>
         <li><strong>Preis</strong> für den beschriebenen Auftrag, Gebühr inklusive.</li>
         <li><strong>Bewertung</strong> aus abgeschlossenen Buchungen.</li>
-        <li><strong>Zuverlässigkeit</strong>: pünktlich fertig, schnelle Antworten, keine Stornierungen.</li>
+        <li>
+          <strong>Zuverlässigkeit</strong>: pünktlich fertig und schnelle Antworten. Anbieter, die bestätigte Buchungen
+          stornieren oder nicht erscheinen, rutschen nach unten: Ihr Vertrauenswert sinkt um bis zur Hälfte, im Verhältnis
+          zum Anteil der bestätigten Buchungen der letzten 12 Monate, die sie storniert oder versäumt haben (gezählt ab fünf
+          Buchungen). Dieser Anteil steht bei ihren Inseraten.
+        </li>
       </ul>
       <p>
         Du kannst nach Preis, Entfernung oder frühestem Termin umsortieren. Eine bessere Position kann niemand kaufen: Cappy

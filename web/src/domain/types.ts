@@ -103,7 +103,13 @@ export type Owner = {
   /** As a renter: stars owners gave after completed bookings (two-way reviews). */
   renterRatingSum?: number
   renterJobs?: number
+  /** Traders only (S-4): who the renter's contract is with. Never present for a person. */
+  business?: Business
+  /** Share of accepted bookings in 12 months the owner cancelled or missed; absent under 5 (S-18). */
+  cancellationRate?: number
 }
+
+export type Business = { legalName: string; address: string; registerNumber?: string; vatId?: string }
 
 export type CancellationPolicy = 'flexible' | 'moderate' | 'strict'
 
@@ -301,6 +307,8 @@ export type Booking = {
   renterRating?: number
   /** Cents refunded when it was cancelled. */
   refundAmount?: Cents
+  /** Who did not turn up, when a no-show ended it (S-11). */
+  noShow?: 'owner' | 'renter'
 }
 
 export type ListingSnapshot = {
@@ -311,6 +319,8 @@ export type ListingSnapshot = {
   photo?: string
   instantBook?: boolean
   cancellationPolicy?: CancellationPolicy
+  /** The owner's trader identity when they booked as a business (S-4). */
+  ownerBusiness?: Business
 }
 
 /** A concrete bookable window: not the whole idle gap, the bit you would take. */

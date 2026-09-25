@@ -3,7 +3,7 @@ import { useSession } from '../../data/auth.ts'
 import { useQueryClient } from '@tanstack/react-query'
 import { REPORT_REASONS, blockPerson, sendReport, type ReportReason, type ReportTarget } from '../../data/repo.ts'
 import { messageOf, useToast } from '../store.tsx'
-import { Button, Field, Input, Select, Sheet, Textarea } from './ui.tsx'
+import { Button, Check, Field, Input, Select, Sheet, Textarea } from './ui.tsx'
 import { t } from '../../i18n.ts'
 
 const TITLE: Record<ReportTarget, string> = {
@@ -35,6 +35,7 @@ export function ReportButton({
   const [reason, setReason] = useState<ReportReason>('fraud')
   const [details, setDetails] = useState('')
   const [email, setEmail] = useState('')
+  const [goodFaith, setGoodFaith] = useState(false)
   const [busy, setBusy] = useState(false)
   const [sent, setSent] = useState<string | null>(null)
 
@@ -50,6 +51,7 @@ export function ReportButton({
         reason,
         details: details.trim(),
         email: session ? undefined : email.trim(),
+        goodFaith: true,
       })
       setSent(r.id)
     } catch (err) {
@@ -86,7 +88,7 @@ export function ReportButton({
               {t('Done')}
             </Button>
           ) : (
-            <Button block size="lg" disabled={busy || tooShort || needsEmail} onClick={() => void submit()}>
+            <Button block size="lg" disabled={busy || tooShort || needsEmail || !goodFaith} onClick={() => void submit()}>
               {t('Send report')}
             </Button>
           )
@@ -132,6 +134,12 @@ export function ReportButton({
                 />
               </Field>
             )}
+            {/* DSA Art. 16(2)(d): the notice carries the reporter's statement of good faith. */}
+            <Check
+              checked={goodFaith}
+              onChange={setGoodFaith}
+              label={t('I confirm this report is accurate and complete to the best of my knowledge.')}
+            />
             <p className="t-sm text-[var(--ink-3)]">
               {t('If someone is in danger, call 112 first. Reports are read by people at Cappy.')}
             </p>

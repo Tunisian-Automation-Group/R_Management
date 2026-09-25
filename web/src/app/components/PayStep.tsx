@@ -1,5 +1,7 @@
 import { useMemo, useState, type FormEvent } from 'react'
-import { loadStripe } from '@stripe/stripe-js'
+// The pure entry injects Stripe.js only when loadStripe runs, not on import:
+// no third-party script before someone reaches a payment (V3-1, § 25 TDDDG).
+import { loadStripe } from '@stripe/stripe-js/pure'
 import { Elements, PaymentElement, useElements, useStripe } from '@stripe/react-stripe-js'
 import { Banner, Button } from './ui.tsx'
 import { useOnline } from './Offline.tsx'

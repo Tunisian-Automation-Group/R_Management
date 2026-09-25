@@ -2,6 +2,7 @@ import { Component, type ReactNode } from 'react'
 import { Button } from './ui.tsx'
 import { Icon } from './Icon.tsx'
 import { t } from '../../i18n.ts'
+import { reportClientError } from '../../data/repo.ts'
 
 type Props = { children: ReactNode }
 type State = { error: Error | null }
@@ -17,6 +18,7 @@ export class ErrorBoundary extends Component<Props, State> {
 
   componentDidCatch(error: Error) {
     console.error('[cappy] render failed', error)
+    reportClientError(error)
   }
 
   render() {

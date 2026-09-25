@@ -18,7 +18,8 @@ export function day(iso: string): string {
   const i = dayIndex(iso)
   if (i === 0) return t('today')
   if (i === 1) return t('tomorrow')
-  if (i > 1 && i < 7) return new Date(iso).toLocaleDateString(locale(), { weekday: 'long' })
+  // A weekday alone leaves the reader to work out which one (V3-19): "Wed 30 Sep".
+  if (i > 1 && i < 7) return new Date(iso).toLocaleDateString(locale(), { weekday: 'short', day: 'numeric', month: 'short' })
   return new Date(iso).toLocaleDateString(locale(), { day: 'numeric', month: 'short' })
 }
 
@@ -66,6 +67,9 @@ export function ago(iso: string): string {
   return plural(m, '{n} month ago', '{n} months ago')
 }
 
+/** "…, and it lapses." after a sentence that may already end in "Min." (V3-15). */
+export const sentence = (s: string) => (/[.!?]$/.test(s) ? `${s} ` : `${s}. `)
+
 export const responseTime = (mins: number) =>
   mins < 60 ? t('Replies in ~{n} min', { n: mins }) : t('Replies in ~{n} h', { n: Math.round(mins / 60) })
 
@@ -83,6 +87,11 @@ export const POLICIES = ['flexible', 'moderate', 'strict'] as const
 export function policyName(p: string | undefined): string {
   return p === 'moderate' ? t('Moderate') : p === 'strict' ? t('Strict') : t('Flexible')
 }
+/** The policy a booking actually gets: moderate and strict wait for Cappy's
+ *  switch (booking's paid_cancellation_policies, mirrored in app-config's
+ *  `paidCancellationPolicies` flag); until then everyone gets flexible. */
+export const policyInForce = (p: string | undefined, paidOn: boolean) => (paidOn ? p : 'flexible')
+
 export function policyText(p: string | undefined): string {
   if (p === 'moderate') return t('Full refund until 24 hours before, then half.')
   if (p === 'strict') return t('Full refund until 7 days before, half until 24 hours before, then nothing.')
@@ -94,3 +103,13 @@ export function renterRecord(sum: number | undefined, jobs: number | undefined):
   if (!jobs) return t('New renter')
   return t('Renter {stars} from {n} bookings', { stars: ((sum ?? 0) / jobs).toFixed(1), n: jobs })
 }
+
+/** S-18: shown only when the owner has cancelled or missed some (the server
+ *  leaves the rate out under 5 accepted bookings). */
+export function cancelRate(rate: number | undefined): string | null {
+  if (!rate) return null
+  return t('Cancelled {pct} % of confirmed bookings in the last year', { pct: Math.max(1, Math.round(rate * 100)) })
+}
+
+/** "Sa", "So", "Di", "Do": one letter could not tell Saturday from Sunday (V3-16). */
+export const weekday2 = (d: Date) => d.toLocaleDateString(locale(), { weekday: 'short' }).replace('.', '').slice(0, 2)

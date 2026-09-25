@@ -21,11 +21,11 @@
      a true Didone: at display sizes its optical-size axis opens the stroke
      contrast right up, which is where the presence comes from. Archivo runs
      the interface and carries the tabular numerals. */
-  --font-sans: 'Archivo', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto,
+  --font-sans: 'Archivo Variable', 'Archivo', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto,
     system-ui, sans-serif;
   /* 'Display Signs' only covers + and &: Bodoni Moda's plus is a hairline that
      vanishes at display sizes, so those two come from a sturdier face. */
-  --font-display: 'Display Signs', 'Bodoni Moda', 'Didot', 'Bodoni 72', Georgia, serif;
+  --font-display: 'Display Signs', 'Bodoni Moda Variable', 'Bodoni Moda', 'Didot', 'Bodoni 72', Georgia, serif;
 
   /* Softened back off the hard 3px edge, which read as austere rather than
      considered. Three steps, each used for one kind of thing. */

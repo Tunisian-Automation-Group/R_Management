@@ -400,9 +400,13 @@ export function Earn() {
       </section>
 
       {/* -------------------------------------------------------- invoices */}
-      {(invoices.data?.length ?? 0) > 0 && (
-        <section>
-          <SectionHead title={t('Invoices')} aside={`${invoices.data!.length}`} className="mt-7" />
+      <section>
+        <SectionHead title={t('Invoices')} aside={invoices.data?.length ? `${invoices.data.length}` : undefined} className="mt-7" />
+        {(invoices.data?.length ?? 0) === 0 ? (
+          <p className="t-sm text-[var(--ink-3)]">
+            {t('None yet. Cappy invoices its fee for every completed booking, and each invoice appears here.')}
+          </p>
+        ) : (
           <ul className="ruled border-t border-[var(--line)]">
             {invoices.data!.map((inv) => (
               <li key={inv.number}>
@@ -411,9 +415,9 @@ export function Earn() {
                   className="flex w-full items-center gap-4 py-3.5 text-left transition-opacity duration-[160ms] hover:opacity-70"
                 >
                   <span className="min-w-0 flex-1">
-                    <span className="block truncate text-[15px] font-semibold">{inv.number}</span>
-                    <span className="t-sm block text-[var(--ink-3)]">
-                      {new Date(inv.issuedAt).toLocaleDateString(locale())}
+                    <span className="block truncate text-[15px] font-semibold">{inv.description ?? t('Cappy fee for booking {id}', { id: inv.bookingId.slice(-6).toUpperCase() })}</span>
+                    <span className="t-sm tnum block text-[var(--ink-3)]">
+                      {inv.number} · {new Date(inv.issuedAt).toLocaleDateString(locale())}
                     </span>
                   </span>
                   <span className="tnum shrink-0 text-[15px] font-semibold">{formatEurExact(inv.gross)}</span>
@@ -421,8 +425,8 @@ export function Earn() {
               </li>
             ))}
           </ul>
-        </section>
-      )}
+        )}
+      </section>
 
       {/* ----------------------------------------------------- your record */}
       {you && (

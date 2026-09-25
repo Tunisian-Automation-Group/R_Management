@@ -2,6 +2,7 @@ import type { CSSProperties, ReactNode } from 'react'
 import type { CategoryId, Iso, Slot } from '../../domain/types.ts'
 import { category } from '../../domain/categories.ts'
 import { locale, t } from '../../i18n.ts'
+import { weekday2 } from '../format.ts'
 
 /** Matching's minimum lead time: nothing can be booked to start sooner. */
 const BOOKING_LEAD_MS = 2 * 3_600_000
@@ -77,7 +78,7 @@ export function Plate({
     // Initial plus date, the way a wall planner labels a column. Shown only when
     // the plate is wide enough to be read as a timetable rather than an index.
     const d = new Date(from)
-    const label = `${d.toLocaleDateString(locale(), { weekday: 'narrow' })}${d.getDate()}`
+    const label = `${weekday2(d)} ${d.getDate()}`
     return { free, taken, label }
   })
   const peak = Math.max(1, ...week.map((d) => d.free))

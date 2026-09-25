@@ -6,7 +6,8 @@ import { saveProfile, useDistricts } from '../../data/repo.ts'
 import { signOut } from '../../data/auth.ts'
 import { messageOf, useCappy } from '../store.tsx'
 import { Screen } from '../components/AppShell.tsx'
-import { Button, Field, Input, Segmented } from '../components/ui.tsx'
+import { Button, Check, Field, Input, Segmented } from '../components/ui.tsx'
+import { BusinessFields, businessProblem, cleanBusiness, emptyBusiness } from '../components/BusinessFields.tsx'
 import { DistrictSelect } from '../components/DistrictSelect.tsx'
 import { t } from '../../i18n.ts'
 
@@ -21,6 +22,8 @@ export function Onboarding() {
   const [name, setName] = useState('')
   const [kind, setKind] = useState<'person' | 'business'>('person')
   const [district, setDistrict] = useState('')
+  const [business, setBusiness] = useState(emptyBusiness)
+  const [adult, setAdult] = useState(false)
   // U-19: optional; picks the tab to land on. Nothing is locked by it.
   const [intent, setIntent] = useState<'rent' | 'earn' | 'both'>(device().intent ?? 'both')
   const nav = useNavigate()
@@ -33,10 +36,19 @@ export function Onboarding() {
   const submit = async (e: FormEvent) => {
     e.preventDefault()
     if (name.trim().length < 2) return setError(t('Tell people what to call you.'))
+    const bad = kind === 'business' ? businessProblem(business) : null
+    if (bad) return setError(bad)
+    if (!adult) return setError(t('Cappy is for people aged 18 or over: confirm your age to continue.'))
     setBusy(true)
     setError(null)
     try {
-      await saveProfile({ name: name.trim(), kind, district: where })
+      await saveProfile({
+        name: name.trim(),
+        kind,
+        district: where,
+        adult: true,
+        ...(kind === 'business' ? { business: cleanBusiness(business) } : {}),
+      })
       setDevice({ intent })
       await qc.invalidateQueries({ queryKey: ['me'] })
       if (intent === 'earn') nav('/earn', { replace: true })
@@ -70,6 +82,7 @@ export function Onboarding() {
             ]}
           />
         </Field>
+        {kind === 'business' && <BusinessFields id="o-biz" value={business} onChange={setBusiness} />}
         <Field label={t('Where are you?')} hint={t('Where your listings live and your searches start.')} htmlFor="o-where">
           <DistrictSelect
             id="o-where"
@@ -90,6 +103,7 @@ export function Onboarding() {
             ]}
           />
         </Field>
+        <Check checked={adult} onChange={setAdult} label={t('I am 18 or older')} hint={t('Cappy is for adults: bookings are contracts.')} />
         {error && (
           <p role="alert" className="text-[14px] font-semibold text-[var(--danger)]">
             {error}

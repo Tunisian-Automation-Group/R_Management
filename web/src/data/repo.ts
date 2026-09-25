@@ -21,6 +21,7 @@ import type {
   Offer,
   Outcome,
   Owner,
+  Business,
   Quote,
   Requirement,
   Review,
@@ -29,8 +30,9 @@ import type {
 import type { ReviewSummary } from '../domain/reviews.ts'
 import type { SortKey } from '../domain/match.ts'
 import { accessToken, refresh, useSession } from './auth.ts'
-import { t } from '../i18n.ts'
-import { shareFile } from '../native.ts'
+import { lang, t } from '../i18n.ts'
+import { isNative, platform, shareFile } from '../native.ts'
+import { flagOn } from '../domain/flags.ts'
 
 /**
  * Same origin by default: the gateway (or CloudFront) serves the app at / and
@@ -70,6 +72,8 @@ async function send(method: string, path: string, body?: unknown, headers?: Reco
       headers: {
         Accept: 'application/json',
         'X-App-Version': APP_VERSION,
+        // The server renders notifications (and its messages) in the app's language.
+        'Accept-Language': lang(),
         ...(token ? { Authorization: `Bearer ${token}` } : {}),
         ...(body !== undefined && !form ? { 'Content-Type': 'application/json' } : {}),
         ...headers,
@@ -174,7 +178,14 @@ export type BookingCreated = { booking: Booking; payment?: PaymentStart }
 export type PaymentsConfig = { provider: 'fake' | 'stripe'; publishableKey?: string }
 export type ConnectStatus = { connected: boolean; payoutsEnabled: boolean; detailsSubmitted: boolean }
 export type PaymentView = { bookingId: string; status: string; amount: number; currency: string }
-export type Profile = { name: string; kind: 'person' | 'business'; district: string }
+export type Profile = {
+  name: string
+  kind: 'person' | 'business'
+  district: string
+  /** Needed when the profile is first created (S-5). */
+  adult?: boolean
+  business?: Business
+}
 
 // --- the cache ----------------------------------------------------------------------
 
@@ -327,7 +338,12 @@ export const useConnectStatus = () => {
   })
 }
 
-export type AppConfig = { minVersion: string; latestVersion?: string }
+export type AppConfig = {
+  minVersion: string
+  latestVersion?: string
+  flags?: Record<string, boolean>
+  rollouts?: Record<string, number>
+}
 export const useAppConfig = () =>
   useQuery({
     queryKey: ['appConfig'],
@@ -335,6 +351,40 @@ export const useAppConfig = () =>
     staleTime: 10 * 60_000,
     retry: false, // an older backend without it must not block the app
   })
+
+// --- crash reports (S-7) ------------------------------------------------------------------
+
+const reported = new Set<string>()
+/**
+ * Tells the server a screen broke: the message, stack, route and version, never
+ * who it was (no token, no ids beyond the path) and nothing stored on the
+ * device, so no consent is needed (§ 25 TDDDG). Once per message, at most 10 a session.
+ */
+export function reportClientError(error: unknown): void {
+  const e = error instanceof Error ? error : new Error(String(error))
+  const message = (e.message || 'unknown error').slice(0, 2000)
+  if (reported.has(message) || reported.size >= 10) return
+  reported.add(message)
+  void fetch(`${API}/client-errors`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    keepalive: true,
+    body: JSON.stringify({
+      message,
+      stack: e.stack?.slice(0, 6000),
+      route: location.pathname.slice(0, 300),
+      appVersion: APP_VERSION.slice(0, 40),
+      platform,
+    }),
+  }).catch(() => {}) // a report that cannot be sent is not worth a second error
+}
+
+/** Whether a feature is on for the signed-in person (S-26). Off while app-config loads. */
+export function useFlag(name: string): boolean {
+  const config = useAppConfig()
+  const session = useSession()
+  return flagOn(name, config.data, session?.sub)
+}
 
 /** a < b for dotted versions ("1.2.10" > "1.2.9"). */
 export function versionBelow(a: string, b: string): boolean {
@@ -400,7 +450,10 @@ export const disputeBooking = (id: string, reason: string) => post<Booking>(`/bo
 export const getBookingPayment = (id: string) => get<PaymentStart>(`/bookings/${id}/payment`)
 export const rateBooking = (id: string, outcome: Outcome, key?: string) => post<Booking>(`/bookings/${id}/rate`, outcome, idem(key))
 /** Two-way reviews: the owner rates the renter once the booking is completed. */
-export const rateRenter = (id: string, quality: number) => post<Booking>(`/bookings/${id}/rate-renter`, { quality })
+export const rateRenter = (id: string, quality: number, key?: string) =>
+  post<Booking>(`/bookings/${id}/rate-renter`, { quality }, idem(key))
+/** Either side says the other never came (S-11): allowed from the start (the owner: +30 min) to +2 h. */
+export const reportNoShow = (id: string) => post<Booking>(`/bookings/${id}/no-show`)
 
 export type CancellationQuote = { refundAmount: number; currency: string; policy: string }
 /** What cancelling now would refund, straight from the server's rule. */
@@ -421,6 +474,11 @@ export type Invoice = {
   gross: number
   currency: string
   issuedAt: string
+  /** What it is for, from the server (V3-2): "Cappy fee for …". */
+  description?: string
+  title?: string
+  serviceStart?: string
+  serviceEnd?: string
 }
 export const useInvoices = () => {
   const session = useSession()
@@ -428,6 +486,13 @@ export const useInvoices = () => {
 }
 /** The printable invoice needs the token, so it is fetched and opened as a blob. */
 export async function openInvoice(number: string): Promise<void> {
+  // A store shell has no tabs: the invoice goes to the share sheet (print, save, mail).
+  if (isNative) {
+    const res = await send('GET', `/payments/invoices/${encodeURIComponent(number)}`)
+    if (!res.ok) throw new ApiError(t('Could not open the invoice. Try again.'), res.status, 'error')
+    await shareFile(`${number}.html`, await res.text())
+    return
+  }
   const win = window.open('', '_blank') // opened in the click, or popup blockers step in
   const res = await send('GET', `/payments/invoices/${encodeURIComponent(number)}`)
   if (!res.ok) {
@@ -496,7 +561,15 @@ export function useSaveToggle() {
 
 // --- messages, evidence, reports, blocks ------------------------------------------------------
 
-export type Message = { id: string; senderId: string; body: string; at: string; mine: boolean }
+export type Message = {
+  id: string
+  senderId: string
+  body: string
+  at: string
+  mine: boolean
+  /** The server saw an ask to pay outside Cappy (U-12); shown, never blocked. */
+  flagged?: boolean
+}
 /** What the server puts where contact details were, before a booking is accepted. */
 export const HIDDEN_CONTACT = '[shared once the booking is accepted]'
 
@@ -535,14 +608,28 @@ export type Report = {
   id: string
   targetType: ReportTarget
   targetId: string
-  reason: ReportReason
+  /** Reports from people, or notices the system raises for staff (S-17, S-18). */
+  reason: ReportReason | SystemReason
   details: string
   status: 'open' | 'actioned' | 'dismissed'
   createdAt: string
   decision?: string
   statement?: string
+  statementOfReasons?: StatementOfReasons
 }
-export const sendReport = (r: { targetType: ReportTarget; targetId: string; reason: ReportReason; details: string; email?: string }) =>
+export type SystemReason = 'reliability' | 'linked_to_suspended'
+/** DSA Art. 17: what the affected person is told after a take-down or suspension. */
+export type StatementOfReasons = {
+  restriction: string
+  facts: string
+  automated: boolean
+  ground: 'law' | 'terms'
+  clause: string
+  redress: string
+}
+/** How a decision rests: the rule or law, and whether a machine made it. */
+export type Grounds = { ground: 'law' | 'terms'; clause?: string; automated: boolean }
+export const sendReport = (r: { targetType: ReportTarget; targetId: string; reason: ReportReason; details: string; email?: string; goodFaith: true }) =>
   post<Report>('/reports', r)
 
 export const useBlocks = () => {
@@ -566,10 +653,11 @@ export type AuditEntry = {
 }
 export const getAdminReports = (status: Report['status'], cursor?: string) =>
   get<Page<Report>>(`/admin/reports${qs({ status, cursor })}`)
-export const decideReport = (id: string, action: 'dismiss' | 'take_down' | 'suspend', statement: string) =>
-  post<Report>(`/admin/reports/${id}/decide`, { action, statement })
-export const takeDownListing = (id: string, statement: string) => post<void>(`/admin/listings/${id}/take-down`, { statement })
-export const suspendOwner = (id: string, statement: string) => post<void>(`/admin/owners/${id}/suspend`, { statement })
+export const decideReport = (id: string, action: 'dismiss' | 'take_down' | 'suspend', statement: string, g: Grounds) =>
+  post<Report>(`/admin/reports/${id}/decide`, { action, statement, ...g })
+export const takeDownListing = (id: string, statement: string, g: Grounds) =>
+  post<void>(`/admin/listings/${id}/take-down`, { statement, ...g })
+export const suspendOwner = (id: string, statement: string, g: Grounds) => post<void>(`/admin/owners/${id}/suspend`, { statement, ...g })
 export const reinstateOwner = (id: string, statement: string) => post<void>(`/admin/owners/${id}/reinstate`, { statement })
 export const resolveDispute = (id: string, outcome: 'pay_owner' | 'refund_buyer') =>
   post<Booking>(`/admin/bookings/${id}/resolve`, { outcome, by: 'console' })
@@ -590,7 +678,7 @@ const getNotices = (cursor?: string) =>
 export const useNotices = () => {
   const session = useSession()
   return useQuery({
-    queryKey: ['notices', session?.sub],
+    queryKey: ['notices', session?.sub, lang()],
     // ponytail: first page only; "older" with `next` when someone has more than a page.
     queryFn: () => getNotices(),
     enabled: Boolean(session),
@@ -598,5 +686,22 @@ export const useNotices = () => {
     refetchOnWindowFocus: true,
   })
 }
+export type NoticeChannel = { push: boolean; email: boolean }
+export type NoticeCategory = 'bookings' | 'messages' | 'payouts' | 'marketing'
+export type NoticeSettings = { categories: Record<NoticeCategory, NoticeChannel> }
+/** Per-category push/email choices (V3-21); null when the backend has none yet (404). */
+export const useNoticeSettings = () => {
+  const session = useSession()
+  return useQuery({
+    queryKey: ['noticeSettings', session?.sub],
+    queryFn: () =>
+      get<NoticeSettings>('/notifications/settings').catch((e: unknown) => {
+        if (e instanceof ApiError && e.status === 404) return null
+        throw e
+      }),
+    enabled: Boolean(session),
+  })
+}
+export const saveNoticeSettings = (s: NoticeSettings) => put<NoticeSettings>('/notifications/settings', s)
 export const markNoticesRead = (ids?: string[]) => post<void>('/notifications/read', ids ? { ids } : {})
 export const signOutEverywhere = () => post<void>('/me/sign-out-everywhere')

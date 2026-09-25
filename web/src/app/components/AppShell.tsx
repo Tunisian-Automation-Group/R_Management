@@ -1,4 +1,4 @@
-import { useEffect, type ReactNode } from 'react'
+import { useEffect, useRef, type ReactNode } from 'react'
 import { NavLink } from 'react-router-dom'
 import { useSession } from '../../data/auth.ts'
 import { Icon, type IconName } from './Icon.tsx'
@@ -212,6 +212,22 @@ export function Screen({
   useEffect(() => {
     document.title = tabTitle ? `${tabTitle} · Cappy` : 'Cappy'
   }, [tabTitle])
+  // The phone's sticky bar publishes its height as --footer-h, so the offline
+  // bar and toasts sit above it instead of on its button (V3-9, V3-18).
+  const bar = useRef<HTMLDivElement>(null)
+  useEffect(() => {
+    const el = bar.current
+    if (!el) return
+    const root = document.documentElement.style
+    const set = () => root.setProperty('--footer-h', `${el.offsetHeight}px`)
+    set()
+    const ro = new ResizeObserver(set)
+    ro.observe(el)
+    return () => {
+      ro.disconnect()
+      root.removeProperty('--footer-h')
+    }
+  }, [Boolean(footer)])
   return (
     <div
       className={`anim-screen min-h-dvh ${tone === 'surface' ? 'bg-[var(--surface)]' : ''}`}
@@ -285,6 +301,7 @@ export function Screen({
 
       {footer && (
         <div
+          ref={bar}
           className="fixed inset-x-0 z-30 px-4 md:hidden"
           style={{
             bottom: `calc(var(--dock-h) + 8px)`,

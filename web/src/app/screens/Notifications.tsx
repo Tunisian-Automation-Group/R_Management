@@ -37,7 +37,21 @@ export function Notifications() {
   }
 
   return (
-    <Screen title={t('Notifications')} back="/">
+    <Screen
+      title={t('Notifications')}
+      back="/"
+      action={
+        unread > 0 ? (
+          <Button
+            size="sm"
+            variant="quiet"
+            onClick={() => void markNoticesRead().then(() => qc.invalidateQueries({ queryKey: ['notices'] }))}
+          >
+            {t('Mark all as read')}
+          </Button>
+        ) : undefined
+      }
+    >
       {q.isPending ? (
         <div className="space-y-3">
           <Skeleton className="h-16" />

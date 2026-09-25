@@ -294,6 +294,34 @@ export function Input({
   )
 }
 
+/** A labelled checkbox with an optional line of explanation under the label. */
+export function Check({
+  checked,
+  onChange,
+  label,
+  hint,
+}: {
+  checked: boolean
+  onChange: (v: boolean) => void
+  label: ReactNode
+  hint?: ReactNode
+}) {
+  return (
+    <label className="flex items-start gap-3 rounded-[var(--radius-control)] border border-[var(--line)] p-4">
+      <input
+        type="checkbox"
+        className="mt-1 h-5 w-5 shrink-0 accent-[var(--ink)]"
+        checked={checked}
+        onChange={(e) => onChange(e.target.checked)}
+      />
+      <span>
+        <span className="block text-[15px] font-semibold text-[var(--ink)]">{label}</span>
+        {hint && <span className="t-sm block text-[var(--ink-3)]">{hint}</span>}
+      </span>
+    </label>
+  )
+}
+
 export function Textarea({
   invalid,
   className = '',
@@ -472,6 +500,8 @@ export function Sheet({
         }
       }
     }
+    // Whatever opened the sheet gets focus back when it closes (V3-20, WCAG 2.4.3).
+    const opener = document.activeElement instanceof HTMLElement ? document.activeElement : null
     document.addEventListener('keydown', onKey)
     const unstack = sheetOpened(() => close.current())
     const prev = document.body.style.overflow
@@ -481,6 +511,7 @@ export function Sheet({
       document.removeEventListener('keydown', onKey)
       unstack()
       document.body.style.overflow = prev
+      if (opener?.isConnected) opener.focus()
     }
   }, [open])
 
@@ -632,7 +663,7 @@ export function Toast({ message, onDone }: { message: string; onDone: () => void
       role="status"
       aria-live="polite"
       className="anim-pop pointer-events-none fixed inset-x-0 z-[60] flex justify-center px-4"
-      style={{ bottom: 'calc(var(--dock-h) + 20px)' }}
+      style={{ bottom: 'calc(var(--dock-h) + var(--footer-h, 0px) + 20px)' }}
     >
       <div className="flex items-center gap-2.5 rounded-[var(--radius-control)] bg-[var(--field)] py-3 pl-3.5 pr-5 text-[14px] font-semibold text-[var(--on-field)]">
         <span className="grid h-5 w-5 place-items-center rounded-[2px] bg-[var(--sky)] text-[var(--field)]">

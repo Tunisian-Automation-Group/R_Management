@@ -708,7 +708,8 @@ function SpotCard({ spot, onOpen }: { spot: Spotlight; onOpen: () => void }) {
             {/* Trust at a glance, before anyone opens the listing. */}
             {rating(spot.owner) !== null && (
               <span className="mr-2 font-semibold text-[var(--ink-2)]" title={t("The owner's rating across all their jobs")}>
-                <span className="font-normal text-[var(--ink-4)]">{t('Host')} </span>★ {oneDecimal(rating(spot.owner)!)}
+                {/* No "Host" label here: on a phone-width card it pushed the distance off (V3-17). */}
+                ★ {oneDecimal(rating(spot.owner)!)}
               </span>
             )}
             {rating(spot.owner) === null && (

@@ -10,18 +10,62 @@ import {
   suspendOwner,
   takeDownListing,
   useAudit,
+  REPORT_REASONS,
+  type Grounds,
   type Report,
 } from '../../data/repo.ts'
 import { messageOf, useToast } from '../store.tsx'
 import { Screen, SectionHead } from '../components/AppShell.tsx'
 import { SignedOut } from '../components/SignedOut.tsx'
-import { Button, Card, EmptyState, Field, Input, Segmented, Sheet, Textarea } from '../components/ui.tsx'
+import { Button, Card, Check, EmptyState, Field, Input, Segmented, Sheet, Textarea } from '../components/ui.tsx'
 import { ago } from '../format.ts'
 import { t } from '../../i18n.ts'
 
 type Status = Report['status']
 type Action = 'dismiss' | 'take_down' | 'suspend'
 const ACTION_LABEL: Record<Action, string> = { dismiss: 'Dismiss', take_down: 'Take the listing down', suspend: 'Suspend the owner' }
+
+const REASON_LABEL: Record<string, string> = {
+  ...Object.fromEntries(REPORT_REASONS),
+  reliability: 'Reliability: repeated cancellations or no-shows',
+  linked_to_suspended: 'Paid with a card a suspended account used',
+}
+const TARGET_LABEL: Record<Report['targetType'], string> = { listing: 'Listing', owner: 'Person', message: 'Message', review: 'Review' }
+
+/** The rule or law a decision rests on (DSA Art. 17(3)(d)); terms by default. */
+function GroundsFields({ value, onChange, id }: { value: Grounds; onChange: (g: Grounds) => void; id: string }) {
+  return (
+    <>
+      <Field label={t('Based on')}>
+        <Segmented<'terms' | 'law'>
+          label={t('Based on')}
+          value={value.ground}
+          onChange={(ground) => onChange({ ...value, ground })}
+          options={[
+            { value: 'terms', label: t('Our terms') },
+            { value: 'law', label: t('The law') },
+          ]}
+        />
+      </Field>
+      <Field label={t('Which rule (optional)')} htmlFor={`${id}-clause`} hint={t('Left empty, the statement names our rules for listings and conduct, or the applicable law.')}>
+        <Input
+          id={`${id}-clause`}
+          maxLength={200}
+          value={value.clause ?? ''}
+          onChange={(e) => onChange({ ...value, clause: e.target.value })}
+        />
+      </Field>
+      <Check
+        checked={value.automated}
+        onChange={(automated) => onChange({ ...value, automated })}
+        label={t('Detected or decided automatically')}
+        hint={t('The statement must say so when a machine found or decided it.')}
+      />
+    </>
+  )
+}
+const noGrounds: Grounds = { ground: 'terms', clause: '', automated: false }
+const clean = (g: Grounds): Grounds => ({ ground: g.ground, automated: g.automated, ...(g.clause?.trim() ? { clause: g.clause.trim() } : {}) })
 
 /** Where the reported thing lives, for a staff member to look at it. */
 function targetLink(r: Report): string | null {
@@ -104,7 +148,7 @@ function Queue() {
               <li key={r.id}>
                 <Card className="p-4">
                   <p className="text-[15px] font-semibold">
-                    {r.reason} · {r.targetType}{' '}
+                    {t(REASON_LABEL[r.reason] ?? r.reason)} · {t(TARGET_LABEL[r.targetType] ?? r.targetType)}{' '}
                     {link ? (
                       <Link className="underline" to={link}>
                         {r.targetId}
@@ -120,6 +164,12 @@ function Queue() {
                   {r.statement && (
                     <p className="t-sm mt-2 text-[var(--ink-3)]">
                       {t('Decided')}: {r.decision} — {r.statement}
+                    </p>
+                  )}
+                  {r.statementOfReasons && (
+                    <p className="t-sm mt-1 text-[var(--ink-4)]">
+                      {r.statementOfReasons.ground === 'law' ? t('The law') : t('Our terms')}: {r.statementOfReasons.clause}
+                      {r.statementOfReasons.automated ? ` · ${t('automated')}` : ''}
                     </p>
                   )}
                   {r.status === 'open' && (
@@ -151,15 +201,17 @@ function Decide({ report, onClose }: { report: Report | null; onClose: () => voi
   const toast = useToast()
   const [action, setAction] = useState<Action>('dismiss')
   const [statement, setStatement] = useState('')
+  const [grounds, setGrounds] = useState(noGrounds)
   const [busy, setBusy] = useState(false)
   const short = statement.trim().length < 20
   const submit = async () => {
     if (!report) return
     setBusy(true)
     try {
-      await decideReport(report.id, action, statement.trim())
+      await decideReport(report.id, action, statement.trim(), clean(grounds))
       toast(t('Decided. The people concerned have been told'))
       setStatement('')
+      setGrounds(noGrounds)
       onClose()
     } catch (err) {
       toast(messageOf(err))
@@ -196,6 +248,7 @@ function Decide({ report, onClose }: { report: Report | null; onClose: () => voi
         >
           <Textarea id={`${id}-why`} rows={5} maxLength={2000} value={statement} onChange={(e) => setStatement(e.target.value)} />
         </Field>
+        {action !== 'dismiss' && <GroundsFields id={id} value={grounds} onChange={setGrounds} />}
       </div>
     </Sheet>
   )
@@ -217,6 +270,7 @@ function Actions() {
   const [kind, setKind] = useState<Direct>('take_down')
   const [target, setTarget] = useState('')
   const [statement, setStatement] = useState('')
+  const [grounds, setGrounds] = useState(noGrounds)
   const [busy, setBusy] = useState(false)
   const spec = DIRECT[kind]
   const ready = target.trim() && (!spec.needsWhy || statement.trim().length >= 20)
@@ -225,8 +279,8 @@ function Actions() {
     const to = target.trim()
     const why = statement.trim()
     try {
-      if (kind === 'take_down') await takeDownListing(to, why)
-      else if (kind === 'suspend') await suspendOwner(to, why)
+      if (kind === 'take_down') await takeDownListing(to, why, clean(grounds))
+      else if (kind === 'suspend') await suspendOwner(to, why, clean(grounds))
       else if (kind === 'reinstate') await reinstateOwner(to, why)
       else await resolveDispute(to, kind)
       toast(t('Done'))
@@ -258,6 +312,7 @@ function Actions() {
             <Textarea id={`${id}-why`} rows={4} maxLength={2000} value={statement} onChange={(e) => setStatement(e.target.value)} />
           </Field>
         )}
+        {(kind === 'take_down' || kind === 'suspend') && <GroundsFields id={id} value={grounds} onChange={setGrounds} />}
         <Button disabled={busy || !ready} onClick={() => void run()}>
           {t(spec.label)}
         </Button>

@@ -10,7 +10,7 @@ import { drafts } from '../device.ts'
 import { useOnline } from './Offline.tsx'
 
 /** Contact details the server hid before the booking was accepted, shown as a quiet chip. */
-function Body({ text }: { text: string }) {
+function Body({ text, closed }: { text: string; closed: boolean }) {
   const parts = text.split(HIDDEN_CONTACT)
   const out: ReactNode[] = []
   parts.forEach((part, i) => {
@@ -21,14 +21,16 @@ function Body({ text }: { text: string }) {
           key={i}
           className="mx-0.5 inline-block rounded-[var(--radius-control)] bg-[var(--sunken)] px-1.5 text-[12.5px] font-semibold text-[var(--ink-3)]"
         >
-          {t('contact hidden until accepted')}
+          {/* The server shows it again once the booking is accepted (V3-6); a booking
+              that closed before that never reveals it. */}
+          {closed ? t('contact hidden') : t('contact hidden until accepted')}
         </span>,
       )
   })
   return <p className="whitespace-pre-wrap break-words text-[15px] leading-[22px]">{out}</p>
 }
 
-function Bubble({ m, otherName }: { m: Message; otherName: string }) {
+function Bubble({ m, otherName, closed }: { m: Message; otherName: string; closed: boolean }) {
   return (
     <li className={`flex flex-col ${m.mine ? 'items-end' : 'items-start'}`}>
       <div
@@ -36,8 +38,13 @@ function Bubble({ m, otherName }: { m: Message; otherName: string }) {
           m.mine ? 'bg-[var(--field)] text-[var(--on-field)]' : 'bg-[var(--sunken)] text-[var(--ink)]'
         }`}
       >
-        <Body text={m.body} />
+        <Body text={m.body} closed={closed} />
       </div>
+      {m.mine && m.flagged && (
+        <p role="note" className="t-sm mt-1 max-w-[85%] text-right text-[var(--warn)]">
+          {t('Keep payments on Cappy: money paid outside it is not protected, and asking for it breaks our rules.')}
+        </p>
+      )}
       <p className="t-sm mt-1 flex items-center gap-1 text-[var(--ink-4)]">
         {m.mine ? t('You') : otherName} · {ago(m.at)}
         {!m.mine && <ReportButton targetType="message" targetId={m.id} compact />}
@@ -51,11 +58,14 @@ export function Conversation({
   bookingId,
   otherName,
   accepted,
+  closed = false,
 }: {
   bookingId: string
   otherName: string
   /** Before acceptance the server masks phone numbers, emails and links. */
   accepted: boolean
+  /** Declined, cancelled, lapsed: the conversation stays readable, nothing more is sent. */
+  closed?: boolean
 }) {
   const id = useId()
   const qc = useQueryClient()
@@ -96,9 +106,14 @@ export function Conversation({
   return (
     <Card className="mt-3 p-5">
       <h2 className="t-label mb-1">{t('Messages with {name}', { name: otherName })}</h2>
-      {!accepted && (
+      {items.some((m) => !m.mine && m.flagged) && (
+        <p role="note" className="t-sm mb-3 rounded-[var(--radius-control)] bg-[var(--warn-subtle)] p-3 text-[var(--ink-2)]">
+          {t('{name} asked about paying outside Cappy. Payments outside Cappy are not protected: no refund, no help if something goes wrong. Report the message if it happens again.', { name: otherName })}
+        </p>
+      )}
+      {!accepted && !closed && (
         <p className="t-sm mb-3 text-[var(--ink-3)]">
-          {t('Phone numbers, emails and links are hidden until the booking is accepted. Keep payments on Cappy: that is what protects you both.')}
+          {t('Phone numbers, emails and links are hidden until the booking is accepted, then shown. Keep payments on Cappy: that is what protects you both.')}
         </p>
       )}
       {items.length === 0 ? (
@@ -106,36 +121,40 @@ export function Conversation({
       ) : (
         <ul className="max-h-[360px] space-y-3 overflow-y-auto py-2" aria-live="polite">
           {items.map((m) => (
-            <Bubble key={m.id} m={m} otherName={otherName} />
+            <Bubble key={m.id} m={m} otherName={otherName} closed={closed} />
           ))}
           <div ref={end} />
         </ul>
       )}
-      <form
-        className="mt-3 flex items-end gap-2"
-        onSubmit={(e) => {
-          e.preventDefault()
-          void send()
-        }}
-      >
-        <label htmlFor={`${id}-msg`} className="sr-only">
-          {t('Message to {name}', { name: otherName })}
-        </label>
-        <Textarea
-          id={`${id}-msg`}
-          rows={2}
-          maxLength={2000}
-          value={draft}
-          placeholder={t('Write to {name}', { name: otherName })}
-          onChange={(e) => setDraft(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) void send()
+      {closed ? (
+        <p className="t-sm mt-3 text-[var(--ink-3)]">{t('This booking is closed, so no new messages can be sent.')}</p>
+      ) : (
+        <form
+          className="mt-3 flex items-end gap-2"
+          onSubmit={(e) => {
+            e.preventDefault()
+            void send()
           }}
-        />
-        <Button type="submit" disabled={busy || !draft.trim() || !online}>
-          {t('Send')}
-        </Button>
-      </form>
+        >
+          <label htmlFor={`${id}-msg`} className="sr-only">
+            {t('Message to {name}', { name: otherName })}
+          </label>
+          <Textarea
+            id={`${id}-msg`}
+            rows={2}
+            maxLength={2000}
+            value={draft}
+            placeholder={t('Write to {name}', { name: otherName })}
+            onChange={(e) => setDraft(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) void send()
+            }}
+          />
+          <Button type="submit" disabled={busy || !draft.trim() || !online}>
+            {t('Send')}
+          </Button>
+        </form>
+      )}
     </Card>
   )
 }

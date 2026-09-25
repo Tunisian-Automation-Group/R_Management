@@ -1,4 +1,4 @@
-import { useId, useState } from 'react'
+import { useEffect, useId, useMemo, useState } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import type { BookingStatus } from '../../domain/types.ts'
 import { addEvidence, mediaUrl, uploadPhoto, useEvidence, type EvidenceStage } from '../../data/repo.ts'
@@ -7,6 +7,7 @@ import { messageOf, useMe, useToast } from '../store.tsx'
 import { ago } from '../format.ts'
 import { Button, Card, Field, Sheet, Textarea } from './ui.tsx'
 import { plural, t } from '../../i18n.ts'
+import { Icon } from './Icon.tsx'
 
 // Mirrors booking/messages.py: when each kind of photo can be added.
 const CAN: Record<EvidenceStage, BookingStatus[]> = {
@@ -47,6 +48,8 @@ export function EvidencePanel({
   const evidence = useEvidence(bookingId)
   const [stage, setStage] = useState<EvidenceStage | null>(null)
   const [files, setFiles] = useState<File[]>([])
+  const previews = useMemo(() => files.map((f) => URL.createObjectURL(f)), [files])
+  useEffect(() => () => previews.forEach((u) => URL.revokeObjectURL(u)), [previews])
   const [note, setNote] = useState('')
   const [busy, setBusy] = useState(false)
 
@@ -134,15 +137,31 @@ export function EvidencePanel({
         <div className="space-y-4 pb-3">
           {open && <p className="t-body text-[var(--ink-2)]">{t(WHY[open])}</p>}
           <Field label={t('Photos')} htmlFor={`${id}-files`} hint={t('Up to 12. Taken now works best.')}>
+            {/* The browser's own picker says "Choose Files" in the browser's language:
+                a translated button over a hidden input instead (V3-12). */}
             <input
               id={`${id}-files`}
               type="file"
               accept="image/*"
               capture="environment"
               multiple
-              className="block w-full text-[14px]"
+              className="sr-only"
               onChange={(e) => setFiles(Array.from(e.target.files ?? []).slice(0, 12))}
             />
+            <label
+              htmlFor={`${id}-files`}
+              className="inline-flex min-h-[48px] cursor-pointer items-center gap-2 rounded-[var(--radius-control)] border border-[var(--line-strong)] px-4 text-[14.5px] font-semibold hover:border-[var(--ink-4)] focus-within:outline"
+            >
+              <Icon name="camera" size={18} />
+              {files.length ? t('Choose other photos') : t('Take or choose photos')}
+            </label>
+            {previews.length > 0 && (
+              <div className="mt-3 flex flex-wrap gap-2">
+                {previews.map((src) => (
+                  <img key={src} src={src} alt="" className="h-[64px] w-[64px] rounded-[10px] object-cover" />
+                ))}
+              </div>
+            )}
           </Field>
           <Field label={t('Note (optional)')} htmlFor={`${id}-note`}>
             <Textarea
