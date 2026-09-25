@@ -55,6 +55,40 @@ Status: `[ ]` open · `[~]` in progress · `[x]` done (commit) · `[-]` dropped 
 - [x] V1-35 The review tag summary matches the tags on the reviews
 - [x] T-04 Honour `Retry-After`; forced-update screen from `/api/app-config` (see contracts)
 
+## Verification round 2 (V2)
+
+Contract changes for this round:
+- `Booking.canStartFrom` (ISO): when the hand-over can first be marked. The app uses it instead of a constant.
+- `reviews.average` is absent (not null) when a listing has no reviews.
+- Removing a listing declines its pending requests (reason "The listing was removed"). Accepted bookings stand.
+- `GET /owners/{id}` is 404 for a deleted account. Reviews by deleted accounts carry no `authorId`.
+
+Web:
+- [ ] V2-1 BLOCKER: a listing with no reviews crashes (`reviews.average` undefined)
+- [ ] V2-3 Typing in a sheet (rating note, dispute) jumps focus to Close (Sheet effect re-runs on each render)
+- [ ] V2-4 Picking a city centres on its first district (Brandenburg for Berlin): use the district nearest the city's centre; district search in the picker
+- [ ] V2-5 The start button from `canStartFrom`, not a hard-coded 30 minutes
+- [ ] V2-6 The listing form saves values nobody chose (materials, rules, hidden spec defaults); category-specific placeholders and prices
+- [ ] V2-7 The decline sheet's "your listing stays live" is only said when true
+- [ ] V2-8 Data export that works in the store shells and Safari
+- [ ] V2-10 Forgot password never reveals whether an account exists
+- [ ] V2-11 Drop the EU ODR link (the platform closed in July 2025)
+- [ ] V2-13 Accessibility: no button inside a button; errors tied to fields (`aria-describedby`); navigation as links
+- [ ] V2-14 "Free now" only for what is bookable now (the 2-hour lead included)
+- [ ] V2-15 Sort, tabs and "needed within" in the URL, and matching the filter options
+- [ ] V2-17 Saving an edit needs one click
+- [ ] V2-18 Confirm "Mark as handed back"; toasts on sign-out and account deletion
+- [ ] V2-19 "3D printing" capitalisation; one price format; label the owner rating on search rows
+
+Backend:
+- [ ] V2-2 Double booking: a completed or disputed booking still holds its window (busy windows and the exclusion constraint)
+- [ ] V2-7b Removing a listing declines its pending requests
+- [ ] V2-9 Save/unsave answered 503 while the change succeeded
+- [ ] V2-12 Deleted accounts: owner page 404, no `authorId` on their reviews; reviewers shown as "First L."
+- [ ] V2-16 A review is dated when it was written, never in the future
+- [ ] V2-20 The load test cancels the bookings it makes; demo data rebuilt clean
+- [-] V2-19b Seed photos that match their listings: demo data only
+
 ## Verification round 1 — backend and data (V1)
 
 - [x] V1-8b Handover address: stored on the listing (owner only), returned on the booking once accepted
@@ -108,6 +142,28 @@ Status: `[ ]` open · `[~]` in progress · `[x]` done (commit) · `[-]` dropped 
 - [x] R-10 Kill switches (settings): stop new bookings, stop payouts, stop new listings, without a deploy
 - [x] R-11 Game-day runbook (Aurora failover, stop half the tasks) with AWS FIS
 - [ ] R-13 Web deletion page for Google Play (`/account/delete`)
+
+## Launch gaps (G) — from docs/research/2026-09-launch-gaps.md
+
+Engineering, before launch:
+- [ ] G-1 Admin console: moderation queue, take down or reinstate a listing, suspend a user with an Art. 17 statement of reasons, refund, pause payouts, resolve disputes; audited, role-gated
+- [ ] G-2 DSA Art. 16 notice-and-action ("report this" on listings and profiles) with acknowledgement and outcome email; Art. 17 statements of reasons; Art. 11/12 contact points on the legal pages
+- [ ] G-3 Report and block users (store UGC rules)
+- [ ] G-4 In-app messaging per booking; phone numbers, emails and links masked until accepted; report/block
+- [ ] G-5 Check-in and check-out photos on a booking (evidence for damage claims and disputes)
+- [ ] G-6 Checkout compliance: total price including the fee; "zahlungspflichtig buchen"; trader/private owner label; withdrawal information and the withdrawal button; review-verification statement; ranking parameters page
+- [ ] G-7 German localisation (UI, emails, legal pages), English kept
+- [ ] G-8 Renter identity verification with Stripe Identity for high-value listings and vans (needs a DPIA)
+- [ ] G-9 Basic fraud rules: velocity limits for new accounts, a review queue for new high-value listings
+- [ ] G-10 Stripe Connect platform tax reporting (DAC7) switched on; categories tagged in or out of scope; payouts blocked when tax data is missing after reminders
+
+Decisions for the business (not code):
+- [ ] G-B1 Insurance partner or guarantee for damage (vans first) — owner of the business
+- [ ] G-B2 Terms, cancellation policy, VAT treatment of the fee, withdrawal-right scope for storage and workshops — counsel
+- [ ] G-B3 DPAs with every processor, records of processing, DPIA for ID checks — the business, with counsel
+- [ ] G-B4 BZSt registration for DAC7
+
+Soon after launch: two-way blind reviews, cancellation tiers, instant book, duration discounts, helpdesk, analytics warehouse, feature flags and A/B tests, e-invoices (2027), KYBC, DSA Section 3 when no longer small.
 
 ## Load
 
