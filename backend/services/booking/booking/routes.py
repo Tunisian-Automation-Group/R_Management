@@ -27,7 +27,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from cappy_common.app import ApiRouter
 from cappy_common.auth import Principal, require_admin, require_internal, require_principal
 from cappy_common.errors import ApiError, Conflict, Forbidden, Invalid, NotFound, RateLimited, Unavailable
-from cappy_common.events import BOOKING_RATED, RENTER_RATED
 from cappy_common.ids import new_id
 from cappy_common.models import Booking, CamelModel, Iso, Outcome, Requirement
 from cappy_common.pagination import Page, clamp_limit
@@ -37,7 +36,7 @@ from cappy_common.timeutil import dt_from_iso, iso_from_datetime
 from .cancellation import refund_amount
 from .clients import PaymentStart
 from .messages import blocked_between
-from .repository import SHOWS_HANDOVER, BookingRepository, to_booking
+from .repository import REVIEW_WINDOW, SHOWS_HANDOVER, BookingRepository, to_booking
 from .settings import Settings
 from .state import Action, check_can_rate, next_status
 from .tables import BookingRow, SuspendedRow, VerifiedRow
@@ -376,23 +375,14 @@ async def rate(
     dated at the end of the booked window, not when the buyer got round to it."""
     row = await repo.visible(booking_id, p.sub, lock=True)
     check_can_rate(row.status, row.outcome is not None, p.sub, row.requester_id)
+    now = _now()
+    if now > row.window_end + REVIEW_WINDOW:
+        raise Conflict("reviews close 14 days after the booked time")
     row.outcome = outcome.model_dump(mode="json", by_alias=True, exclude_none=True)
-    row.updated_at = _now()
+    row.rated_at = row.updated_at = now
     await repo.s.flush()
-    await repo.outbox.add(
-        repo.s,
-        BOOKING_RATED,
-        {
-            "bookingId": row.id,
-            "ownerId": row.owner_id,
-            "listingId": row.listing_id,
-            "requesterId": row.requester_id,
-            "outcome": row.outcome,
-            # When the review was written; a job finished early is not reviewed "in the future".
-            "at": iso_from_datetime(min(row.window_end, row.updated_at)),
-            "ratedAt": iso_from_datetime(row.updated_at),
-        },
-    )
+    if row.renter_rating is not None:
+        await repo.publish_reviews(row, now)
     return to_booking(row, p.sub)
 
 
@@ -437,14 +427,14 @@ async def rate_renter(
         raise Conflict("a renter can be rated once the booking is completed")
     if row.renter_rating is not None:
         raise Conflict("you already rated this renter")
+    now = _now()
+    if now > row.window_end + REVIEW_WINDOW:
+        raise Conflict("reviews close 14 days after the booked time")
     row.renter_rating = body.quality
-    row.updated_at = _now()
+    row.updated_at = now
     await repo.s.flush()
-    await repo.outbox.add(
-        repo.s,
-        RENTER_RATED,
-        {"bookingId": row.id, "renterId": row.requester_id, "ownerId": row.owner_id, "quality": body.quality},
-    )
+    if row.outcome is not None:
+        await repo.publish_reviews(row, now)
     return to_booking(row, p.sub)
 
 

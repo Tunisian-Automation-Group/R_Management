@@ -33,6 +33,13 @@ async def sweep_once(app: FastAPI) -> int:
             moved += len(rows)
             if len(rows) < BATCH:
                 break
+    # Blind reviews whose window closed with only one side in: publish it.
+    async with app.state.db.transaction() as s:
+        repo = BookingRepository(s, app.state.outbox)
+        now = datetime.now(UTC)
+        for row in await repo.reviews_due(now, BATCH):
+            await repo.publish_reviews(row, now)
+            moved += 1
     if moved:
         app.state.relay.wake()
     return moved

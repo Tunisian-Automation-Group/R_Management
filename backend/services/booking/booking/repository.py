@@ -14,7 +14,7 @@ from sqlalchemy import and_, func, or_, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from cappy_common.errors import NotFound
-from cappy_common.events import BOOKING_STATUS_CHANGED, Outbox
+from cappy_common.events import BOOKING_RATED, BOOKING_STATUS_CHANGED, RENTER_RATED, Outbox
 from cappy_common.models import Booking, Handover, ListingSnapshot, Match, Outcome, Requirement
 from cappy_common.pagination import decode_cursor, encode_cursor
 from cappy_common.timeutil import dt_from_iso, iso_from_datetime
@@ -49,6 +49,7 @@ def to_booking(row: BookingRow, viewer: str) -> Booking:
 # How long before the window the hand-over may be marked; set from settings
 # when the app is built (booking.main).
 START_EARLY = timedelta(minutes=30)
+REVIEW_WINDOW = timedelta(days=14)
 
 
 # The two sides see where to meet once the booking is on, and afterwards.
@@ -204,6 +205,55 @@ class BookingRepository:
             .where(or_(BookingRow.requester_id == person, BookingRow.owner_id == person))
             .order_by(BookingRow.created_at.desc())
             .limit(limit)
+        )
+        return list((await self.s.execute(q)).scalars())
+
+    async def publish_reviews(self, row: BookingRow, now: datetime) -> None:
+        """Blind reviews (Airbnb's rule): neither side sees the other's review
+        before writing their own. Both go out together, once both are in or
+        the 14-day window closes."""
+        if row.reviews_published_at is not None:
+            return
+        row.reviews_published_at = now
+        if row.outcome is not None:
+            await self.outbox.add(
+                self.s,
+                BOOKING_RATED,
+                {
+                    "bookingId": row.id,
+                    "ownerId": row.owner_id,
+                    "listingId": row.listing_id,
+                    "requesterId": row.requester_id,
+                    "outcome": row.outcome,
+                    # When it was written; a job finished early is not reviewed "in the future".
+                    "at": iso_from_datetime(min(row.window_end, row.rated_at or now)),
+                    "ratedAt": iso_from_datetime(row.rated_at or now),
+                },
+            )
+        if row.renter_rating is not None:
+            await self.outbox.add(
+                self.s,
+                RENTER_RATED,
+                {
+                    "bookingId": row.id,
+                    "renterId": row.requester_id,
+                    "ownerId": row.owner_id,
+                    "quality": row.renter_rating,
+                },
+            )
+
+    async def reviews_due(self, now: datetime, limit: int) -> list[BookingRow]:
+        """Completed bookings whose review window closed with one review in."""
+        q = (
+            select(BookingRow)
+            .where(
+                BookingRow.status == "completed",
+                BookingRow.reviews_published_at.is_(None),
+                or_(BookingRow.outcome.is_not(None), BookingRow.renter_rating.is_not(None)),
+                BookingRow.window_end < now - REVIEW_WINDOW,
+            )
+            .limit(limit)
+            .with_for_update(skip_locked=True)
         )
         return list((await self.s.execute(q)).scalars())
 

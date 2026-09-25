@@ -265,6 +265,9 @@ def test_full_lifecycle_and_rating(client, app, issuer, broker):
     assert r.status_code == 200 and r.json()["outcome"]["quality"] == 5
     assert _do(client, issuer, BUYER, bid, "rate", onTime=True, quality=5).status_code == 409
     call(app, app.state.relay.flush)
+    assert broker.of_type(BOOKING_RATED) == [], "blind: nothing is published until both have reviewed"
+    client.post(f"/bookings/{bid}/rate-renter", json={"quality": 5}, headers=issuer.headers(HOST))
+    call(app, app.state.relay.flush)
     [rated] = broker.of_type(BOOKING_RATED)
     assert rated.data["ownerId"] == HOST and rated.data["requesterId"] == BUYER
 
@@ -616,7 +619,14 @@ def test_the_owner_rates_the_renter_once_after_completion(client, app, issuer, b
     assert rate(HOST, 4).json()["renterRating"] == 4
     assert rate(HOST, 5).status_code == 409
     call(app, app.state.relay.flush)
+    assert broker.of_type(RENTER_RATED) == [], "blind until the renter reviews too, or the window closes"
+    # The window closes: what is in is published by the sweep.
+    ended = datetime.now(UTC) - timedelta(days=15)
+    call(app, _age, app, bid, window_start=ended - timedelta(hours=2), window_end=ended)
+    call(app, sweep_once, app)
+    call(app, app.state.relay.flush)
     assert [(e.data["renterId"], e.data["quality"]) for e in broker.of_type(RENTER_RATED)] == [(BUYER, 4)]
+    assert _do(client, issuer, BUYER, bid, "rate", onTime=True, quality=5).status_code == 409, "reviews closed"
 
 
 def test_cancellation_policy_decides_the_refund(issuer, broker, payments):

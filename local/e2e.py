@@ -241,12 +241,13 @@ def main() -> None:
         timeout=60,
     )
 
-    step("the rating becomes a review on the listing")
+    step("both sides review (blind); the renter's review appears on the listing")
     ok(
         http.post(
             f"/bookings/{booking_id}/rate", json={"onTime": True, "quality": 5, "note": f"Great {run}"}, headers=buyer
         )
     )
+    ok(http.post(f"/bookings/{booking_id}/rate-renter", json={"quality": 5}, headers=host))
     until(
         "review",
         lambda: any(run in (r.get("text") or "") for r in ok(http.get(f"/listings/{listing_id}/reviews"))["items"]),

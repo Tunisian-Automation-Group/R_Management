@@ -55,6 +55,10 @@ class BookingRow(Base):
     renter_rating: Mapped[int | None] = mapped_column(Integer, nullable=True)
     # What the cancellation refunded, in cents.
     refund_amount: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    # Blind two-way reviews: when the renter rated, and when both reviews were
+    # published (once both are in, or 14 days after the booked window).
+    rated_at: Mapped[datetime | None] = mapped_column(UtcDateTime, nullable=True)
+    reviews_published_at: Mapped[datetime | None] = mapped_column(UtcDateTime, nullable=True)
     # What the client sent in Idempotency-Key, so a retried POST returns the
     # booking it already made instead of making a second one.
     idempotency_key: Mapped[str | None] = mapped_column(String(80), nullable=True)
