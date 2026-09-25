@@ -531,11 +531,11 @@ export function CapacityMap({
                 <span className="pulse-ring absolute inset-0 rounded-full bg-[var(--sky)]" />
                 <span className="relative h-2 w-2 rounded-full bg-[var(--sky)]" />
               </span>
-              Free now
+              Free soon
             </span>
             <span className="inline-flex items-center gap-1.5">
               <span className="h-2 w-2 rounded-full bg-[var(--accent)]" />
-              Later today
+              Free later
             </span>
           </div>
         )}

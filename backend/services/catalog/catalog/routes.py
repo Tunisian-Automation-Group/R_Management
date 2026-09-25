@@ -181,7 +181,9 @@ def _validate_slots(slots: list[SlotIn]) -> list[Slot]:
     return out
 
 
-async def _validate_listing(request: Request, repo: CatalogRepository, raw: dict, owner_id: str):
+async def _validate_listing(
+    request: Request, repo: CatalogRepository, raw: dict, owner_id: str, already_shown: frozenset[str] = frozenset()
+):
     try:
         listing = _listing.validate_python({**raw, "id": "pending", "ownerId": owner_id})
     except ValidationError as e:
@@ -203,7 +205,10 @@ async def _validate_listing(request: Request, repo: CatalogRepository, raw: dict
     if len(photos) > MAX_PHOTOS:
         raise Invalid(f"at most {MAX_PHOTOS} photos per listing")
     settings = request.app.state.settings
-    names = [media.name_from_url(settings, u) for u in photos]
+    # Photos the listing already shows may stay (an edit resends them); every
+    # new one must be the owner's own upload.
+    new = [u for u in photos if u not in already_shown]
+    names = [media.name_from_url(settings, u) for u in new]
     if any(n is None for n in names):
         raise Invalid("photos must be uploaded to Cappy first (POST /uploads)")
     owned = await repo.media_owned_by({n for n in names if n}, owner_id)
@@ -403,7 +408,11 @@ async def update_listing(
 ):
     row = await _owned(repo, listing_id, p.sub)
     listing = await _validate_listing(
-        request, repo, {**body.listing, "mode": row.mode, "category": row.category}, p.sub
+        request,
+        repo,
+        {**body.listing, "mode": row.mode, "category": row.category},
+        p.sub,
+        already_shown=frozenset(row.photos or []),
     )
     updated = await repo.update_listing(listing_id, listing)
     if "address" in body.model_fields_set:

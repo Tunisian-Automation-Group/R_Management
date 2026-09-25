@@ -1,4 +1,4 @@
-import type { ReactNode } from 'react'
+import { useEffect, type ReactNode } from 'react'
 import { NavLink } from 'react-router-dom'
 import { Icon, type IconName } from './Icon.tsx'
 import { useBack } from '../nav.ts'
@@ -162,7 +162,10 @@ export function Screen({
   hero,
   wide = false,
   tone = 'page',
+  docTitle,
 }: {
+  /** The browser tab's title; defaults to `title` when that is plain text. */
+  docTitle?: string
   title?: ReactNode
   sub?: ReactNode
   /** A small ruled label above the title, the section this screen belongs to. */
@@ -184,6 +187,10 @@ export function Screen({
 }) {
   const isWide = wide || Boolean(footer)
   const goBack = useBack(back ?? '/')
+  const tabTitle = docTitle ?? (typeof title === 'string' ? title : undefined)
+  useEffect(() => {
+    document.title = tabTitle ? `${tabTitle} · Cappy` : 'Cappy'
+  }, [tabTitle])
   return (
     <div
       className={`anim-screen min-h-dvh ${tone === 'surface' ? 'bg-[var(--surface)]' : ''}`}
@@ -206,7 +213,10 @@ export function Screen({
         >
           <div className="min-w-0">
             {hero ? (
-              <div className="relative">
+              // On a page the photo sits in the content column, below the
+              // header, with all four corners: flush against the bar it read
+              // as clipped, and it started left of the text under it.
+              <div className="relative md:px-8 md:pt-6">
                 {hero}
                 {back && <BackButton onClick={goBack} floating />}
               </div>
@@ -232,7 +242,9 @@ export function Screen({
               </header>
             )}
 
-            <main className="px-5 pt-1 md:px-8">{children}</main>
+            <main id="main" tabIndex={-1} className="px-5 pt-1 outline-none md:px-8">
+              {children}
+            </main>
           </div>
 
           {footer && (
@@ -328,10 +340,11 @@ function SiteFooter() {
           </nav>
         ))}
       </div>
-      <p className="t-sm mt-12 border-t border-[var(--line)] pt-6 text-[var(--ink-4)]">
-        A prototype. Owners, machines, prices and availability are realistic
-        examples, not real businesses.
-      </p>
+      <nav aria-label="Legal" className="t-sm mt-12 flex flex-wrap gap-x-6 gap-y-2 border-t border-[var(--line)] pt-6 text-[var(--ink-4)]">
+        <NavLink to="/legal/impressum" className="hover:text-[var(--ink-2)]">Impressum</NavLink>
+        <NavLink to="/legal/privacy" className="hover:text-[var(--ink-2)]">Privacy</NavLink>
+        <NavLink to="/legal/terms" className="hover:text-[var(--ink-2)]">Terms</NavLink>
+      </nav>
     </footer>
   )
 }
@@ -344,7 +357,7 @@ function BackButton({ onClick, floating }: { onClick: () => void; floating?: boo
       className={`grid h-10 w-10 place-items-center rounded-full transition-all duration-[160ms]
         ${
           floating
-            ? 'glass glass-dark absolute left-4 z-10 hover:brightness-110'
+            ? 'glass glass-dark absolute left-4 z-10 hover:brightness-110 md:left-12 md:mt-6'
             : '-ml-2.5 text-[var(--ink)] hover:bg-[var(--sunken)]'
         }`}
       style={floating ? { top: 'calc(var(--safe-top) + 12px)' } : undefined}

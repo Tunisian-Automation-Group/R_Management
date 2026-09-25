@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { useQueries, useQueryClient } from '@tanstack/react-query'
-import type { Booking, Owner, Slot } from '../../domain/types.ts'
+import type { Booking, Listing, Owner, Slot } from '../../domain/types.ts'
 import { durationLabel } from '../../domain/categories.ts'
 import { idleHours } from '../../domain/availability.ts'
 import { formatEur } from '../../domain/money.ts'
@@ -23,8 +23,11 @@ export const DECLINE_REASONS = [
   'Too short notice for me',
 ]
 
-const WEEK = 7 * 86_400_000
-const thisWeek = (slots: Slot[]) => slots.filter((s) => Date.parse(s.start) < Date.now() + WEEK)
+const DAY = 86_400_000
+/** Today and the six days after it: the same seven columns the week chart draws. */
+const weekEnd = () => new Date().setHours(0, 0, 0, 0) + 7 * DAY
+const thisWeek = (slots: Slot[]) => slots.filter((s) => Date.parse(s.start) < weekEnd())
+const HELD = ['accepted', 'active']
 
 export function Earn() {
   const nav = useNavigate()
@@ -40,6 +43,7 @@ export function Earn() {
   const [declining, setDeclining] = useState<Booking | null>(null)
   const [reason, setReason] = useState(DECLINE_REASONS[0])
   const [busy, setBusy] = useState(false)
+  const [removing, setRemoving] = useState<Listing | null>(null)
 
   const mine = listingsQ.data?.items.map((v) => v.listing) ?? []
   const active = mine.filter((l) => l.active)
@@ -48,8 +52,15 @@ export function Earn() {
   const slotsFor = (id: string): Slot[] => slotsById.get(id) ?? []
 
   const inbound = inboundQ.data?.items ?? []
-  const requests = inbound.filter((b) => b.status === 'requested')
-  const confirmed = inbound.filter((b) => ['accepted', 'active', 'completed'].includes(b.status))
+  const byStart = (a: Booking, b: Booking) => Date.parse(a.match.start) - Date.parse(b.match.start)
+  const requests = inbound.filter((b) => b.status === 'requested').sort(byStart)
+  // Sold this week: what the chart draws and what comes off the idle hours.
+  const soldThisWeek = inbound.filter(
+    (b) => [...HELD, 'completed'].includes(b.status) && Date.parse(b.match.start) < weekEnd() && Date.parse(b.match.end) > Date.now(),
+  )
+  const comingUp = inbound.filter((b) => HELD.includes(b.status)).sort(byStart)
+  const soldFor = (listingId: string) =>
+    soldThisWeek.filter((b) => b.match.listingId === listingId).reduce((n, b) => n + b.match.quote.hours, 0)
   // Who is asking: their public profile, for the name and initials.
   const askers = useQueries({
     queries: requests.map((b) => ({
@@ -60,19 +71,19 @@ export function Earn() {
   })
   const askerOf = (b: Booking): Owner | undefined => askers.find((q) => q.data?.id === b.requesterId)?.data
 
-  const soldHours = confirmed.reduce((n, b) => n + b.match.quote.hours, 0)
-  let total = 0
-  let money = 0
+  // Only this week's windows, less what is already sold. Nobody acts on "idle last year".
+  const freeFor = (id: string) => Math.max(0, idleHours(thisWeek(slotsFor(id))) - soldFor(id))
+  let hoursIdle = 0
+  let unsold = 0
   for (const l of active) {
-    // Only this week's windows. Nobody acts on "idle last year".
-    const h = idleHours(thisWeek(slotsFor(l.id)))
-    total += h
-    money += h * l.ratePerHour
+    const h = freeFor(l.id)
+    hoursIdle += h
+    unsold += h * l.ratePerHour
   }
-  const hoursIdle = Math.max(0, total - soldHours)
-  const unsold = total > 0 ? Math.round((hoursIdle / total) * money) : 0
-  const sold = soldHours
-  const earned = confirmed.reduce((n, b) => n + b.match.quote.ownerNet, 0)
+  const sold = soldThisWeek.reduce((n, b) => n + b.match.quote.hours, 0)
+  // Earned means paid out: completed. Accepted and active are still to come.
+  const earned = inbound.filter((b) => b.status === 'completed').reduce((n, b) => n + b.match.quote.ownerNet, 0)
+  const upcoming = comingUp.reduce((n, b) => n + b.match.quote.ownerNet, 0)
 
   const write = async (fn: () => Promise<unknown>, message: string) => {
     setBusy(true)
@@ -178,9 +189,10 @@ export function Earn() {
           <span className="hl font-semibold">{formatEur(unsold)}</span> of time nobody is paying
           you for.
         </p>
-        {sold > 0 && (
+        {(sold > 0 || earned > 0) && (
           <p className="t-sm tnum mt-2.5 font-semibold text-[var(--success-text)]">
-            {Math.round(sold)} h sold · {formatEur(earned)} earned
+            {Math.round(sold)} h sold this week · {formatEur(earned)} earned
+            {upcoming > 0 && ` · ${formatEur(upcoming)} to come`}
           </p>
         )}
       </section>
@@ -188,7 +200,7 @@ export function Earn() {
       <Card className="mt-6 p-5">
         <CapacityBar
           slots={active.flatMap((l) => slotsFor(l.id))}
-          booked={confirmed[0]?.match ?? null}
+          booked={soldThisWeek.map((b) => b.match)}
           intent="earn"
           showLegend
         />
@@ -276,13 +288,36 @@ export function Earn() {
         )}
       </section>
 
+      {/* ------------------------------------------------------ coming up */}
+      {comingUp.length > 0 && (
+        <section>
+          <SectionHead title="Coming up" aside={`${comingUp.length}`} className="mt-7" />
+          <ul className="ruled border-t border-[var(--line)]">
+            {comingUp.map((b) => (
+              <li key={b.id}>
+                <button
+                  onClick={() => nav(`/bookings/${b.id}`)}
+                  className="flex w-full items-center gap-4 py-3.5 text-left transition-opacity duration-[160ms] hover:opacity-70"
+                >
+                  <span className="min-w-0 flex-1">
+                    <span className="block truncate text-[15px] font-semibold">{b.listing?.title ?? 'Your listing'}</span>
+                    <span className="t-sm tnum block truncate text-[var(--ink-3)]">{range(b.match.start, b.match.end)}</span>
+                  </span>
+                  <Pill tone="success">{b.status === 'active' ? 'In progress' : 'Confirmed'}</Pill>
+                </button>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
+
       {/* --------------------------------------------------------- listings */}
       <section>
         <SectionHead title="Your listings" aside={`${mine.length}`} className="mt-7" />
         <ul className="space-y-3">
           {mine.map((l) => {
             const week = thisWeek(slotsFor(l.id))
-            const h = idleHours(week)
+            const h = freeFor(l.id)
             return (
               <li key={l.id}>
                 <Card className="p-5">
@@ -293,6 +328,7 @@ export function Earn() {
                       slots={week}
                       categoryId={l.category}
                       aspect={1}
+                      thumb
                       className={`w-[56px] shrink-0 rounded-[var(--radius-plate)] ${l.active ? '' : 'opacity-40'}`}
                     />
                     <div className="min-w-0 flex-1">
@@ -315,6 +351,9 @@ export function Earn() {
                     <Button size="sm" variant="secondary" onClick={() => nav(`/listing/${l.id}`)}>
                       View as a guest
                     </Button>
+                    <Button size="sm" variant="secondary" onClick={() => nav(`/earn/edit/${l.id}`)}>
+                      Edit
+                    </Button>
                     <Button
                       size="sm"
                       variant="secondary"
@@ -329,12 +368,8 @@ export function Earn() {
                     >
                       {l.active ? 'Pause' : 'Resume'}
                     </Button>
-                    <Button
-                      size="sm"
-                      variant="danger"
-                      disabled={busy}
-                      onClick={() => void write(() => repo.removeListing(l.id), `${l.title} removed`)}
-                    >
+                    {/* Last, and behind a confirmation: removing is not undoable. */}
+                    <Button size="sm" variant="danger" disabled={busy} className="ml-auto" onClick={() => setRemoving(l)}>
                       Remove
                     </Button>
                   </div>
@@ -366,6 +401,38 @@ export function Earn() {
           </Card>
         </section>
       )}
+
+      <Sheet
+        open={Boolean(removing)}
+        onClose={() => setRemoving(null)}
+        title={`Remove ${removing?.title ?? 'this listing'}?`}
+        footer={
+          <div className="space-y-2">
+            <Button
+              block
+              size="lg"
+              variant="danger"
+              disabled={busy}
+              onClick={() => {
+                if (!removing) return
+                const l = removing
+                setRemoving(null)
+                void write(() => repo.removeListing(l.id), `${l.title} removed`)
+              }}
+            >
+              Remove it
+            </Button>
+            <Button block variant="quiet" onClick={() => setRemoving(null)}>
+              Keep it
+            </Button>
+          </div>
+        }
+      >
+        <p className="t-body pb-3 text-[var(--ink-2)]">
+          It comes off the market for good. To take a break instead, pause it: you can resume any time.
+          Bookings already confirmed are not affected.
+        </p>
+      </Sheet>
 
       <Sheet
         open={Boolean(declining)}

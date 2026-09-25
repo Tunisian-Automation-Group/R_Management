@@ -21,39 +21,39 @@ Status: `[ ]` open · `[~]` in progress · `[x]` done (commit) · `[-]` dropped 
 
 ## Verification round 1 — web (V1)
 
-- [ ] V1-1 Owners reach their accepted, active and completed bookings: `/bookings` has an "I'm hosting" view (`role=owner`), and Earn links each confirmed booking
-- [ ] V1-2 Photos display: the Vite proxy forwards `/media`; relative media URLs resolve against the API origin (web and native shells)
-- [ ] V1-3 Legal pages: Impressum, Privacy Policy and Terms, filled from build config (`VITE_LEGAL_*`), shown as "to be completed" rather than fake brackets when unset; the "prototype" footer removed
-- [ ] V1-4 Profile: edit name, kind and district; export my data; delete my account (confirm sheet → `DELETE /me` → Cognito `DeleteUser` → signed out); Terms/Privacy links; consent line on sign-up
-- [ ] V1-5 Forgot password: validate the email format; the right error message for an unknown address (never "email and password do not match")
-- [ ] V1-6 Remove listing: confirm first; buttons that don't shift under the pointer
-- [ ] V1-7 Edit a published listing (title, blurb, price, photos, rules, address, windows)
-- [ ] V1-8 Handover address shown to the buyer once accepted (see contracts); owner enters the address when listing
-- [ ] V1-9 Remove the "Cash or bank transfer" house-rule chip (it invites off-platform payment)
-- [ ] V1-10 The map respects category and filters; its legend matches the times
-- [ ] V1-11 Owner rating and listing reviews are labelled apart ("Nadia · 4.7 from 22 jobs" vs "This listing · 4.8 from 4 reviews"); "new here" only for an owner with no jobs
-- [ ] V1-13 The week chart draws every sold booking, not only the first
-- [ ] V1-14 A real 404 page; signed-out deep links keep their target through sign-in
-- [ ] V1-15 Search, category and filters in the URL (shareable, back button works)
-- [ ] V1-16 Search results show the price; readable "nothing free" state; Enter submits
-- [ ] V1-17 The chosen slot survives sign-in in the middle of booking
-- [ ] V1-18 Bookings and requests sorted by start time
-- [ ] V1-19 Idle and free-this-week figures subtract sold hours and match the windows
-- [ ] V1-20 "Earned" counts completed bookings only; "upcoming" shown apart
-- [ ] V1-21 The owner's view of a booking shows the buyer, not the owner
-- [ ] V1-22 Declined and cancelled bookings say the hold was released, not "receives €…"
-- [ ] V1-23 Confirmed state with a success icon
-- [ ] V1-24 Contrast of the earnings preview (WCAG AA)
-- [ ] V1-25 Listing form: focus the first error, label every input, `4,00 €` formatting, districts grouped by city, duration chips from the listing's own minimum
-- [ ] V1-26 "Free now" only when a bookable window (≥ the minimum) is actually left
-- [ ] V1-27 The chosen city persists; sign-out clears the person's home district
-- [ ] V1-29 Accessibility: an `<h1>` per screen, a per-route `<title>`, nav before main, a skip link
-- [ ] V1-30 The confirm sheet shows the chosen start time
-- [ ] V1-31 The start button says the hand-over opens 30 minutes before the booked time
-- [ ] V1-32 Hero photo alignment on desktop
-- [ ] V1-33 The "+" glyph in display titles
-- [ ] V1-35 The review tag summary matches the tags on the reviews
-- [ ] T-04 Honour `Retry-After`; forced-update screen from `/api/app-config` (see contracts)
+- [x] V1-1 Owners reach their accepted, active and completed bookings: `/bookings` has an "I'm hosting" view (`role=owner`), and Earn links each confirmed booking
+- [x] V1-2 Photos display: the Vite proxy forwards `/media`; relative media URLs resolve against the API origin (web and native shells)
+- [x] V1-3 Legal pages: Impressum, Privacy Policy and Terms, filled from build config (`VITE_LEGAL_*`), shown as "to be completed" rather than fake brackets when unset; the "prototype" footer removed
+- [x] V1-4 Profile: edit name, kind and district; export my data; delete my account (confirm sheet → `DELETE /me` → Cognito `DeleteUser` → signed out); Terms/Privacy links; consent line on sign-up
+- [x] V1-5 Forgot password: validate the email format; the right error message for an unknown address (never "email and password do not match")
+- [x] V1-6 Remove listing: confirm first; buttons that don't shift under the pointer
+- [x] V1-7 Edit a published listing (title, blurb, price, photos, rules, address, windows)
+- [x] V1-8 Handover address shown to the buyer once accepted (see contracts); owner enters the address when listing
+- [x] V1-9 Remove the "Cash or bank transfer" house-rule chip (it invites off-platform payment)
+- [x] V1-10 The map respects category and filters; its legend matches the times
+- [x] V1-11 Owner rating and listing reviews are labelled apart ("Nadia · 4.7 from 22 jobs" vs "This listing · 4.8 from 4 reviews"); "new here" only for an owner with no jobs
+- [x] V1-13 The week chart draws every sold booking, not only the first
+- [x] V1-14 A real 404 page; signed-out deep links keep their target through sign-in
+- [x] V1-15 Search, category and filters in the URL (shareable, back button works)
+- [x] V1-16 Search results show the price; readable "nothing free" state; Enter submits
+- [x] V1-17 The chosen slot survives sign-in in the middle of booking
+- [x] V1-18 Bookings and requests sorted by start time
+- [x] V1-19 Idle and free-this-week figures subtract sold hours and match the windows
+- [x] V1-20 "Earned" counts completed bookings only; "upcoming" shown apart
+- [x] V1-21 The owner's view of a booking shows the buyer, not the owner
+- [x] V1-22 Declined and cancelled bookings say the hold was released, not "receives €…"
+- [x] V1-23 Confirmed state with a success icon
+- [x] V1-24 Contrast of the earnings preview (WCAG AA)
+- [x] V1-25 Listing form: focus the first error, label every input, `4,00 €` formatting, districts grouped by city, duration chips from the listing's own minimum
+- [x] V1-26 "Free now" only when a bookable window (≥ the minimum) is actually left
+- [x] V1-27 The chosen city persists; sign-out clears the person's home district
+- [x] V1-29 Accessibility: an `<h1>` per screen, a per-route `<title>`, nav before main, a skip link
+- [x] V1-30 The confirm sheet shows the chosen start time
+- [x] V1-31 The start button says the hand-over opens 30 minutes before the booked time
+- [x] V1-32 Hero photo alignment on desktop
+- [x] V1-33 The "+" glyph in display titles
+- [x] V1-35 The review tag summary matches the tags on the reviews
+- [x] T-04 Honour `Retry-After`; forced-update screen from `/api/app-config` (see contracts)
 
 ## Verification round 1 — backend and data (V1)
 
@@ -89,6 +89,7 @@ Status: `[ ]` open · `[~]` in progress · `[x]` done (commit) · `[-]` dropped 
 ## Found while doing these
 
 - [x] B-1 Two people uploading the same picture: only the first could use it (media is now owned per person)
+- [x] B-3 Editing a seeded listing failed: photos it already shows were checked as new uploads
 - [x] B-2 Local bootstrap failed once queue settings changed (it now updates existing queues)
 
 ## From the research (R)

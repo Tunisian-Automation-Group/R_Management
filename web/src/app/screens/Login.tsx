@@ -6,6 +6,9 @@ import { useToast } from '../store.tsx'
 import { Screen } from '../components/AppShell.tsx'
 import { Button, Field, Input, Segmented } from '../components/ui.tsx'
 
+const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+const STRONG = /^(?=.*\d)(?=.*[a-z])(?=.*[A-Z]).{10,}$/
+
 /** `label:email:password;…` from VITE_DEMO_ACCOUNTS (written by the local bootstrap). */
 const DEMO = ((import.meta.env.VITE_DEMO_ACCOUNTS as string | undefined) ?? '')
   .split(';')
@@ -91,7 +94,12 @@ export function Login() {
   const submit = async (e: FormEvent) => {
     e.preventDefault()
     setError(null)
-    if ((mode === 'up' || mode === 'reset') && password.length < 8) return setError('Use at least eight characters.')
+    if (!EMAIL.test(email.trim())) return setError('Enter your email address, like name@example.com.')
+    // The same rule as the user pool (infra/platform/identity.tf), so nobody is
+    // turned away by the server for something the form could have said.
+    if ((mode === 'up' || mode === 'reset') && !STRONG.test(password)) {
+      return setError('Use at least ten characters, with a number, a capital and a lowercase letter.')
+    }
     setBusy(true)
     try {
       await run()

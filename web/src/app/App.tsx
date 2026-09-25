@@ -1,8 +1,8 @@
-import { BrowserRouter, Navigate, Route, Routes, useLocation } from 'react-router-dom'
+import { BrowserRouter, Route, Routes, useLocation } from 'react-router-dom'
 import { useEffect } from 'react'
 import { QueryClientProvider } from '@tanstack/react-query'
 import { AppProvider, useCappy } from './store.tsx'
-import { queryClient, useBookings, useMeQuery } from '../data/repo.ts'
+import { APP_VERSION, queryClient, useAppConfig, useBookings, useMeQuery, versionBelow } from '../data/repo.ts'
 import { useSession } from '../data/auth.ts'
 import { Dock } from './components/AppShell.tsx'
 import { ErrorBoundary } from './components/ErrorBoundary.tsx'
@@ -16,6 +16,9 @@ import { AddListing } from './screens/AddListing.tsx'
 import { Profile } from './screens/Profile.tsx'
 import { Login } from './screens/Login.tsx'
 import { Onboarding } from './screens/Onboarding.tsx'
+import { Legal } from './screens/Legal.tsx'
+import { NotFound } from './screens/NotFound.tsx'
+import { Screen } from './components/AppShell.tsx'
 
 /** A new screen starts at the top, the way a native push does. */
 function ScrollReset() {
@@ -48,9 +51,23 @@ function Shell() {
   // Signed in with no profile yet: that comes first, whatever the route.
   const needsProfile = Boolean(session && me.data && !me.data.owner)
 
+  // An App Store / Google Play build older than the API supports: nothing else is
+  // safe to show. The web is always the current build, so it is never gated.
+  const config = useAppConfig()
+  if (NATIVE && config.data && versionBelow(APP_VERSION, config.data.minVersion)) return <UpdateRequired />
+
   return (
     <>
       <ScrollReset />
+      {/* Keyboard users skip the navigation; the nav comes first in the page. */}
+      <a
+        href="#main"
+        className="sr-only z-[70] rounded-[var(--radius-control)] bg-[var(--field)] px-4 py-3 text-[14px] font-semibold text-[var(--on-field)]
+          focus:not-sr-only focus:fixed focus:left-4 focus:top-4"
+      >
+        Skip to content
+      </a>
+      <Dock badges={badges} />
       {needsProfile ? (
         <Onboarding />
       ) : (
@@ -61,14 +78,31 @@ function Shell() {
           <Route path="/bookings/:id" element={<BookingDetail />} />
           <Route path="/earn" element={<Earn />} />
           <Route path="/earn/new" element={<AddListing />} />
+          <Route path="/earn/edit/:id" element={<AddListing />} />
           <Route path="/profile" element={<Profile />} />
           <Route path="/login" element={<Login />} />
-          <Route path="*" element={<Navigate to="/" replace />} />
+          <Route path="/legal/:page" element={<Legal />} />
+          <Route path="*" element={<NotFound />} />
         </Routes>
       )}
-      <Dock badges={badges} />
       {state.toast && <Toast message={state.toast} onDone={() => send({ type: 'TOAST_CLEARED' })} />}
     </>
+  )
+}
+
+/** Inside the Capacitor shell (ADR 0012), not a browser. */
+const NATIVE = Boolean(
+  (window as unknown as { Capacitor?: { isNativePlatform?: () => boolean } }).Capacitor?.isNativePlatform?.(),
+)
+
+function UpdateRequired() {
+  return (
+    <Screen title="Update Cappy" docTitle="Update required">
+      <p className="t-body max-w-[46ch] text-[var(--ink-2)]">
+        This version of the app is too old to talk to Cappy safely. Update it from the App Store
+        or Google Play to carry on; your bookings and listings are all there.
+      </p>
+    </Screen>
   )
 }
 

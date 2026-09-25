@@ -1,10 +1,18 @@
-import { useMemo, useState, type ReactNode } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import { rating } from '../../domain/types.ts'
 import { CATEGORIES, GROUPS, categoriesIn, category, durationLabel } from '../../domain/categories.ts'
 import type { SortKey } from '../../domain/match.ts'
 import { formatEur } from '../../domain/money.ts'
-import { useCities, useDistricts, useMatches, useSearch, useSpotlight, type Spotlight } from '../../data/repo.ts'
+import {
+  SEARCH_MIN,
+  useCities,
+  useDistricts,
+  useMatches,
+  useSearch,
+  useSpotlight,
+  type Spotlight,
+} from '../../data/repo.ts'
 import { buildRequirement, useCappy, useMe } from '../store.tsx'
 import { Screen, SectionHead } from '../components/AppShell.tsx'
 import { Icon, categoryIcon } from '../components/Icon.tsx'
@@ -34,6 +42,7 @@ export function Browse() {
   const [allSpots, setAllSpots] = useState(false)
 
   const { search } = state
+  useSearchInUrl()
   // To the minute, so the query key (and so the request) is stable between renders.
   const now = useMemo(() => new Date(Math.floor(Date.now() / 60_000) * 60_000), [search])
   const districtsQ = useDistricts()
@@ -91,9 +100,11 @@ export function Browse() {
     <Screen wide>
       {/* ------------------------------------------------------------ masthead */}
       <header className="flex items-baseline justify-between gap-3 pb-2 pt-8 md:pt-10">
-        <span className="t-h1 md:hidden">Cappy</span>
+        <h1 className="min-w-0">
+          <span className="t-h1 md:hidden">Cappy</span>
+          <span className="t-h1 hidden md:block">Capacity near you</span>
+        </h1>
         <span className="hidden md:block">
-          <span className="t-h1">Capacity near you</span>
           <span className="t-lede mt-2 block max-w-[48ch]">
             Someone within reach has a machine, a truck or a room standing idle right
             now. Buy the hours, not the thing.
@@ -121,8 +132,17 @@ export function Browse() {
             strokeWidth={2}
             className="pointer-events-none absolute left-4 top-[15px] text-[var(--ink-3)]"
           />
+          <form
+            role="search"
+            onSubmit={(e) => {
+              // Results are live; Enter just puts the keyboard away.
+              e.preventDefault()
+              ;(document.activeElement as HTMLElement | null)?.blur()
+            }}
+          >
           <input
             type="search"
+            enterKeyHint="search"
             value={search.query}
             aria-label="Search listings"
             placeholder="Milling, printing, PA rig, saw"
@@ -131,13 +151,18 @@ export function Browse() {
               outline-none placeholder:font-normal placeholder:text-[var(--ink-4)]"
             style={{ fontVariationSettings: "'wdth' 104" }}
           />
+          </form>
         </div>
       </div>
 
       <div>
         {search.query.trim() ? (
           /* ---------------------------------- free-text results win over everything */
-          queryHits.length === 0 ? (
+          search.query.trim().length < SEARCH_MIN ? (
+            <p className="t-sm px-1 py-4 text-[var(--ink-3)]">Type at least {SEARCH_MIN} letters to search.</p>
+          ) : searchQ.isPending ? (
+            <Skeleton className="h-[160px] w-full" />
+          ) : queryHits.length === 0 ? (
             <EmptyState
               icon="search"
               title={`Nothing matching “${search.query.trim()}”`}
@@ -170,6 +195,7 @@ export function Browse() {
                           alt={l.title}
                           categoryId={l.category}
                           aspect={1}
+                          thumb
                           className="w-[52px] shrink-0 rounded-[var(--radius-plate)]"
                         />
                         <span className="min-w-0 flex-1">
@@ -177,6 +203,10 @@ export function Browse() {
                           <span className="t-sm block truncate text-[var(--ink-3)]">
                             {o.name}, {l.district}
                           </span>
+                        </span>
+                        <span className="tnum shrink-0 text-[14.5px] font-semibold">
+                          {formatEur(l.ratePerHour)}
+                          <span className="text-[12px] font-normal text-[var(--ink-4)]"> / h</span>
                         </span>
                         <Icon
                           name="chevron-right"
@@ -407,12 +437,17 @@ export function Browse() {
                   cityStats={cityStats}
                   onOpen={(id) => nav(`/listing/${id}`)}
                   onPickCity={pickCity}
-                  pins={spotlight.map((s) => ({
-                    id: s.listing.id,
-                    district: s.listing.district,
-                    freeNow: s.freeNow,
-                    label: `${s.listing.title}, ${s.listing.district}, ${s.freeNow ? 'free now' : `free ${relative(s.windowStart)}`}`,
-                  }))}
+                  // The same results as the list, with the same filters: never the
+                  // unfiltered "free today" set.
+                  pins={matches.map(({ match: m, listing: l }) => {
+                    const soon = Date.parse(m.start) - Date.now() < 3 * 3_600_000
+                    return {
+                      id: l.id,
+                      district: l.district,
+                      freeNow: soon,
+                      label: `${l.title}, ${l.district}, free ${relative(m.start)}`,
+                    }
+                  })}
                 />
               </div>
             ) : (
@@ -505,6 +540,63 @@ export function Browse() {
 }
 
 /* ------------------------------------------------------------------ pieces */
+
+/**
+ * The search lives in the URL (`?q=…&cat=…&h=…&km=…&days=…&n=…`), so a search
+ * can be shared or bookmarked and the back button undoes a category. A URL we
+ * did not write ourselves (arriving, back, forward) is read into the search;
+ * after that the search writes the URL.
+ */
+function useSearchInUrl() {
+  const { state, send } = useCappy()
+  const [params, setParams] = useSearchParams()
+  const written = useRef<string | null>(null)
+  const { search } = state
+
+  const urlFor = (s: typeof search) => {
+    const next = new URLSearchParams()
+    if (s.query.trim()) next.set('q', s.query.trim())
+    if (s.categoryId) {
+      next.set('cat', s.categoryId)
+      if (category(s.categoryId).mode === 'window') next.set('h', String(s.hours))
+      else next.set('n', String(s.quantity))
+      next.set('km', String(s.maxDistanceKm))
+      next.set('days', String(s.withinDays))
+    }
+    return next
+  }
+
+  // URL → search, when the URL changed without us.
+  useEffect(() => {
+    if (params.toString() === written.current) return
+    written.current = params.toString()
+    const num = (k: string) => (params.get(k) ? Number(params.get(k)) : undefined)
+    const cat = params.get('cat')
+    send({
+      type: 'SEARCH_CHANGED',
+      patch: {
+        query: params.get('q') ?? '',
+        categoryId: cat && CATEGORIES.some((c) => c.id === cat) ? (cat as (typeof CATEGORIES)[number]['id']) : null,
+        ...(num('h') ? { hours: num('h')! } : {}),
+        ...(num('n') ? { quantity: num('n')! } : {}),
+        ...(num('km') ? { maxDistanceKm: num('km')! } : {}),
+        ...(num('days') ? { withinDays: num('days')! } : {}),
+      },
+    })
+  }, [params, send])
+
+  // Search → URL.
+  useEffect(() => {
+    if (written.current === null) return
+    const next = urlFor(search).toString()
+    if (next === written.current) return
+    // Opening or leaving a category is a step back undoes; typing just updates.
+    const stepped = new URLSearchParams(written.current).get('cat') !== (search.categoryId ?? null)
+    written.current = next
+    setParams(new URLSearchParams(next), { replace: !stepped })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [search, setParams])
+}
 
 /** A labelled row of chips in the filter sheet. */
 function FilterGroup({ label, children }: { label: string; children: ReactNode }) {

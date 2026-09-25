@@ -576,3 +576,18 @@ def test_two_people_can_upload_the_same_picture(client, issuer):
         url = client.post("/uploads", files={"file": ("p.jpg", same, "image/jpeg")}, headers=h).json()["url"]
         body = {"listing": _window_listing(photos=[url]), "slots": [_slot()]}
         assert client.post("/listings", json=body, headers=h).status_code == 201, who
+
+
+def test_editing_a_listing_keeps_the_photos_it_already_shows(client, issuer):
+    """Seeded listings show photos from elsewhere; resending them on an edit is
+    fine, adding someone else's is not."""
+    from cappy_common.fixtures import build_world
+
+    l9 = next(l for l in build_world().listings if l.id == "l9")
+    h = issuer.headers("o1")
+    body = l9.model_dump(mode="json", by_alias=True, exclude={"id", "owner_id"})
+    assert (
+        client.put("/listings/l9", json={"listing": {**body, "title": "Festool, edited"}}, headers=h).status_code == 200
+    )
+    stranger = {**body, "photos": [*body["photos"], "https://images.unsplash.com/other.jpg"]}
+    assert client.put("/listings/l9", json={"listing": stranger}, headers=h).status_code == 422

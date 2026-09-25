@@ -4,7 +4,8 @@ import { saveProfile, useDistricts } from '../../data/repo.ts'
 import { signOut } from '../../data/auth.ts'
 import { messageOf, useCappy } from '../store.tsx'
 import { Screen } from '../components/AppShell.tsx'
-import { Button, Field, Input, Segmented, Select } from '../components/ui.tsx'
+import { Button, Field, Input, Segmented } from '../components/ui.tsx'
+import { DistrictSelect } from '../components/DistrictSelect.tsx'
 
 /**
  * The one step after signing up: what to call you, and where you are. Your
@@ -62,19 +63,22 @@ export function Onboarding() {
           />
         </Field>
         <Field label="Where are you?" hint="Where your listings live and your searches start." htmlFor="o-where">
-          <Select id="o-where" value={where} onChange={(e) => setDistrict(e.target.value)}>
-            {names.map((d) => (
-              <option key={d} value={d}>
-                {d}
-              </option>
-            ))}
-          </Select>
+          <DistrictSelect
+            id="o-where"
+            districts={districts.data ?? {}}
+            value={where}
+            onChange={(e) => setDistrict(e.target.value)}
+          />
         </Field>
         {error && (
           <p role="alert" className="text-[14px] font-semibold text-[var(--danger)]">
             {error}
           </p>
         )}
+        <p className="t-sm text-[var(--ink-3)]">
+          By continuing you accept the <a className="underline" href="/legal/terms">Terms</a> and have read the{' '}
+          <a className="underline" href="/legal/privacy">Privacy Policy</a>.
+        </p>
         <Button type="submit" block size="lg" disabled={busy || !where}>
           {busy ? 'One moment…' : 'Continue'}
         </Button>

@@ -2,14 +2,21 @@ import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 import tailwind from '@tailwindcss/vite'
 import { VitePWA } from 'vite-plugin-pwa'
+import pkg from './package.json' with { type: 'json' }
 
 // Where the backend gateway is during development. The dev server proxies
 // /api there, so the app is same-origin with its API on localhost and on a
 // phone hitting the LAN address alike, and no CORS is involved.
 const backend = process.env.VITE_API_PROXY ?? 'http://localhost:8000'
-const proxy = { '/api': { target: backend, changeOrigin: true } }
+// /media too: listing photos are served by the backend at the same origin.
+const proxy = {
+  '/api': { target: backend, changeOrigin: true },
+  '/media': { target: backend, changeOrigin: true },
+}
 
 export default defineConfig({
+  // The build's version, sent to the API so an app too old for it can be told to update.
+  define: { __APP_VERSION__: JSON.stringify(pkg.version) },
   plugins: [
     react(),
     tailwind(),

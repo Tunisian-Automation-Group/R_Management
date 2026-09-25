@@ -1,5 +1,6 @@
 import { useMemo, useState, useEffect } from 'react'
-import { Navigate, useNavigate, useParams, useSearchParams } from 'react-router-dom'
+import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
+import { NotFound } from './NotFound.tsx'
 import { useQueryClient } from '@tanstack/react-query'
 import type { Offer, Requirement } from '../../domain/types.ts'
 import { isWindow, rating } from '../../domain/types.ts'
@@ -21,7 +22,7 @@ import {
 import { messageOf, useCappy, useMe, useToast } from '../store.tsx'
 import { Screen, SectionHead } from '../components/AppShell.tsx'
 import { CapacityBar } from '../components/CapacityBar.tsx'
-import { Plate, WhenBadge } from '../components/Cover.tsx'
+import { WhenBadge } from '../components/Cover.tsx'
 import { Photo, SaveButton } from '../components/Photo.tsx'
 import { Reviews } from '../components/Reviews.tsx'
 import { PayStep } from '../components/PayStep.tsx'
@@ -58,13 +59,15 @@ export function Listing() {
   const owner = detail.data?.owner
 
   const [hours, setHours] = useState(0)
-  const [quantity, setQuantity] = useState(state.search.quantity)
-  // The listing arrives after the first render. Adopt a sensible duration once it is there.
+  const [quantity, setQuantity] = useState(Number(params.get('quantity')) || state.search.quantity)
+  // The listing arrives after the first render. Adopt a sensible duration once it
+  // is there: the one they had picked before signing in, else their search's.
+  const wanted = Number(params.get('hours')) || state.search.hours
   useEffect(() => {
     if (listing && isWindow(listing) && hours === 0) {
-      setHours(Math.min(listing.maxHours, Math.max(listing.minHours, state.search.hours)))
+      setHours(Math.min(listing.maxHours, Math.max(listing.minHours, wanted)))
     }
-  }, [listing, hours, state.search.hours])
+  }, [listing, hours, wanted])
   const [picked, setPicked] = useState<Offer | null>(null)
   const [dayPick, setDayPick] = useState<string | null>(null)
   const [confirming, setConfirming] = useState(false)
@@ -114,8 +117,11 @@ export function Listing() {
   // the soonest. Nobody should land on this screen with nothing chosen.
   const selected = useMemo(() => {
     if (picked && offers.some((o) => o.start === picked.start)) return picked
+    const start = params.get('start')
     const fromResults = params.get('slot')
-    return offers.find((o) => o.slotId === fromResults) ?? offers[0] ?? null
+    return (
+      offers.find((o) => o.start === start) ?? offers.find((o) => o.slotId === fromResults) ?? offers[0] ?? null
+    )
   }, [picked, offers, params])
 
   // A new window is a new attempt: never carry the last one's payment or key over.
@@ -127,7 +133,7 @@ export function Listing() {
   useEffect(startOver, [selectedStart])
 
   if (detail.isPending) return <Screen back="/">{null}</Screen>
-  if (!detail.data || !listing || !owner) return <Navigate to="/" replace />
+  if (!detail.data || !listing || !owner) return <NotFound what="listing" />
   const info = detail.data
 
   const meta = category(listing.category)
@@ -146,7 +152,9 @@ export function Listing() {
   // Asking for a window needs a person on the other end of it.
   const request = () => {
     if (!ME) {
-      nav(`/login?next=${encodeURIComponent(location.pathname)}`)
+      // Back to this exact choice after signing in, not to the defaults.
+      const back = `${location.pathname}?hours=${hours}&quantity=${quantity}${selected ? `&start=${encodeURIComponent(selected.start)}` : ''}`
+      nav(`/login?next=${encodeURIComponent(back)}`)
       return
     }
     setConfirming(true)
@@ -184,6 +192,7 @@ export function Listing() {
   return (
     <Screen
       back="/"
+      docTitle={listing.title}
       hero={
         <Photo
           src={listing.photos?.[0]}
@@ -192,7 +201,7 @@ export function Listing() {
           categoryId={listing.category}
           aspect={16 / 10}
           priority
-          className="w-full md:rounded-b-[var(--radius-sheet)]"
+          className="w-full md:rounded-[var(--radius-sheet)]"
           style={{ viewTransitionName: 'hero' }}
         >
           <span
@@ -260,9 +269,17 @@ export function Listing() {
             {listing.district}{km !== null ? ` · ${distance(km)}` : ''}
           </span>
           <span className="tnum">{formatEur(listing.ratePerHour)} / hour</span>
-          {/* The stars are the summary; the reviews are the evidence. One tap apart. */}
-          <a href="#reviews" className="underline decoration-[var(--line-strong)] underline-offset-4 hover:decoration-[var(--ink)]">
-            <Stars value={stars} count={owner.jobsDone} />
+          {/* This listing's reviews; the owner's overall record is on their card below. */}
+          <a
+            href="#reviews"
+            aria-label={
+              info.reviews.average !== null
+                ? `This listing: ${info.reviews.average.toFixed(1)} from ${info.reviews.count} reviews`
+                : 'No reviews of this listing yet'
+            }
+            className="underline decoration-[var(--line-strong)] underline-offset-4 hover:decoration-[var(--ink)]"
+          >
+            <Stars value={info.reviews.average} count={info.reviews.count} />
           </a>
         </div>
       </header>
@@ -297,6 +314,11 @@ export function Listing() {
               {trackRecord(owner)} · since {owner.joinedYear}
             </p>
           </div>
+          {/* The owner across all their listings, labelled so it is not read as this listing's. */}
+          <span className="shrink-0 text-right">
+            <Stars value={stars} count={owner.jobsDone} />
+            <span className="t-sm block text-[var(--ink-4)]">all their jobs</span>
+          </span>
         </div>
         <p className="t-sm mt-4 flex items-center gap-1.5 border-t border-[var(--line)] pt-4 text-[var(--ink-3)]">
           <Icon name="clock" size={14} className="text-[var(--ink-4)]" />
@@ -317,8 +339,9 @@ export function Listing() {
       />
       <div className="flex flex-wrap gap-2">
         {isWindow(listing)
-          ? (meta.quickHours ?? [1, 2, 4])
+          ? [...new Set([listing.minHours, ...(meta.quickHours ?? [1, 2, 4])])]
               .filter((h) => h >= listing.minHours && h <= listing.maxHours)
+              .sort((a, b) => a - b)
               .map((h) => (
                 <Chip
                   key={h}
@@ -448,7 +471,7 @@ export function Listing() {
       {/* ---------------------------------------------------------- reviews */}
       <section id="reviews">
         <SectionHead title="What people say" className="mt-7" />
-        <Reviews reviews={reviews.data?.items ?? []} summary={info.reviews} ownerFirstName={first} />
+        <Reviews reviews={reviews.data?.items ?? []} summary={info.reviews} ownerFirstName={first} ownerJobs={owner.jobsDone} />
       </section>
 
       <SectionHead title="House rules" className="mt-7" />
@@ -499,11 +522,11 @@ export function Listing() {
         ) : selected && quote && (
           <div className="space-y-4 pb-2">
             <div className="flex items-center gap-3.5">
-              <Plate
-                slots={slots}
+              <Photo
+                src={listing.photos?.[0]}
+                alt=""
                 categoryId={listing.category}
                 aspect={1}
-                detail="thumb"
                 className="w-[52px] shrink-0 rounded-[14px]"
               />
               <div className="min-w-0">

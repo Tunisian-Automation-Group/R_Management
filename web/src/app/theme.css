@@ -23,7 +23,9 @@
      the interface and carries the tabular numerals. */
   --font-sans: 'Archivo', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto,
     system-ui, sans-serif;
-  --font-display: 'Bodoni Moda', 'Didot', 'Bodoni 72', Georgia, serif;
+  /* 'Display Signs' only covers + and &: Bodoni Moda's plus is a hairline that
+     vanishes at display sizes, so those two come from a sturdier face. */
+  --font-display: 'Display Signs', 'Bodoni Moda', 'Didot', 'Bodoni 72', Georgia, serif;
 
   /* Softened back off the hard 3px edge, which read as austere rather than
      considered. Three steps, each used for one kind of thing. */
@@ -39,6 +41,12 @@
 }
 
 /* ---------------------------------------------------------------- semantic */
+@font-face {
+  font-family: 'Display Signs';
+  src: local('Georgia'), local('Times New Roman'), local('DejaVu Serif');
+  unicode-range: U+002B, U+0026;
+}
+
 :root {
   --page: #fbfaf8;
   --surface: #ffffff;

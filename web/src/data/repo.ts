@@ -37,11 +37,21 @@ import { accessToken, refresh, useSession } from './auth.ts'
  */
 const API: string = (import.meta.env.VITE_API_URL as string | undefined)?.replace(/\/$/, '') ?? '/api'
 
+/** Where relative media paths (`/media/…`) live: the API's origin when the app
+ *  is hosted apart from it (a native shell), this origin otherwise. */
+const MEDIA_ORIGIN = /^https?:\/\//.test(API) ? new URL(API).origin : ''
+export const mediaUrl = (src: string) => (src.startsWith('/') ? `${MEDIA_ORIGIN}${src}` : src)
+
+/** This build's version, sent on every call so the server can tell old apps to update. */
+export const APP_VERSION: string = __APP_VERSION__
+
 export class ApiError extends Error {
   constructor(
     message: string,
     public readonly status: number,
     public readonly code: string,
+    /** Seconds the server asked us to wait before trying again (503s). */
+    public readonly retryAfter?: number,
   ) {
     super(message)
   }
@@ -55,6 +65,7 @@ async function send(method: string, path: string, body?: unknown, headers?: Reco
       method,
       headers: {
         Accept: 'application/json',
+        'X-App-Version': APP_VERSION,
         ...(token ? { Authorization: `Bearer ${token}` } : {}),
         ...(body !== undefined && !form ? { 'Content-Type': 'application/json' } : {}),
         ...headers,
@@ -77,10 +88,21 @@ async function call<T>(method: string, path: string, body?: unknown, headers?: R
   const res = await send(method, path, body, headers)
   if (res.status === 204) return undefined as T
   const text = await res.text()
-  const data = text ? (JSON.parse(text) as unknown) : undefined
+  let data: unknown
+  try {
+    data = text ? JSON.parse(text) : undefined
+  } catch {
+    data = undefined // a proxy's HTML error page, say
+  }
   if (!res.ok) {
     const err = (data as { error?: { code?: string; message?: string } } | undefined)?.error
-    throw new ApiError(err?.message ?? `${method} ${path} failed (${res.status})`, res.status, err?.code ?? 'error')
+    const wait = Number(res.headers.get('Retry-After'))
+    throw new ApiError(
+      err?.message ?? `${method} ${path} failed (${res.status})`,
+      res.status,
+      err?.code ?? 'error',
+      Number.isFinite(wait) && wait > 0 ? wait : undefined,
+    )
   }
   return data as T
 }
@@ -102,8 +124,8 @@ export type Page<T> = { items: T[]; nextCursor?: string }
 export type Me = { id: string; homeDistrict: string; owner?: Owner }
 export type City = { city: string; country: string; lat: number; lng: number; listings: number }
 export type MatchView = { match: Match; listing: Listing; owner: Owner }
-/** `slots` only on the owner's own listings (GET /me/listings). */
-export type ListingView = { listing: Listing; owner: Owner; saved?: boolean; slots?: Slot[] }
+/** `slots` and `address` only on the owner's own listings (GET /me/listings). */
+export type ListingView = { listing: Listing; owner: Owner; saved?: boolean; slots?: Slot[]; address?: string }
 export type ListingDetail = {
   listing: Listing
   owner: Owner
@@ -137,6 +159,10 @@ export const queryClient = new QueryClient({
       staleTime: 30_000,
       // A 4xx will not change on a retry; only the network or a 5xx might.
       retry: (n, err) => n < 2 && !(err instanceof ApiError && err.status >= 400 && err.status < 500),
+      // Back off, and never sooner than the server asked: a busy service that
+      // says "come back in 5 s" must not get every client back in 1.
+      retryDelay: (n, err) =>
+        Math.max(Math.min(1000 * 2 ** n, 30_000), err instanceof ApiError && err.retryAfter ? err.retryAfter * 1000 : 0),
     },
   },
 })
@@ -169,11 +195,14 @@ export const useMatches = (requirement: Requirement | null, sort: SortKey) =>
     placeholderData: keepPreviousData,
   })
 
+/** Free-text search needs three characters (what the trigram index can use). */
+export const SEARCH_MIN = 3
+
 export const useSearch = (q: string, metro?: string) =>
   useQuery({
     queryKey: ['search', q, metro],
     queryFn: () => get<Page<ListingView>>(`/search${qs({ q: q.trim(), metro, limit: 30 })}`),
-    enabled: q.trim().length >= 2, // the server wants two characters
+    enabled: q.trim().length >= SEARCH_MIN,
     placeholderData: keepPreviousData,
   })
 
@@ -262,9 +291,44 @@ export const useConnectStatus = () => {
   })
 }
 
+export type AppConfig = { minVersion: string; latestVersion?: string }
+export const useAppConfig = () =>
+  useQuery({
+    queryKey: ['appConfig'],
+    queryFn: () => get<AppConfig>('/app-config'),
+    staleTime: 10 * 60_000,
+    retry: false, // an older backend without it must not block the app
+  })
+
+/** a < b for dotted versions ("1.2.10" > "1.2.9"). */
+export function versionBelow(a: string, b: string): boolean {
+  const pa = a.split('.').map(Number)
+  const pb = b.split('.').map(Number)
+  for (let i = 0; i < Math.max(pa.length, pb.length); i++) {
+    const d = (pa[i] || 0) - (pb[i] || 0)
+    if (d !== 0) return d < 0
+  }
+  return false
+}
+
 // --- writes -------------------------------------------------------------------------
 
 export const saveProfile = (p: Profile) => put<Owner>('/me', p)
+
+/** Everything of mine the platform holds, as a file download. */
+export async function exportMyData(): Promise<void> {
+  const res = await send('GET', '/me/export')
+  if (!res.ok) throw new ApiError('Could not prepare your data. Try again.', res.status, 'export')
+  const url = URL.createObjectURL(await res.blob())
+  const a = document.createElement('a')
+  a.href = url
+  a.download = 'cappy-my-data.json'
+  a.click()
+  URL.revokeObjectURL(url)
+}
+
+/** The server side of deleting an account (409 while a booking is open). */
+export const deleteMe = () => del<void>('/me')
 
 /** The server prices the window itself; the Idempotency-Key makes a retried
  *  tap (a flaky network, a double click) the same booking, not two. */
@@ -284,8 +348,12 @@ export const rateBooking = (id: string, outcome: Outcome) => post<Booking>(`/boo
 /** A listing as the owner writes it: ids and the owner come from the server. */
 export type ListingDraft = Listing extends infer L ? (L extends Listing ? Omit<L, 'id' | 'ownerId'> : never) : never
 
-export const addListing = (listing: ListingDraft, slots: Omit<Slot, 'id' | 'listingId'>[]) =>
-  post<{ listing: Listing; slots: Slot[] }>('/listings', { listing, slots })
+export const addListing = (listing: ListingDraft, slots: Omit<Slot, 'id' | 'listingId'>[], address: string) =>
+  post<{ listing: Listing; slots: Slot[] }>('/listings', { listing, slots, address })
+export const updateListing = (id: string, listing: ListingDraft, address: string) =>
+  put<Listing>(`/listings/${id}`, { listing, address })
+export const addSlots = (id: string, slots: Omit<Slot, 'id' | 'listingId'>[]) => post<Slot[]>(`/listings/${id}/slots`, slots)
+export const removeSlot = (id: string, slotId: string) => del<void>(`/listings/${id}/slots/${slotId}`)
 export const pauseListing = (id: string) => post<Listing>(`/listings/${id}/pause`)
 export const resumeListing = (id: string) => post<Listing>(`/listings/${id}/resume`)
 export const removeListing = (id: string) => del<void>(`/listings/${id}`)

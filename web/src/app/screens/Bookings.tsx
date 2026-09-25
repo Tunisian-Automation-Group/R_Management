@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import type { Booking, BookingStatus } from '../../domain/types.ts'
 import { formatEur } from '../../domain/money.ts'
 import { useBookings } from '../../data/repo.ts'
@@ -40,11 +40,18 @@ const statusPill = (
   }
 }
 
+/** Soonest first for what is coming up; most recent first for what is past. */
+const byStart = (a: Booking, b: Booking) => Date.parse(a.match.start) - Date.parse(b.match.start)
+
 export function Bookings() {
   const nav = useNavigate()
   const session = useSession()
   const authReady = useAuthReady()
-  const bookings = useBookings('requester')
+  const [params, setParams] = useSearchParams()
+  // Both sides of the market in one place: what you booked, and what people booked from you.
+  const role: 'requester' | 'owner' = params.get('as') === 'hosting' ? 'owner' : 'requester'
+  const hosting = role === 'owner'
+  const bookings = useBookings(role)
   const [tab, setTab] = useState<'live' | 'past'>('live')
 
   if (!authReady || (session && bookings.isPending)) {
@@ -67,17 +74,30 @@ export function Bookings() {
     )
   }
 
-  // Things you booked from other people. What you host lives under Earn.
   const mine = bookings.data?.items ?? []
-  const live = mine.filter((b) => LIVE.includes(b.status))
-  const past = mine.filter((b) => !LIVE.includes(b.status))
+  const live = mine.filter((b) => LIVE.includes(b.status)).sort(byStart)
+  const past = mine.filter((b) => !LIVE.includes(b.status)).sort((a, b) => byStart(b, a))
   const shown = tab === 'live' ? live : past
 
   return (
     <Screen
       title="Bookings"
-      sub="Capacity you have taken from other people."
+      sub={hosting ? 'People booking what you listed.' : 'Capacity you have taken from other people.'}
     >
+      <div className="pb-4">
+        <Segmented
+          label="Whose bookings"
+          value={role}
+          onChange={(r) => {
+            setTab('live')
+            setParams(r === 'owner' ? { as: 'hosting' } : {}, { replace: true })
+          }}
+          options={[
+            { value: 'requester', label: 'I booked' },
+            { value: 'owner', label: "I'm hosting" },
+          ]}
+        />
+      </div>
       {mine.length > 0 && (
         <div className="pb-5">
           <Segmented
@@ -93,12 +113,21 @@ export function Bookings() {
       )}
 
       {mine.length === 0 ? (
-        <EmptyState
-          icon="ticket"
-          title="No bookings yet"
-          body="When you book someone's idle hour it shows up here, with the address and handover notes."
-          action={<Button onClick={() => nav('/')}>Find something nearby</Button>}
-        />
+        hosting ? (
+          <EmptyState
+            icon="wallet"
+            title="Nobody has booked you yet"
+            body="Accepted requests show up here, with the time and who is coming."
+            action={<Button onClick={() => nav('/earn')}>Go to Earn</Button>}
+          />
+        ) : (
+          <EmptyState
+            icon="ticket"
+            title="No bookings yet"
+            body="When you book someone's idle hour it shows up here. Once the owner accepts, you get the address and handover notes."
+            action={<Button onClick={() => nav('/')}>Find something nearby</Button>}
+          />
+        )
       ) : shown.length === 0 ? (
         <EmptyState
           icon={tab === 'live' ? 'calendar' : 'clock'}
@@ -114,7 +143,7 @@ export function Bookings() {
         <ul className="ruled border-t border-[var(--line)]">
           {shown.map((b) => (
             <li key={b.id}>
-              <BookingRow booking={b} onOpen={() => nav(`/bookings/${b.id}`)} />
+              <BookingRow booking={b} hosting={hosting} onOpen={() => nav(`/bookings/${b.id}`)} />
             </li>
           ))}
         </ul>
@@ -123,13 +152,18 @@ export function Bookings() {
   )
 }
 
-function BookingRow({ booking, onOpen }: { booking: Booking; onOpen: () => void }) {
-  const pill = statusPill(booking.status, Boolean(booking.outcome))
+function BookingRow({ booking, hosting, onOpen }: { booking: Booking; hosting: boolean; onOpen: () => void }) {
+  const pill =
+    hosting && booking.status === 'requested'
+      ? { label: 'Needs your answer', tone: 'accent' as const }
+      : hosting && booking.status === 'completed'
+        ? { label: booking.outcome ? 'Rated' : 'Finished', tone: 'neutral' as const }
+        : statusPill(booking.status, Boolean(booking.outcome))
   const dim = !LIVE.includes(booking.status) && booking.status !== 'completed'
   // What it looked like when it was booked, even if the listing has changed since.
   const title = booking.listing?.title ?? 'Listing removed'
   const photo = booking.listing?.photo
-  const ownerName = booking.listing?.ownerName ?? ''
+  const ownerName = hosting ? 'You are hosting' : (booking.listing?.ownerName ?? '')
 
   return (
     <button
@@ -143,6 +177,7 @@ function BookingRow({ booking, onOpen }: { booking: Booking; onOpen: () => void 
         alt={title}
         categoryId={booking.requirement.category}
         aspect={1}
+        thumb
         className={`w-[58px] shrink-0 rounded-[var(--radius-plate)] ${dim ? 'opacity-40 grayscale' : ''}`}
       />
       <span className="min-w-0 flex-1">
@@ -151,7 +186,7 @@ function BookingRow({ booking, onOpen }: { booking: Booking; onOpen: () => void 
             {title}
           </span>
           <span className="tnum shrink-0 text-[15.5px] font-bold">
-            {formatEur(booking.match.quote.total)}
+            {formatEur(hosting ? booking.match.quote.ownerNet : booking.match.quote.total)}
           </span>
         </span>
         <span className="t-sm mt-0.5 block truncate text-[var(--ink-3)]">{ownerName}</span>

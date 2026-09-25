@@ -1,5 +1,5 @@
 import { useRef, useState } from 'react'
-import { Navigate, useNavigate } from 'react-router-dom'
+import { Navigate, useNavigate, useParams } from 'react-router-dom'
 import type { CategoryId, Material, Slot } from '../../domain/types.ts'
 import { CATEGORIES, category } from '../../domain/categories.ts'
 import { formatEur } from '../../domain/money.ts'
@@ -18,9 +18,11 @@ import {
   Field,
   Input,
   MoneyInput,
-  Select,
   Textarea,
 } from '../components/ui.tsx'
+import { DistrictSelect } from '../components/DistrictSelect.tsx'
+import { NotFound } from './NotFound.tsx'
+import { range } from '../format.ts'
 
 const MATERIALS: Material[] = [
   'PLA', 'PETG', 'ABS', 'ASA', 'TPU', 'Resin',
@@ -31,7 +33,6 @@ const RULE_SUGGESTIONS = [
   'Back the same day',
   'Leave it as you found it',
   'No smoking',
-  'Cash or bank transfer',
   'Message me before you arrive',
   'Not for commercial use',
 ]
@@ -121,45 +122,63 @@ function customSummary(c: CustomWindow): string {
 }
 
 type Errors = Partial<
-  Record<'title' | 'blurb' | 'rate' | 'instructions' | 'machine' | 'availability' | 'photos', string>
+  Record<'title' | 'blurb' | 'rate' | 'instructions' | 'machine' | 'availability' | 'photos' | 'address', string>
 >
 
 /** A photograph on its way in: shown at once from the file, sent shrunk, and
  *  carrying the server's URL once it has one. The first in the list is the cover. */
 type PhotoDraft = { key: string; preview: string; url?: string; error?: string }
 
+/** New listing at /earn/new; editing one of yours at /earn/edit/:id. */
 export function AddListing() {
+  const { id } = useParams()
+  const session = useSession()
+  const mine = repo.useMyListings()
+  if (!session) return <Navigate to={`/login?next=${encodeURIComponent(id ? `/earn/edit/${id}` : '/earn/new')}`} replace />
+  if (!id) return <ListingForm />
+  if (mine.isPending) return <Screen back="/earn">{null}</Screen>
+  const view = mine.data?.items.find((v) => v.listing.id === id)
+  if (!view) return <NotFound what="listing" />
+  return <ListingForm key={id} edit={view} />
+}
+
+function ListingForm({ edit }: { edit?: repo.ListingView }) {
   const nav = useNavigate()
   const { state } = useCappy()
-  const session = useSession()
   const toast = useToast()
   const qc = useQueryClient()
   const districts = repo.useDistricts()
   const [saving, setSaving] = useState(false)
+  const was = edit?.listing
+  const wasWindow = was?.mode === 'window' ? was : undefined
+  const wasBatch = was?.mode === 'batch' ? was : undefined
 
-  const [categoryId, setCategoryId] = useState<CategoryId | null>(null)
-  const [title, setTitle] = useState('')
-  const [blurb, setBlurb] = useState('')
-  const [district, setDistrict] = useState(state.search.district || 'Kreuzberg')
-  const [rate, setRate] = useState(400)
-  const [extraFee, setExtraFee] = useState(0)
-  const [extraLabel, setExtraLabel] = useState('Consumables')
-  const [minHours, setMinHours] = useState(1)
-  const [maxHours, setMaxHours] = useState(6)
-  const [machine, setMachine] = useState('')
-  const [materials, setMaterials] = useState<Material[]>([])
-  const [unitsPerHour, setUnitsPerHour] = useState(10)
-  const [setupFee, setSetupFee] = useState(1500)
-  const [availability, setAvailability] = useState<Availability>('evenings')
+  const [categoryId, setCategoryId] = useState<CategoryId | null>(was?.category ?? null)
+  const [title, setTitle] = useState(was?.title ?? '')
+  const [blurb, setBlurb] = useState(was?.blurb ?? '')
+  const [district, setDistrict] = useState(was?.district ?? (state.search.district || 'Kreuzberg'))
+  const [address, setAddress] = useState(edit?.address ?? '')
+  const [rate, setRate] = useState(was?.ratePerHour ?? 400)
+  const [extraFee, setExtraFee] = useState(wasWindow?.extraFee ?? 0)
+  const [extraLabel, setExtraLabel] = useState(wasWindow && wasWindow.extraFee > 0 ? wasWindow.extraLabel : 'Consumables')
+  const [minHours, setMinHours] = useState(wasWindow?.minHours ?? 1)
+  const [maxHours, setMaxHours] = useState(wasWindow?.maxHours ?? 6)
+  const [machine, setMachine] = useState(wasBatch?.machine ?? '')
+  const [materials, setMaterials] = useState<Material[]>(wasBatch?.materials ?? [])
+  const [unitsPerHour, setUnitsPerHour] = useState(wasBatch?.unitsPerHour ?? 10)
+  const [setupFee, setSetupFee] = useState(wasBatch?.setupFee ?? 1500)
+  // Editing: the windows already listed stay unless removed; new ones are optional.
+  const [availability, setAvailability] = useState<Availability | 'none'>(edit ? 'none' : 'evenings')
   const [custom, setCustom] = useState<CustomWindow>(defaultCustom)
-  const [instructions, setInstructions] = useState('')
-  const [rules, setRules] = useState<string[]>([])
-  const [photos, setPhotos] = useState<PhotoDraft[]>([])
+  const [keptSlots, setKeptSlots] = useState<Slot[]>(edit?.slots ?? [])
+  const [instructions, setInstructions] = useState(was?.instructions ?? '')
+  const [rules, setRules] = useState<string[]>(was?.rules.filter((r) => r !== 'Cash or bank transfer') ?? [])
+  const [photos, setPhotos] = useState<PhotoDraft[]>(
+    (was?.photos ?? []).map((url, i) => ({ key: `was-${i}`, preview: repo.mediaUrl(url), url })),
+  )
   const fileInput = useRef<HTMLInputElement>(null)
   const [errors, setErrors] = useState<Errors>({})
   const [touched, setTouched] = useState<Record<string, boolean>>({})
-
-  if (!session) return <Navigate to="/login?next=%2Fearn%2Fnew" replace />
 
   const meta = categoryId ? category(categoryId) : null
   const isBatch = meta?.mode === 'batch'
@@ -174,6 +193,7 @@ export function AddListing() {
     if (instructions.trim().length < 10) {
       e.instructions = 'Say how someone actually gets hold of it.'
     }
+    if (address.trim().length < 5) e.address = 'The street address where it is collected or used.'
     if (isBatch && machine.trim().length < 2) e.machine = 'Which machine is it?'
     if (photos.some((p) => !p.url && !p.error)) e.photos = 'Give the photos a moment to finish uploading.'
     if (availability === 'custom') {
@@ -219,7 +239,7 @@ export function AddListing() {
   const removePhoto = (key: string) =>
     setPhotos((prev) => {
       const gone = prev.find((d) => d.key === key)
-      if (gone) URL.revokeObjectURL(gone.preview)
+      if (gone?.preview.startsWith('blob:')) URL.revokeObjectURL(gone.preview)
       return prev.filter((d) => d.key !== key)
     })
 
@@ -259,20 +279,27 @@ export function AddListing() {
       return out
     }
 
-    const preset = AVAILABILITY.find((a) => a.id === availability)!
+    const preset = AVAILABILITY.find((a) => a.id === availability)
+    if (!preset) return out // 'none': editing, and no new windows
     const base = new Date()
     base.setHours(0, 0, 0, 0)
+    // The next quarter hour: today's window starts from now, not from this morning.
+    const now = Math.ceil(Date.now() / (15 * 60_000)) * 15 * 60_000
+    const shortest = (isBatch ? 1 : minHours) * 3_600_000
     // Two weeks out is enough to look real without pretending to know December.
     for (let d = 0; d < 14; d++) {
-      if (!preset.days.includes(d % 7)) continue
-      const from = new Date(base.getTime() + d * 86_400_000 + preset.from * 3_600_000)
-      const to = new Date(base.getTime() + d * 86_400_000 + preset.to * 3_600_000)
-      // Today's window may already be over; the catalog only takes future ones.
-      if (to.getTime() <= Date.now()) continue
+      // Weekday of that date (Mon = 0), not the offset from today.
+      const date = new Date(base.getFullYear(), base.getMonth(), base.getDate() + d)
+      if (!preset.days.includes((date.getDay() + 6) % 7)) continue
+      const opens = date.getTime() + preset.from * 3_600_000
+      const closes = date.getTime() + preset.to * 3_600_000
+      const first = Math.max(opens, now)
+      // What is left of today must still fit the shortest booking.
+      if (closes - first < shortest) continue
       out.push({
-        start: from.toISOString(),
-        end: to.toISOString(),
-        hoursUsable: preset.to - preset.from,
+        start: new Date(first).toISOString(),
+        end: new Date(closes).toISOString(),
+        hoursUsable: Math.floor(((closes - first) / 3_600_000) * 4) / 4,
       })
     }
     return out
@@ -289,9 +316,15 @@ export function AddListing() {
       machine: true,
       availability: true,
       photos: true,
+      address: true,
     })
     if (Object.keys(e).length > 0 || !categoryId || !meta) {
-      document.querySelector<HTMLElement>('[aria-invalid="true"]')?.focus()
+      // After the errors render: take the person to the first one.
+      requestAnimationFrame(() => {
+        const first = document.querySelector<HTMLElement>('[aria-invalid="true"]')
+        first?.scrollIntoView({ block: 'center', behavior: 'smooth' })
+        first?.focus({ preventScroll: true })
+      })
       return
     }
 
@@ -302,8 +335,8 @@ export function AddListing() {
       district,
       instructions: instructions.trim(),
       rules: rules.length ? rules : ['Leave it as you found it'],
-      active: true,
-      ...(photos.some((p) => p.url) ? { photos: photos.flatMap((p) => (p.url ? [p.url] : [])) } : {}),
+      active: was?.active ?? true,
+      photos: photos.flatMap((p) => (p.url ? [p.url] : [])),
     }
 
     // Ids and the owner come from the server and the caller's token.
@@ -332,9 +365,21 @@ export function AddListing() {
 
     setSaving(true)
     try {
-      await repo.addListing(listing, buildSlots())
-      await qc.invalidateQueries({ queryKey: ['myListings'] })
-      toast(`${listing.title} is live`)
+      if (was) {
+        await repo.updateListing(was.id, listing, address.trim())
+        const gone = (edit?.slots ?? []).filter((s) => !keptSlots.some((k) => k.id === s.id))
+        await Promise.all(gone.map((s) => repo.removeSlot(was.id, s.id)))
+        const added = buildSlots()
+        if (added.length) await repo.addSlots(was.id, added)
+        await Promise.all(
+          [['myListings'], ['listing', was.id], ['offers', was.id]].map((queryKey) => qc.invalidateQueries({ queryKey })),
+        )
+        toast(`${listing.title} updated`)
+      } else {
+        await repo.addListing(listing, buildSlots(), address.trim())
+        await qc.invalidateQueries({ queryKey: ['myListings'] })
+        toast(`${listing.title} is live`)
+      }
       nav('/earn', { replace: true })
     } catch (err) {
       toast(messageOf(err))
@@ -390,23 +435,24 @@ export function AddListing() {
   return (
     <Screen
       back="/earn"
-      eyebrow="New listing"
-      title={`List your ${meta!.label.toLowerCase()}`}
-      sub="Four minutes now, and the idle hours start paying."
+      eyebrow={was ? 'Edit listing' : 'New listing'}
+      title={was ? was.title : `List your ${meta!.label.toLowerCase()}`}
+      sub={was ? 'Changes show on the listing at once. Bookings already made keep what was agreed.' : 'Four minutes now, and the idle hours start paying.'}
       footer={
         <Button block size="lg" disabled={saving} onClick={() => void submit()}>
-          Publish listing
+          {was ? 'Save changes' : 'Publish listing'}
         </Button>
       }
     >
       <button
+        disabled={Boolean(was)}
         onClick={() => setCategoryId(null)}
         className="mb-7 inline-flex min-h-[38px] items-center gap-2 rounded-[var(--radius-control)] border border-[var(--line)] px-3.5 text-[13.5px] font-semibold
           transition-colors duration-[160ms] hover:border-[var(--ink-4)]"
       >
         <Icon name={categoryIcon(meta!.icon)} size={17} className="text-[var(--accent-text)]" />
         {meta!.label}
-        <Icon name="close" size={14} strokeWidth={2.4} className="text-[var(--ink-4)]" />
+        {!was && <Icon name="close" size={14} strokeWidth={2.4} className="text-[var(--ink-4)]" />}
       </button>
 
       <div className="space-y-6">
@@ -566,13 +612,30 @@ export function AddListing() {
         )}
 
         <Field label="Where is it?" htmlFor="f-district">
-          <Select id="f-district" value={district} onChange={(e) => setDistrict(e.target.value)}>
-            {Object.keys(districts.data ?? {}).sort().map((d) => (
-              <option key={d} value={d}>
-                {d}
-              </option>
-            ))}
-          </Select>
+          <DistrictSelect
+            id="f-district"
+            districts={districts.data ?? {}}
+            value={district}
+            onChange={(e) => setDistrict(e.target.value)}
+          />
+        </Field>
+
+        <Field
+          label="Address"
+          hint="Only shared with the buyer once you accept their request."
+          error={errorFor('address')}
+          htmlFor="f-address"
+        >
+          <Input
+            id="f-address"
+            autoComplete="street-address"
+            maxLength={200}
+            value={address}
+            invalid={Boolean(errorFor('address'))}
+            onChange={(e) => setAddress(e.target.value)}
+            onBlur={blur('address')}
+            placeholder="Oranienstraße 12, 10999 Berlin"
+          />
         </Field>
 
         <Field label="Price" error={errorFor('rate')} htmlFor="f-rate">
@@ -580,8 +643,8 @@ export function AddListing() {
         </Field>
 
         {isBatch ? (
-          <Field label="Setup fee" hint="Charged once per job, for programming and fixturing.">
-            <MoneyInput cents={setupFee} onCents={setSetupFee} suffix="per job" />
+          <Field label="Setup fee" hint="Charged once per job, for programming and fixturing." htmlFor="f-setup">
+            <MoneyInput id="f-setup" cents={setupFee} onCents={setSetupFee} suffix="per job" />
           </Field>
         ) : (
           <>
@@ -609,8 +672,9 @@ export function AddListing() {
             <Field
               label="One-off extra"
               hint="Detergent, fuel, gas, anything you top up between bookings. Leave at zero if there is none."
+              htmlFor="f-extra"
             >
-              <MoneyInput cents={extraFee} onCents={setExtraFee} suffix="per booking" />
+              <MoneyInput id="f-extra" cents={extraFee} onCents={setExtraFee} suffix="per booking" />
               {extraFee > 0 && (
                 <div className="mt-2">
                   <Input
@@ -625,13 +689,38 @@ export function AddListing() {
           </>
         )}
 
+        {was && (
+          <Field label="Windows already listed" hint="Remove any that are no longer free.">
+            {keptSlots.length === 0 ? (
+              <p className="t-sm text-[var(--ink-3)]">None coming up.</p>
+            ) : (
+              <ul className="ruled border-t border-[var(--line)]">
+                {keptSlots.map((s) => (
+                  <li key={s.id} className="flex items-center justify-between gap-3 py-2.5">
+                    <span className="t-sm tnum">{range(s.start, s.end)}</span>
+                    <Button
+                      size="sm"
+                      variant="quiet"
+                      aria-label={`Remove the window ${range(s.start, s.end)}`}
+                      onClick={() => setKeptSlots((prev) => prev.filter((k) => k.id !== s.id))}
+                    >
+                      Remove
+                    </Button>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </Field>
+        )}
+
         <Field
-          label="When is it free?"
-          hint="Pick a pattern, or type the exact dates and hours. You can change any week later."
+          label={was ? 'Add more free time' : 'When is it free?'}
+          hint="Pick a pattern, or type the exact dates and hours. You can change them later."
           error={errorFor('availability')}
         >
           <div className="space-y-2">
             {[
+              ...(was ? [{ id: 'none' as const, label: 'No new windows', detail: 'Keep what is listed' }] : []),
               ...AVAILABILITY,
               { id: 'custom' as Availability, label: 'Pick the dates myself', detail: customSummary(custom) },
             ].map((a) => (
@@ -768,16 +857,14 @@ export function AddListing() {
           </div>
         </Field>
 
-        <Card className="border-0 bg-[var(--field)] p-5">
-          <p className="t-label mb-2" style={{ color: 'var(--on-field-dim)' }}>
-            What a booking would earn you
-          </p>
-          <p className="t-plate tnum text-[38px] leading-[42px]" style={{ color: 'var(--on-field)' }}>
+        <Card className="p-5">
+          <p className="t-label mb-2 text-[var(--ink-2)]">What a booking would earn you</p>
+          <p className="t-plate tnum text-[38px] leading-[42px] text-[var(--ink)]">
             {formatEur(
               Math.round((rate * (isBatch ? 4 : minHours) + (isBatch ? setupFee : extraFee)) * 0.85),
             )}
           </p>
-          <p className="t-sm mt-1.5" style={{ color: 'var(--on-field-dim)' }}>
+          <p className="t-sm mt-1.5 text-[var(--ink-2)]">
             for a {isBatch ? 'four-hour run' : `${minHours}-hour booking`}, after the 15% Cappy fee.
           </p>
         </Card>

@@ -34,21 +34,28 @@ export function Reviews({
   reviews,
   summary,
   ownerFirstName,
+  ownerJobs = 0,
 }: {
   reviews: Review[]
   /** The server's summary over every review, when the list is only a page. */
   summary?: ReviewSummary
   ownerFirstName: string
+  /** Bookings the owner has done on any listing: "new here" only when none. */
+  ownerJobs?: number
 }) {
   const [all, setAll] = useState(false)
-  const s = summary ?? summarise(reviews)
+  // With every review in hand, count from them, so the tag totals always match
+  // the reviews shown underneath. The server's summary covers a partial page.
+  const s = summary && reviews.length < summary.count ? summary : summarise(reviews)
 
   if (s.count === 0) {
     return (
       <div className="rounded-[var(--radius-card)] border border-dashed border-[var(--line-strong)] p-5">
-        <p className="text-[15px] font-semibold">No reviews yet</p>
+        <p className="text-[15px] font-semibold">No reviews of this listing yet</p>
         <p className="t-sm mt-1 text-[var(--ink-3)]">
-          {ownerFirstName} is new here. Whoever books first gets to write the first one.
+          {ownerJobs > 0
+            ? `${ownerFirstName} has ${ownerJobs} booking${ownerJobs === 1 ? '' : 's'} behind them on other listings. Whoever books this one first writes its first review.`
+            : `${ownerFirstName} is new here. Whoever books first gets to write the first one.`}
         </p>
       </div>
     )

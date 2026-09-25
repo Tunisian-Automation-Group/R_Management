@@ -1,14 +1,27 @@
-import { useNavigate } from 'react-router-dom'
+import { useState } from 'react'
+import { Link, useNavigate } from 'react-router-dom'
 import { useQueryClient } from '@tanstack/react-query'
 import { formatEur } from '../../domain/money.ts'
 import { PLATFORM_FEE_BPS } from '../../domain/pricing.ts'
-import { useBookings, useMeQuery, useMyListings, useSaved } from '../../data/repo.ts'
-import { signOut, useAuthReady, useSession } from '../../data/auth.ts'
+import {
+  deleteMe,
+  exportMyData,
+  saveProfile,
+  useBookings,
+  useDistricts,
+  useMeQuery,
+  useMyListings,
+  useSaved,
+} from '../../data/repo.ts'
+import type { Owner } from '../../domain/types.ts'
+import { messageOf, useToast } from '../store.tsx'
+import { DistrictSelect } from '../components/DistrictSelect.tsx'
+import { deleteAccount, signOut, useAuthReady, useSession } from '../../data/auth.ts'
 import { SignedOut } from '../components/SignedOut.tsx'
 import { Screen, SectionHead } from '../components/AppShell.tsx'
 import { Icon } from '../components/Icon.tsx'
 import { Photo, SaveButton } from '../components/Photo.tsx'
-import { Avatar, Button, Card, Row, Skeleton } from '../components/ui.tsx'
+import { Avatar, Button, Card, Field, Input, Row, Segmented, Sheet, Skeleton } from '../components/ui.tsx'
 
 const TAKEN = ['accepted', 'active', 'completed']
 
@@ -22,6 +35,10 @@ export function Profile() {
   const listings = useMyListings()
   const asGuest = useBookings('requester')
   const asHost = useBookings('owner')
+  const toast = useToast()
+  const [editing, setEditing] = useState(false)
+  const [deleting, setDeleting] = useState(false)
+  const [busy, setBusy] = useState(false)
 
   if (!authReady || (session && me.isPending)) {
     return (
@@ -44,8 +61,9 @@ export function Profile() {
   const spent = (asGuest.data?.items ?? [])
     .filter((b) => TAKEN.includes(b.status))
     .reduce((n, b) => n + b.match.quote.total, 0)
+  // Paid out means completed; accepted and active bookings are still to come.
   const earned = (asHost.data?.items ?? [])
-    .filter((b) => TAKEN.includes(b.status))
+    .filter((b) => b.status === 'completed')
     .reduce((n, b) => n + b.match.quote.ownerNet, 0)
   const shortlist = saved.data?.items ?? []
 
@@ -98,6 +116,7 @@ export function Profile() {
                       alt={l.title}
                       categoryId={l.category}
                       aspect={1}
+                      thumb
                       className="w-[56px] shrink-0 rounded-[var(--radius-plate)]"
                     />
                     <span className="min-w-0 flex-1">
@@ -116,7 +135,15 @@ export function Profile() {
       </section>
 
       <section>
-        <SectionHead title="Account" className="mt-7" />
+        <SectionHead
+          title="Account"
+          aside={
+            <button className="font-semibold text-[var(--accent-text)]" onClick={() => setEditing(true)}>
+              Edit profile
+            </button>
+          }
+          className="mt-7"
+        />
         <Card className="p-5">
           <p className="t-sm text-[var(--ink-2)]">
             Signed in as <span className="font-semibold text-[var(--ink)]">{session.email}</span> on this
@@ -130,6 +157,32 @@ export function Profile() {
             }>
             Sign out
           </Button>
+        </Card>
+      </section>
+
+      <section>
+        <SectionHead title="Your data" className="mt-7" />
+        <Card className="p-5">
+          <p className="t-sm text-[var(--ink-2)]">
+            Download everything Cappy holds about you, or delete your account.
+          </p>
+          <div className="mt-4 flex flex-wrap gap-2">
+            <Button
+              variant="secondary"
+              disabled={busy}
+              onClick={() => {
+                setBusy(true)
+                exportMyData()
+                  .catch((err) => toast(messageOf(err)))
+                  .finally(() => setBusy(false))
+              }}
+            >
+              Download my data
+            </Button>
+            <Button variant="danger" onClick={() => setDeleting(true)}>
+              Delete account
+            </Button>
+          </div>
         </Card>
       </section>
 
@@ -153,29 +206,11 @@ export function Profile() {
       <section>
         <SectionHead title="Legal" className="mt-7" />
         <Card className="p-5">
-          {/* §5 DDG. Required on a publicly reachable German service, fill these
-              in before sharing the link outside the team. */}
-          <h3 className="t-label mb-2.5">Impressum</h3>
-          <p className="t-sm leading-[20px] text-[var(--ink-3)]">
-            Angaben gemäß § 5 DDG
-            <br />
-            <span className="text-[var(--warn)]">[ Name ]</span>
-            <br />
-            <span className="text-[var(--warn)]">[ Straße und Hausnummer ]</span>
-            <br />
-            <span className="text-[var(--warn)]">[ PLZ, Ort ]</span>
-            <br />
-            E-Mail: <span className="text-[var(--warn)]">[ E-Mail-Adresse ]</span>
-          </p>
-
-          <h3 className="t-label mb-2.5 mt-5 border-t border-[var(--line)] pt-5 text-[var(--ink-4)]">
-            Privacy
-          </h3>
-          <p className="t-sm leading-[20px] text-[var(--ink-3)]">
-            Your sign-in (email and password) is held by Amazon Cognito; card and bank
-            details by Stripe. Cappy keeps your name, district, and what you list, book
-            and rate. Nothing is sold or shared.
-          </p>
+          <nav aria-label="Legal" className="flex flex-col gap-3 text-[14.5px] font-semibold">
+            <Link to="/legal/impressum">Impressum</Link>
+            <Link to="/legal/privacy">Privacy Policy</Link>
+            <Link to="/legal/terms">Terms of Use</Link>
+          </nav>
         </Card>
       </section>
 
@@ -187,7 +222,131 @@ export function Profile() {
         <Icon name="plus" size={17} strokeWidth={2.2} />
         List something you own
       </button>
+      <EditProfile key={String(editing)} open={editing} onClose={() => setEditing(false)} you={you} />
+      <DeleteAccount open={deleting} onClose={() => setDeleting(false)} />
     </Screen>
+  )
+}
+
+function EditProfile({ open, onClose, you }: { open: boolean; onClose: () => void; you: Owner }) {
+  const qc = useQueryClient()
+  const toast = useToast()
+  const districts = useDistricts()
+  const [name, setName] = useState(you.name)
+  const [kind, setKind] = useState<'person' | 'business'>(you.kind)
+  const [district, setDistrict] = useState(you.district)
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  const save = async () => {
+    if (name.trim().length < 2) return setError('Tell people what to call you.')
+    setBusy(true)
+    setError(null)
+    try {
+      await saveProfile({ name: name.trim(), kind, district })
+      await qc.invalidateQueries({ queryKey: ['me'] })
+      toast('Profile saved')
+      onClose()
+    } catch (err) {
+      setError(messageOf(err))
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <Sheet
+      open={open}
+      onClose={onClose}
+      title="Edit profile"
+      footer={
+        <Button block size="lg" disabled={busy} onClick={() => void save()}>
+          {busy ? 'Saving…' : 'Save'}
+        </Button>
+      }
+    >
+      <div className="space-y-5 pb-3">
+        <Field label="Your name" htmlFor="p-name" error={error ?? undefined}>
+          <Input id="p-name" autoComplete="name" value={name} onChange={(e) => setName(e.target.value)} />
+        </Field>
+        <Field label="You are">
+          <Segmented<'person' | 'business'>
+            label="Person or business"
+            value={kind}
+            onChange={setKind}
+            options={[
+              { value: 'person', label: 'A person' },
+              { value: 'business', label: 'A business' },
+            ]}
+          />
+        </Field>
+        <Field label="Where are you?" htmlFor="p-where">
+          <DistrictSelect
+            id="p-where"
+            districts={districts.data ?? {}}
+            value={district}
+            onChange={(e) => setDistrict(e.target.value)}
+          />
+        </Field>
+      </div>
+    </Sheet>
+  )
+}
+
+function DeleteAccount({ open, onClose }: { open: boolean; onClose: () => void }) {
+  const nav = useNavigate()
+  const qc = useQueryClient()
+  const toast = useToast()
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  const remove = async () => {
+    setBusy(true)
+    setError(null)
+    try {
+      await deleteMe() // 409 while a booking is still open: the message says so
+      await deleteAccount()
+      qc.clear()
+      toast('Your account is deleted')
+      nav('/', { replace: true })
+    } catch (err) {
+      setError(messageOf(err))
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <Sheet
+      open={open}
+      onClose={onClose}
+      title="Delete your account?"
+      footer={
+        <div className="space-y-2">
+          <Button block size="lg" variant="danger" disabled={busy} onClick={() => void remove()}>
+            {busy ? 'Deleting…' : 'Delete my account'}
+          </Button>
+          <Button block variant="quiet" onClick={onClose}>
+            Keep it
+          </Button>
+        </div>
+      }
+    >
+      <div className="space-y-3 pb-3 text-[15px] leading-[23px] text-[var(--ink-2)]">
+        <p>This cannot be undone.</p>
+        <ul className="list-disc space-y-1.5 pl-5">
+          <li>Your sign-in, profile, saved listings and photos are deleted.</li>
+          <li>Your listings are taken down, and your name is removed from reviews you wrote.</li>
+          <li>Past bookings and payments are kept, without your name, because the law requires records of them.</li>
+        </ul>
+        <p>Bookings still open (requested, confirmed or in progress) have to finish or be cancelled first.</p>
+        {error && (
+          <p role="alert" className="font-semibold text-[var(--danger)]">
+            {error}
+          </p>
+        )}
+      </div>
+    </Sheet>
   )
 }
 

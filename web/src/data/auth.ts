@@ -27,11 +27,14 @@ export class AuthError extends Error {
 /** Plain words for what Cognito says, so a person knows what to do next. */
 const FRIENDLY: Record<string, string> = {
   NotAuthorizedException: 'That email and password do not match.',
-  UserNotFoundException: 'That email and password do not match.',
+  // Sign-in never says whether an address exists (Cognito answers NotAuthorized);
+  // this is what the reset and confirm flows get for an unknown address.
+  UserNotFoundException: 'There is no account with that email.',
   UsernameExistsException: 'There is already an account with that email. Sign in instead.',
   CodeMismatchException: 'That code is not right. Check the email and try again.',
   ExpiredCodeException: 'That code has expired. Ask for a new one.',
-  InvalidPasswordException: 'Use at least eight characters, with a number, a capital and a symbol.',
+  InvalidPasswordException: 'Use at least ten characters, with a number, a capital and a lowercase letter.',
+  InvalidParameterException: 'Check the email address and try again.',
   LimitExceededException: 'Too many attempts. Wait a few minutes and try again.',
   TooManyRequestsException: 'Too many attempts. Wait a few minutes and try again.',
 }
@@ -191,6 +194,28 @@ export const forgotPassword = (email: string) => cognito('ForgotPassword', { Use
 
 export const confirmForgotPassword = (email: string, code: string, password: string) =>
   cognito('ConfirmForgotPassword', { Username: email, ConfirmationCode: code, Password: password })
+
+/** Deletes the sign-in itself (App Store: accounts are deletable in the app).
+ *  Call after the platform has forgotten the person (DELETE /me). */
+export async function deleteAccount(): Promise<void> {
+  const access = await accessToken()
+  if (!access) throw new AuthError('Sign in again to delete your account.', 'signed-out')
+  let res: Response
+  try {
+    res = await fetch(ENDPOINT, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/x-amz-json-1.1',
+        'X-Amz-Target': 'AWSCognitoIdentityProviderService.DeleteUser',
+      },
+      body: JSON.stringify({ AccessToken: access }),
+    })
+  } catch {
+    throw new AuthError('Cannot reach the sign-in service. Check your connection.', 'offline')
+  }
+  if (!res.ok) throw new AuthError('Your sign-in could not be deleted. Try again.', 'delete')
+  forget()
+}
 
 /** Ends the session everywhere Cognito can, and on this device regardless. */
 export async function signOut(): Promise<void> {

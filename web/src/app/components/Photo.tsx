@@ -4,7 +4,7 @@ import { Plate } from './Cover.tsx'
 import { time } from '../format.ts'
 import { useNavigate } from 'react-router-dom'
 import { useSession } from '../../data/auth.ts'
-import { useSaveToggle, useSaved } from '../../data/repo.ts'
+import { mediaUrl, useSaveToggle, useSaved } from '../../data/repo.ts'
 import { useToast } from '../store.tsx'
 import { Icon } from './Icon.tsx'
 
@@ -30,7 +30,10 @@ export function Photo({
   style,
   priority = false,
   children,
+  thumb = false,
 }: {
+  /** A small square in a list: the fallback drawing drops its words. */
+  thumb?: boolean
   src?: string
   alt: string
   /** Drawn when there is no photograph yet. */
@@ -49,7 +52,7 @@ export function Photo({
   if (!src || failed) {
     return (
       <span className={`relative block overflow-hidden ${className}`} style={style}>
-        <Plate slots={slots} categoryId={categoryId} aspect={aspect} detail="hero" />
+        <Plate slots={slots} categoryId={categoryId} aspect={aspect} detail={thumb ? 'thumb' : 'hero'} />
         {children}
       </span>
     )
@@ -61,7 +64,7 @@ export function Photo({
       style={{ aspectRatio: String(aspect), ...style }}
     >
       <img
-        src={src}
+        src={mediaUrl(src)}
         alt={alt}
         loading={priority ? 'eager' : 'lazy'}
         fetchPriority={priority ? 'high' : 'auto'}

@@ -2,8 +2,8 @@ import type { Iso, Slot } from '../../domain/types.ts'
 
 type Props = {
   slots: Slot[]
-  /** The window being bought or sold, drawn solid. */
-  booked?: { start: Iso; end: Iso } | null
+  /** The window(s) being bought or sold, drawn solid. */
+  booked?: { start: Iso; end: Iso } | { start: Iso; end: Iso }[] | null
   days?: number
   size?: 'sm' | 'md'
   /** 'buy' reads as "time you can take"; 'earn' as "time going to waste". */
@@ -38,6 +38,7 @@ export function CapacityBar({
   // A listing row carries this as a strip, not a chart; 52px made it the loudest
   // thing in the card.
   const height = size === 'sm' ? 26 : 148
+  const bookedList = booked ? (Array.isArray(booked) ? booked : [booked]) : []
 
   const columns = Array.from({ length: days }, (_, i) => {
     const from = start.getTime() + i * DAY_MS
@@ -60,7 +61,9 @@ export function CapacityBar({
       idle,
       /** Share of the day that is free, what the compact variant plots. */
       idleShare: idle.reduce((n, b) => n + b.height, 0) / 100,
-      sold: booked ? band(Date.parse(booked.start), Date.parse(booked.end)) : null,
+      sold: bookedList
+        .map((b) => band(Date.parse(b.start), Date.parse(b.end)))
+        .filter((b): b is { top: number; height: number } => b !== null),
     }
   })
 
@@ -82,7 +85,7 @@ export function CapacityBar({
                 ? col.idleShare > 0 && (
                     <div
                       className={`anim-grow absolute inset-x-0 bottom-0 rounded-[7px] ${
-                        col.sold ? 'bg-[var(--sold)]' : 'bg-[var(--idle)]'
+                        col.sold.length ? 'bg-[var(--sold)]' : 'bg-[var(--idle)]'
                       }`}
                       style={{
                         height: `${Math.max(16, (col.idleShare / peak) * 100)}%`,
@@ -97,12 +100,14 @@ export function CapacityBar({
                       style={{ top: `${b.top}%`, height: `${b.height}%`, animationDelay: `${i * 35}ms` }}
                     />
                   ))}
-              {size === 'md' && col.sold && (
-                <div
-                  className="absolute inset-x-0 rounded-[6px] bg-[var(--sold)] ring-2 ring-[var(--surface)]"
-                  style={{ top: `${col.sold.top}%`, height: `${col.sold.height}%` }}
-                />
-              )}
+              {size === 'md' &&
+                col.sold.map((b, j) => (
+                  <div
+                    key={`s${j}`}
+                    className="absolute inset-x-0 rounded-[6px] bg-[var(--sold)] ring-2 ring-[var(--surface)]"
+                    style={{ top: `${b.top}%`, height: `${b.height}%` }}
+                  />
+                ))}
               {/* Where we are in the day, which is why the early gaps have gone. */}
               {size === 'md' && col.isToday && nowPct > 0 && nowPct < 100 && (
                 <div
@@ -133,7 +138,7 @@ export function CapacityBar({
         <div className="mt-4 flex flex-wrap items-center gap-x-4 gap-y-1.5 border-t border-[var(--line)] pt-3 text-[12.5px] text-[var(--ink-3)]">
           <Key className="bg-[var(--track)]" label="In use" />
           <Key className="bg-[var(--idle)]" label={intent === 'earn' ? 'Idle, nobody paying' : 'Free to book'} />
-          {booked && <Key className="bg-[var(--sold)]" label={intent === 'earn' ? 'Sold' : 'Your booking'} />}
+          {bookedList.length > 0 && <Key className="bg-[var(--sold)]" label={intent === 'earn' ? 'Sold' : 'Your booking'} />}
         </div>
       )}
     </div>

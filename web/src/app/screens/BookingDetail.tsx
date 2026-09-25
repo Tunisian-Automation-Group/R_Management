@@ -1,5 +1,8 @@
 import { useState, type ReactNode } from 'react'
-import { Navigate, useNavigate, useParams } from 'react-router-dom'
+import { useNavigate, useParams } from 'react-router-dom'
+import { useAuthReady, useSession } from '../../data/auth.ts'
+import { SignedOut } from '../components/SignedOut.tsx'
+import { NotFound } from './NotFound.tsx'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import type { Booking, BookingStatus, Listing, Outcome, Owner } from '../../domain/types.ts'
 import { rating } from '../../domain/types.ts'
@@ -42,7 +45,9 @@ const START_EARLY_MS = 30 * 60_000
 
 export function BookingDetail() {
   const { id } = useParams()
-  const booking = useBooking(id)
+  const session = useSession()
+  const authReady = useAuthReady()
+  const booking = useBooking(session ? id : undefined)
   // The live listing, for the handover notes. It may have changed or gone since;
   // the booking's own snapshot covers the rest.
   const listing = useListing(booking.data?.match.listingId)
@@ -50,8 +55,15 @@ export function BookingDetail() {
   // Present only when the viewer is the owner: the person asking them.
   const requester = useOwner(booking.data?.requesterId)
 
-  if (booking.isPending) return <Screen back="/bookings">{null}</Screen>
-  if (!booking.data) return <Navigate to="/bookings" replace />
+  if (authReady && !session) {
+    return (
+      <Screen title="Booking">
+        <SignedOut what="see this booking" next={`/bookings/${id}`} />
+      </Screen>
+    )
+  }
+  if (!authReady || booking.isPending) return <Screen back="/bookings">{null}</Screen>
+  if (!booking.data) return <NotFound what="booking" />
 
   // Remount when the booking changes so the rating form never carries over.
   return (
@@ -152,13 +164,20 @@ function Detail({
     </Button>
   )
   const startButton = (
-    <Button block size="lg" disabled={busy || !canStart} onClick={() => void act('start', asOwner ? 'Marked as handed over' : 'Enjoy it')}>
-      {canStart
-        ? asOwner
-          ? 'I have handed it over'
-          : 'I have collected it'
-        : `Hand-over opens ${relative(new Date(startsAt - START_EARLY_MS).toISOString())}`}
-    </Button>
+    <div>
+      <Button block size="lg" disabled={busy || !canStart} onClick={() => void act('start', asOwner ? 'Marked as handed over' : 'Enjoy it')}>
+        {canStart
+          ? asOwner
+            ? 'I have handed it over'
+            : 'I have collected it'
+          : `Hand-over opens ${relative(new Date(startsAt - START_EARLY_MS).toISOString())}`}
+      </Button>
+      {!canStart && (
+        <p className="t-sm mt-2 text-center text-[var(--ink-3)]">
+          Either of you can mark the hand-over from 30 minutes before the booked time.
+        </p>
+      )}
+    </div>
   )
   const home = asOwner ? (
     <Button block size="lg" variant="secondary" onClick={() => nav('/earn')}>
@@ -247,7 +266,8 @@ function Detail({
 
   return (
     <Screen
-      back="/bookings"
+      back={asOwner ? '/bookings?as=hosting' : '/bookings'}
+      docTitle={title}
       hero={
         <Photo
           alt={title}
@@ -255,7 +275,7 @@ function Detail({
           categoryId={booking.requirement.category}
           aspect={2.2}
           priority
-          className={`w-full md:rounded-b-[var(--radius-sheet)] ${dead ? 'opacity-55 grayscale' : ''}`}
+          className={`w-full md:rounded-[var(--radius-sheet)] ${dead ? 'opacity-55 grayscale' : ''}`}
           style={{ viewTransitionName: 'hero' }}
         />
       }
@@ -264,7 +284,7 @@ function Detail({
       <header className="-mt-1 mb-6">
         <h1 className="t-h1 text-balance">{title}</h1>
         <p className="t-lede mt-2 text-[var(--ink-3)]">
-          {ownerName}
+          {asOwner ? `Booked by ${requester?.name ?? 'a buyer'}` : ownerName}
           {district && ` · ${district}`}
         </p>
       </header>
@@ -272,8 +292,8 @@ function Detail({
       {booking.status === 'declined' ? (
         <Banner
           tone="danger"
-          title={`${first} could not take this one`}
-          body={booking.declineReason || 'No reason given.'}
+          title={asOwner ? 'You declined this request' : `${first} could not take this one`}
+          body={`${booking.declineReason || 'No reason given.'} The hold on the card is released; nothing was charged.`}
           action={
             <Button size="sm" variant="secondary" onClick={() => nav('/')}>
               Find another
@@ -291,7 +311,15 @@ function Detail({
           }
         />
       ) : booking.status === 'cancelled' ? (
-        <Banner tone="warn" title="This booking was cancelled" body="Any hold on your card is released, and anything already paid is refunded." />
+        <Banner
+          tone="warn"
+          title="This booking was cancelled"
+          body={
+            asOwner
+              ? 'The buyer gets back everything they paid, and the window is free again.'
+              : 'The hold on your card is released, and anything already charged is refunded in full.'
+          }
+        />
       ) : booking.status === 'expired' ? (
         <Banner tone="warn" title="This request lapsed" body="It was not paid for or answered in time. Nothing was charged." />
       ) : booking.status === 'payment_failed' ? (
@@ -327,7 +355,7 @@ function Detail({
         />
       ) : booking.status === 'accepted' ? (
         <Banner
-          tone="accent"
+          tone="success"
           title="Confirmed"
           body={
             asOwner
@@ -385,14 +413,19 @@ function Detail({
         </ol>
       )}
 
-      {/* Handover detail only appears once there is something to hand over. */}
-      {(booking.status === 'accepted' || booking.status === 'active') && listing && (
+      {/* Handover detail only appears once there is something to hand over:
+          the address is shared with the buyer when the owner accepts. */}
+      {(booking.status === 'accepted' || booking.status === 'active') && (booking.handover || listing) && (
         <Card className="p-5">
           <h2 className="t-label mb-2.5">Getting in</h2>
-          <p className="t-body text-[var(--ink-2)]">{listing.instructions}</p>
+          {booking.handover?.address && (
+            <p className="text-[15.5px] font-semibold text-[var(--ink)]">{booking.handover.address}</p>
+          )}
+          <p className="t-body mt-1 text-[var(--ink-2)]">{booking.handover?.instructions ?? listing?.instructions}</p>
           <p className="t-sm tnum mt-4 flex items-center gap-1.5 border-t border-[var(--line)] pt-4 text-[var(--ink-3)]">
             <Icon name="pin" size={14} />
-            {listing.district} · {distance(booking.match.distanceKm)} away
+            {district}
+            {!asOwner && ` · ${distance(booking.match.distanceKm)} away`}
           </p>
         </Card>
       )}
@@ -422,13 +455,23 @@ function Detail({
           }
         />
         <div className="my-2 border-t border-[var(--line)]" />
-        <Row label="Total" value={formatEurExact(quote.total)} strong />
-        <Row
-          label={`Cappy fee · ${PLATFORM_FEE_BPS / 100}%`}
-          value={formatEurExact(quote.platformFee)}
-          tone="muted"
-        />
-        <Row label={asOwner ? 'You receive' : `${first} receives`} value={formatEurExact(quote.ownerNet)} tone="accent" />
+        {dead ? (
+          <Row
+            label="Charged"
+            value={booking.status === 'cancelled' ? 'Nothing: released or refunded' : 'Nothing: hold released'}
+            strong
+          />
+        ) : (
+          <>
+            <Row label="Total" value={formatEurExact(quote.total)} strong />
+            <Row
+              label={`Cappy fee · ${PLATFORM_FEE_BPS / 100}%`}
+              value={formatEurExact(quote.platformFee)}
+              tone="muted"
+            />
+            <Row label={asOwner ? 'You receive' : `${first} receives`} value={formatEurExact(quote.ownerNet)} tone="accent" />
+          </>
+        )}
       </Card>
 
       {booking.outcome && (

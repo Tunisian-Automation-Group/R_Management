@@ -2,6 +2,8 @@ import type { CSSProperties, ReactNode } from 'react'
 import type { CategoryId, Iso, Slot } from '../../domain/types.ts'
 import { category } from '../../domain/categories.ts'
 
+/** Matching's minimum lead time: nothing can be booked to start sooner. */
+const BOOKING_LEAD_MS = 2 * 3_600_000
 const DAY = 86_400_000
 
 type Props = {
@@ -83,7 +85,13 @@ export function Plate({
   const next =
     (highlight ? Date.parse(highlight.start) : null) ??
     slots
-      .map((s) => Date.parse(s.end) > now ? Math.max(Date.parse(s.start), now) : null)
+      // The earliest start anyone could actually book: the server needs
+      // BOOKING_LEAD of notice for the owner, and the window must still hold
+      // an hour after that. A window with 24 minutes left is not "free now".
+      .map((s) => {
+        const start = Math.max(Date.parse(s.start), now + BOOKING_LEAD_MS)
+        return Date.parse(s.end) - start >= 3_600_000 ? start : null
+      })
       .filter((t): t is number => t !== null)
       .sort((a, b) => a - b)[0]
 

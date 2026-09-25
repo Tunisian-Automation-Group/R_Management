@@ -321,7 +321,9 @@ export function MoneyInput({
   id?: string
   suffix?: string
 }) {
-  const [text, setText] = useState(() => (cents / 100).toFixed(2))
+  // "4,00": the decimal comma the rest of the app shows prices with. A dot typed in still works.
+  const show = (c: number) => ((c || 0) / 100).toFixed(2).replace('.', ',')
+  const [text, setText] = useState(() => show(cents))
   return (
     <div className="relative">
       <span className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-[16px] text-[var(--ink-3)]">
@@ -334,13 +336,14 @@ export function MoneyInput({
         invalid={invalid}
         className="tnum pl-8 pr-24 text-[17px] font-semibold"
         onChange={(e) => {
-          const v = e.target.value.replace(',', '.')
+          const raw = e.target.value
+          const v = raw.replace(',', '.')
           if (!/^\d*\.?\d{0,2}$/.test(v)) return
-          setText(v)
+          setText(raw)
           const n = Number.parseFloat(v)
           onCents(Number.isFinite(n) ? Math.round(n * 100) : 0)
         }}
-        onBlur={() => setText(((cents || 0) / 100).toFixed(2))}
+        onBlur={() => setText(show(cents))}
       />
       <span className="pointer-events-none absolute right-4 top-1/2 -translate-y-1/2 text-[13px] text-[var(--ink-4)]">
         {suffix}

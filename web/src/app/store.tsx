@@ -1,7 +1,7 @@
 // Client-only state: what the person is searching for, and the toast. Every
 // piece of server data lives in the query cache (data/repo.ts), and who is
 // signed in lives in data/auth.ts.
-import { createContext, useCallback, useContext, useMemo, useReducer, type ReactNode } from 'react'
+import { createContext, useCallback, useContext, useEffect, useMemo, useReducer, type ReactNode } from 'react'
 import type { CategoryId, Requirement } from '../domain/types.ts'
 import { category } from '../domain/categories.ts'
 import { useSession } from '../data/auth.ts'
@@ -70,9 +70,43 @@ export function reduce(state: State, e: Event): State {
 
 const Ctx = createContext<{ state: State; send: (e: Event) => void } | null>(null)
 
+const CITY_KEY = 'cappy.district.v1'
+
+/** Where this device last chose to search from: a convenience, so a reload does not reset it. */
+function chosenDistrict(): Partial<Search> {
+  try {
+    const d = localStorage.getItem(CITY_KEY)
+    return d ? { district: d, districtChosen: true } : {}
+  } catch {
+    return {}
+  }
+}
+
 export function AppProvider({ children }: { children: ReactNode }) {
-  const [state, dispatch] = useReducer(reduce, { search: defaultSearch, toast: null })
+  const [state, dispatch] = useReducer(reduce, undefined, () => ({
+    search: { ...defaultSearch, ...chosenDistrict() },
+    toast: null,
+  }))
   const send = useCallback((e: Event) => dispatch(e), [])
+  const session = useSession()
+
+  useEffect(() => {
+    if (!state.search.districtChosen) return
+    try {
+      localStorage.setItem(CITY_KEY, state.search.district)
+    } catch {
+      // Storage blocked: the choice lasts this page load.
+    }
+  }, [state.search.district, state.search.districtChosen])
+
+  // Signing out forgets the person's home district (it was theirs, not the
+  // device's); a city picked by hand stays.
+  const signedIn = Boolean(session)
+  useEffect(() => {
+    if (!signedIn && !state.search.districtChosen) {
+      dispatch({ type: 'SEARCH_CHANGED', patch: { district: defaultSearch.district } })
+    }
+  }, [signedIn, state.search.districtChosen])
   const value = useMemo(() => ({ state, send }), [state, send])
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>
 }
