@@ -2,11 +2,13 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping, Sequence
+
 from cappy_common.jsmath import js_round
 from cappy_common.models import AnyListing, CamelModel, Cents, District, Iso, Listing, Owner, World
 from cappy_common.timeutil import HOUR_MS, ms_from_iso
 
-from .availability import Offer, earliest_offer
+from .availability import Interval, Offer, earliest_offer
 from .match import distance_km, trust_of
 
 
@@ -68,9 +70,16 @@ def _slots_by_listing(world: World) -> dict[str, list]:
 
 
 def available_soon(
-    world: World, district: str, max_km: float, now: Iso, within_hours: float = 24, limit: int = 12
+    world: World,
+    district: str,
+    max_km: float,
+    now: Iso,
+    within_hours: float = 24,
+    limit: int = 12,
+    busy: Mapping[str, Sequence[Interval]] | None = None,
 ) -> list[Spotlight]:
     """What is genuinely free near you in the next ``within_hours``, soonest first."""
+    busy = busy or {}
     origin = world.districts.get(district)
     if not origin:
         return []
@@ -93,7 +102,7 @@ def available_soon(
             continue
 
         slots = by_listing.get(listing.id, [])
-        offer = earliest_offer(slots, _probe_hours(listing), now, until)
+        offer = earliest_offer(slots, _probe_hours(listing), now, until, busy.get(listing.id))
         if not offer:
             continue
 

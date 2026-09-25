@@ -1,0 +1,172 @@
+"""Every read and write of bookings, and the events that go with them.
+
+Each status change goes through ``move``: it updates the row, appends to the
+audit trail and writes ``booking.status_changed`` to the outbox, all in the
+caller's transaction. Payments and notifications act on that event.
+"""
+
+from __future__ import annotations
+
+from datetime import datetime, timedelta
+
+from pydantic import TypeAdapter
+from sqlalchemy import and_, or_, select
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from cappy_common.errors import NotFound
+from cappy_common.events import BOOKING_STATUS_CHANGED, Outbox
+from cappy_common.models import Booking, ListingSnapshot, Match, Outcome, Requirement
+from cappy_common.pagination import decode_cursor, encode_cursor
+from cappy_common.timeutil import dt_from_iso, iso_from_datetime
+
+from .state import HOLDING
+from .tables import BookingRow, TransitionRow
+
+_requirement = TypeAdapter(Requirement)
+
+
+def to_booking(row: BookingRow, viewer: str) -> Booking:
+    """``requesterId`` is absent when the viewer is the requester and present
+    when someone is asking *them*: the app's Earn inbox keys on it."""
+    return Booking(
+        id=row.id,
+        match=Match.model_validate(row.match),
+        requirement=_requirement.validate_python(row.requirement),
+        status=row.status,  # type: ignore[arg-type]
+        created_at=iso_from_datetime(row.created_at),
+        requester_id=None if row.requester_id == viewer else row.requester_id,
+        decline_reason=row.decline_reason,
+        outcome=Outcome.model_validate(row.outcome) if row.outcome else None,
+        listing=ListingSnapshot.model_validate(row.listing_snapshot),
+        expires_at=iso_from_datetime(row.expires_at) if row.expires_at else None,
+    )
+
+
+def status_event(row: BookingRow, before: str | None, by: str) -> dict:
+    return {
+        "bookingId": row.id,
+        "from": before,
+        "to": row.status,
+        "by": by,
+        "requesterId": row.requester_id,
+        "ownerId": row.owner_id,
+        "listingId": row.listing_id,
+        "amount": row.amount,
+        "currency": row.currency,
+        "windowStart": iso_from_datetime(row.window_start),
+        "windowEnd": iso_from_datetime(row.window_end),
+    }
+
+
+class BookingRepository:
+    def __init__(self, session: AsyncSession, outbox: Outbox) -> None:
+        self.s = session
+        self.outbox = outbox
+
+    async def get(self, booking_id: str, *, lock: bool = False) -> BookingRow:
+        row = await self.s.get(BookingRow, booking_id, with_for_update=lock)
+        if not row:
+            raise NotFound(f"booking {booking_id} not found")
+        return row
+
+    async def visible(self, booking_id: str, viewer: str, *, lock: bool = False) -> BookingRow:
+        """A booking only its two parties can see. To anyone else it does not exist."""
+        row = await self.s.get(BookingRow, booking_id, with_for_update=lock)
+        if not row or viewer not in (row.requester_id, row.owner_id):
+            raise NotFound(f"booking {booking_id} not found")
+        return row
+
+    async def by_idempotency_key(self, requester_id: str, key: str) -> BookingRow | None:
+        q = select(BookingRow).where(BookingRow.requester_id == requester_id, BookingRow.idempotency_key == key)
+        return (await self.s.execute(q)).scalar_one_or_none()
+
+    async def window_taken(self, listing_id: str, start: datetime, end: datetime) -> bool:
+        """The friendly check. The exclusion constraint is the one that holds
+        under concurrency; this one only produces a nicer error first."""
+        q = select(BookingRow.id).where(
+            BookingRow.listing_id == listing_id,
+            BookingRow.status.in_(HOLDING),
+            BookingRow.window_start < end,
+            start < BookingRow.window_end,
+        )
+        return (await self.s.execute(q.limit(1))).first() is not None
+
+    async def insert(self, row: BookingRow) -> None:
+        self.s.add(row)
+        self.s.add(
+            TransitionRow(
+                booking_id=row.id, from_status=None, to_status=row.status, by=row.requester_id, at=row.created_at
+            )
+        )
+        await self.s.flush()
+        await self.outbox.add(self.s, BOOKING_STATUS_CHANGED, status_event(row, None, row.requester_id))
+
+    async def move(self, row: BookingRow, to: str, by: str, now: datetime, **fields: object) -> None:
+        before = row.status
+        row.status = to
+        row.updated_at = now
+        for k, v in fields.items():
+            setattr(row, k, v)
+        self.s.add(TransitionRow(booking_id=row.id, from_status=before, to_status=to, by=by, at=now))
+        await self.s.flush()
+        await self.outbox.add(self.s, BOOKING_STATUS_CHANGED, status_event(row, before, by))
+
+    async def busy(self, listing_ids: list[str], start: datetime, until: datetime) -> dict[str, list[tuple[str, str]]]:
+        q = (
+            select(BookingRow.listing_id, BookingRow.window_start, BookingRow.window_end)
+            .where(
+                BookingRow.listing_id.in_(listing_ids),
+                BookingRow.status.in_(HOLDING),
+                BookingRow.window_start < until,
+                start < BookingRow.window_end,
+            )
+            .order_by(BookingRow.listing_id, BookingRow.window_start)
+        )
+        out: dict[str, list[tuple[str, str]]] = {}
+        for lid, a, b in await self.s.execute(q):
+            out.setdefault(lid, []).append((iso_from_datetime(a), iso_from_datetime(b)))
+        return out
+
+    async def page(
+        self, viewer: str, role: str | None, *, cursor: str | None, limit: int
+    ) -> tuple[list[BookingRow], str | None]:
+        """Newest first. ``role`` narrows to what the viewer asked for
+        (``requester``) or is being asked for (``owner``)."""
+        if role == "requester":
+            q = select(BookingRow).where(BookingRow.requester_id == viewer)
+        elif role == "owner":
+            q = select(BookingRow).where(BookingRow.owner_id == viewer)
+        else:
+            q = select(BookingRow).where(or_(BookingRow.requester_id == viewer, BookingRow.owner_id == viewer))
+        key = decode_cursor(cursor)
+        if key:
+            at = dt_from_iso(key["at"])
+            q = q.where(or_(BookingRow.created_at < at, and_(BookingRow.created_at == at, BookingRow.id < key["id"])))
+        q = q.order_by(BookingRow.created_at.desc(), BookingRow.id.desc()).limit(limit + 1)
+        rows = list((await self.s.execute(q)).scalars())
+        more = len(rows) > limit
+        rows = rows[:limit]
+        nxt = encode_cursor({"at": rows[-1].created_at.isoformat(), "id": rows[-1].id}) if more else None
+        return rows, nxt
+
+    # --- the sweeps. SKIP LOCKED: replicas share the work instead of repeating it.
+
+    async def lapsed(self, now: datetime, limit: int) -> list[BookingRow]:
+        q = (
+            select(BookingRow)
+            .where(BookingRow.status.in_(("awaiting_payment", "requested")), BookingRow.expires_at <= now)
+            .order_by(BookingRow.expires_at)
+            .limit(limit)
+            .with_for_update(skip_locked=True)
+        )
+        return list((await self.s.execute(q)).scalars())
+
+    async def finished(self, now: datetime, grace: timedelta, limit: int) -> list[BookingRow]:
+        q = (
+            select(BookingRow)
+            .where(BookingRow.status.in_(("accepted", "active")), BookingRow.window_end <= now - grace)
+            .order_by(BookingRow.window_end)
+            .limit(limit)
+            .with_for_update(skip_locked=True)
+        )
+        return list((await self.s.execute(q)).scalars())

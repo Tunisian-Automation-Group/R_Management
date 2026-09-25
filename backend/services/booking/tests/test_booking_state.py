@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import pytest
 
-from booking.state import check_can_rate, next_status
+from booking.state import FINAL, HOLDING, check_can_rate, next_status, system_status
 from cappy_common.errors import Conflict, Forbidden
 
 REQ, OWN = "buyer", "host"
@@ -29,7 +29,7 @@ def test_wrong_role():
     with pytest.raises(Forbidden):
         next_status("accept", "requested", REQ, REQ, OWN)
     with pytest.raises(Forbidden):
-        next_status("start", "accepted", OWN, REQ, OWN)
+        next_status("complete", "active", OWN, REQ, OWN)
     with pytest.raises(Forbidden):
         next_status("accept", "requested", "stranger", REQ, OWN)
     with pytest.raises(Forbidden):
@@ -47,3 +47,23 @@ def test_wrong_state():
         check_can_rate("active", False, REQ, REQ)
     with pytest.raises(Conflict):
         check_can_rate("completed", True, REQ, REQ)
+
+
+def test_either_side_can_mark_the_handover():
+    assert next_status("start", "accepted", OWN, REQ, OWN) == "active"
+    assert next_status("start", "accepted", REQ, REQ, OWN) == "active"
+
+
+def test_payment_and_sweeps():
+    assert system_status("authorised", "awaiting_payment") == "requested"
+    assert system_status("payment_failed", "awaiting_payment") == "payment_failed"
+    # A payment result for a booking that already moved on changes nothing.
+    assert system_status("authorised", "cancelled") is None
+    assert system_status("expire", "requested") == "expired"
+    assert system_status("expire", "accepted") is None
+    assert system_status("auto_complete", "active") == "completed"
+
+
+def test_only_holding_states_hold_the_window():
+    assert HOLDING.isdisjoint(FINAL)
+    assert {"awaiting_payment", "requested", "accepted", "active"} == HOLDING

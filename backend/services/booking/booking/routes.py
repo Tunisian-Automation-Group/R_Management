@@ -1,236 +1,276 @@
+"""Bookings: request (and pay), answer, hand over, complete, rate.
+
+Creating a booking crosses two services, so it is not one transaction:
+
+1. matching prices the chosen window (never trusted from the client) and
+   confirms it is free;
+2. the booking is inserted as ``awaiting_payment`` and committed. From here
+   the window is held: the exclusion constraint refuses any overlapping one;
+3. payments creates the PaymentIntent that will authorise the price. If that
+   call fails the booking becomes ``payment_failed`` and the window is free.
+
+The owner only sees the request once the card is authorised
+(``payment.authorised`` moves it to ``requested``).
+"""
+
 from __future__ import annotations
 
-from collections.abc import AsyncIterator
+import logging
+from datetime import UTC, datetime
 
-from fastapi import Depends, Request, Response, status
-from pydantic import Field, TypeAdapter
-from sqlalchemy import or_, select
+from fastapi import Depends, Header, Query, Request, status
+from pydantic import Field
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from cappy_common.app import ApiRouter
-from cappy_common.errors import Conflict, Invalid, NotFound
-from cappy_common.events import BOOKING_RATED, BOOKING_REQUESTED, BOOKING_STATUS_CHANGED
+from cappy_common.auth import Principal, require_internal, require_principal
+from cappy_common.errors import Conflict, Invalid, Unavailable
+from cappy_common.events import BOOKING_RATED
 from cappy_common.ids import new_id
-from cappy_common.models import Booking, CamelModel, Iso, Match, Outcome, Requirement
-from cappy_common.timeutil import iso_from_ms, now_iso, now_ms
+from cappy_common.models import Booking, CamelModel, Iso, Outcome, Requirement
+from cappy_common.pagination import Page, clamp_limit
+from cappy_common.runtime import Tx
+from cappy_common.timeutil import dt_from_iso, iso_from_datetime
 
+from .clients import PaymentStart
+from .repository import BookingRepository, to_booking
+from .settings import Settings
 from .state import Action, check_can_rate, next_status
 from .tables import BookingRow
 
+log = logging.getLogger(__name__)
 router = ApiRouter()
-_requirement = TypeAdapter(Requirement)
+internal = ApiRouter(prefix="/internal", dependencies=[Depends(require_internal)])
 
 
-async def get_session(request: Request) -> AsyncIterator[AsyncSession]:
-    async with request.app.state.db.session() as session:
-        async with session.begin():
-            yield session
+def _now() -> datetime:
+    return datetime.now(UTC)
 
 
-def current_user(request: Request) -> str:
-    return request.app.state.current_user(request.headers.get("x-cappy-user"))
-
-
-def to_booking(row: BookingRow, viewer: str) -> Booking:
-    """The frontend's ``Booking``. ``requesterId`` is absent when the viewer is
-    the requester, present when someone is asking *them*: that presence is what
-    the app's Earn inbox keys on."""
-    return Booking(
-        id=row.id,
-        match=Match.model_validate(row.match),
-        requirement=_requirement.validate_python(row.requirement),
-        status=row.status,  # type: ignore[arg-type]
-        created_at=row.created_at,
-        requester_id=None if row.requester_id == viewer else row.requester_id,
-        decline_reason=row.decline_reason,
-        outcome=Outcome.model_validate(row.outcome) if row.outcome else None,
-    )
-
-
-async def _load(session: AsyncSession, booking_id: str) -> BookingRow:
-    row = await session.get(BookingRow, booking_id, with_for_update=True)
-    if not row:
-        raise NotFound(f"booking {booking_id} not found")
-    return row
+def get_repo(request: Request, session: AsyncSession = Tx) -> BookingRepository:
+    return BookingRepository(session, request.app.state.outbox)
 
 
 class CreateBookingIn(CamelModel):
     requirement: Requirement
-    listing_id: str
-    slot_id: str
+    listing_id: str = Field(max_length=40)
+    slot_id: str = Field(max_length=40)
     start: Iso
     end: Iso
-    # Optional, client-generated, like a listing's. The app navigates to the
-    # booking it just built before the server has answered, so the id it chose
-    # is kept rather than replaced. Must look like ours; must be new.
-    id: str | None = Field(default=None, pattern=r"^bk_[a-z0-9]{6,40}$")
+
+
+class BookingCreated(CamelModel):
+    booking: Booking
+    # Absent when there is nothing (left) to pay: a retried request whose
+    # payment already failed, say.
+    payment: PaymentStart | None = None
 
 
 class DeclineIn(CamelModel):
-    reason: str
+    reason: str = Field(min_length=1, max_length=500)
 
 
-@router.get("/bookings", response_model=list[Booking])
+class BusyIn(CamelModel):
+    listing_ids: list[str] = Field(max_length=500)
+    start: Iso
+    until: Iso
+
+
+# --- reading ---------------------------------------------------------------------------
+
+
+@router.get("/bookings", response_model=Page[Booking])
 async def list_bookings(
-    session: AsyncSession = Depends(get_session), user: str = Depends(current_user)
-) -> list[Booking]:
-    """Everything the caller asked for or is being asked for, newest first."""
-    q = (
-        select(BookingRow)
-        .where(or_(BookingRow.requester_id == user, BookingRow.owner_id == user))
-        .order_by(BookingRow.created_at.desc(), BookingRow.id)
-    )
-    return [to_booking(r, user) for r in (await session.execute(q)).scalars()]
+    role: str | None = Query(default=None, pattern="^(requester|owner)$"),
+    cursor: str | None = None,
+    limit: int | None = Query(default=None, ge=1),
+    repo: BookingRepository = Depends(get_repo),
+    p: Principal = Depends(require_principal),
+) -> Page[Booking]:
+    """What the caller asked for (``role=requester``), is being asked for
+    (``role=owner``), or both, newest first."""
+    rows, nxt = await repo.page(p.sub, role, cursor=cursor, limit=clamp_limit(limit))
+    return Page(items=[to_booking(r, p.sub) for r in rows], next_cursor=nxt)
 
 
 @router.get("/bookings/{booking_id}", response_model=Booking)
 async def get_booking(
-    booking_id: str, session: AsyncSession = Depends(get_session), user: str = Depends(current_user)
+    booking_id: str, repo: BookingRepository = Depends(get_repo), p: Principal = Depends(require_principal)
 ) -> Booking:
-    row = await session.get(BookingRow, booking_id)
-    if not row or user not in (row.requester_id, row.owner_id):
-        raise NotFound(f"booking {booking_id} not found")
-    return to_booking(row, user)
+    return to_booking(await repo.visible(booking_id, p.sub), p.sub)
 
 
-@router.post("/bookings", response_model=Booking, status_code=status.HTTP_201_CREATED)
+# --- creating --------------------------------------------------------------------------
+
+
+@router.post("/bookings", response_model=BookingCreated, status_code=status.HTTP_201_CREATED)
 async def create_booking(
     body: CreateBookingIn,
     request: Request,
-    session: AsyncSession = Depends(get_session),
-    user: str = Depends(current_user),
-) -> Booking:
-    settings = request.app.state.settings
-    # The quote is computed by the matching service, never trusted from the client.
-    match = await request.app.state.matching.match_for_offer(
-        body.requirement, body.listing_id, body.slot_id, body.start, body.end
-    )
-    if match.owner_id == user:
-        raise Invalid("you cannot book your own listing")
-    if body.id and await session.get(BookingRow, body.id):
-        raise Conflict(f"booking {body.id} already exists")
+    p: Principal = Depends(require_principal),
+    idempotency_key: str | None = Header(default=None, max_length=80),
+) -> BookingCreated:
+    """Send the same ``Idempotency-Key`` when retrying: a retry returns the
+    booking the first attempt made, rather than a second booking."""
+    app = request.app
+    db, outbox = app.state.db, app.state.outbox
+    settings: Settings = app.state.settings
 
-    now = now_iso()
-    # A seeded host with nobody behind them is played by the demo. A real
-    # person, seeded or signed up, answers for themselves in Earn.
-    simulate = (
-        settings.demo_auto_accept_seconds > 0
-        and match.owner_id != settings.demo_user_id
-        and not await request.app.state.accounts.has_account(match.owner_id)
+    if idempotency_key:
+        async with db.session() as s:
+            existing = await BookingRepository(s, outbox).by_idempotency_key(p.sub, idempotency_key)
+        if existing:
+            return await _with_payment(request, existing, p.sub)
+
+    view = await app.state.matching.match_for_offer(
+        body.requirement.model_dump(mode="json", by_alias=True), body.listing_id, body.slot_id, body.start, body.end
     )
+    if view.owner.id == p.sub:
+        raise Invalid("you cannot book your own listing")
+
+    now = _now()
+    m = view.match
     row = BookingRow(
-        id=body.id or new_id("bk"),
-        requester_id=user,
-        owner_id=match.owner_id,
-        listing_id=match.listing_id,
-        status="requested",
+        id=new_id("bk"),
+        requester_id=p.sub,
+        owner_id=m.owner_id,
+        listing_id=m.listing_id,
+        status="awaiting_payment",
+        window_start=dt_from_iso(m.start),
+        window_end=dt_from_iso(m.end),
         created_at=now,
         updated_at=now,
+        expires_at=now + settings.payment_timeout,
+        amount=m.quote.total,
+        currency="eur",
         requirement=body.requirement.model_dump(mode="json", by_alias=True),
-        match=match.model_dump(mode="json", by_alias=True),
-        auto_accept_at=(iso_from_ms(now_ms() + int(settings.demo_auto_accept_seconds * 1000)) if simulate else None),
+        match=m.model_dump(mode="json", by_alias=True),
+        listing_snapshot={
+            "title": view.listing.title,
+            "district": view.listing.district,
+            "category": view.listing.category,
+            "ownerName": view.owner.name,
+            **({"photo": view.listing.photos[0]} if view.listing.photos else {}),
+        },
+        idempotency_key=idempotency_key,
     )
-    session.add(row)
-    await session.flush()
-    await request.app.state.bus.publish(
-        BOOKING_REQUESTED,
-        {"bookingId": row.id, "requesterId": user, "ownerId": row.owner_id, "listingId": row.listing_id},
-    )
-    return to_booking(row, user)
+    try:
+        async with db.transaction() as s:
+            repo = BookingRepository(s, outbox)
+            if await repo.window_taken(row.listing_id, row.window_start, row.window_end):
+                raise Conflict("that window was just taken; pick another")
+            await repo.insert(row)
+    except IntegrityError:
+        # Either the same key raced itself (return what it made) or the
+        # exclusion constraint caught a concurrent booking of the window.
+        if idempotency_key:
+            async with db.session() as s:
+                existing = await BookingRepository(s, outbox).by_idempotency_key(p.sub, idempotency_key)
+            if existing:
+                return await _with_payment(request, existing, p.sub)
+        raise Conflict("that window was just taken; pick another") from None
+    app.state.relay.wake()
+    return await _with_payment(request, row, p.sub)
 
 
-async def _transition(
-    request: Request, session: AsyncSession, booking_id: str, action: Action, user: str, **extra
-) -> Booking:
-    row = await _load(session, booking_id)
-    before = row.status
-    row.status = next_status(action, row.status, user, row.requester_id, row.owner_id)
-    row.updated_at = now_iso()
-    row.auto_accept_at = None
-    for k, v in extra.items():
-        setattr(row, k, v)
-    await session.flush()
-    await request.app.state.bus.publish(
-        BOOKING_STATUS_CHANGED,
-        {"bookingId": row.id, "from": before, "to": row.status, "by": user},
-    )
+async def _with_payment(request: Request, row: BookingRow, viewer: str) -> BookingCreated:
+    app = request.app
+    if row.status != "awaiting_payment":
+        return BookingCreated(booking=to_booking(row, viewer))
+    try:
+        payment = await app.state.payments.start(
+            booking_id=row.id,
+            requester_id=row.requester_id,
+            owner_id=row.owner_id,
+            amount=row.amount,
+            currency=row.currency,
+        )
+    except Exception as e:
+        log.warning("could not start payment for %s: %s", row.id, e)
+        async with app.state.db.transaction() as s:
+            repo = BookingRepository(s, app.state.outbox)
+            fresh = await repo.get(row.id, lock=True)
+            if fresh.status == "awaiting_payment":
+                await repo.move(fresh, "payment_failed", "system", _now(), expires_at=None)
+        app.state.relay.wake()
+        raise Unavailable("we could not start the payment, and you have not been charged; try again") from e
+    return BookingCreated(booking=to_booking(row, viewer), payment=payment)
+
+
+# --- people moving a booking along ---------------------------------------------------------
+
+
+async def _transition(repo: BookingRepository, booking_id: str, action: Action, user: str, **fields: object) -> Booking:
+    row = await repo.visible(booking_id, user, lock=True)
+    now = _now()
+    if row.expires_at is not None and row.expires_at <= now:
+        # The sweep has not got to it yet, but it has lapsed all the same.
+        raise Conflict("this request has lapsed")
+    to = next_status(action, row.status, user, row.requester_id, row.owner_id)
+    if to not in ("awaiting_payment", "requested"):
+        fields["expires_at"] = None
+    await repo.move(row, to, user, now, **fields)
     return to_booking(row, user)
 
 
 @router.post("/bookings/{booking_id}/accept", response_model=Booking)
 async def accept(
-    booking_id: str,
-    request: Request,
-    session: AsyncSession = Depends(get_session),
-    user: str = Depends(current_user),
-) -> Booking:
-    return await _transition(request, session, booking_id, "accept", user)
+    booking_id: str, repo: BookingRepository = Depends(get_repo), p: Principal = Depends(require_principal)
+):
+    return await _transition(repo, booking_id, "accept", p.sub)
 
 
 @router.post("/bookings/{booking_id}/decline", response_model=Booking)
 async def decline(
     booking_id: str,
     body: DeclineIn,
-    request: Request,
-    session: AsyncSession = Depends(get_session),
-    user: str = Depends(current_user),
-) -> Booking:
+    repo: BookingRepository = Depends(get_repo),
+    p: Principal = Depends(require_principal),
+):
     reason = body.reason.strip()
     if not reason:
         raise Invalid("tell the buyer why, rather than just refusing")
-    return await _transition(request, session, booking_id, "decline", user, decline_reason=reason)
+    return await _transition(repo, booking_id, "decline", p.sub, decline_reason=reason)
 
 
 @router.post("/bookings/{booking_id}/start", response_model=Booking)
 async def start(
-    booking_id: str,
-    request: Request,
-    session: AsyncSession = Depends(get_session),
-    user: str = Depends(current_user),
-) -> Booking:
-    return await _transition(request, session, booking_id, "start", user)
+    booking_id: str, repo: BookingRepository = Depends(get_repo), p: Principal = Depends(require_principal)
+):
+    return await _transition(repo, booking_id, "start", p.sub)
 
 
 @router.post("/bookings/{booking_id}/complete", response_model=Booking)
 async def complete(
-    booking_id: str,
-    request: Request,
-    session: AsyncSession = Depends(get_session),
-    user: str = Depends(current_user),
-) -> Booking:
-    return await _transition(request, session, booking_id, "complete", user)
+    booking_id: str, repo: BookingRepository = Depends(get_repo), p: Principal = Depends(require_principal)
+):
+    return await _transition(repo, booking_id, "complete", p.sub)
 
 
 @router.post("/bookings/{booking_id}/cancel", response_model=Booking)
 async def cancel(
-    booking_id: str,
-    request: Request,
-    session: AsyncSession = Depends(get_session),
-    user: str = Depends(current_user),
-) -> Booking:
-    return await _transition(request, session, booking_id, "cancel", user)
+    booking_id: str, repo: BookingRepository = Depends(get_repo), p: Principal = Depends(require_principal)
+):
+    return await _transition(repo, booking_id, "cancel", p.sub)
 
 
 @router.post("/bookings/{booking_id}/rate", response_model=Booking)
 async def rate(
     booking_id: str,
     outcome: Outcome,
-    request: Request,
-    session: AsyncSession = Depends(get_session),
-    user: str = Depends(current_user),
+    repo: BookingRepository = Depends(get_repo),
+    p: Principal = Depends(require_principal),
 ) -> Booking:
-    """The write half of the loop. Publishes ``booking.rated``; the catalog folds
-    it into the owner's record, which moves where they rank for everyone, and
-    writes it up as a review on the listing, which the next buyer reads.
-
-    A review is dated at the end of the booked window, as the app does, not at
-    the moment the buyer got round to rating it."""
-    row = await _load(session, booking_id)
-    check_can_rate(row.status, row.outcome is not None, user, row.requester_id)
+    """``booking.rated`` feeds the owner's record and becomes a review. It is
+    dated at the end of the booked window, not when the buyer got round to it."""
+    row = await repo.visible(booking_id, p.sub, lock=True)
+    check_can_rate(row.status, row.outcome is not None, p.sub, row.requester_id)
     row.outcome = outcome.model_dump(mode="json", by_alias=True, exclude_none=True)
-    row.updated_at = now_iso()
-    await session.flush()
-    await request.app.state.bus.publish(
+    row.updated_at = _now()
+    await repo.s.flush()
+    await repo.outbox.add(
+        repo.s,
         BOOKING_RATED,
         {
             "bookingId": row.id,
@@ -238,19 +278,18 @@ async def rate(
             "listingId": row.listing_id,
             "requesterId": row.requester_id,
             "outcome": row.outcome,
-            "at": row.match["end"],
-            "ratedAt": row.updated_at,
+            "at": iso_from_datetime(row.window_end),
+            "ratedAt": iso_from_datetime(row.updated_at),
         },
     )
-    return to_booking(row, user)
+    return to_booking(row, p.sub)
 
 
-@router.post("/admin/reset", status_code=status.HTTP_204_NO_CONTENT)
-async def reset(request: Request, session: AsyncSession = Depends(get_session)) -> Response:
-    """Demo only: forget every booking and put the seeded inbox request back."""
-    from .workers import seed_inbox, wipe_bookings
+# --- internal: matching asks what is already taken -------------------------------------------
 
-    await session.commit()
-    await wipe_bookings(request.app)
-    await seed_inbox(request.app)
-    return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+@internal.post("/busy", response_model=dict[str, list[tuple[Iso, Iso]]])
+async def busy(body: BusyIn, repo: BookingRepository = Depends(get_repo)) -> dict[str, list[tuple[str, str]]]:
+    if not body.listing_ids:
+        return {}
+    return await repo.busy(body.listing_ids, dt_from_iso(body.start), dt_from_iso(body.until))

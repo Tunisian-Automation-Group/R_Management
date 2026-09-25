@@ -1,11 +1,18 @@
 """The booking state machine, as data.
 
-    requested --accept--> accepted --start--> active --complete--> completed --rate-->
-        |                     |
-        +--decline--> declined +--cancel--> cancelled   (cancel also from requested)
+    awaiting_payment --authorised--> requested --accept--> accepted --start--> active --complete--> completed
+          |                             |                     |                                      (--rate)
+          +--payment failed--> payment_failed               cancel (refunded if already captured)
+          +--expire--> expired          +--decline--> declined
+                                        +--expire--> expired
+    cancel: from awaiting_payment, requested or accepted, by either party
 
-Every transition names who may make it. The requester is the person who asked;
-the owner is the person whose listing it is.
+Transitions a person makes name who may make them. The rest are made by the
+system: a payment result, the expiry sweep, the auto-completion sweep.
+
+A booking *holds* its window while it is in ``HOLDING``: the exclusion
+constraint (ADR 0004) forbids two holding bookings from overlapping on one
+listing. Leaving ``HOLDING`` releases the window.
 """
 
 from __future__ import annotations
@@ -14,25 +21,48 @@ from dataclasses import dataclass
 from typing import Literal
 
 from cappy_common.errors import Conflict, Forbidden
-from cappy_common.models import BookingStatus
+
+Status = Literal[
+    "awaiting_payment",
+    "requested",
+    "accepted",
+    "active",
+    "completed",
+    "declined",
+    "cancelled",
+    "expired",
+    "payment_failed",
+]
+HOLDING: frozenset[str] = frozenset({"awaiting_payment", "requested", "accepted", "active"})
+FINAL: frozenset[str] = frozenset({"completed", "declined", "cancelled", "expired", "payment_failed"})
 
 Action = Literal["accept", "decline", "start", "complete", "cancel"]
+SystemAction = Literal["authorised", "payment_failed", "expire", "auto_complete"]
 Role = Literal["requester", "owner", "either"]
 
 
 @dataclass(frozen=True)
 class Transition:
     from_states: frozenset[str]
-    to_state: BookingStatus
+    to_state: Status
     by: Role
 
 
 TRANSITIONS: dict[Action, Transition] = {
     "accept": Transition(frozenset({"requested"}), "accepted", "owner"),
     "decline": Transition(frozenset({"requested"}), "declined", "owner"),
-    "start": Transition(frozenset({"accepted"}), "active", "requester"),
+    # Either side can mark the handover: whoever is standing at the machine.
+    "start": Transition(frozenset({"accepted"}), "active", "either"),
+    # The buyer confirms the job is done; the sweep does it if they never do.
     "complete": Transition(frozenset({"active"}), "completed", "requester"),
-    "cancel": Transition(frozenset({"requested", "accepted"}), "cancelled", "either"),
+    "cancel": Transition(frozenset({"awaiting_payment", "requested", "accepted"}), "cancelled", "either"),
+}
+
+SYSTEM: dict[SystemAction, tuple[frozenset[str], Status]] = {
+    "authorised": (frozenset({"awaiting_payment"}), "requested"),
+    "payment_failed": (frozenset({"awaiting_payment"}), "payment_failed"),
+    "expire": (frozenset({"awaiting_payment", "requested"}), "expired"),
+    "auto_complete": (frozenset({"accepted", "active"}), "completed"),
 }
 
 
@@ -44,7 +74,7 @@ def role_of(actor: str, requester_id: str, owner_id: str) -> Role | None:
     return None
 
 
-def next_status(action: Action, status: str, actor: str, requester_id: str, owner_id: str) -> BookingStatus:
+def next_status(action: Action, status: str, actor: str, requester_id: str, owner_id: str) -> Status:
     """The status after ``action``, or an error saying exactly why not."""
     t = TRANSITIONS[action]
     role = role_of(actor, requester_id, owner_id)
@@ -53,14 +83,21 @@ def next_status(action: Action, status: str, actor: str, requester_id: str, owne
     if t.by != "either" and role != t.by:
         raise Forbidden(f"only the {t.by} can {action} a booking")
     if status not in t.from_states:
-        raise Conflict(f"cannot {action} a booking that is {status}")
+        raise Conflict(f"cannot {action} a booking that is {status.replace('_', ' ')}")
     return t.to_state
+
+
+def system_status(action: SystemAction, status: str) -> Status | None:
+    """The status a system event moves a booking to, or None when it no longer
+    applies (a payment result for a booking already cancelled, say)."""
+    from_states, to_state = SYSTEM[action]
+    return to_state if status in from_states else None
 
 
 def check_can_rate(status: str, already_rated: bool, actor: str, requester_id: str) -> None:
     if actor != requester_id:
         raise Forbidden("only the requester can rate a booking")
     if status != "completed":
-        raise Conflict(f"cannot rate a booking that is {status}")
+        raise Conflict(f"cannot rate a booking that is {status.replace('_', ' ')}")
     if already_rated:
         raise Conflict("this booking has already been rated")

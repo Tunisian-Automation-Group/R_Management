@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from datetime import timedelta
+
 from cappy_common.settings import CommonSettings
 
 
@@ -7,22 +9,32 @@ class Settings(CommonSettings):
     service_name: str = "booking"
     database_url: str = "sqlite+aiosqlite:///./booking.db"
 
-    # Seeded hosts answer a request after this many seconds, so the whole flow is
-    # walkable without a second person. 0 disables the simulation entirely.
-    # Requests to the demo user's own listings are never simulated: those are
-    # answered for real in the Earn inbox.
-    demo_auto_accept_seconds: float = 5.5
-    # Run the auto-accept sweep and the inbox seeder in this process. Turn off
-    # on all but one replica, and in tests, which call the workers directly.
-    run_background_workers: bool = True
+    # How long a buyer has to complete payment before the window is released.
+    payment_timeout_minutes: int = 30
+    # How long an owner has to answer. Never later than the window's start: a
+    # request nobody answered in time is not a booking.
+    answer_within_hours: int = 24
+    # After a booked window ends, a job nobody marked complete is completed
+    # automatically (and the owner paid) after this long, unless disputed.
+    auto_complete_after_hours: int = 48
+    # How often the sweeps run, per replica. They use SKIP LOCKED, so every
+    # replica can run them without doing the same work twice.
+    sweep_seconds: float = 30.0
 
-    # One request already waiting in the Earn inbox on a cold start, so the
-    # owner side is not empty on first run. Somebody nearby wants two hours of
-    # a saw that would otherwise sit in a cupboard tonight: the app's
-    # ``seedBookings()``, server-side.
-    demo_seed_inbox: bool = True
-    demo_seed_requester_id: str = "o17"
-    demo_seed_listing_id: str = "l9"
-    demo_seed_category: str = "workshop"
-    demo_seed_hours: float = 2
-    demo_seed_district: str = "Kreuzberg"
+    @property
+    def payment_timeout(self) -> timedelta:
+        return timedelta(minutes=self.payment_timeout_minutes)
+
+    @property
+    def answer_within(self) -> timedelta:
+        return timedelta(hours=self.answer_within_hours)
+
+    @property
+    def auto_complete_after(self) -> timedelta:
+        return timedelta(hours=self.auto_complete_after_hours)
+
+    def unsafe_reasons(self) -> list[str]:
+        problems = super().unsafe_reasons()
+        if not self.database_url.startswith("postgresql"):
+            problems.append("DATABASE_URL must be Postgres (the no-double-booking constraint needs it)")
+        return problems

@@ -1,78 +1,41 @@
 from __future__ import annotations
 
-import asyncio
-import contextlib
-from collections.abc import AsyncIterator
-from contextlib import asynccontextmanager
-
 from fastapi import FastAPI
 
-from cappy_common.app import create_app, identity
-from cappy_common.db import Base, Database
-from cappy_common.events import CATALOG_CHANGED, make_event_bus
+from cappy_common.app import create_app
+from cappy_common.auth import TokenVerifier
+from cappy_common.runtime import Runtime
 
-from . import tables  # noqa: F401 - registers the tables on Base.metadata
-from .clients import (
-    AccountsClient,
-    CatalogClient,
-    HttpAccountsClient,
-    HttpCatalogClient,
-    HttpMatchingClient,
-    MatchingClient,
-)
-from .routes import router
+from .clients import HttpMatching, HttpPayments, Matching, Payments
+from .handlers import handlers
+from .jobs import sweep
+from .routes import internal, router
 from .settings import Settings
-from .workers import auto_accept_loop, on_catalog_changed, seed_inbox_with_retry
+from .tables import Base
 
 
 def build_app(
     settings: Settings,
-    matching: MatchingClient | None = None,
-    catalog: CatalogClient | None = None,
-    accounts: AccountsClient | None = None,
+    *,
+    matching: Matching | None = None,
+    payments: Payments | None = None,
+    verifier: TokenVerifier | None = None,
 ) -> FastAPI:
-    @asynccontextmanager
-    async def lifespan(app: FastAPI) -> AsyncIterator[None]:
-        db = Database(settings.database_url)
-        await db.create_all(Base)
-        bus = make_event_bus(settings.event_bus_url, group="booking")
+    token = settings.internal_token.get_secret_value()
 
-        app.state.settings = settings
-        app.state.db = db
-        app.state.bus = bus
-        app.state.matching = matching or HttpMatchingClient(settings.matching_url)
-        app.state.catalog = catalog or HttpCatalogClient(settings.catalog_url)
-        app.state.accounts = accounts or HttpAccountsClient(settings.accounts_url)
-        app.state.current_user = identity(settings)
+    async def close(app: FastAPI) -> None:
+        await app.state.matching.aclose()
+        await app.state.payments.aclose()
 
-        async def _on_catalog_changed(payload: dict) -> None:
-            await on_catalog_changed(app, payload)
-
-        bus.subscribe(CATALOG_CHANGED, _on_catalog_changed)
-        await bus.start()
-
-        tasks: list[asyncio.Task] = []
-        if settings.run_background_workers:
-            if settings.demo_auto_accept_seconds > 0:
-                tasks.append(asyncio.create_task(auto_accept_loop(app), name="auto-accept"))
-            tasks.append(asyncio.create_task(seed_inbox_with_retry(app), name="reconcile-and-seed"))
-        try:
-            yield
-        finally:
-            for t in tasks:
-                t.cancel()
-            for t in tasks:
-                with contextlib.suppress(asyncio.CancelledError):
-                    await t
-            await bus.stop()
-            await app.state.matching.aclose()
-            await app.state.catalog.aclose()
-            await app.state.accounts.aclose()
-            await db.dispose()
-
-    app = create_app(settings, title="Cappy booking", lifespan=lifespan)
+    runtime = Runtime(settings, metadata=Base.metadata, handlers=handlers(settings), loops=[sweep], on_stop=close)
+    app = create_app(settings, title="Cappy booking", lifespan=runtime.lifespan())
+    app.state.verifier = verifier
+    app.state.matching = matching or HttpMatching(settings.matching_url, token)
+    app.state.payments = payments or HttpPayments(settings.payments_url, token)
     app.include_router(router)
+    app.include_router(internal)
     return app
 
 
-app = build_app(Settings())
+def create() -> FastAPI:
+    return build_app(Settings())

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import math
+from collections.abc import Mapping, Sequence
 from typing import Literal
 
 from cappy_common.jsmath import js_round, to_fixed
@@ -19,7 +20,7 @@ from cappy_common.models import (
 )
 from cappy_common.timeutil import ms_from_iso
 
-from .availability import Offer, earliest_offer
+from .availability import Interval, Offer, earliest_offer
 from .categories import duration_label
 from .feasibility import assess_feasibility
 from .pricing import hours_for, quote_for
@@ -79,8 +80,12 @@ def _reasons(fit_reasons: list[str], hours: float, km: float, owner: Owner) -> l
     ]
 
 
-def find_matches(req: AnyRequirement, world: World, now: Iso) -> list[Match]:
-    """Pure. Every input arrives as an argument, including ``now``."""
+def find_matches(
+    req: AnyRequirement, world: World, now: Iso, busy: Mapping[str, Sequence[Interval]] | None = None
+) -> list[Match]:
+    """Pure. Every input arrives as an argument, including ``now`` and what is
+    already booked (``busy``, by listing id)."""
+    busy = busy or {}
     origin = world.districts.get(req.district)
     if not origin:
         return []
@@ -117,7 +122,7 @@ def find_matches(req: AnyRequirement, world: World, now: Iso) -> list[Match]:
         if hours is None or quote is None:
             continue
 
-        offer = earliest_offer(slots_by_listing.get(listing.id, []), hours, now, until)
+        offer = earliest_offer(slots_by_listing.get(listing.id, []), hours, now, until, busy.get(listing.id))
         if not offer:
             continue
 

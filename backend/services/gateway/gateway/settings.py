@@ -6,12 +6,12 @@ from cappy_common.settings import CommonSettings
 class Settings(CommonSettings):
     service_name: str = "gateway"
     upstream_timeout_seconds: float = 15.0
-    # How long a checked session token is trusted before the accounts service
-    # is asked again. Signing out through the gateway drops it at once.
-    session_cache_seconds: float = 60.0
-    # A built copy of the web app (``web/dist``). When set and it holds
-    # an index.html, the gateway serves it at ``/`` with a single-page fallback,
-    # so the website, the installed PWA and the API share one origin and the
-    # browser never needs CORS. Empty: the gateway is API-only and the app is
-    # hosted elsewhere (a CDN, or a native shell) and calls ``/api`` cross-origin.
+    # Photos are the one large body (the catalog's own limit is the real one).
+    upload_max_bytes: int = 12_064_000
+    # A built copy of the web app (``web/dist``). Locally the gateway serves it
+    # at ``/`` so the app and the API share one origin. In AWS, CloudFront
+    # serves the app from S3 and this stays empty.
     static_dir: str = ""
+    # ponytail: no app-level rate limiting. WAF rate-based rules limit per IP
+    # at the edge (ADR 0008); per-user limits need shared state (Redis) and
+    # are worth adding once abuse shows up in the metrics.

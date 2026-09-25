@@ -2,9 +2,14 @@
 
 from __future__ import annotations
 
+import logging
+
 from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
+from starlette.exceptions import HTTPException as StarletteHTTPException
+
+log = logging.getLogger(__name__)
 
 
 class ApiError(Exception):
@@ -47,9 +52,24 @@ class Invalid(ApiError):
     code = "invalid"
 
 
+class TooLarge(ApiError):
+    status = 413
+    code = "too_large"
+
+
+class RateLimited(ApiError):
+    status = 429
+    code = "rate_limited"
+
+
 class Upstream(ApiError):
     status = 502
     code = "upstream"
+
+
+class Unavailable(ApiError):
+    status = 503
+    code = "unavailable"
 
 
 def error_body(code: str, message: str, details: object | None = None) -> dict:
@@ -69,6 +89,24 @@ def install_error_handlers(app: FastAPI) -> None:
         return JSONResponse(
             status_code=422,
             content=error_body("invalid", "request did not validate", _serialisable(exc.errors())),
+        )
+
+    @app.exception_handler(StarletteHTTPException)
+    async def _http(_: Request, exc: StarletteHTTPException) -> JSONResponse:
+        # Router-level 404/405 in the same shape as everything else.
+        code = {404: "not_found", 405: "method_not_allowed"}.get(exc.status_code, "error")
+        return JSONResponse(status_code=exc.status_code, content=error_body(code, str(exc.detail)))
+
+    @app.exception_handler(Exception)
+    async def _unhandled(request: Request, exc: Exception) -> JSONResponse:
+        # Logged in full with the request id; the client learns nothing about
+        # the internals, only the id to quote to support.
+        from .observability import request_id
+
+        log.exception("unhandled error on %s %s", request.method, request.url.path)
+        return JSONResponse(
+            status_code=500,
+            content=error_body("internal", f"something went wrong on our side (request {request_id.get()})"),
         )
 
 

@@ -1,317 +1,501 @@
 from __future__ import annotations
 
-from collections.abc import AsyncIterator
+import re
 
-from fastapi import Depends, Request, Response, UploadFile, status
-from fastapi.responses import FileResponse
+from fastapi import Depends, Query, Request, Response, UploadFile, status
+from pydantic import Field, TypeAdapter, ValidationError
 
 from cappy_common.app import ApiRouter
+from cappy_common.auth import Principal, optional_principal, require_internal, require_principal
 from cappy_common.categories import mode_of
-from cappy_common.errors import Conflict, Forbidden, Invalid
-from cappy_common.events import CATALOG_CHANGED
-from cappy_common.models import (
-    CamelModel,
-    District,
-    Listing,
-    Outcome,
-    Owner,
-    Review,
-    Slot,
-    World,
-)
-from cappy_common.timeutil import HOUR_MS, ms_from_iso
+from cappy_common.errors import Forbidden, Invalid, NotFound
+from cappy_common.events import LISTING_CHANGED, PROFILE_CREATED
+from cappy_common.models import CamelModel, District, Iso, Listing, Owner, Review, Slot, World
+from cappy_common.pagination import Page, clamp_limit
+from cappy_common.runtime import Tx
+from cappy_common.timeutil import HOUR_MS, dt_from_iso, ms_from_iso, now_iso
 
 from . import media
 from .repository import CatalogRepository
 
 router = ApiRouter()
+internal = ApiRouter(prefix="/internal", dependencies=[Depends(require_internal)])
 
-# A listing carries the owner's own photographs, by URL: ours (``/media/…``,
-# from ``POST /uploads``) or anyone's over http(s). The database never holds
-# image bytes.
+_listing = TypeAdapter(Listing)
 MAX_PHOTOS = 12
+MAX_RULES = 12
+MAX_SLOTS_PER_CALL = 200
 
 
-def _photo_url_ok(url: str) -> bool:
-    return url.startswith(("https://", "http://")) or bool(media.NAME.match(url.removeprefix("/media/")))
+async def get_repo(session=Tx) -> CatalogRepository:
+    return CatalogRepository(session)
 
 
-async def get_repo(request: Request) -> AsyncIterator[CatalogRepository]:
-    async with request.app.state.db.session() as session:
-        async with session.begin():
-            yield CatalogRepository(session)
+def _outbox(request: Request):
+    return request.app.state.outbox
 
 
-def current_user(request: Request) -> str:
-    return request.app.state.current_user(request.headers.get("x-cappy-user"))
+# --- shapes ------------------------------------------------------------------------
 
 
-async def _changed(request: Request, what: str, **payload) -> None:
-    await request.app.state.bus.publish(CATALOG_CHANGED, {"what": what, **payload})
+class ListingView(CamelModel):
+    """What a card needs: the listing and who offers it."""
 
-
-class ListingWithSlots(CamelModel):
     listing: Listing
+    owner: Owner
+    saved: bool | None = None
+
+
+class TagCount(CamelModel):
+    tag: str
+    n: int
+
+
+class ReviewSummary(CamelModel):
+    count: int
+    average: float | None = None
+    on_time_share: float | None = None
+    top_tags: list[TagCount]
+
+
+class ListingDetail(CamelModel):
+    listing: Listing
+    owner: Owner
+    district: District
     slots: list[Slot]
+    reviews: ReviewSummary
+    saved: bool | None = None
 
 
 class Me(CamelModel):
-    """Who the client is speaking for, and where their searches start. A mobile
-    app has no seed to read these from, so the server says."""
-
     id: str
     home_district: str
     owner: Owner | None = None
 
 
-class WorldVersion(CamelModel):
-    """Which edition of the seed the world was built from. Changes when the
-    world is rebuilt; other services compare it with what they last saw."""
-
-    version: str
-
-
-@router.get("/world", response_model=World)
-async def world(repo: CatalogRepository = Depends(get_repo)) -> World:
-    return await repo.world()
+class ProfileIn(CamelModel):
+    name: str = Field(min_length=2, max_length=80)
+    kind: str = Field(pattern=r"^(person|business)$")
+    district: str = Field(max_length=80)
 
 
-@router.get("/world/version", response_model=WorldVersion)
-async def world_version(repo: CatalogRepository = Depends(get_repo)) -> WorldVersion:
-    from .seed import loaded_version
-
-    return WorldVersion(version=await loaded_version(repo) or "unseeded")
-
-
-@router.get("/me", response_model=Me)
-async def me(
-    request: Request, repo: CatalogRepository = Depends(get_repo), user: str = Depends(current_user)
-) -> Me:
-    owner = await repo.find_owner(user)
-    home = owner.district if owner else request.app.state.settings.home_district
-    return Me(id=user, home_district=home, owner=owner)
+class City(CamelModel):
+    city: str
+    country: str
+    lat: float
+    lng: float
+    listings: int
 
 
-@router.get("/districts", response_model=dict[str, District])
-async def districts(repo: CatalogRepository = Depends(get_repo)) -> dict[str, District]:
-    return await repo.districts()
+class NearestDistrict(CamelModel):
+    district: District
+    km: float
 
 
-@router.get("/owners", response_model=list[Owner])
-async def owners(repo: CatalogRepository = Depends(get_repo)) -> list[Owner]:
-    return await repo.owners()
+class SlotIn(CamelModel):
+    start: Iso
+    end: Iso
+    hours_usable: float = Field(gt=0, le=24 * 366)
 
 
-@router.get("/owners/{owner_id}", response_model=Owner)
-async def owner(owner_id: str, repo: CatalogRepository = Depends(get_repo)) -> Owner:
-    return await repo.owner(owner_id)
+class ListingIn(CamelModel):
+    """A new or edited listing. Ids and the owner come from the server and the
+    caller's token, never from the body."""
 
-
-@router.post("/internal/owners", response_model=Owner, status_code=status.HTTP_201_CREATED)
-async def create_owner(owner: Owner, request: Request, repo: CatalogRepository = Depends(get_repo)) -> Owner:
-    """A new person, from the accounts service when they sign up. Internal: the
-    gateway never routes ``/internal``. Starts with an empty record whatever
-    the body says; a track record is earned, not declared."""
-    if owner.district not in await repo.districts():
-        raise Invalid(f"unknown district: {owner.district}")
-    if await repo.find_owner(owner.id):
-        raise Conflict(f"owner {owner.id} already exists")
-    fresh = owner.model_copy(update={"rating_sum": 0, "jobs_done": 0, "on_time_jobs": 0, "verified": False})
-    await repo.add_owner(fresh)
-    await _changed(request, "owner", id=fresh.id)
-    return fresh
-
-
-@router.post("/owners/{owner_id}/outcomes", response_model=Owner)
-async def record_outcome(
-    owner_id: str,
-    outcome: Outcome,
-    request: Request,
-    repo: CatalogRepository = Depends(get_repo),
-) -> Owner:
-    """Fold a rated booking into the owner's record. The booking service's
-    ``booking.rated`` event lands here too (and also writes the review); the
-    endpoint exists for a synchronous fallback and for operators."""
-    updated = await repo.apply_outcome(owner_id, outcome)
-    await _changed(request, "owner", id=owner_id)
-    return updated
-
-
-@router.get("/listings", response_model=list[Listing])
-async def listings(owner_id: str | None = None, repo: CatalogRepository = Depends(get_repo)) -> list:
-    return await repo.listings(owner_id)
-
-
-@router.get("/listings/{listing_id}", response_model=Listing)
-async def listing(listing_id: str, repo: CatalogRepository = Depends(get_repo)):
-    return await repo.listing(listing_id)
-
-
-@router.get("/listings/{listing_id}/slots", response_model=list[Slot])
-async def listing_slots(listing_id: str, repo: CatalogRepository = Depends(get_repo)) -> list[Slot]:
-    await repo.listing(listing_id)
-    return await repo.slots(listing_id)
-
-
-@router.get("/listings/{listing_id}/reviews", response_model=list[Review])
-async def listing_reviews(listing_id: str, repo: CatalogRepository = Depends(get_repo)) -> list[Review]:
-    """Newest first. The matching service adds the summary at
-    ``/listings/{id}/reviews/summary``."""
-    await repo.listing(listing_id)
-    return await repo.reviews(listing_id)
-
-
-@router.get("/reviews", response_model=list[Review])
-async def all_reviews(repo: CatalogRepository = Depends(get_repo)) -> list[Review]:
-    return await repo.reviews()
-
-
-@router.post("/listings", response_model=ListingWithSlots, status_code=status.HTTP_201_CREATED)
-async def create_listing(
-    body: ListingWithSlots,
-    request: Request,
-    repo: CatalogRepository = Depends(get_repo),
-    user: str = Depends(current_user),
-) -> ListingWithSlots:
-    l = body.listing
-    if l.owner_id != user:
-        raise Forbidden("a listing can only be created for the calling owner")
-    await repo.owner(user)
-    if l.district not in await repo.districts():
-        raise Invalid(f"unknown district: {l.district}")
-    if mode_of(l.category) != l.mode:
-        raise Invalid(f"category {l.category} is booked by {mode_of(l.category)}, not {l.mode}")
-    if await repo.has_listing(l.id):
-        raise Conflict(f"listing {l.id} already exists")
-    if l.rate_per_hour <= 0:
-        raise Invalid("ratePerHour must be positive")
-    if l.photos is not None:
-        if len(l.photos) > MAX_PHOTOS:
-            raise Invalid(f"at most {MAX_PHOTOS} photos per listing")
-        for url in l.photos:
-            if not _photo_url_ok(url):
-                raise Invalid("photos must be URLs; upload the image first (POST /uploads) and send its address")
-
-    seen: set[str] = set()
-    for s in body.slots:
-        if s.listing_id != l.id:
-            raise Invalid(f"slot {s.id} belongs to another listing")
-        if s.id in seen:
-            raise Invalid(f"duplicate slot id {s.id}")
-        seen.add(s.id)
-        wall = (ms_from_iso(s.end) - ms_from_iso(s.start)) / HOUR_MS
-        if wall <= 0:
-            raise Invalid(f"slot {s.id} ends before it starts")
-        if s.hours_usable > wall + 1e-9 or s.hours_usable <= 0:
-            raise Invalid(f"slot {s.id} claims {s.hours_usable} usable hours in a {wall} hour window")
-
-    await repo.add_listing(l, body.slots)
-    await _changed(request, "listing", id=l.id)
-    return body
-
-
-@router.post("/listings/{listing_id}/pause", response_model=Listing)
-async def pause(
-    listing_id: str,
-    request: Request,
-    repo: CatalogRepository = Depends(get_repo),
-    user: str = Depends(current_user),
-):
-    return await _set_active(listing_id, False, request, repo, user)
-
-
-@router.post("/listings/{listing_id}/resume", response_model=Listing)
-async def resume(
-    listing_id: str,
-    request: Request,
-    repo: CatalogRepository = Depends(get_repo),
-    user: str = Depends(current_user),
-):
-    return await _set_active(listing_id, True, request, repo, user)
-
-
-async def _set_active(listing_id: str, active: bool, request: Request, repo: CatalogRepository, user: str):
-    existing = await repo.listing(listing_id)
-    if existing.owner_id != user:
-        raise Forbidden("only the owner can pause or resume a listing")
-    updated = await repo.set_active(listing_id, active)
-    await _changed(request, "listing", id=listing_id)
-    return updated
-
-
-@router.delete("/listings/{listing_id}", status_code=status.HTTP_204_NO_CONTENT)
-async def remove(
-    listing_id: str,
-    request: Request,
-    repo: CatalogRepository = Depends(get_repo),
-    user: str = Depends(current_user),
-) -> Response:
-    existing = await repo.listing(listing_id)
-    if existing.owner_id != user:
-        raise Forbidden("only the owner can remove a listing")
-    await repo.remove_listing(listing_id)
-    await _changed(request, "listing", id=listing_id)
-    return Response(status_code=status.HTTP_204_NO_CONTENT)
-
-
-# --- photos ---------------------------------------------------------------------
+    listing: dict
+    slots: list[SlotIn] = Field(default_factory=list, max_length=MAX_SLOTS_PER_CALL)
 
 
 class Uploaded(CamelModel):
     url: str
-    content_type: str
+    width: int
+    height: int
     bytes: int
 
 
-@router.post("/uploads", response_model=Uploaded, status_code=status.HTTP_201_CREATED)
-async def upload(file: UploadFile, request: Request, user: str = Depends(current_user)) -> Uploaded:
-    """One photograph in, its URL out. The app shrinks pictures before sending
-    (a phone photo is 4 to 12 MB; nobody needs that on a card), so the limit
-    here is a backstop, not a budget. The URL goes in ``Listing.photos``."""
+class CandidatesIn(CamelModel):
+    origin: str
+    max_km: float = Field(gt=0, le=2000)
+    start: Iso
+    until: Iso
+    category: str | None = None
+    exclude_owner: str | None = None
+    cap: int | None = Field(default=None, ge=1, le=1000)
+
+
+# --- helpers -----------------------------------------------------------------------
+
+
+def _initials(name: str) -> str:
+    parts = [p for p in re.split(r"\s+", name.strip()) if p]
+    return ("".join(p[0] for p in parts[:2]) or name[:2]).upper()[:4]
+
+
+def _summary(stats) -> ReviewSummary:
+    return ReviewSummary(
+        count=stats.count,
+        average=stats.average,
+        on_time_share=stats.on_time_share,
+        top_tags=[TagCount(tag=t, n=n) for t, n in stats.top_tags],
+    )
+
+
+async def _views(repo: CatalogRepository, listings: list, viewer: str | None) -> list[ListingView]:
+    owners = await repo.owners({l.owner_id for l in listings})
+    saved = await repo.saved_ids(viewer, {l.id for l in listings}) if viewer else set()
+    return [
+        ListingView(listing=l, owner=owners[l.owner_id], saved=(l.id in saved) if viewer else None)
+        for l in listings
+        if l.owner_id in owners
+    ]
+
+
+def _validate_slots(slots: list[SlotIn]) -> list[Slot]:
+    out = []
+    for s in slots:
+        wall = (ms_from_iso(s.end) - ms_from_iso(s.start)) / HOUR_MS
+        if wall <= 0:
+            raise Invalid("a window must end after it starts")
+        if s.hours_usable > wall + 1e-9:
+            raise Invalid(f"a {wall:g}-hour window cannot have {s.hours_usable:g} usable hours")
+        if ms_from_iso(s.end) <= ms_from_iso(now_iso()):
+            raise Invalid("a window must end in the future")
+        out.append(Slot(id="pending", listing_id="pending", start=s.start, end=s.end, hours_usable=s.hours_usable))
+    return out
+
+
+async def _validate_listing(request: Request, repo: CatalogRepository, raw: dict, owner_id: str):
+    try:
+        listing = _listing.validate_python({**raw, "id": "pending", "ownerId": owner_id})
+    except ValidationError as e:
+        raise Invalid("that listing does not validate: " + "; ".join(err["msg"] for err in e.errors()[:5])) from e
+    limits = {"title": 120, "blurb": 500, "instructions": 2000}
+    for field, n in limits.items():
+        value = getattr(listing, field)
+        if not value.strip() or len(value) > n:
+            raise Invalid(f"{field} must be 1 to {n} characters")
+    if len(listing.rules) > MAX_RULES or any(len(r) > 200 for r in listing.rules):
+        raise Invalid(f"at most {MAX_RULES} rules of 200 characters each")
+    if mode_of(listing.category) != listing.mode:
+        raise Invalid(f"category {listing.category} is booked by {mode_of(listing.category)}, not {listing.mode}")
+    if listing.rate_per_hour <= 0:
+        raise Invalid("ratePerHour must be positive")
+    if not await repo.has_district(listing.district):
+        raise Invalid(f"unknown district: {listing.district}")
+    photos = listing.photos or []
+    if len(photos) > MAX_PHOTOS:
+        raise Invalid(f"at most {MAX_PHOTOS} photos per listing")
     settings = request.app.state.settings
-    # Read at most one byte over the limit, so a huge upload is refused without
-    # being buffered whole.
+    names = [media.name_from_url(settings, u) for u in photos]
+    if any(n is None for n in names):
+        raise Invalid("photos must be uploaded to Cappy first (POST /uploads)")
+    owned = await repo.media_owned_by({n for n in names if n}, owner_id)
+    if len(owned) != len(set(names)):
+        raise Invalid("a listing can only show photos its owner uploaded")
+    return listing
+
+
+async def _owned(repo: CatalogRepository, listing_id: str, user: str):
+    row = await repo.listing_row(listing_id)
+    if row.owner_id != user:
+        # Someone else's listing is indistinguishable from none at all.
+        raise NotFound(f"listing {listing_id} not found")
+    return row
+
+
+# --- me ----------------------------------------------------------------------------
+
+
+@router.get("/me", response_model=Me)
+async def get_me(request: Request, repo=Depends(get_repo), p: Principal = Depends(require_principal)) -> Me:
+    """Who the caller is on Cappy. ``owner`` is absent until they have created
+    a profile, which the app asks for right after sign-up."""
+    owner = await repo.find_owner(p.sub)
+    home = owner.district if owner else request.app.state.settings.home_district
+    return Me(id=p.sub, home_district=home, owner=owner)
+
+
+@router.put("/me", response_model=Owner)
+async def put_me(
+    body: ProfileIn, request: Request, repo=Depends(get_repo), p: Principal = Depends(require_principal)
+) -> Owner:
+    """Create the caller's profile, or update its name, kind and district.
+    Idempotent: calling it twice with the same body is one profile."""
+    if not await repo.has_district(body.district):
+        raise Invalid(f"unknown district: {body.district}")
+    name = body.name.strip()
+    owner, created = await repo.upsert_profile(
+        p.sub, name=name, initials=_initials(name), kind=body.kind, district=body.district
+    )
+    if created:
+        await _outbox(request).add(repo.s, PROFILE_CREATED, {"ownerId": owner.id, "district": owner.district})
+    return owner
+
+
+# --- places ------------------------------------------------------------------------
+
+
+@router.get("/districts", response_model=dict[str, District])
+async def districts(repo=Depends(get_repo)) -> dict[str, District]:
+    return await repo.districts()
+
+
+@router.get("/cities", response_model=list[City])
+async def cities(repo=Depends(get_repo)) -> list[City]:
+    return [
+        City(city=c.metro, country=c.country, lat=c.lat, lng=c.lng, listings=c.listings) for c in await repo.cities()
+    ]
+
+
+@router.get("/districts/nearest", response_model=NearestDistrict)
+async def nearest(
+    lat: float = Query(ge=-90, le=90), lng: float = Query(ge=-180, le=180), repo=Depends(get_repo)
+) -> NearestDistrict:
+    found = await repo.nearest_district(lat, lng)
+    if not found:
+        raise NotFound("no districts")
+    return NearestDistrict(district=found[0], km=found[1])
+
+
+# --- owners and listings (public reads) --------------------------------------------------
+
+
+@router.get("/owners/{owner_id}", response_model=Owner)
+async def owner(owner_id: str, repo=Depends(get_repo)) -> Owner:
+    return await repo.owner(owner_id)
+
+
+@router.get("/listings/{listing_id}", response_model=ListingDetail)
+async def listing_detail(
+    listing_id: str, repo=Depends(get_repo), p: Principal | None = Depends(optional_principal)
+) -> ListingDetail:
+    row = await repo.listing_row(listing_id)
+    listing = await repo.listing(listing_id)
+    if not listing.active and (p is None or p.sub != row.owner_id):
+        raise NotFound(f"listing {listing_id} not found")
+    saved = (listing_id in await repo.saved_ids(p.sub, {listing_id})) if p else None
+    return ListingDetail(
+        listing=listing,
+        owner=await repo.owner(listing.owner_id),
+        district=await repo.district(listing.district),
+        slots=await repo.upcoming_slots({listing_id}, after=dt_from_iso(now_iso())),
+        reviews=_summary(await repo.review_stats(listing_id)),
+        saved=saved,
+    )
+
+
+@router.get("/listings/{listing_id}/reviews", response_model=Page[Review])
+async def listing_reviews(
+    listing_id: str, cursor: str | None = None, limit: int | None = None, repo=Depends(get_repo)
+) -> Page[Review]:
+    await repo.listing_row(listing_id)
+    items, nxt = await repo.reviews(listing_id, cursor=cursor, limit=clamp_limit(limit))
+    return Page(items=items, next_cursor=nxt)
+
+
+@router.get("/search", response_model=Page[ListingView])
+async def search(
+    q: str = Query(min_length=2, max_length=80),
+    metro: str | None = None,
+    category: str | None = None,
+    cursor: str | None = None,
+    limit: int | None = None,
+    repo=Depends(get_repo),
+    p: Principal | None = Depends(optional_principal),
+) -> Page[ListingView]:
+    items, nxt = await repo.search(q=q, metro=metro, category=category, cursor=cursor, limit=clamp_limit(limit))
+    return Page(items=await _views(repo, items, p.sub if p else None), next_cursor=nxt)
+
+
+# --- my listings (owner writes) ---------------------------------------------------------
+
+
+@router.get("/me/listings", response_model=Page[ListingView])
+async def my_listings(
+    cursor: str | None = None,
+    limit: int | None = None,
+    repo=Depends(get_repo),
+    p: Principal = Depends(require_principal),
+) -> Page[ListingView]:
+    items, nxt = await repo.listings_by_owner(p.sub, cursor=cursor, limit=clamp_limit(limit))
+    return Page(items=await _views(repo, items, p.sub), next_cursor=nxt)
+
+
+class CreatedListing(CamelModel):
+    listing: Listing
+    slots: list[Slot]
+
+
+@router.post("/listings", response_model=CreatedListing, status_code=status.HTTP_201_CREATED)
+async def create_listing(
+    body: ListingIn, request: Request, repo=Depends(get_repo), p: Principal = Depends(require_principal)
+) -> CreatedListing:
+    if await repo.find_owner(p.sub) is None:
+        raise Forbidden("create your profile before listing anything")
+    listing = await _validate_listing(request, repo, body.listing, p.sub)
+    created, slots = await repo.create_listing(listing, _validate_slots(body.slots))
+    await _outbox(request).add(repo.s, LISTING_CHANGED, {"listingId": created.id, "change": "created"})
+    return CreatedListing(listing=created, slots=slots)
+
+
+@router.put("/listings/{listing_id}", response_model=Listing)
+async def update_listing(
+    listing_id: str,
+    body: ListingIn,
+    request: Request,
+    repo=Depends(get_repo),
+    p: Principal = Depends(require_principal),
+):
+    row = await _owned(repo, listing_id, p.sub)
+    listing = await _validate_listing(
+        request, repo, {**body.listing, "mode": row.mode, "category": row.category}, p.sub
+    )
+    updated = await repo.update_listing(listing_id, listing)
+    await _outbox(request).add(repo.s, LISTING_CHANGED, {"listingId": listing_id, "change": "updated"})
+    return updated
+
+
+@router.post("/listings/{listing_id}/slots", response_model=list[Slot], status_code=status.HTTP_201_CREATED)
+async def add_slots(
+    listing_id: str,
+    body: list[SlotIn],
+    request: Request,
+    repo=Depends(get_repo),
+    p: Principal = Depends(require_principal),
+) -> list[Slot]:
+    await _owned(repo, listing_id, p.sub)
+    if len(body) > MAX_SLOTS_PER_CALL:
+        raise Invalid(f"at most {MAX_SLOTS_PER_CALL} windows per call")
+    return await repo.add_slots(listing_id, _validate_slots(body))
+
+
+@router.delete("/listings/{listing_id}/slots/{slot_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def remove_slot(
+    listing_id: str, slot_id: str, repo=Depends(get_repo), p: Principal = Depends(require_principal)
+) -> Response:
+    await _owned(repo, listing_id, p.sub)
+    await repo.remove_slot(listing_id, slot_id)
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+async def _set_active(listing_id: str, active: bool, request: Request, repo: CatalogRepository, p: Principal):
+    await _owned(repo, listing_id, p.sub)
+    updated = await repo.set_active(listing_id, active)
+    await _outbox(request).add(
+        repo.s, LISTING_CHANGED, {"listingId": listing_id, "change": "resumed" if active else "paused"}
+    )
+    return updated
+
+
+@router.post("/listings/{listing_id}/pause", response_model=Listing)
+async def pause(listing_id: str, request: Request, repo=Depends(get_repo), p: Principal = Depends(require_principal)):
+    return await _set_active(listing_id, False, request, repo, p)
+
+
+@router.post("/listings/{listing_id}/resume", response_model=Listing)
+async def resume(listing_id: str, request: Request, repo=Depends(get_repo), p: Principal = Depends(require_principal)):
+    return await _set_active(listing_id, True, request, repo, p)
+
+
+@router.delete("/listings/{listing_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def remove(
+    listing_id: str, request: Request, repo=Depends(get_repo), p: Principal = Depends(require_principal)
+) -> Response:
+    await _owned(repo, listing_id, p.sub)
+    await repo.soft_delete(listing_id)
+    await _outbox(request).add(repo.s, LISTING_CHANGED, {"listingId": listing_id, "change": "removed"})
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+# --- photos ----------------------------------------------------------------------------
+
+
+@router.post("/uploads", response_model=Uploaded, status_code=status.HTTP_201_CREATED)
+async def upload(
+    file: UploadFile, request: Request, repo=Depends(get_repo), p: Principal = Depends(require_principal)
+) -> Uploaded:
+    """One photograph in, its URL out, to go in a listing's ``photos``."""
+    settings = request.app.state.settings
     data = await file.read(settings.media_max_bytes + 1)
-    name, ctype = media.store(settings.media_dir, data, settings.media_max_bytes)
-    return Uploaded(url=f"{settings.media_public_base.rstrip('/')}/media/{name}", content_type=ctype, bytes=len(data))
+    import asyncio
+
+    processed = await asyncio.to_thread(
+        media.process,
+        data,
+        max_bytes=settings.media_max_bytes,
+        max_edge=settings.media_max_edge,
+        max_pixels=settings.media_max_pixels,
+    )
+    await request.app.state.media.put(processed.name, processed.data)
+    await repo.record_media(processed.name, p.sub, len(processed.data), processed.width, processed.height)
+    return Uploaded(
+        url=media.url_for(settings, processed.name),
+        width=processed.width,
+        height=processed.height,
+        bytes=len(processed.data),
+    )
 
 
 @router.get("/media/{name}", include_in_schema=False)
-async def serve_media(name: str, request: Request) -> FileResponse:
-    """Names are content hashes, so a URL never changes meaning: cache forever."""
-    path, ctype = media.locate(request.app.state.settings.media_dir, name)
-    return FileResponse(path, media_type=ctype, headers={"Cache-Control": "public, max-age=31536000, immutable"})
+async def serve_media(name: str, request: Request) -> Response:
+    """Only used where no CDN fronts the bucket (local development). In AWS,
+    CloudFront serves ``/media/*`` from S3 and this is never reached."""
+    data = await request.app.state.media.get(name)
+    return Response(data, media_type="image/webp", headers={"Cache-Control": "public, max-age=31536000, immutable"})
 
 
-# --- saved: the heart on every card ---------------------------------------------
+# --- saved --------------------------------------------------------------------------------
 
 
-@router.get("/saved", response_model=list[str])
-async def saved(repo: CatalogRepository = Depends(get_repo), user: str = Depends(current_user)) -> list[str]:
-    """Listing ids this person hearted, newest first. A shortlist, not a booking."""
-    return await repo.saved(user)
+@router.get("/saved", response_model=Page[ListingView])
+async def saved(
+    cursor: str | None = None,
+    limit: int | None = None,
+    repo=Depends(get_repo),
+    p: Principal = Depends(require_principal),
+) -> Page[ListingView]:
+    items, nxt = await repo.saved(p.sub, cursor=cursor, limit=clamp_limit(limit))
+    return Page(items=await _views(repo, items, p.sub), next_cursor=nxt)
 
 
-@router.put("/saved/{listing_id}", response_model=list[str])
-async def save(
-    listing_id: str, repo: CatalogRepository = Depends(get_repo), user: str = Depends(current_user)
-) -> list[str]:
-    await repo.listing(listing_id)
-    return await repo.save(user, listing_id)
-
-
-@router.delete("/saved/{listing_id}", response_model=list[str])
-async def unsave(
-    listing_id: str, repo: CatalogRepository = Depends(get_repo), user: str = Depends(current_user)
-) -> list[str]:
-    return await repo.unsave(user, listing_id)
-
-
-@router.post("/admin/reset", status_code=status.HTTP_204_NO_CONTENT)
-async def reset(request: Request, repo: CatalogRepository = Depends(get_repo)) -> Response:
-    """Demo only: put the seeded world back exactly as shipped."""
-    from .seed import seed_world
-
-    await seed_world(repo, request.app.state.settings.seed_timezone)
-    await _changed(request, "reset")
+@router.put("/saved/{listing_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def save(listing_id: str, repo=Depends(get_repo), p: Principal = Depends(require_principal)) -> Response:
+    await repo.listing_row(listing_id)
+    await repo.save(p.sub, listing_id)
     return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+@router.delete("/saved/{listing_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def unsave(listing_id: str, repo=Depends(get_repo), p: Principal = Depends(require_principal)) -> Response:
+    await repo.unsave(p.sub, listing_id)
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+# --- internal: for matching and booking --------------------------------------------------------
+
+
+@internal.post("/candidates", response_model=World)
+async def candidates(body: CandidatesIn, request: Request, repo=Depends(get_repo)) -> World:
+    origin = await repo.district(body.origin)
+    cap = body.cap or request.app.state.settings.candidate_cap
+    return await repo.candidates(
+        origin=origin,
+        max_km=body.max_km,
+        start=dt_from_iso(body.start),
+        until=dt_from_iso(body.until),
+        category=body.category,
+        cap=cap,
+        exclude_owner=body.exclude_owner,
+    )
+
+
+@internal.get("/listings/{listing_id}/context", response_model=World)
+async def listing_context(
+    listing_id: str, after: str | None = None, origin: str | None = None, repo=Depends(get_repo)
+) -> World:
+    return await repo.listing_context(listing_id, after=dt_from_iso(after or now_iso()), origin=origin)
+
+
+@internal.get("/owners/{owner_id}", response_model=Owner)
+async def internal_owner(owner_id: str, repo=Depends(get_repo)) -> Owner:
+    return await repo.owner(owner_id)

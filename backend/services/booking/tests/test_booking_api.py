@@ -1,322 +1,304 @@
+"""The booking API against fake matching and payments services."""
+
 from __future__ import annotations
 
-import time
+from datetime import UTC, datetime, timedelta
 
 import pytest
 from fastapi.testclient import TestClient
-from pydantic import ValidationError
 
-from booking.clients import AccountsClient, CatalogClient, MatchingClient, Offer
+from booking.clients import Matching, Payments, PaymentStart
+from booking.jobs import sweep_once
 from booking.main import build_app
 from booking.settings import Settings
-from booking.workers import accept_due, reconcile_world, seed_inbox
-from cappy_common.errors import NotFound
-from cappy_common.events import BOOKING_RATED, BOOKING_REQUESTED, BOOKING_STATUS_CHANGED, CATALOG_CHANGED
-from cappy_common.models import Match, Quote
-from cappy_common.timeutil import HOUR_MS, iso_from_ms, now_ms
+from booking.tables import BookingRow
+from cappy_common.errors import Unavailable
+from cappy_common.events import (
+    BOOKING_RATED,
+    BOOKING_STATUS_CHANGED,
+    PAYMENT_AUTHORISED,
+    PAYMENT_FAILED,
+    Event,
+    reset_memory_broker,
+)
+from cappy_common.fixtures import build_world
+from cappy_common.ids import new_id
+from cappy_common.models import Match, MatchView, Quote
+from cappy_common.testing import TestIssuer
+from cappy_common.timeutil import HOUR_MS, iso_from_ms, now_iso, now_ms
 
-NOW = iso_from_ms(now_ms())
-LATER = iso_from_ms(now_ms() + 5 * 24 * HOUR_MS)
-START = iso_from_ms(now_ms() + 2 * HOUR_MS)
-END = iso_from_ms(now_ms() + 4 * HOUR_MS)
-
-# l9 is the demo user's own saw; l8 is a neighbour's drill.
-OWNERS = {"l9": "o1", "l8": "o5"}
+INTERNAL = {"X-Internal-Token": "i" * 40}
+BUYER, HOST = "buyer-sub", "o1"
 
 
-class FakeMatching(MatchingClient):
-    """Prices every window at a flat rate; knows two listings."""
+class FakeMatching(Matching):
+    def __init__(self) -> None:
+        w = build_world()
+        self.listing = next(l for l in w.listings if l.id == "l9")
+        self.owner = next(o for o in w.owners if o.id == self.listing.owner_id)
 
-    async def match_for_offer(self, requirement, listing_id, slot_id, start, end):
-        if listing_id not in OWNERS:
-            raise NotFound(f"listing {listing_id} not found")
-        return Match(
+    async def match_for_offer(self, requirement, listing_id, slot_id, start, end) -> MatchView:  # noqa: ANN001
+        q = Quote(hours=2, base=4000, extra=0, extra_label="", total=4600, platform_fee=600, owner_net=4000)
+        m = Match(
             listing_id=listing_id,
-            owner_id=OWNERS[listing_id],
+            owner_id=self.owner.id,
             slot_id=slot_id,
             start=start,
             end=end,
             score=1,
             confidence=1,
-            reasons=["2 hours of idle time", "0.0 km away", "New on Cappy"],
-            quote=Quote(hours=2, base=500, extra=0, extra_label="No extras", total=500, platform_fee=75, owner_net=425),
-            distance_km=0,
+            reasons=[],
+            quote=q,
+            distance_km=1.0,
         )
-
-    async def first_offer(self, listing_id, hours, from_, until):
-        return Offer(slot_id="w1", start=START, end=END)
+        return MatchView(match=m, listing=self.listing, owner=self.owner)
 
 
-def _req():
-    return {
-        "mode": "window",
-        "category": "workshop",
-        "hours": 2,
-        "earliest": NOW,
-        "latest": LATER,
-        "district": "Kreuzberg",
-        "maxDistanceKm": 10,
-    }
+class FakePayments(Payments):
+    def __init__(self) -> None:
+        self.started: list[str] = []
+        self.down = False
 
-
-def _create(client, listing_id="l8", user=None):
-    headers = {"X-Cappy-User": user} if user else {}
-    return client.post(
-        "/bookings",
-        json={"requirement": _req(), "listingId": listing_id, "slotId": "w9", "start": START, "end": END},
-        headers=headers,
-    )
-
-
-class FakeAccounts(AccountsClient):
-    """o1 has signed up; nobody else has."""
-
-    def __init__(self, registered=("o1",)):
-        self.registered = set(registered)
-
-    async def has_account(self, owner_id):
-        return owner_id in self.registered
-
-
-def _settings(**over):
-    # Everything explicit, so the local .env (which turns the demo user off for
-    # the real stack) cannot change what these tests mean.
-    base = dict(
-        database_url="sqlite+aiosqlite://",
-        event_bus_url="memory://",
-        demo_user_id="o1",
-        demo_auto_accept_seconds=0.01,
-        demo_seed_inbox=False,
-        run_background_workers=False,
-        cors_origins="",
-    )
-    return Settings(**{**base, **over})
+    async def start(self, *, booking_id, requester_id, owner_id, amount, currency) -> PaymentStart:  # noqa: ANN001
+        if self.down:
+            raise Unavailable("stripe is down")
+        self.started.append(booking_id)
+        return PaymentStart(client_secret=f"pi_{booking_id}_secret", intent_id=f"pi_{booking_id}")
 
 
 @pytest.fixture()
-def app():
-    return build_app(_settings(), matching=FakeMatching(), accounts=FakeAccounts())
+def issuer():
+    return TestIssuer()
+
+
+@pytest.fixture()
+def broker():
+    return reset_memory_broker()
+
+
+@pytest.fixture()
+def payments():
+    return FakePayments()
+
+
+@pytest.fixture()
+def app(issuer, broker, payments):
+    settings = Settings(app_env="test", database_url="sqlite+aiosqlite://", internal_token="i" * 40)
+    return build_app(settings, matching=FakeMatching(), payments=payments, verifier=issuer.verifier())
 
 
 @pytest.fixture()
 def client(app):
     with TestClient(app) as c:
+        app.state._portal = c.portal
         yield c
 
 
-def test_request_stores_server_quote_and_publishes(client, app):
-    r = _create(client)
+def call(app, fn, *args, **kwargs):
+    return app.state._portal.call(lambda: fn(*args, **kwargs))
+
+
+def _body(start_h: float = 24, hours: float = 2):
+    start = now_ms() + int(start_h * HOUR_MS)
+    return {
+        "requirement": {
+            "mode": "window",
+            "category": "workshop",
+            "hours": hours,
+            "earliest": now_iso(),
+            "latest": iso_from_ms(now_ms() + 7 * 24 * HOUR_MS),
+            "district": "Kreuzberg",
+            "maxDistanceKm": 25,
+        },
+        "listingId": "l9",
+        "slotId": "w8",
+        "start": iso_from_ms(start),
+        "end": iso_from_ms(start + int(hours * HOUR_MS)),
+    }
+
+
+def _authorise(app, booking_id: str, type_: str = PAYMENT_AUTHORISED) -> bool:
+    ev = Event(id=new_id("ev"), type=type_, source="payments", occurred_at=now_iso(), data={"bookingId": booking_id})
+    return call(app, app.state.dispatcher.handle, ev)
+
+
+def _book(client, issuer, **kw) -> dict:
+    r = client.post("/bookings", json=_body(**kw), headers=issuer.headers(BUYER))
     assert r.status_code == 201, r.text
-    b = r.json()
-    assert b["status"] == "requested" and b["id"].startswith("bk_")
-    assert b["match"]["quote"]["total"] == 500 and b["match"]["ownerId"] == "o5"
-    assert "requesterId" not in b and "outcome" not in b and "declineReason" not in b
-    assert app.state.bus.published[-1][0] == BOOKING_REQUESTED
+    return r.json()
 
 
-def test_cannot_book_own_listing_or_unknown(client):
-    assert _create(client, listing_id="l9").status_code == 422
-    assert _create(client, listing_id="l99").status_code == 404
+def _requested(client, app, issuer, **kw) -> str:
+    bid = _book(client, issuer, **kw)["booking"]["id"]
+    assert _authorise(app, bid)
+    return bid
 
 
-def test_visibility_and_inbox_shape(client):
-    bid = _create(client).json()["id"]
-    mine = client.get("/bookings").json()
-    assert [b["id"] for b in mine] == [bid]
-    assert "requesterId" not in mine[0]
-
-    theirs = client.get("/bookings", headers={"X-Cappy-User": "o5"}).json()
-    assert theirs[0]["requesterId"] == "o1", "the owner's inbox must say who asked"
-
-    assert client.get("/bookings", headers={"X-Cappy-User": "o3"}).json() == []
-    assert client.get(f"/bookings/{bid}", headers={"X-Cappy-User": "o3"}).status_code == 404
+def _do(client, issuer, sub, bid, action, **json):
+    return client.post(f"/bookings/{bid}/{action}", headers=issuer.headers(sub), json=json or None)
 
 
-def test_full_lifecycle_and_rating(client, app):
-    bid = _create(client).json()["id"]
-    o5 = {"X-Cappy-User": "o5"}
-
-    assert client.post(f"/bookings/{bid}/start").status_code == 409
-    assert client.post(f"/bookings/{bid}/accept").status_code == 403
-    assert client.post(f"/bookings/{bid}/accept", headers=o5).json()["status"] == "accepted"
-    assert client.post(f"/bookings/{bid}/start").json()["status"] == "active"
-    assert client.post(f"/bookings/{bid}/complete").json()["status"] == "completed"
-
-    assert client.post(f"/bookings/{bid}/rate", json={"onTime": True, "quality": 5}, headers=o5).status_code == 403
-    outcome = {"onTime": True, "quality": 5, "note": "spotless", "tags": ["Ready on time", "Clear handover"]}
-    r = client.post(f"/bookings/{bid}/rate", json=outcome)
-    assert r.status_code == 200, r.text
-    assert r.json()["outcome"] == outcome
-    assert client.post(f"/bookings/{bid}/rate", json={"onTime": True, "quality": 5}).status_code == 409
-
-    topic, payload = app.state.bus.published[-1]
-    assert topic == BOOKING_RATED
-    assert payload["ownerId"] == "o5" and payload["listingId"] == "l8" and payload["requesterId"] == "o1"
-    assert payload["outcome"] == outcome
-    assert payload["at"] == END, "a review is dated at the end of the booked window"
-    assert BOOKING_STATUS_CHANGED in [t for t, _ in app.state.bus.published]
+def test_booking_starts_awaiting_payment_with_a_client_secret(client, issuer, payments):
+    out = _book(client, issuer)
+    b = out["booking"]
+    assert b["status"] == "awaiting_payment" and b["id"].startswith("bk_")
+    assert out["payment"]["clientSecret"] == f"pi_{b['id']}_secret"
+    assert b["listing"]["title"] and b["listing"]["ownerName"] and b["expiresAt"]
+    assert b["match"]["quote"]["total"] == 4600
 
 
-def test_rating_tags_come_from_the_vocabulary(client):
-    bid = _create(client).json()["id"]
-    o5 = {"X-Cappy-User": "o5"}
-    client.post(f"/bookings/{bid}/accept", headers=o5)
-    client.post(f"/bookings/{bid}/start")
-    client.post(f"/bookings/{bid}/complete")
-    r = client.post(f"/bookings/{bid}/rate", json={"onTime": True, "quality": 4, "tags": ["Cheap"]})
-    assert r.status_code == 422 and r.json()["error"]["code"] == "invalid"
-    r = client.post(f"/bookings/{bid}/rate", json={"onTime": True, "quality": 4, "tags": ["Fair price", "Fair price"]})
-    assert r.status_code == 200 and r.json()["outcome"]["tags"] == ["Fair price"]
+def test_sign_in_required_and_the_old_header_means_nothing(client):
+    assert client.post("/bookings", json=_body()).status_code == 401
+    assert client.get("/bookings", headers={"X-Cappy-User": BUYER}).status_code == 401
 
 
-def test_decline_needs_a_reason(client):
-    bid = _create(client).json()["id"]
-    o5 = {"X-Cappy-User": "o5"}
-    assert client.post(f"/bookings/{bid}/decline", json={"reason": "  "}, headers=o5).status_code == 422
-    r = client.post(f"/bookings/{bid}/decline", json={"reason": "Away that weekend"}, headers=o5)
-    assert r.json()["status"] == "declined" and r.json()["declineReason"] == "Away that weekend"
+def test_you_cannot_book_yourself(client, issuer):
+    r = client.post("/bookings", json=_body(), headers=issuer.headers(HOST))
+    assert r.status_code == 422
 
 
-def test_cancel_by_either_side(client):
-    a = _create(client).json()["id"]
-    b = _create(client).json()["id"]
-    assert client.post(f"/bookings/{a}/cancel").json()["status"] == "cancelled"
-    assert client.post(f"/bookings/{b}/cancel", headers={"X-Cappy-User": "o5"}).json()["status"] == "cancelled"
-    assert client.post(f"/bookings/{a}/cancel").status_code == 409
+def test_the_same_window_cannot_be_held_twice(client, issuer):
+    _book(client, issuer)
+    r = client.post("/bookings", json=_body(), headers=issuer.headers("someone-else"))
+    assert r.status_code == 409
 
 
-def test_demo_hosts_accept_after_a_moment(client, app):
-    bid = _create(client).json()["id"]
-    time.sleep(0.05)
-    assert client.portal.call(accept_due, app) == 1
-    assert client.get(f"/bookings/{bid}").json()["status"] == "accepted"
-    assert client.portal.call(accept_due, app) == 0
+def test_a_retry_with_the_same_key_returns_the_same_booking(client, issuer):
+    h = {**issuer.headers(BUYER), "Idempotency-Key": "abc-123"}
+    a = client.post("/bookings", json=_body(), headers=h).json()
+    b = client.post("/bookings", json=_body(), headers=h).json()
+    assert a["booking"]["id"] == b["booking"]["id"]
+    assert b["payment"]["clientSecret"] == a["payment"]["clientSecret"]
+    assert len(client.get("/bookings", headers=issuer.headers(BUYER)).json()["items"]) == 1
 
 
-def test_demo_user_is_never_simulated():
-    with TestClient(build_app(_settings(), matching=FakeMatching(), accounts=FakeAccounts())) as c:
-        # o5 asks for o1's saw: that lands in the real Earn inbox.
-        r = _create(c, listing_id="l9", user="o5")
-        assert r.status_code == 201
-        time.sleep(0.05)
-        assert c.portal.call(accept_due, c.app) == 0
-        assert c.get("/bookings").json()[0]["status"] == "requested"
+def test_payments_down_releases_the_window(client, issuer, payments):
+    payments.down = True
+    r = client.post("/bookings", json=_body(), headers=issuer.headers(BUYER))
+    assert r.status_code == 503
+    [b] = client.get("/bookings", headers=issuer.headers(BUYER)).json()["items"]
+    assert b["status"] == "payment_failed"
+    payments.down = False
+    _book(client, issuer)  # the window is free again
 
 
-def test_seed_inbox_and_reset(client, app):
-    assert client.get("/bookings").json() == []
-    app.state.settings.demo_seed_inbox = True
-    assert client.portal.call(seed_inbox, app) is True
-    assert client.portal.call(seed_inbox, app) is False, "never seeds twice"
-
-    inbox = client.get("/bookings").json()
-    assert len(inbox) == 1
-    b = inbox[0]
-    assert b["id"] == "bk_seed_1" and b["requesterId"] == "o17" and b["status"] == "requested"
-    assert b["match"]["listingId"] == "l9" and b["match"]["ownerId"] == "o1"
-    assert b["requirement"]["category"] == "workshop" and b["requirement"]["hours"] == 2
-
-    _create(client)
-    assert len(client.get("/bookings").json()) == 2
-    assert client.post("/admin/reset").status_code == 204
-    after = client.get("/bookings").json()
-    assert [x["id"] for x in after] == ["bk_seed_1"]
+def test_the_owner_sees_it_only_once_the_card_is_authorised(client, app, issuer, broker):
+    bid = _book(client, issuer)["booking"]["id"]
+    assert _authorise(app, bid)
+    b = client.get(f"/bookings/{bid}", headers=issuer.headers(HOST)).json()
+    assert b["status"] == "requested" and b["requesterId"] == BUYER
+    call(app, app.state.relay.flush)
+    changes = [(e.data["from"], e.data["to"]) for e in broker.of_type(BOOKING_STATUS_CHANGED)]
+    assert changes == [(None, "awaiting_payment"), ("awaiting_payment", "requested")]
+    assert broker.of_type(BOOKING_STATUS_CHANGED)[-1].data["amount"] == 4600
 
 
-# --- the world moved on -------------------------------------------------------
+def test_a_failed_payment_frees_the_window(client, app, issuer):
+    bid = _book(client, issuer)["booking"]["id"]
+    assert _authorise(app, bid, PAYMENT_FAILED)
+    assert client.get(f"/bookings/{bid}", headers=issuer.headers(BUYER)).json()["status"] == "payment_failed"
+    _book(client, issuer)
 
 
-class FakeCatalog(CatalogClient):
-    def __init__(self, version="seed-a"):
-        self.version = version
-
-    async def world_version(self):
-        return self.version
-
-
-def test_bookings_against_a_vanished_world_are_dropped_at_startup():
-    """A catalog reseeded from a newer seed.ts serves a different world; the
-    bookings on disk point at listings that no longer exist and go."""
-    catalog = FakeCatalog("seed-a")
-    with TestClient(build_app(_settings(), matching=FakeMatching(), catalog=catalog, accounts=FakeAccounts())) as c:
-        assert c.portal.call(reconcile_world, c.app) is False, "first run: nothing to compare with"
-        _create(c)
-        assert c.portal.call(reconcile_world, c.app) is False, "same world, bookings stay"
-        assert len(c.get("/bookings").json()) == 1
-        catalog.version = "seed-b"
-        assert c.portal.call(reconcile_world, c.app) is True
-        assert c.get("/bookings").json() == []
-        assert c.portal.call(reconcile_world, c.app) is False, "remembered the new world"
+def test_a_late_authorisation_does_not_revive_a_cancelled_booking(client, app, issuer):
+    bid = _book(client, issuer)["booking"]["id"]
+    assert _do(client, issuer, BUYER, bid, "cancel").json()["status"] == "cancelled"
+    _authorise(app, bid)
+    assert client.get(f"/bookings/{bid}", headers=issuer.headers(BUYER)).json()["status"] == "cancelled"
 
 
-def test_catalog_reset_event_wipes_and_reseeds(client, app):
-    app.state.catalog = FakeCatalog()
-    app.state.settings.demo_seed_inbox = True
-    _create(client)
-    client.portal.call(app.state.bus.publish, CATALOG_CHANGED, {"what": "listing", "id": "l8"})
-    assert len(client.get("/bookings").json()) == 1, "an ordinary catalog change is not a reset"
-    client.portal.call(app.state.bus.publish, CATALOG_CHANGED, {"what": "reset", "reason": "seed changed"})
-    after = client.get("/bookings").json()
-    assert [b["id"] for b in after] == ["bk_seed_1"], "wiped, then the inbox request came back"
+def test_full_lifecycle_and_rating(client, app, issuer, broker):
+    bid = _requested(client, app, issuer)
+    assert _do(client, issuer, BUYER, bid, "accept").status_code == 403
+    assert _do(client, issuer, HOST, bid, "accept").json()["status"] == "accepted"
+    assert _do(client, issuer, HOST, bid, "start").json()["status"] == "active"
+    assert _do(client, issuer, HOST, bid, "complete").status_code == 403
+    assert _do(client, issuer, BUYER, bid, "complete").json()["status"] == "completed"
+    r = _do(client, issuer, BUYER, bid, "rate", onTime=True, quality=5, note="Great", tags=["Ready on time"])
+    assert r.status_code == 200 and r.json()["outcome"]["quality"] == 5
+    assert _do(client, issuer, BUYER, bid, "rate", onTime=True, quality=5).status_code == 409
+    call(app, app.state.relay.flush)
+    [rated] = broker.of_type(BOOKING_RATED)
+    assert rated.data["ownerId"] == HOST and rated.data["requesterId"] == BUYER
 
 
-def test_unversioned_database_keeps_what_still_reads_and_drops_the_rest(client, app):
-    """A booking database from before the world was versioned: the one row
-    written against a category that no longer exists goes, the good one stays."""
-    from booking.tables import BookingRow
-
-    app.state.catalog = FakeCatalog("seed-a")
-    good = _create(client).json()["id"]
-
-    async def plant_old_row():
-        async with app.state.db.session() as s, s.begin():
-            fresh = await s.get(BookingRow, good)
-            s.add(
-                BookingRow(
-                    id="bk_old",
-                    requester_id="o17",
-                    owner_id="o1",
-                    listing_id="l1",
-                    status="requested",
-                    created_at=NOW,
-                    updated_at=NOW,
-                    requirement={**fresh.requirement, "category": "laundry"},
-                    match=fresh.match,
-                    auto_accept_at=None,
-                )
-            )
-
-    client.portal.call(plant_old_row)
-    with pytest.raises(ValidationError):
-        client.get("/bookings")  # the old row poisons the whole list
-    assert client.portal.call(reconcile_world, app) is True
-    assert [b["id"] for b in client.get("/bookings").json()] == [good]
-    assert client.portal.call(reconcile_world, app) is False
+def test_decline_needs_a_reason_and_frees_the_window(client, app, issuer):
+    bid = _requested(client, app, issuer)
+    assert _do(client, issuer, HOST, bid, "decline", reason="   ").status_code == 422
+    r = _do(client, issuer, HOST, bid, "decline", reason="Machine is in for service")
+    assert r.json()["status"] == "declined" and r.json()["declineReason"]
+    _book(client, issuer)
 
 
-def test_client_may_choose_the_booking_id(client):
-    body = {"requirement": _req(), "listingId": "l8", "slotId": "w9", "start": START, "end": END, "id": "bk_mug4abc123"}
-    r = client.post("/bookings", json=body)
-    assert r.status_code == 201 and r.json()["id"] == "bk_mug4abc123"
-    assert client.post("/bookings", json=body).status_code == 409, "the same id twice is a conflict"
-    assert client.post("/bookings", json={**body, "id": "not-ours"}).status_code == 422
+def test_strangers_cannot_see_or_touch_a_booking(client, app, issuer):
+    bid = _requested(client, app, issuer)
+    assert client.get(f"/bookings/{bid}", headers=issuer.headers("stranger")).status_code == 404
+    assert _do(client, issuer, "stranger", bid, "cancel").status_code == 404
 
 
-def test_a_signed_up_host_is_never_simulated():
-    """Once someone has an account, requests to them wait for them."""
-    with TestClient(
-        build_app(_settings(demo_user_id=""), matching=FakeMatching(), accounts=FakeAccounts(registered={"o5"}))
-    ) as c:
-        r = _create(c, listing_id="l8", user="u_buyer")
-        assert r.status_code == 201
-        time.sleep(0.05)
-        assert c.portal.call(accept_due, c.app) == 0
-        assert c.get("/bookings", headers={"X-Cappy-User": "u_buyer"}).json()[0]["status"] == "requested"
+def test_listing_is_paged_and_split_by_role(client, app, issuer):
+    for h in (24, 30, 36):
+        _book(client, issuer, start_h=h)
+    page = client.get("/bookings", params={"limit": 2}, headers=issuer.headers(BUYER)).json()
+    assert len(page["items"]) == 2 and page["nextCursor"]
+    rest = client.get(
+        "/bookings", params={"limit": 2, "cursor": page["nextCursor"]}, headers=issuer.headers(BUYER)
+    ).json()
+    assert len(rest["items"]) == 1 and "nextCursor" not in rest
+    assert client.get("/bookings", params={"role": "owner"}, headers=issuer.headers(BUYER)).json()["items"] == []
+    assert len(client.get("/bookings", params={"role": "owner"}, headers=issuer.headers(HOST)).json()["items"]) == 3
 
 
-def test_nobody_without_a_session_when_the_demo_user_is_off():
-    with TestClient(build_app(_settings(demo_user_id=""), matching=FakeMatching(), accounts=FakeAccounts())) as c:
-        assert c.get("/bookings").status_code == 401
-        assert c.get("/bookings").json()["error"]["code"] == "unauthorized"
-        assert _create(c).status_code == 401
-        assert c.get("/bookings", headers={"X-Cappy-User": "u_x"}).status_code == 200
+def test_busy_is_internal_and_lists_held_windows(client, app, issuer):
+    body = {"listingIds": ["l9"], "start": now_iso(), "until": iso_from_ms(now_ms() + 72 * HOUR_MS)}
+    assert client.post("/internal/busy", json=body).status_code == 403
+    b = _book(client, issuer)["booking"]
+    held = client.post("/internal/busy", json=body, headers=INTERNAL).json()
+    assert held == {"l9": [[b["match"]["start"], b["match"]["end"]]]}
+    _do(client, issuer, BUYER, b["id"], "cancel")
+    assert client.post("/internal/busy", json=body, headers=INTERNAL).json() == {}
+
+
+async def _age(app, bid: str, **fields) -> None:
+    async with app.state.db.transaction() as s:
+        row = await s.get(BookingRow, bid)
+        for k, v in fields.items():
+            setattr(row, k, v)
+
+
+def test_unpaid_and_unanswered_requests_lapse(client, app, issuer):
+    unpaid = _book(client, issuer)["booking"]["id"]
+    unanswered = _requested(client, app, issuer, start_h=40)
+    past = datetime.now(UTC) - timedelta(minutes=1)
+    call(app, _age, app, unpaid, expires_at=past)
+    # Acting on a lapsed request fails even before the sweep gets to it.
+    call(app, _age, app, unanswered, expires_at=past)
+    assert _do(client, issuer, HOST, unanswered, "accept").status_code == 409
+    assert call(app, sweep_once, app) == 2
+    for bid in (unpaid, unanswered):
+        assert client.get(f"/bookings/{bid}", headers=issuer.headers(BUYER)).json()["status"] == "expired"
+    assert call(app, sweep_once, app) == 0
+
+
+def test_the_answer_deadline_never_passes_the_window_start(client, app, issuer):
+    bid = _requested(client, app, issuer, start_h=2)
+    b = client.get(f"/bookings/{bid}", headers=issuer.headers(BUYER)).json()
+    assert b["expiresAt"] == b["match"]["start"]
+
+
+def test_finished_jobs_complete_themselves(client, app, issuer):
+    bid = _requested(client, app, issuer)
+    _do(client, issuer, HOST, bid, "accept")
+    ended = datetime.now(UTC) - timedelta(hours=49)
+    call(app, _age, app, bid, window_start=ended - timedelta(hours=2), window_end=ended)
+    assert call(app, sweep_once, app) == 1
+    assert client.get(f"/bookings/{bid}", headers=issuer.headers(BUYER)).json()["status"] == "completed"
+
+
+def test_events_are_idempotent(client, app, issuer):
+    bid = _book(client, issuer)["booking"]["id"]
+    ev = Event(
+        id=new_id("ev"), type=PAYMENT_AUTHORISED, source="payments", occurred_at=now_iso(), data={"bookingId": bid}
+    )
+    assert call(app, app.state.dispatcher.handle, ev) is True
+    assert call(app, app.state.dispatcher.handle, ev) is False

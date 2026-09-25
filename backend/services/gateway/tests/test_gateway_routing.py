@@ -1,99 +1,71 @@
 from __future__ import annotations
 
-import json
-
 import httpx
 import pytest
 from fastapi.testclient import TestClient
 
 from gateway.main import build_app
-from gateway.routing import ACCOUNTS, BOOKING, CATALOG, MATCHING, resolve
+from gateway.routing import BOOKING, CATALOG, MATCHING, PAYMENTS, resolve
 from gateway.settings import Settings
 
 
 @pytest.mark.parametrize(
     ("path", "upstream"),
     [
-        ("/world", CATALOG),
         ("/me", CATALOG),
+        ("/me/listings", CATALOG),
         ("/districts", CATALOG),
+        ("/cities", CATALOG),
         ("/owners/o1", CATALOG),
-        ("/owners/o1/outcomes", CATALOG),
         ("/listings", CATALOG),
         ("/listings/l9", CATALOG),
         ("/listings/l9/slots", CATALOG),
-        ("/listings/l9/pause", CATALOG),
         ("/listings/l9/reviews", CATALOG),
-        ("/reviews", CATALOG),
-        ("/saved", CATALOG),
+        ("/search", CATALOG),
         ("/saved/l9", CATALOG),
         ("/uploads", CATALOG),
         ("/listings/l9/offers", MATCHING),
-        ("/listings/l9/reviews/summary", MATCHING),
         ("/matches", MATCHING),
-        ("/match-for-offer", MATCHING),
         ("/quote", MATCHING),
-        ("/feasibility", MATCHING),
         ("/categories", MATCHING),
-        ("/groups", MATCHING),
-        ("/review-tags", MATCHING),
         ("/browse/spotlight", MATCHING),
-        ("/districts/nearest", MATCHING),
         ("/bookings", BOOKING),
         ("/bookings/bk_1/accept", BOOKING),
-        ("/auth/login", ACCOUNTS),
-        ("/auth/register", ACCOUNTS),
-        ("/auth/session", ACCOUNTS),
-        ("/auth/logout", ACCOUNTS),
-        ("/internal/accounts/o1", None),
-        ("/internal/owners", None),
-        ("/nothing-here", None),
+        ("/payments/config", PAYMENTS),
+        ("/payments/webhooks/stripe", PAYMENTS),
+        # Never reachable from outside, however the path is dressed up.
+        ("/internal/candidates", None),
+        ("/listings/internal/candidates", None),
+        ("/bookings/../internal/busy", None),
+        ("/match-for-offer", None),
         ("/admin/reset", None),
+        ("/world", None),
+        ("/nothing-here", None),
     ],
 )
 def test_resolve(path, upstream):
     assert resolve(path) == upstream
 
 
-def _fake_upstreams(calls: list):
+def _upstreams(calls: list):
     def handler(request: httpx.Request) -> httpx.Response:
         calls.append((request.url.host, request.method, request.url.path, dict(request.headers)))
-        if request.url.path == "/healthz":
-            return httpx.Response(200, json={"ok": True})
-        if request.url.host == "accounts" and request.url.path == "/auth/session":
-            auth = request.headers.get("authorization", "")
-            if auth == "Bearer good":
-                return httpx.Response(200, json={"id": "u_mara", "email": "mara@example.com", "name": "Mara"})
-            return httpx.Response(401, json={"error": {"code": "unauthorized", "message": "sign in again"}})
-        if request.url.host == "accounts" and request.url.path == "/auth/logout":
-            return httpx.Response(204)
-        if request.url.path == "/admin/reset":
-            return httpx.Response(204)
-        if request.url.host == "catalog" and request.url.path == "/world":
-            return httpx.Response(200, json={"owners": [], "listings": [], "slots": [], "districts": {}, "reviews": []})
-        if request.url.host == "catalog" and request.url.path == "/saved/l9":
-            return httpx.Response(200, json=["l9"])
-        if request.url.host == "catalog" and request.url.path.startswith("/media/"):
-            return httpx.Response(
-                200,
-                content=b"PNG",
-                headers={"content-type": "image/png", "cache-control": "public, max-age=31536000, immutable"},
-            )
-        if request.url.host == "booking" and request.url.path == "/bookings":
-            body = json.loads(request.content or b"{}")
-            return httpx.Response(201, json={"echo": body, "user": request.headers.get("x-cappy-user")})
-        return httpx.Response(404, json={"error": {"code": "not_found", "message": "nope"}})
+        if request.url.host == "matching":
+            raise httpx.ConnectError("down")
+        if request.url.path.startswith("/media/"):
+            return httpx.Response(200, content=b"WEBP", headers={"content-type": "image/webp", "x-secret": "no"})
+        return httpx.Response(201, json={"ok": True}, headers={"set-cookie": "leak=1"})
 
     return httpx.MockTransport(handler)
 
 
 def _settings(**over) -> Settings:
     return Settings(
+        app_env="test",
         catalog_url="http://catalog",
         matching_url="http://matching",
         booking_url="http://booking",
-        accounts_url="http://accounts",
-        cors_origins="",
+        payments_url="http://payments",
         **over,
     )
 
@@ -101,120 +73,63 @@ def _settings(**over) -> Settings:
 @pytest.fixture()
 def gateway():
     calls: list = []
-    with TestClient(build_app(_settings(), transport=_fake_upstreams(calls))) as c:
+    with TestClient(build_app(_settings(), transport=_upstreams(calls))) as c:
         yield c, calls
 
 
-def test_proxies_by_path_and_forwards_identity(gateway):
+def test_forwards_the_token_and_request_id_and_nothing_else(gateway):
     c, calls = gateway
-    assert c.get("/api/world").json() == {"owners": [], "listings": [], "slots": [], "districts": {}, "reviews": []}
-    r = c.post("/api/bookings", json={"listingId": "l9"}, headers={"Authorization": "Bearer good"})
-    assert r.status_code == 201 and r.json() == {"echo": {"listingId": "l9"}, "user": "u_mara"}
-    assert c.put("/api/saved/l9").json() == ["l9"]
-    photo = c.get("/media/abc.png")
-    assert photo.status_code == 200 and photo.headers["content-type"] == "image/png"
-    assert "immutable" in photo.headers["cache-control"]
-    assert [(h, m, p) for h, m, p, _ in calls] == [
-        ("catalog", "GET", "/world"),
-        ("accounts", "GET", "/auth/session"),
-        ("booking", "POST", "/bookings"),
-        ("catalog", "PUT", "/saved/l9"),
-        ("catalog", "GET", "/media/abc.png"),
-    ]
-    assert "x-cappy-user" not in calls[0][3], "anonymous requests carry no identity"
+    r = c.post(
+        "/api/bookings",
+        json={"listingId": "l9"},
+        headers={"Authorization": "Bearer t", "Idempotency-Key": "k1", "X-Cappy-User": "o1", "Cookie": "a=b"},
+    )
+    assert r.status_code == 201 and "set-cookie" not in r.headers
+    host, method, path, headers = calls[-1]
+    assert (host, method, path) == ("booking", "POST", "/bookings")
+    assert headers["authorization"] == "Bearer t" and headers["idempotency-key"] == "k1"
+    assert headers["x-request-id"] == r.headers["x-request-id"]
+    assert "x-cappy-user" not in headers and "cookie" not in headers
 
 
-def test_identity_comes_from_the_session_not_the_client(gateway):
+def test_unknown_paths_never_reach_a_service(gateway):
     c, calls = gateway
-    # A client cannot pick who it is by sending the header the services trust.
-    r = c.post("/api/bookings", json={}, headers={"X-Cappy-User": "o1"})
-    assert r.status_code == 201 and r.json()["user"] is None
-    assert "x-cappy-user" not in calls[-1][3]
-
-    # A bad token is refused at the gateway, before any service sees it.
-    r = c.get("/api/bookings", headers={"Authorization": "Bearer stale"})
-    assert r.status_code == 401 and r.json()["error"]["code"] == "unauthorized"
-    assert calls[-1][0] == "accounts"
-
-    # A good token is checked once, then remembered.
-    calls.clear()
-    for _ in range(3):
-        c.post("/api/bookings", json={}, headers={"Authorization": "Bearer good", "X-Cappy-User": "o1"})
-    assert [(h, p) for h, _, p, _ in calls] == [
-        ("accounts", "/auth/session"),
-        ("booking", "/bookings"),
-        ("booking", "/bookings"),
-        ("booking", "/bookings"),
-    ]
-    assert all(hdrs.get("x-cappy-user") == "u_mara" for h, _, _, hdrs in calls if h == "booking")
-
-    # Signing out forgets it at once.
-    assert c.post("/api/auth/logout", headers={"Authorization": "Bearer good"}).status_code == 204
-    calls.clear()
-    c.post("/api/bookings", json={}, headers={"Authorization": "Bearer good"})
-    assert calls[0][0] == "accounts", "asked again after logout"
-
-    # The token itself reaches only the accounts service.
-    calls.clear()
-    c.get("/api/auth/session", headers={"Authorization": "Bearer good"})
-    c.get("/api/world", headers={"Authorization": "Bearer good"})
-    assert calls[0][3].get("authorization") == "Bearer good"
-    assert "authorization" not in calls[-1][3]
+    for path in ("/api/internal/busy", "/api/whatever", "/api/admin/reset"):
+        r = c.post(path, json={})
+        assert r.status_code == 404 and r.json()["error"]["code"] == "not_found"
+    assert calls == []
 
 
-def test_index_points_somewhere_useful(gateway):
+def test_an_unreachable_service_is_a_clean_502(gateway):
     c, _ = gateway
-    body = c.get("/").json()
-    assert body["health"] == "/api/health" and body["docs"] == "/docs"
+    r = c.post("/api/matches", json={})
+    assert r.status_code == 502 and "down" not in r.text
 
 
-def test_unknown_and_upstream_errors_keep_shape(gateway):
+def test_photos_pass_through_without_internal_headers(gateway):
     c, _ = gateway
-    assert c.get("/api/whatever").status_code == 404
-    r = c.get("/api/listings/l99")
-    assert r.status_code == 404 and r.json()["error"]["code"] == "not_found"
+    r = c.get("/media/abc.webp")
+    assert r.headers["content-type"] == "image/webp" and "x-secret" not in r.headers
 
 
-def test_health_and_reset_fan_out(gateway):
+def test_body_limit(gateway):
     c, calls = gateway
-    h = c.get("/api/health").json()
-    assert h == {"ok": True, "services": {"catalog": True, "matching": True, "booking": True, "accounts": True}}
-    calls.clear()
-    assert c.post("/api/admin/reset").status_code == 204
-    assert [(h, p) for h, _, p, _ in calls] == [
-        ("booking", "/admin/reset"),
-        ("catalog", "/admin/reset"),
-        ("accounts", "/admin/reset"),
-    ]
+    assert (
+        c.post("/api/bookings", content=b"x" * 300_000, headers={"content-type": "application/json"}).status_code == 413
+    )
+    assert calls == []
 
 
 def test_serves_the_web_app_from_the_same_origin(tmp_path):
-    """The website and the installed PWA come from the gateway's origin, with a
-    single-page fallback for the app's own routes, and the API stays at /api."""
     (tmp_path / "index.html").write_text("<!doctype html><title>Cappy</title>", encoding="utf-8")
     (tmp_path / "assets").mkdir()
     (tmp_path / "assets" / "index-abc123.js").write_text("console.log(1)", encoding="utf-8")
     (tmp_path / "sw.js").write_text("// service worker", encoding="utf-8")
-    calls: list = []
-    with TestClient(build_app(_settings(static_dir=str(tmp_path)), transport=_fake_upstreams(calls))) as c:
+    with TestClient(build_app(_settings(static_dir=str(tmp_path)), transport=_upstreams([]))) as c:
         home = c.get("/")
-        assert home.status_code == 200 and "Cappy" in home.text
-        assert home.headers["cache-control"] == "no-store"
-
-        asset = c.get("/assets/index-abc123.js")
-        assert asset.status_code == 200 and "immutable" in asset.headers["cache-control"]
+        assert "Cappy" in home.text and home.headers["cache-control"] == "no-store"
+        assert "immutable" in c.get("/assets/index-abc123.js").headers["cache-control"]
         assert c.get("/sw.js").headers["cache-control"] == "no-store"
-
-        deep_link = c.get("/listing/l9")
-        assert deep_link.status_code == 200 and "Cappy" in deep_link.text, "client-side routes fall back to the app"
-        assert c.get("/../../etc/passwd").status_code == 200 and "Cappy" in c.get("/../../etc/passwd").text
-
-        assert c.get("/api/world").status_code == 200, "the API is untouched"
-        assert c.get("/media/abc.png").headers["content-type"] == "image/png", "photos are not the app"
-        assert c.get("/api/health").json()["ok"] is True
+        assert "Cappy" in c.get("/listing/l9").text, "client-side routes fall back to the app"
+        assert "Cappy" in c.get("/../../etc/passwd").text
         assert c.get("/api/whatever").status_code == 404
-
-
-def test_missing_static_dir_falls_back_to_api_only(tmp_path):
-    with TestClient(build_app(_settings(static_dir=str(tmp_path / "nope")), transport=_fake_upstreams([]))) as c:
-        assert c.get("/").json()["health"] == "/api/health"

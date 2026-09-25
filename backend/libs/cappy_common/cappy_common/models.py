@@ -59,7 +59,17 @@ Material = Literal[
     "Plywood",
 ]
 
-BookingStatus = Literal["requested", "accepted", "declined", "active", "completed", "cancelled"]
+BookingStatus = Literal[
+    "awaiting_payment",
+    "requested",
+    "accepted",
+    "active",
+    "completed",
+    "declined",
+    "cancelled",
+    "expired",
+    "payment_failed",
+]
 
 # The things people say about a booking, as a fixed vocabulary (``REVIEW_TAGS``
 # in ``src/domain/reviews.ts``). Picked rather than typed, because a tag that
@@ -223,7 +233,7 @@ class Outcome(CamelModel):
     on_time: bool
     quality: int = Field(ge=1, le=5)
     # What the buyer wrote. Becomes a review the next buyer reads.
-    note: str | None = None
+    note: str | None = Field(default=None, max_length=1000)
     # The short things people say most, picked rather than typed.
     tags: list[str] | None = None
 
@@ -259,6 +269,27 @@ class Review(CamelModel):
     author_id: str | None = None
 
 
+class ListingSnapshot(CamelModel):
+    """What the listing looked like when it was booked: enough to draw a
+    booking card without asking the catalog about every row, and the record of
+    what was actually agreed even if the listing changes or is removed later."""
+
+    title: str
+    district: str
+    category: CategoryId
+    owner_name: str
+    photo: str | None = None
+
+
+class MatchView(CamelModel):
+    """A match with what a card needs to draw it: matching returns it for a
+    search, and for the one window a buyer picked when booking."""
+
+    match: Match
+    listing: Listing
+    owner: Owner
+
+
 class Booking(CamelModel):
     id: str
     match: Match
@@ -268,6 +299,9 @@ class Booking(CamelModel):
     requester_id: str | None = None
     decline_reason: str | None = None
     outcome: Outcome | None = None
+    listing: ListingSnapshot | None = None
+    # While a request waits for payment or for the owner: when it lapses.
+    expires_at: Iso | None = None
 
 
 class World(CamelModel):
