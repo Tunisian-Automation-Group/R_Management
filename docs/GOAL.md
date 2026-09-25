@@ -70,3 +70,27 @@ What this adds to "production ready":
     privacy policy and terms, data export (GDPR), and working deep links.
 11. **Payments for real.** The Stripe test-mode flow (card form, webhook,
     capture, refund, payout) works end to end, not only the fake provider.
+
+## The brief, extended again (2026-09-26, verbatim)
+
+> do not apply on real aws or anything, also make sure that only signed in users see the app and keep looking at both web version and app version we cannot see anything until logged in and we need welcome screen for app for first timers, also keep looking and searching on the internet for how these apps look and keep working on back and front for web and app for at least 3 or 4 hours until every edge case known is soved in these apps, each time an agent check both versions and another searches and add tasks based on what these big  apps work on best practices and so on, keep this in a loop like this until we are done and solved everything that is the goal and each time the tasks are put in a doc under @docs/
+
+What this adds:
+
+12. **Nothing is ever applied to real AWS** (or any real cloud account).
+    Everything runs and is proven locally. Terraform is only validated,
+    and applied only to LocalStack.
+13. **Signed-in only.** Nothing of the product (listings, search, people,
+    prices) is visible or reachable before sign-in, on the web or in the
+    apps, and the server enforces it. The only public things are what law
+    or the stores require: Impressum, privacy, terms, the report form (DSA
+    Art. 16) and the account-deletion page (Google Play).
+14. **A welcome screen** for first-time users of the app and the web.
+15. **The loop.** Each round:
+    - a research agent studies how the big apps do it and adds tasks to
+      `docs/TASKS.md`;
+    - builders implement them on backend, web and app;
+    - a separate verifier agent checks both the web version and the app
+      version (the phone layout and the store shells).
+
+    It repeats until a round finds nothing.
