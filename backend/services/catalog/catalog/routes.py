@@ -11,7 +11,7 @@ from pydantic import Field, TypeAdapter, ValidationError
 from cappy_common.app import ApiRouter
 from cappy_common.auth import Principal, optional_principal, require_internal, require_principal
 from cappy_common.categories import mode_of
-from cappy_common.errors import Conflict, Forbidden, Invalid, NotFound
+from cappy_common.errors import Conflict, Forbidden, Invalid, NotFound, Unavailable
 from cappy_common.events import LISTING_CHANGED, PROFILE_CREATED, PROFILE_DELETED
 from cappy_common.models import CamelModel, District, Iso, Listing, Owner, Review, Slot, World
 from cappy_common.pagination import Page, clamp_limit
@@ -389,6 +389,8 @@ class CreatedListing(CamelModel):
 async def create_listing(
     body: ListingIn, request: Request, repo=Depends(get_repo), p: Principal = Depends(require_principal)
 ) -> CreatedListing:
+    if not request.app.state.settings.accepting_listings:
+        raise Unavailable("new listings are paused for a moment; please try again later")
     if await repo.find_owner(p.sub) is None:
         raise Forbidden("create your profile before listing anything")
     listing = await _validate_listing(request, repo, body.listing, p.sub)

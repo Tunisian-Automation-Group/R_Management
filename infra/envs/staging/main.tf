@@ -43,6 +43,12 @@ variable "alarm_email" {
   type = string
 }
 
+# Kill switches: terraform apply -var 'switches={bookings=false,payouts=true,listings=true}'
+variable "switches" {
+  type    = object({ bookings = bool, payouts = bool, listings = bool })
+  default = { bookings = true, payouts = true, listings = true }
+}
+
 module "platform" {
   source    = "../../platform"
   providers = { aws = aws, aws.us_east_1 = aws.us_east_1 }

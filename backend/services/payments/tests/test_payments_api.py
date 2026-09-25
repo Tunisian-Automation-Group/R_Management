@@ -366,3 +366,57 @@ def test_a_chargeback_holds_the_payout(stripe_app, broker):
     assert call(app, _payment, app, "bk_cb").chargeback_at is not None
     assert _status(app, "bk_cb", "completed")
     assert call(app, _payment, app, "bk_cb").status == "captured", "not paid out"
+
+
+def test_a_lost_webhook_is_made_good_by_reconciliation(stripe_app, broker):
+    from datetime import UTC, datetime, timedelta
+
+    from payments.jobs import reconcile_once
+
+    app, c = stripe_app
+
+    async def stuck():
+        async with app.state.db.transaction() as s:
+            old = datetime.now(UTC) - timedelta(minutes=15)
+            for bid, intent in (("bk_lost", "pi_lost"), ("bk_gone", "pi_gone"), ("bk_new", "pi_new")):
+                created = old if bid != "bk_new" else datetime.now(UTC)
+                s.add(
+                    PaymentRow(
+                        booking_id=bid,
+                        intent_id=intent,
+                        requester_id="b",
+                        owner_id="h",
+                        amount=100,
+                        owner_net=80,
+                        currency="eur",
+                        status="created",
+                        created_at=created,
+                        updated_at=created,
+                    )
+                )
+
+    call(app, stuck)
+    statuses = {"pi_lost": "requires_capture", "pi_gone": "canceled", "pi_new": "requires_capture"}
+
+    async def status(intent_id):
+        return statuses[intent_id]
+
+    app.state.provider.intent_status = status
+    assert call(app, reconcile_once, app) == 2
+    assert call(app, _payment, app, "bk_lost").status == "authorised"
+    assert call(app, _payment, app, "bk_gone").status == "cancelled"
+    assert call(app, _payment, app, "bk_new").status == "created", "too young to be suspicious"
+    call(app, app.state.relay.flush)
+    assert [e.data["bookingId"] for e in broker.of_type(PAYMENT_AUTHORISED)] == ["bk_lost"]
+
+
+def test_the_payouts_kill_switch_holds_payouts_on_the_queue(issuer, broker):
+    provider = FakeProvider()
+    app = build_app(_settings(payouts_on=False), provider=provider, verifier=issuer.verifier())
+    with TestClient(app) as c:
+        app.state._portal = c.portal
+        _intent(c)
+        _status(app, "bk_1", "accepted")
+        with pytest.raises(NotReady):
+            _status(app, "bk_1", "completed")
+        assert "transfer" not in [op for op, _ in provider.calls]

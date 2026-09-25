@@ -44,7 +44,7 @@ class NotReady(RuntimeError):
     (and alarmed on) if it never becomes possible."""
 
 
-def handlers(provider: Provider, service_name: str) -> dict[str, Handler]:
+def handlers(provider: Provider, service_name: str, payouts_on: bool = True) -> dict[str, Handler]:
     outbox = Outbox(OUTBOX, service_name)
 
     async def on_status_changed(session: AsyncSession, event: Event) -> None:
@@ -81,6 +81,8 @@ def handlers(provider: Provider, service_name: str) -> dict[str, Handler]:
             log.error("CHARGEBACK hold: not paying out booking %s", row.booking_id)
             return
         elif to == "completed" and row.status == "captured":
+            if not payouts_on:
+                raise NotReady(f"payouts are switched off; {row.booking_id} waits")
             account = await session.get(ConnectAccountRow, row.owner_id)
             if account is None or not row.charge_id:
                 raise NotReady(f"cannot pay out {row.booking_id}: no connected account or charge")

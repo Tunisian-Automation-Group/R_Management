@@ -591,3 +591,20 @@ def test_editing_a_listing_keeps_the_photos_it_already_shows(client, issuer):
     )
     stranger = {**body, "photos": [*body["photos"], "https://images.unsplash.com/other.jpg"]}
     assert client.put("/listings/l9", json={"listing": stranger}, headers=h).status_code == 422
+
+
+def test_the_listings_kill_switch(issuer, broker, tmp_path, bookings):
+    settings = Settings(
+        app_env="test", database_url="sqlite+aiosqlite://", internal_token="i" * 40, accepting_listings=False
+    )
+    app = build_app(settings, media_store=DirectoryStore(str(tmp_path)), bookings=bookings, verifier=issuer.verifier())
+    with TestClient(app) as c:
+
+        async def seed():
+            async with app.state.db.transaction() as s:
+                await CatalogRepository(s).load_seed(build_world())
+
+        c.portal.call(seed)
+        _profile(c, issuer)
+        r = c.post("/listings", json={"listing": _window_listing()}, headers=issuer.headers("user-a"))
+        assert r.status_code == 503

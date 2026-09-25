@@ -7,6 +7,7 @@ from cappy_common.auth import TokenVerifier
 from cappy_common.runtime import Runtime
 
 from .handlers import handlers
+from .jobs import reconcile
 from .provider import Provider, make_provider
 from .routes import internal, router
 from .settings import Settings
@@ -22,7 +23,11 @@ def build_app(
         await provider.aclose()
 
     runtime = Runtime(
-        settings, metadata=Base.metadata, handlers=handlers(provider, settings.service_name), on_stop=close
+        settings,
+        metadata=Base.metadata,
+        handlers=handlers(provider, settings.service_name, settings.payouts_on),
+        loops=[reconcile],
+        on_stop=close,
     )
     app = create_app(settings, title="Cappy payments", lifespan=runtime.lifespan())
     app.state.verifier = verifier

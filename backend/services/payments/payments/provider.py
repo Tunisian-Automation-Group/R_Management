@@ -43,6 +43,10 @@ class Provider:
 
     async def create_intent(self, *, booking_id: str, amount: int, currency: str, metadata: dict) -> Intent: ...
     async def client_secret(self, intent_id: str) -> str: ...
+    async def intent_status(self, intent_id: str) -> str:
+        """Stripe's own word on an intent: requires_payment_method,
+        requires_capture, succeeded, canceled, …"""
+
     async def capture(self, intent_id: str, booking_id: str) -> str:
         """Returns the charge id."""
 
@@ -87,6 +91,9 @@ class StripeProvider(Provider):
 
     async def client_secret(self, intent_id: str) -> str:
         return (await self._c.v1.payment_intents.retrieve_async(intent_id)).client_secret or ""
+
+    async def intent_status(self, intent_id: str) -> str:
+        return (await self._c.v1.payment_intents.retrieve_async(intent_id)).status
 
     async def capture(self, intent_id: str, booking_id: str) -> str:
         # Idempotency keys live 24 hours and a dead-lettered event can be
@@ -175,6 +182,7 @@ class FakeProvider(Provider):
     def __init__(self) -> None:
         self.calls: list[tuple[str, str]] = []
         self.failing: set[str] = set()
+        self.statuses: dict[str, str] = {}
 
     def _call(self, op: str, key: str) -> None:
         if op in self.failing:
@@ -187,6 +195,9 @@ class FakeProvider(Provider):
 
     async def client_secret(self, intent_id: str) -> str:
         return f"{intent_id}_secret_fake"
+
+    async def intent_status(self, intent_id: str) -> str:
+        return self.statuses.get(intent_id, "requires_capture")
 
     async def capture(self, intent_id: str, booking_id: str) -> str:
         if "capture_declined" in self.failing:

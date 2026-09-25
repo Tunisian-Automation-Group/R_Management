@@ -34,6 +34,9 @@ class Settings(CommonSettings):
     # listing that checkout will then refuse. Off locally, where the fake
     # payments provider pays anyone.
     require_payable_owners: bool = False
+    # Kill switch (docs/runbook.md): false stops new listings (a spam wave);
+    # existing ones stay bookable.
+    accepting_listings: bool = True
 
     def unsafe_reasons(self) -> list[str]:
         problems = super().unsafe_reasons()

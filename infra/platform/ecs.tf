@@ -22,12 +22,17 @@ locals {
   }
   service_env = {
     # The App Store and Google Play shells call the API cross-origin (ADR 0012).
-    gateway  = { CORS_ORIGINS = "capacitor://localhost,https://localhost" }
-    catalog  = { MEDIA_BUCKET = aws_s3_bucket.media.bucket, REQUIRE_PAYABLE_OWNERS = "true" }
+    gateway = { CORS_ORIGINS = "capacitor://localhost,https://localhost" }
+    catalog = {
+      MEDIA_BUCKET           = aws_s3_bucket.media.bucket
+      REQUIRE_PAYABLE_OWNERS = "true"
+      ACCEPTING_LISTINGS     = tostring(var.switches.listings)
+    }
     matching = {}
-    booking  = {}
+    booking  = { ACCEPTING_BOOKINGS = tostring(var.switches.bookings) }
     payments = {
       PAYMENTS_PROVIDER      = "stripe"
+      PAYOUTS_ON             = tostring(var.switches.payouts)
       WEB_BASE_URL           = "https://${var.domain}"
       STRIPE_PUBLISHABLE_KEY = "" # replaced from the secret below
     }

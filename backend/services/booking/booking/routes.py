@@ -127,6 +127,8 @@ async def create_booking(
     db, outbox = app.state.db, app.state.outbox
     settings: Settings = app.state.settings
 
+    if not settings.accepting_bookings:
+        raise Unavailable("new bookings are paused for a moment; please try again later")
     fingerprint = hashlib.sha256(body.model_dump_json(by_alias=True).encode()).hexdigest()
     if idempotency_key:
         async with db.session() as s:

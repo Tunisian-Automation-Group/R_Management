@@ -82,3 +82,13 @@ variable "waf_rate_limit" {
   type        = number
   default     = 2000
 }
+
+variable "switches" {
+  description = "Kill switches (docs/runbook.md): turn one off and apply to pause it everywhere"
+  type = object({
+    bookings = bool
+    payouts  = bool
+    listings = bool
+  })
+  default = { bookings = true, payouts = true, listings = true }
+}

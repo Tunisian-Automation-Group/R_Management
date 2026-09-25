@@ -76,14 +76,15 @@ Status: `[ ]` open · `[~]` in progress · `[x]` done (commit) · `[-]` dropped 
 - [x] T-19 Chargebacks: record `charge.dispute.*`, hold the payout, alarm
 - [x] T-20 Cap open unpaid bookings per person (card testing)
 - [x] T-22 SES suppression list and bounce/complaint alarms
-- [ ] T-24 RDS Proxy (decide from the research; wire in Terraform)
-- [ ] T-25 Backup-restore drill in the runbook
-- [ ] T-26 Region-outage decision recorded (RPO/RTO)
+- [-] T-24 RDS Proxy: not yet. Research puts the trigger at roughly 500 tasks or connections above 70% of the maximum; the Terraform `check connection_budget` fails before that happens
+- [x] T-25 Backup-restore drill in the runbook
+- [x] T-26 Region-outage decision recorded (RPO/RTO)
 - [x] T-29 Minimum app version (`/api/app-config`)
 - [ ] T-31 Push notifications (SNS → APNs/FCM) for owners' requests
 - [ ] T-33 Tracing (ADOT → X-Ray)
 - [ ] T-34 Synthetic canaries
-- [ ] T-35 SLOs and error budgets
+- [x] T-35 SLOs and error budgets (docs/slo.md)
+- [ ] T-35b Burn-rate alarms per SLO in Terraform
 - [ ] T-02, T-06, T-36 decided from the research (Bot Control, Cognito threat protection, canary deploys)
 
 ## Found while doing these
@@ -95,13 +96,13 @@ Status: `[ ]` open · `[~]` in progress · `[x]` done (commit) · `[-]` dropped 
 ## From the research (R)
 
 - [x] R-0 Card authorisations expire after 7 days: already safe (capture at accept, at most 24 h after the request)
-- [ ] R-1 Payments reconciliation sweep: intents stuck in an intermediate state converge with Stripe
+- [x] R-1 Payments reconciliation sweep: intents stuck in an intermediate state converge with Stripe
 - [x] R-2 Reject an idempotency key reused with a different request body
 - [x] R-3 Full jitter in the relay poll, the sweeps and client retry backoff
 - [x] R-4 Public GETs: `s-maxage` plus `stale-while-revalidate` and `stale-if-error` at the edge (with T-07)
 - [x] R-5 Connection budget written down and asserted; replica-lag alarm; reader in promotion tier 1
-- [ ] R-10 Kill switches (settings): stop new bookings, stop payouts, stop new listings, without a deploy
-- [ ] R-11 Game-day runbook (Aurora failover, stop half the tasks) with AWS FIS
+- [x] R-10 Kill switches (settings): stop new bookings, stop payouts, stop new listings, without a deploy
+- [x] R-11 Game-day runbook (Aurora failover, stop half the tasks) with AWS FIS
 - [ ] R-13 Web deletion page for Google Play (`/account/delete`)
 
 ## Load

@@ -407,3 +407,15 @@ def test_a_person_cannot_pile_up_unpaid_bookings(client, issuer):
         _book(client, issuer, start_h=h)
     r = client.post("/bookings", json=_body(start_h=42), headers=issuer.headers(BUYER))
     assert r.status_code == 429 and r.headers.get("retry-after") is None
+
+
+def test_the_bookings_kill_switch(issuer, broker, payments):
+    settings = Settings(
+        app_env="test", database_url="sqlite+aiosqlite://", internal_token="i" * 40, accepting_bookings=False
+    )
+    app = build_app(
+        settings, matching=FakeMatching(), payments=payments, catalog=FakeCatalog(), verifier=issuer.verifier()
+    )
+    with TestClient(app) as c:
+        r = c.post("/bookings", json=_body(), headers=issuer.headers(BUYER))
+        assert r.status_code == 503 and r.headers["retry-after"] and "paused" in r.json()["error"]["message"]

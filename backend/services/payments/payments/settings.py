@@ -21,6 +21,9 @@ class Settings(CommonSettings):
     stripe_api_base: str = ""
     # Where Stripe sends an owner back to after onboarding.
     web_base_url: str = "http://localhost:5173"
+    # Kill switch (docs/runbook.md): false holds every payout on its queue
+    # (retried with backoff) until switched back on. Nothing is lost.
+    payouts_on: bool = True
 
     def unsafe_reasons(self) -> list[str]:
         problems = super().unsafe_reasons()
