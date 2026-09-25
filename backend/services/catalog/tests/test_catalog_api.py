@@ -670,3 +670,68 @@ def test_reviewers_are_shown_by_first_name_and_initial():
     assert short_name("Ada Lovelace") == "Ada L."
     assert short_name("Jean Claude van Damme") == "Jean D."
     assert short_name("Cher") == "Cher"
+
+
+def _staff(issuer):
+    return {"Authorization": f"Bearer {issuer.token('staff-1', **{'cognito:groups': ['admin']})}"}
+
+
+def test_anyone_can_report_and_staff_decide_with_reasons(client, app, issuer, broker):
+    from cappy_common.events import MODERATION_DECISION, REPORT_RECEIVED
+
+    body = {
+        "targetType": "listing",
+        "targetId": "l9",
+        "reason": "fraud",
+        "details": "The photos are stolen from a shop",
+    }
+    assert client.post("/reports", json=body).status_code == 422, "anonymous needs an email"
+    anon = client.post("/reports", json={**body, "email": "neighbour@example.com"}).json()
+    mine = client.post("/reports", json={**body, "reason": "spam"}, headers=issuer.headers("user-a")).json()
+    assert anon["status"] == "open" and mine["id"] != anon["id"]
+
+    assert client.get("/admin/reports", headers=issuer.headers("user-a")).status_code == 403, "staff only"
+    queue = client.get("/admin/reports", headers=_staff(issuer)).json()["items"]
+    assert [r["id"] for r in queue] == [anon["id"], mine["id"]], "oldest first"
+
+    short = {"action": "take_down", "statement": "no"}
+    assert client.post(f"/admin/reports/{anon['id']}/decide", json=short, headers=_staff(issuer)).status_code == 422
+    why = {"action": "take_down", "statement": "The listing uses photos taken from another business (terms §4)."}
+    assert (
+        client.post(f"/admin/reports/{anon['id']}/decide", json=why, headers=_staff(issuer)).json()["status"]
+        == "actioned"
+    )
+    assert client.post(f"/admin/reports/{anon['id']}/decide", json=why, headers=_staff(issuer)).status_code == 409
+    assert client.get("/listings/l9").status_code == 404
+    assert all(v["listing"]["id"] != "l9" for v in client.get("/search", params={"q": "festool"}).json()["items"])
+    # The owner cannot simply bring it back.
+    assert client.post("/listings/l9/resume", headers=issuer.headers("o1")).status_code == 404
+
+    dismiss = {"action": "dismiss", "statement": "Already handled under the earlier report about this listing."}
+    client.post(f"/admin/reports/{mine['id']}/decide", json=dismiss, headers=_staff(issuer))
+    flush(app)
+    assert len(broker.of_type(REPORT_RECEIVED)) == 2
+    decisions = broker.of_type(MODERATION_DECISION)
+    assert decisions[0].data["affectedId"] == "o1" and decisions[0].data["reporterEmail"] == "neighbour@example.com"
+    assert decisions[1].data["affectedId"] is None, "nobody is told they were cleared of what they never heard of"
+    audit = client.get("/admin/audit", headers=_staff(issuer)).json()
+    assert [a["action"] for a in audit] == ["dismiss", "take_down"] and audit[1]["actorId"] == "staff-1"
+
+
+def test_a_suspended_owner_disappears_and_cannot_list(client, app, issuer, broker):
+    from cappy_common.events import OWNER_SUSPENDED
+
+    why = {"statement": "Repeated fraudulent listings after two warnings (terms §9)."}
+    assert client.post("/admin/owners/o1/suspend", json=why, headers=_staff(issuer)).status_code == 204
+    assert all(v["listing"]["ownerId"] != "o1" for v in client.get("/search", params={"q": "saw"}).json()["items"])
+    r = client.post("/listings", json={"listing": _window_listing(), "slots": [_slot()]}, headers=issuer.headers("o1"))
+    assert r.status_code == 403
+    flush(app)
+    assert [e.data["ownerId"] for e in broker.of_type(OWNER_SUSPENDED)] == ["o1"]
+    client.post("/admin/owners/o1/reinstate", json=why, headers=_staff(issuer))
+    assert (
+        client.post(
+            "/listings", json={"listing": _window_listing(), "slots": [_slot()]}, headers=issuer.headers("o1")
+        ).status_code
+        == 201
+    )

@@ -175,6 +175,15 @@ async def require_principal(request: Request) -> Principal:
     return principal
 
 
+async def require_admin(request: Request) -> Principal:
+    """Moderators and support: members of the Cognito group "admin"."""
+    p = await require_principal(request)
+    groups = p.claims.get("cognito:groups") or []
+    if "admin" not in groups:
+        raise Forbidden("this needs a Cappy staff account")
+    return p
+
+
 def require_internal(request: Request) -> None:
     """For ``/internal/*`` routes: the caller must be one of our services."""
     expected: str = request.app.state.settings.internal_token.get_secret_value()

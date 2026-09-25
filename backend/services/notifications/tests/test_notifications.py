@@ -135,3 +135,28 @@ def test_a_chat_message_is_pushed_never_emailed():
         c.portal.call(app.state.dispatcher.handle, ev)
     assert [t for _, t in pusher.sent] == ["New message: Table saw"]
     assert mailer.sent == []
+
+
+def test_reports_are_acknowledged_and_decisions_explained(app):
+    from cappy_common.events import MODERATION_DECISION, REPORT_RECEIVED
+
+    sent = _sent(
+        app,
+        _event(REPORT_RECEIVED, reportId="rp_1", reporterId=None, reporterEmail="n@example.com", targetType="listing"),
+        _event(
+            MODERATION_DECISION,
+            reportId="rp_1",
+            action="take_down",
+            targetType="listing",
+            targetId="l9",
+            affectedId="host",
+            reporterId=None,
+            reporterEmail="n@example.com",
+            statement="Stolen photos (terms 4).",
+        ),
+    )
+    assert sent == [
+        ("n@example.com", "We received your report"),
+        ("host@example.com", "We removed your listing"),
+        ("n@example.com", "Your report: our decision"),
+    ]

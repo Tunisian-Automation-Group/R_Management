@@ -60,6 +60,8 @@ class OwnerRow(Base):
     # member") so other people's bookings still make sense, but it is gone
     # from every public page.
     deleted_at: Mapped[datetime | None] = mapped_column(UtcDateTime, nullable=True)
+    # Suspended by moderation: listings taken down, no new ones.
+    suspended_at: Mapped[datetime | None] = mapped_column(UtcDateTime, nullable=True)
 
 
 class ListingRow(Base):
@@ -75,6 +77,8 @@ class ListingRow(Base):
     # Where the hand-over happens. Private: only the two sides of an accepted
     # booking ever see it, never a public listing response.
     address: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    # Taken down by moderation: hidden everywhere, and the owner cannot resume it.
+    moderated_at: Mapped[datetime | None] = mapped_column(UtcDateTime, nullable=True)
     rules: Mapped[list] = mapped_column(JsonType)
     photos: Mapped[list] = mapped_column(JsonType, default=list)
     active: Mapped[bool] = mapped_column(Boolean, default=True)
@@ -168,6 +172,46 @@ class PayableOwnerRow(Base):
     ready: Mapped[bool] = mapped_column(Boolean)
     # When payments decided it. Events can arrive out of order; older ones lose.
     as_of: Mapped[datetime] = mapped_column(UtcDateTime)
+
+
+class ReportRow(Base):
+    """A notice about content (DSA Art. 16): a listing, a profile, a message or
+    a review. Anyone may send one; without an account, with an email."""
+
+    __tablename__ = "reports"
+    id: Mapped[str] = mapped_column(String(40), primary_key=True)
+    target_type: Mapped[str] = mapped_column(String(10))
+    target_id: Mapped[str] = mapped_column(String(64))
+    reason: Mapped[str] = mapped_column(String(20))
+    details: Mapped[str] = mapped_column(String(2000))
+    reporter_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    reporter_email: Mapped[str | None] = mapped_column(String(254), nullable=True)
+    status: Mapped[str] = mapped_column(String(10), default="open")
+    created_at: Mapped[datetime] = mapped_column(UtcDateTime)
+    decided_at: Mapped[datetime | None] = mapped_column(UtcDateTime, nullable=True)
+    decided_by: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    decision: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    statement: Mapped[str | None] = mapped_column(String(2000), nullable=True)
+
+
+Index("ix_reports_status_created", ReportRow.status, ReportRow.created_at)
+
+
+class ModerationActionRow(Base):
+    """Every moderation action, by whom and why: the audit trail."""
+
+    __tablename__ = "moderation_actions"
+    id: Mapped[str] = mapped_column(String(40), primary_key=True)
+    actor_id: Mapped[str] = mapped_column(String(64))
+    action: Mapped[str] = mapped_column(String(20))
+    target_type: Mapped[str] = mapped_column(String(10))
+    target_id: Mapped[str] = mapped_column(String(64))
+    report_id: Mapped[str | None] = mapped_column(String(40), nullable=True)
+    statement: Mapped[str] = mapped_column(String(2000))
+    at: Mapped[datetime] = mapped_column(UtcDateTime)
+
+
+Index("ix_moderation_actions_at", ModerationActionRow.at)
 
 
 class MediaRow(Base):

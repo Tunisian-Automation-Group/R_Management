@@ -12,6 +12,7 @@ dependencies = [
     "aiosqlite>=0.20",
     "python-multipart>=0.0.12",
     "pillow>=11.0",
+    "email-validator>=2.2",
 ]
 
 [tool.uv.sources]

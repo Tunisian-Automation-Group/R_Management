@@ -11,7 +11,16 @@ import logging
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from cappy_common.events import BOOKING_MESSAGE, BOOKING_STATUS_CHANGED, PAYOUT_SENT, PROFILE_DELETED, Event, Handler
+from cappy_common.events import (
+    BOOKING_MESSAGE,
+    BOOKING_STATUS_CHANGED,
+    MODERATION_DECISION,
+    PAYOUT_SENT,
+    PROFILE_DELETED,
+    REPORT_RECEIVED,
+    Event,
+    Handler,
+)
 
 from .mail import Directory, Email, Mailer
 from .push import Pusher
@@ -76,8 +85,44 @@ def chat_push(event: Event, web: str) -> tuple[str, str, str] | None:
     )
 
 
+def moderation_mail(event: Event, web: str) -> list[tuple[str | None, str | None, str, str]]:
+    """(recipient sub, or an explicit email, subject, body) for moderation.
+    Acknowledging a notice and telling the reporter the outcome is DSA Art.
+    16(4)/(5); telling the person affected why is Art. 17."""
+    d = event.data
+    if event.type == REPORT_RECEIVED:
+        return [
+            (
+                d.get("reporterId"),
+                d.get("reporterEmail"),
+                "We received your report",
+                f"Thank you. We will look at it and tell you what we decide.\n\nReference: {d['reportId']}",
+            )
+        ]
+    if event.type != MODERATION_DECISION:
+        return []
+    out = []
+    if d.get("affectedId"):
+        what = {"take_down": "We removed your listing", "suspend": "We suspended your account"}.get(
+            d["action"], "A decision about your account"
+        )
+        body = f"{d['statement']}\n\nIf you disagree, reply to this email or contact us via {web}/legal/impressum."
+        out.append((d["affectedId"], None, what, body))
+    if d.get("reportId") and (d.get("reporterId") or d.get("reporterEmail")):
+        outcome = "we took action" if d["action"] != "dismiss" else "we found no breach of the law or our terms"
+        body = f"Having looked at your report, {outcome}.\n\n{d['statement']}\n\nReference: {d['reportId']}"
+        out.append((d.get("reporterId"), d.get("reporterEmail"), "Your report: our decision", body))
+    return out
+
+
 def handlers(directory: Directory, mailer: Mailer, web: str, pusher: Pusher | None = None) -> dict[str, Handler]:
     async def notify(session: AsyncSession, event: Event) -> None:
+        if event.type in (REPORT_RECEIVED, MODERATION_DECISION):
+            for sub, explicit, subject, text in moderation_mail(event, web.rstrip("/")):
+                address = explicit or (await directory.email_of(sub) if sub else None)
+                if address:
+                    await mailer.send(Email(to=address, subject=subject, text=text))
+            return
         if (chat := chat_push(event, web.rstrip("/"))) is not None:
             if pusher is not None:
                 await _push(session, pusher, *chat)
@@ -97,7 +142,14 @@ def handlers(directory: Directory, mailer: Mailer, web: str, pusher: Pusher | No
 
         await session.execute(delete(DeviceRow).where(DeviceRow.user_id == event.data["ownerId"]))
 
-    return {BOOKING_STATUS_CHANGED: notify, PAYOUT_SENT: notify, BOOKING_MESSAGE: notify, PROFILE_DELETED: forget}
+    return {
+        BOOKING_STATUS_CHANGED: notify,
+        PAYOUT_SENT: notify,
+        BOOKING_MESSAGE: notify,
+        REPORT_RECEIVED: notify,
+        MODERATION_DECISION: notify,
+        PROFILE_DELETED: forget,
+    }
 
 
 async def _push(session: AsyncSession, pusher: Pusher, sub: str, title: str, text: str) -> None:

@@ -394,6 +394,8 @@ async def create_listing(
         raise Unavailable("new listings are paused for a moment; please try again later")
     if await repo.find_owner(p.sub) is None:
         raise Forbidden("create your profile before listing anything")
+    if await repo.is_suspended(p.sub):
+        raise Forbidden("your account is suspended; see the email we sent you")
     listing = await _validate_listing(request, repo, body.listing, p.sub)
     created, slots = await repo.create_listing(listing, _validate_slots(body.slots))
     await repo.set_address(created.id, body.address)

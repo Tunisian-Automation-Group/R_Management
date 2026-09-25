@@ -13,7 +13,7 @@ from .clients import Catalog, HttpCatalog, HttpMatching, HttpPayments, Matching,
 from .handlers import handlers
 from .jobs import sweep
 from .messages import router as messages_router
-from .routes import internal, router
+from .routes import admin, internal, router
 from .settings import Settings
 from .tables import Base
 
@@ -43,6 +43,7 @@ def build_app(
     app.include_router(router)
     app.include_router(messages_router)
     app.include_router(internal)
+    app.include_router(admin)
     return app
 
 

@@ -91,6 +91,23 @@ Both are recorded in the booking's audit trail as `support:<name>`.
   `aws ecs run-task … --overrides '{"containerOverrides":[{"name":"catalog","command":["python","-m","catalog.cli","seed-demo"]}]}'`.
   The command refuses to run in prod.
 
+## Moderation (DSA Art. 16/17)
+
+Staff are members of the Cognito group `admin`:
+`aws cognito-idp admin-add-user-to-group --user-pool-id … --username … --group-name admin`.
+The console API is under `/api/admin/…`:
+
+| Call | What it does |
+|---|---|
+| `GET /api/admin/reports?status=open` | The queue of notices, oldest first |
+| `POST /api/admin/reports/{id}/decide` `{action: dismiss\|take_down\|suspend, statement}` | Decides. The person affected gets the statement of reasons (Art. 17); the reporter gets the outcome (Art. 16(5)) |
+| `POST /api/admin/listings/{id}/take-down` `{statement}` | Takes a listing down without a report |
+| `POST /api/admin/owners/{id}/suspend` · `/reinstate` | Suspends: their listings come down, and they cannot list or book. To also stop sign-in: `aws cognito-idp admin-disable-user` |
+| `POST /api/admin/bookings/{id}/resolve` `{outcome: pay_owner\|refund_buyer}` | Settles a dispute |
+| `GET /api/admin/audit` | Every action: who, what, why |
+
+Aim to decide safety-related notices within 24 h.
+
 ## Kill switches
 
 Each one pauses a single thing everywhere, without shipping code:

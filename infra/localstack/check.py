@@ -18,6 +18,9 @@ types = [
     "payment.payouts_ready",
     "profile.deleted",
     "booking.message",
+    "moderation.report_received",
+    "moderation.decision",
+    "moderation.owner_suspended",
     "listing.changed",
 ]
 for t in types:
@@ -25,9 +28,16 @@ for t in types:
 time.sleep(2)
 expected = {
     "catalog": {"booking.rated", "payment.payouts_ready"},
-    "booking": {"payment.authorised", "listing.changed"},
+    "booking": {"payment.authorised", "listing.changed", "moderation.owner_suspended"},
     "payments": {"booking.status_changed", "profile.deleted"},
-    "notifications": {"booking.status_changed", "payment.payout_sent", "profile.deleted", "booking.message"},
+    "notifications": {
+        "booking.status_changed",
+        "payment.payout_sent",
+        "profile.deleted",
+        "booking.message",
+        "moderation.report_received",
+        "moderation.decision",
+    },
 }
 for svc, url in out["queue_urls"].items():
     got = set()

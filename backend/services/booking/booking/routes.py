@@ -25,7 +25,7 @@ from sqlalchemy.exc import DBAPIError, IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from cappy_common.app import ApiRouter
-from cappy_common.auth import Principal, require_internal, require_principal
+from cappy_common.auth import Principal, require_admin, require_internal, require_principal
 from cappy_common.errors import ApiError, Conflict, Forbidden, Invalid, NotFound, RateLimited, Unavailable
 from cappy_common.events import BOOKING_RATED
 from cappy_common.ids import new_id
@@ -39,7 +39,7 @@ from .messages import blocked_between
 from .repository import SHOWS_HANDOVER, BookingRepository, to_booking
 from .settings import Settings
 from .state import Action, check_can_rate, next_status
-from .tables import BookingRow
+from .tables import BookingRow, SuspendedRow
 
 log = logging.getLogger(__name__)
 router = ApiRouter()
@@ -148,6 +148,8 @@ async def create_booking(
     async with db.session() as s:
         if await blocked_between(s, p.sub, view.owner.id):
             raise Forbidden("this listing is not available to you")
+        if await s.get(SuspendedRow, p.sub) is not None:
+            raise Forbidden("your account is suspended; see the email we sent you")
 
     now = _now()
     m = view.match
@@ -373,6 +375,17 @@ async def rate(
 class ResolveIn(CamelModel):
     outcome: str = Field(pattern="^(pay_owner|refund_buyer)$")
     by: str = Field(min_length=1, max_length=64, description="who at support decided")
+
+
+admin = ApiRouter(prefix="/admin")
+
+
+@admin.post("/bookings/{booking_id}/resolve", response_model=Booking)
+async def resolve_as_staff(
+    booking_id: str, body: ResolveIn, repo: BookingRepository = Depends(get_repo), p: Principal = Depends(require_admin)
+) -> Booking:
+    """The same as the internal endpoint, for staff in the admin console."""
+    return await resolve(booking_id, body.model_copy(update={"by": p.sub}), repo)
 
 
 @internal.post("/bookings/{booking_id}/resolve", response_model=Booking)

@@ -7,6 +7,7 @@ from cappy_common.auth import TokenVerifier
 from cappy_common.events import BOOKING_RATED, PAYOUTS_READY
 from cappy_common.runtime import Runtime
 
+from . import moderation
 from .clients import Bookings, HttpBookings
 from .handlers import on_booking_rated, on_payouts_ready
 from .jobs import sweep_orphans
@@ -46,6 +47,8 @@ def build_app(
     app.state.media = media_store or make_store(settings)
     app.state.bookings = bookings or HttpBookings(settings.booking_url, settings.internal_token.get_secret_value())
     app.include_router(router)
+    app.include_router(moderation.public)
+    app.include_router(moderation.admin)
     app.include_router(internal)
     return app
 

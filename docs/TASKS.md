@@ -146,9 +146,9 @@ Backend:
 ## Launch gaps (G) — from docs/research/2026-09-launch-gaps.md
 
 Engineering, before launch:
-- [ ] G-1 Admin console: moderation queue, take down or reinstate a listing, suspend a user with an Art. 17 statement of reasons, refund, pause payouts, resolve disputes; audited, role-gated
-- [ ] G-2 DSA Art. 16 notice-and-action ("report this" on listings and profiles) with acknowledgement and outcome email; Art. 17 statements of reasons; Art. 11/12 contact points on the legal pages
-- [~] G-3 Block users (`/api/me/blocks`): no messages or new bookings between them, either way. Reporting comes with G-2
+- [~] G-1 Admin console (API done: queue, decide, take down, suspend/reinstate, resolve disputes, audit; staff = Cognito group admin). The web console screens are next. Scope: moderation queue, take down or reinstate a listing, suspend a user with an Art. 17 statement of reasons, refund, pause payouts, resolve disputes; audited, role-gated
+- [x] G-2 (API) DSA Art. 16 notice-and-action ("report this" on listings and profiles) with acknowledgement and outcome email; Art. 17 statements of reasons; Art. 11/12 contact points on the legal pages
+- [x] G-3 Report (`POST /api/reports`, with G-2) and block users (`/api/me/blocks`): no messages or new bookings between them, either way. Reporting comes with G-2
 - [x] G-4 In-app messaging per booking (`/api/bookings/{id}/messages`); phone numbers, emails, links and messenger handles masked until accepted; pushed to the other side (never emailed)
 - [ ] G-5 Check-in and check-out photos on a booking (evidence for damage claims and disputes)
 - [ ] G-6 Checkout compliance: total price including the fee; "zahlungspflichtig buchen"; trader/private owner label; withdrawal information and the withdrawal button; review-verification statement; ranking parameters page

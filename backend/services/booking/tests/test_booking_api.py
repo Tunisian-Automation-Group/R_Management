@@ -495,3 +495,23 @@ def test_a_block_stops_messages_and_new_bookings(client, app, issuer):
         client.post(f"/bookings/{bid}/messages", json={"body": "hello?"}, headers=issuer.headers(BUYER)).status_code
         == 201
     )
+
+
+def test_a_suspended_person_cannot_book(client, app, issuer):
+    from cappy_common.events import OWNER_SUSPENDED
+
+    ev = Event(id=new_id("ev"), type=OWNER_SUSPENDED, source="catalog", occurred_at=now_iso(), data={"ownerId": BUYER})
+    assert call(app, app.state.dispatcher.handle, ev)
+    assert client.post("/bookings", json=_body(), headers=issuer.headers(BUYER)).status_code == 403
+
+
+def test_staff_can_resolve_a_dispute_from_the_admin_console(client, app, issuer):
+    bid = _requested(client, app, issuer, start_h=40)
+    _do(client, issuer, HOST, bid, "accept")
+    started = datetime.now(UTC) - timedelta(minutes=5)
+    call(app, _age, app, bid, window_start=started, window_end=started + timedelta(hours=2))
+    _do(client, issuer, BUYER, bid, "dispute", reason="Nobody came")
+    body = {"outcome": "refund_buyer", "by": "ignored"}
+    assert client.post(f"/admin/bookings/{bid}/resolve", json=body, headers=issuer.headers(BUYER)).status_code == 403
+    staff = {"Authorization": f"Bearer {issuer.token('staff-1', **{'cognito:groups': ['admin']})}"}
+    assert client.post(f"/admin/bookings/{bid}/resolve", json=body, headers=staff).json()["status"] == "cancelled"

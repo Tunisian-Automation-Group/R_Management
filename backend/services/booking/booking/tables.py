@@ -92,6 +92,14 @@ class BlockRow(Base):
     at: Mapped[datetime] = mapped_column(UtcDateTime)
 
 
+class SuspendedRow(Base):
+    """People moderation suspended (catalog's moderation.owner_suspended)."""
+
+    __tablename__ = "suspended"
+    person_id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    at: Mapped[datetime] = mapped_column(UtcDateTime)
+
+
 class TransitionRow(Base):
     """Every status change, by whom and when: the audit trail support and
     disputes need, and what a timeline on the booking screen is drawn from."""

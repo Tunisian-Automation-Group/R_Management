@@ -5,9 +5,9 @@ locals {
   db_services = ["catalog", "booking", "payments", "notifications"]
   consumers = {
     catalog       = ["booking.rated", "payment.payouts_ready"]
-    booking       = ["payment.authorised", "payment.failed", "listing.changed"]
+    booking       = ["payment.authorised", "payment.failed", "listing.changed", "moderation.owner_suspended"]
     payments      = ["booking.status_changed", "profile.deleted"]
-    notifications = ["booking.status_changed", "payment.payout_sent", "profile.deleted", "booking.message"]
+    notifications = ["booking.status_changed", "payment.payout_sent", "profile.deleted", "booking.message", "moderation.report_received", "moderation.decision"]
   }
 }
 

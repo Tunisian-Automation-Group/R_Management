@@ -7,12 +7,20 @@ from datetime import UTC, datetime
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from cappy_common.events import LISTING_CHANGED, PAYMENT_AUTHORISED, PAYMENT_FAILED, Event, Handler, Outbox
+from cappy_common.events import (
+    LISTING_CHANGED,
+    OWNER_SUSPENDED,
+    PAYMENT_AUTHORISED,
+    PAYMENT_FAILED,
+    Event,
+    Handler,
+    Outbox,
+)
 
 from .repository import BookingRepository
 from .settings import Settings
 from .state import SystemAction, system_status
-from .tables import OUTBOX, BookingRow
+from .tables import OUTBOX, BookingRow, SuspendedRow
 
 log = logging.getLogger(__name__)
 
@@ -58,4 +66,14 @@ def handlers(settings: Settings) -> dict[str, Handler]:
                     row, to, "system", now, expires_at=None, decline_reason="The listing was removed by its owner"
                 )
 
-    return {PAYMENT_AUTHORISED: on_authorised, PAYMENT_FAILED: on_failed, LISTING_CHANGED: on_listing_changed}
+    async def on_suspended(session: AsyncSession, event: Event) -> None:
+        from cappy_common.db import insert_or_ignore
+
+        await insert_or_ignore(session, SuspendedRow, person_id=event.data["ownerId"], at=datetime.now(UTC))
+
+    return {
+        PAYMENT_AUTHORISED: on_authorised,
+        PAYMENT_FAILED: on_failed,
+        LISTING_CHANGED: on_listing_changed,
+        OWNER_SUSPENDED: on_suspended,
+    }

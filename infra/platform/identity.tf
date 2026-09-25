@@ -95,3 +95,11 @@ data "http" "jwks" {
     Accept = "application/json"
   }
 }
+
+# Staff: moderators and support. Membership is granted by hand
+# (aws cognito-idp admin-add-user-to-group), never by the app.
+resource "aws_cognito_user_group" "admin" {
+  name         = "admin"
+  user_pool_id = aws_cognito_user_pool.main.id
+  description  = "Cappy staff: moderation, support, dispute resolution"
+}

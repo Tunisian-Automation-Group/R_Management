@@ -65,6 +65,10 @@ PAYOUTS_READY = "payment.payouts_ready"
 PROFILE_CREATED = "profile.created"
 # Someone deleted their account: forget what is theirs to forget.
 PROFILE_DELETED = "profile.deleted"
+# DSA Art. 16: someone reported content; Art. 17: a moderation decision.
+REPORT_RECEIVED = "moderation.report_received"
+MODERATION_DECISION = "moderation.decision"
+OWNER_SUSPENDED = "moderation.owner_suspended"
 LISTING_CHANGED = "listing.changed"
 
 ALL_TYPES = frozenset(
@@ -81,6 +85,9 @@ ALL_TYPES = frozenset(
         PAYOUT_SENT,
         PROFILE_CREATED,
         PROFILE_DELETED,
+        REPORT_RECEIVED,
+        MODERATION_DECISION,
+        OWNER_SUSPENDED,
         LISTING_CHANGED,
         PAYOUTS_READY,
     }

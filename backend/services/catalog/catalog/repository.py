@@ -259,6 +259,10 @@ class CatalogRepository:
         row = await self.s.get(OwnerRow, owner_id)
         return to_owner(row) if row and row.deleted_at is None else None
 
+    async def is_suspended(self, owner_id: str) -> bool:
+        row = await self.s.get(OwnerRow, owner_id)
+        return row is not None and row.suspended_at is not None
+
     async def owner(self, owner_id: str) -> Owner:
         found = await self.find_owner(owner_id)
         if not found:
@@ -321,11 +325,11 @@ class CatalogRepository:
     # --- listings ------------------------------------------------------------------
 
     def _live(self):
-        return ListingRow.deleted_at.is_(None)
+        return ListingRow.deleted_at.is_(None) & ListingRow.moderated_at.is_(None)
 
     async def listing_row(self, listing_id: str, *, include_deleted: bool = False) -> ListingRow:
         row = await self.s.get(ListingRow, listing_id)
-        if not row or (row.deleted_at is not None and not include_deleted):
+        if not row or ((row.deleted_at is not None or row.moderated_at is not None) and not include_deleted):
             raise NotFound(f"listing {listing_id} not found")
         return row
 

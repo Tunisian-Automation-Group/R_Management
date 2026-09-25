@@ -24,7 +24,9 @@ RULES: list[tuple[re.Pattern[str], str]] = [
     (re.compile(r"^/(matches|quote|feasibility|categories|groups|review-tags)$"), MATCHING),
     (re.compile(r"^/browse/[a-z-]+$"), MATCHING),
     (re.compile(r"^/listings/[^/]+/offers$"), MATCHING),
-    (re.compile(r"^/(me|districts|cities|owners|listings|search|saved|uploads)(/|$)"), CATALOG),
+    (re.compile(r"^/admin/bookings/[^/]+/resolve$"), BOOKING),
+    (re.compile(r"^/admin/(reports|listings|owners|audit)(/|$)"), CATALOG),
+    (re.compile(r"^/(me|districts|cities|owners|listings|search|saved|uploads|reports)(/|$)"), CATALOG),
 ]
 
 
