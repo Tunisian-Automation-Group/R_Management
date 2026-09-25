@@ -579,8 +579,15 @@ def test_nothing_of_the_product_is_served_before_sign_in(client, issuer):
     signed_in = client.get("/listings/l9", headers=issuer.headers("user-a"))
     assert signed_in.status_code == 200 and signed_in.headers["cache-control"] == "private, no-store"
     # What law or the stores need stays public: reporting (DSA Art. 16).
-    body = {"targetType": "listing", "targetId": "l9", "reason": "spam", "details": "Looks like spam to me", "email": "a@example.com"}
+    body = {
+        "targetType": "listing",
+        "targetId": "l9",
+        "reason": "spam",
+        "details": "Looks like spam to me",
+        "email": "a@example.com",
+    }
     assert client.post("/reports", json=body, headers=ANON).status_code == 201
+
 
 def test_two_people_can_upload_the_same_picture(client, issuer):
     same = _jpeg_with_gps()

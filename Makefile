@@ -25,6 +25,7 @@ logs: ## Follow the services' logs
 
 seed-demo: ## Load the demo world (additive; local and staging only)
 	docker compose exec -T catalog sh -c '. /run/cappy/local.env && python -m catalog.cli seed-demo --owner-map "$$DEMO_OWNER_MAP"'
+	$(BACKEND) uv run python ../local/demo_profiles.py
 	@# With real Stripe (test keys), give every demo owner a verified test account so they can be booked and paid.
 	@if docker compose exec -T payments sh -c 'test "$$PAYMENTS_PROVIDER" = stripe'; then \
 	  owners=$$(docker compose exec -T postgres psql -U cappy -d catalog -Atc "SELECT id FROM owners" | tr '\n' ' '); \

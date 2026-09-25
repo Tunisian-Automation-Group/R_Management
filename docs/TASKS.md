@@ -175,3 +175,48 @@ Soon after launch (backend done so far: instant book; cancellation policies flex
 - [x] L-3 Soak (20 min at 15/s, open model, 17,542 requests): 0 failures, p99 21–38 ms and flat, memory flat per service (±7 MiB), DB connections 21 → 21, every queue and DLQ empty. The hour-long run belongs on staging (L-5)
 - [ ] L-5 Breakpoint and soak on staging in AWS with a distributed generator (k6 cloud or several workers), to size task maxima and ACUs
 - [ ] L-4 Mixed journeys with an open arrival model (90% browse, 8% book, 2% accept/complete)
+
+## App UX (U) — from docs/research/2026-09-app-ux.md
+
+Signed-in only is a deliberate choice against Apple 5.1.1(v); U-1 carries the argument into App Review, U-2 keeps a fallback ready.
+
+- [ ] U-1 [all] App Store Connect review notes: the 5.1.1(v) justification for members-only access (verified private owners, location/availability of people's property, every feature account-bound) and demo accounts for renter and owner with email-code bypass — https://developer.apple.com/app-store/review/guidelines/#5.1.1 · https://developer.apple.com/distribute/app-review/
+- [ ] U-2 [all] Welcome screen (`Welcome.tsx`) for first-timers: one hero, 3 value lines, "Create account" / "I have an account", DE/EN switch, legal links; no live listing data — https://developer.apple.com/design/human-interface-guidelines/onboarding
+- [ ] U-3 [all] Welcome shown once: `welcomeSeen` flag; skipped for any device that has signed in before and for deep-link launches; "How Cappy works" reachable from Help — https://developer.apple.com/design/human-interface-guidelines/onboarding
+- [ ] U-4 [app] Move the push permission prompt out of `pushSignedIn()`: priming sheet after the first booking request or listing publish; ask only when `checkPermissions()` is `prompt` — https://developer.android.com/training/permissions/usage-notes
+- [ ] U-5 [app] Android back: `App.addListener('backButton')` closes the open sheet, else goes back, else minimises; predictive back enabled — https://capacitorjs.com/docs/apis/app
+- [ ] U-6 [backend] `Idempotency-Key` on `POST /bookings`, `/listings`, `/reviews`, `/messages`, and on booking payment confirmation; web sends one key per form mount — https://docs.stripe.com/api/idempotent_requests
+- [ ] U-7 [app] 3DS/SCA return into the shells: `return_url` on an associated domain, resume handler checks the PaymentIntent and shows the result; test with the 3DS2 test cards on iOS and Android — https://docs.stripe.com/payments/3d-secure/authentication-flow
+- [ ] U-8 [web] Times in the listing's time zone (`Intl.DateTimeFormat` with `timeZone`), label when it differs from the device; [backend] a DST-crossing booking test — https://developer.mozilla.org/docs/Web/JavaScript/Reference/Global_Objects/Intl/DateTimeFormat
+- [ ] U-9 [backend] Account deletion refused with a reason and a date while bookings are open or a payout is pending; the retention list (invoices kept 10 years) shown before confirming — https://developer.apple.com/support/offering-account-deletion-in-your-app/
+- [ ] U-10 [web] Session expiry mid-flow keeps the draft (AddListing, messages, review) and returns to it after sign-in — https://baymard.com/research/checkout-usability
+- [ ] U-11 [web] Offline bar (`online`/`offline` events), cached reads, money actions disabled offline with the reason — https://web.dev/articles/offline-ux-design-guidelines
+- [ ] U-12 [backend] Message scanner: detect phone, email, IBAN, URLs and "pay outside" phrases; before a booking is confirmed mask contact details; log for moderation — https://www.airbnb.com/help/article/209
+- [ ] U-13 [web] Chat safety UI: inline warning to the sender, a banner to the receiver ("Payments outside Cappy aren't protected"), report on each message, block offered after reporting — https://www.airbnb.com/help/article/2020 · https://www.vinted.com/help/628-recognize-spoof-and-phishing-messages
+- [ ] U-14 [backend]+[web] Email one-time-code sign-in through Cognito `USER_AUTH`/`EMAIL_OTP`, password kept as an option — https://docs.aws.amazon.com/cognito/latest/developerguide/authentication.html
+- [ ] U-15 [backend]+[web] Password policy: min 12, no composition rules, breached-password check; rules visible under the field; show/hide toggle; paste allowed — https://pages.nist.gov/800-63-4/sp800-63b.html · https://baymard.com/blog/password-requirements-and-password-reset
+- [ ] U-16 [web] Code field: `inputmode="numeric"`, auto-submit at 6 digits, 30-second resend countdown — https://www.w3.org/TR/WCAG22/#accessible-authentication-minimum
+- [ ] U-17 [app] Refresh token in Keychain/Keystore instead of Preferences (closes V1-28) — https://developer.apple.com/documentation/security/keychain-services
+- [ ] U-18 [web] Sign-in screen says why Cappy is members-only, with a "How we keep you safe" link — https://baymard.com/blog/password-requirements-and-password-reset
+- [ ] U-19 [web] Onboarding: optional "rent / earn / both" choice that picks the landing tab and the empty states — https://www.nngroup.com/articles/mobile-app-onboarding/
+- [ ] U-20 [web] Listing page: cancellation policy in plain words, owner response time, and a sticky bar with the total for the chosen slot, fee included — https://skift.com/2025/04/21/airbnb-makes-total-price-display-standard-on-listings-worldwide/
+- [ ] U-21 [web] Browse filters: applied-filter chips with ✕ and "Clear all"; "Show N results" in the filter sheet; [backend] result count — https://baymard.com/blog/how-to-design-applied-filters
+- [ ] U-22 [backend]+[web] Notification centre: `GET /notifications` (paginated, unread count), a bell, each item opens its screen; per-category push/email settings, marketing off by default — https://m3.material.io/foundations/content-design/notifications
+- [ ] U-23 [web] Empty states for Bookings, Earn, inbox, reviews, saved and no-results, each with a reason and one action — https://www.nngroup.com/articles/empty-state-interface-design/
+- [ ] U-24 [web] Error messages: Stripe decline codes mapped to plain DE/EN; a generic error screen with "Try again" and the request id — https://www.nngroup.com/articles/error-message-guidelines/
+- [ ] U-25 [web] Photo uploads: per-photo progress and retry, client-side downscale to 2048 px, HEIC accepted or converted, the draft survives the app being killed — https://baymard.com/research/mcommerce-usability
+- [ ] U-26 [app] Keyboard: `@capacitor/keyboard`; focused inputs and the chat composer stay above the keyboard on iOS and Android 15 edge-to-edge (WCAG 2.4.11) — https://capacitorjs.com/docs/apis/keyboard
+- [ ] U-27 [app] Dynamic Type in the iOS shell (`-apple-system-body` root, rem sizes); check dock, listing bar and sheets at the largest size — https://www.tpgi.com/text-resizing-web-pages-ios-using-dynamic-type/
+- [ ] U-28 [web] Pseudo-localisation switch (+40% string length) and one verifier pass on it per round, for German length — https://www.w3.org/International/articles/article-text-size
+- [ ] U-29 [web] Colour scheme: dark tokens with `prefers-color-scheme`, or pin `color-scheme: light` plus the status-bar style so native controls match — https://developer.apple.com/design/human-interface-guidelines/dark-mode
+- [ ] U-30 [web] axe-core accessibility check over every route in CI; fix targets under 24 px, focus return from sheets, `role="status"` toasts, reduced motion — https://www.w3.org/TR/WCAG22/
+- [ ] U-31 [web] Accessibility statement (Barrierefreiheitserklärung) at `/legal/accessibility` in DE/EN with a feedback contact — https://www.bundesfachstelle-barrierefreiheit.de/DE/Fachwissen/Produkte-und-Dienstleistungen/Barrierefreiheitsstaerkungsgesetz/barrierefreiheitsstaerkungsgesetz_node.html
+- [ ] U-32 [backend]+[web] ID verification badge (Stripe Identity / Connect KYC), required before the first booking above a threshold and for vans; the badge says what was checked — https://www.airbnb.com/help/article/1237
+- [ ] U-33 [web] Hand-over photos: a prompt at start and end, the upload time shown, the 24-hour damage-report window stated — https://help.turo.com/en_us/trip-photos-guide-or-guests-HytcE4g49
+- [ ] U-34 [web] Safety card on BookingDetail before the first hand-over; one line on payment protection under the pay button — https://help.turo.com/en_us/trip-photos-guide-or-hosts-BkKcBEeN5
+- [ ] U-35 [backend]+[web] Sessions: "sign out everywhere" in Profile; Cognito `GlobalSignOut` on password reset; push devices removed with it — https://docs.aws.amazon.com/cognito-user-identity-pools/latest/APIReference/API_GlobalSignOut.html
+- [ ] U-36 [app] Push-denied state: a Profile row "Notifications are off — Turn on" that opens the OS settings — https://developer.android.com/training/permissions/usage-notes
+- [ ] U-37 [web] Bookings: a "next up" card at the top with the one action that matters now; statuses in text as well as colour (WCAG 1.4.1) — https://www.w3.org/TR/WCAG22/#use-of-color
+- [ ] U-38 [web] Earn: "needs you" section first, with a countdown to each request's expiry (Airbnb Today tab pattern) — https://www.nngroup.com/articles/dashboards-preattentive/
+- [ ] U-39 [web] `/help` with 10–15 DE/EN articles and "Get help with this booking" (booking id attached) on BookingDetail — https://help.turo.com/
+- [ ] U-40 [backend]+[web] Responsive images: 400/800/1600 widths from the media service, `srcset` with `width`/`height` set, placeholders — https://web.dev/articles/cls
