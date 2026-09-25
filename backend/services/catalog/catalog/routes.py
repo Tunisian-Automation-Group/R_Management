@@ -2,11 +2,13 @@ from __future__ import annotations
 
 import asyncio
 import json
+import math
 import re
 from datetime import UTC, datetime, timedelta
 
 from fastapi import Depends, Query, Request, Response, UploadFile, status
 from pydantic import Field, TypeAdapter, ValidationError
+from pydantic.alias_generators import to_camel as camel
 
 from cappy_common.app import ApiRouter
 from cappy_common.auth import Principal, optional_principal, require_internal, require_principal
@@ -236,6 +238,7 @@ async def _validate_listing(
         raise Invalid(f"category {listing.category} is booked by {mode_of(listing.category)}, not {listing.mode}")
     if listing.rate_per_hour <= 0:
         raise Invalid("ratePerHour must be positive")
+    _check_numbers(listing)
     if not await repo.has_district(listing.district):
         raise Invalid(f"unknown district: {listing.district}")
     photos = listing.photos or []
@@ -262,6 +265,30 @@ async def _owned(repo: CatalogRepository, listing_id: str, user: str):
         # Someone else's listing is indistinguishable from none at all.
         raise NotFound(f"listing {listing_id} not found")
     return row
+
+
+def _check_numbers(listing) -> None:
+    """Every number a listing carries within sane bounds, so no listing can
+    break pricing for others (P-1). Money in minor units."""
+    # ponytail: one table of bounds; per-market caps belong to the market model (GOAL 16).
+    bounds = {
+        "rate_per_hour": (1, 1_000_000),
+        "extra_fee": (0, 1_000_000),
+        "setup_fee": (0, 1_000_000),
+        "min_hours": (0.5, 24 * 90),
+        "max_hours": (0.5, 24 * 90),
+        "units_per_hour": (0.001, 1_000_000),
+        "setup_hours": (0, 24 * 7),
+        "tolerance_mm": (0, 1_000),
+    }
+    for field, (lo, hi) in bounds.items():
+        value = getattr(listing, field, None)
+        if value is None:
+            continue
+        if not math.isfinite(value) or not lo <= value <= hi:
+            raise Invalid(f"{camel(field)} must be between {lo} and {hi}")
+    if listing.mode == "window" and listing.min_hours > listing.max_hours:
+        raise Invalid("minHours cannot be more than maxHours")
 
 
 # --- me ----------------------------------------------------------------------------

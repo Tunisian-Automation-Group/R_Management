@@ -234,6 +234,9 @@ def test_server_mints_ids_and_ignores_the_client_s(client, issuer, app, broker):
         ({"category": "fabrication"}, "booked by batch"),
         ({"district": "Atlantis"}, "district"),
         ({"ratePerHour": 0}, "ratePerHour"),
+        ({"extraFee": -5000}, "extraFee"),
+        ({"minHours": 0}, "minHours"),
+        ({"minHours": 8, "maxHours": 2}, "minHours"),
         ({"photos": ["https://evil.example/pixel.gif"]}, "uploaded"),
     ],
 )

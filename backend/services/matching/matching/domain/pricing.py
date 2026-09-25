@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import math
+
 from cappy_common.jsmath import js_round
 from cappy_common.models import AnyListing, AnyRequirement, Cents, Quote
 
@@ -41,8 +43,12 @@ def duration_discount(hours: float, base: Cents, listing: AnyListing) -> tuple[C
 
 
 def quote_for(req: AnyRequirement, listing: AnyListing) -> Quote | None:
+    # A listing that cannot be priced (zero throughput, a negative fee: older
+    # rows from before the write-time bounds) is no offer, never a 500 (P-1).
+    if listing.mode == "batch" and (listing.units_per_hour <= 0 or listing.setup_fee < 0):
+        return None
     hours = hours_for(req, listing)
-    if hours is None:
+    if hours is None or not math.isfinite(hours):
         return None
 
     base: Cents = js_round(hours * listing.rate_per_hour)

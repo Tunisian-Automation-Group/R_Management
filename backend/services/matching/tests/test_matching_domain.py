@@ -392,3 +392,12 @@ def test_owners_who_cancel_accepted_bookings_lose_trust_in_proportion():
     steady, flaky = o.model_copy(update={"cancellation_rate": 0.0}), o.model_copy(update={"cancellation_rate": 0.2})
     assert trust_of(o) == trust_of(steady), "too few bookings to know (None) is no penalty"
     assert trust_of(flaky) == pytest.approx(trust_of(o) * 0.9)
+
+
+def test_a_listing_that_cannot_be_priced_is_no_offer(world, brackets):
+    # P-1: one batch listing with zero throughput used to turn everyone's
+    # search in its category into a 500 (division by zero).
+    batch = next(l for l in world.listings if l.mode == "batch")
+    for broken in ({"units_per_hour": 0}, {"setup_fee": -5000}):
+        assert quote_for(brackets, batch.model_copy(update=broken)) is None
+    assert quote_for(brackets, batch) is not None
