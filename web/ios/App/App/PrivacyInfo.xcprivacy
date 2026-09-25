@@ -21,6 +21,15 @@
 				<string>CA92.1</string>
 			</array>
 		</dict>
+		<!-- @capacitor/filesystem reads file creation and modification dates of files inside the app container (stat). -->
+		<dict>
+			<key>NSPrivacyAccessedAPIType</key>
+			<string>NSPrivacyAccessedAPICategoryFileTimestamp</string>
+			<key>NSPrivacyAccessedAPITypeReasons</key>
+			<array>
+				<string>C617.1</string>
+			</array>
+		</dict>
 	</array>
 </dict>
 </plist>
