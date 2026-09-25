@@ -51,7 +51,9 @@ class Provider:
         """Returns the charge id."""
 
     async def cancel(self, intent_id: str, booking_id: str) -> None: ...
-    async def refund(self, intent_id: str, booking_id: str) -> str: ...
+    async def refund(self, intent_id: str, booking_id: str, amount: int | None = None) -> str:
+        """Refunds `amount` cents (all of it when None)."""
+
     async def transfer(
         self, *, booking_id: str, amount: int, currency: str, account_id: str, charge_id: str
     ) -> str: ...
@@ -121,13 +123,14 @@ class StripeProvider(Provider):
             if e.code != "payment_intent_unexpected_state":
                 raise
 
-    async def refund(self, intent_id: str, booking_id: str) -> str:
+    async def refund(self, intent_id: str, booking_id: str, amount: int | None = None) -> str:
         done = await self._c.v1.refunds.list_async({"payment_intent": intent_id, "limit": 1})
         if done.data:
             return done.data[0].id
-        r = await self._c.v1.refunds.create_async(
-            {"payment_intent": intent_id}, {"idempotency_key": f"refund-{booking_id}"}
-        )
+        params: dict = {"payment_intent": intent_id}
+        if amount is not None:
+            params["amount"] = amount
+        r = await self._c.v1.refunds.create_async(params, {"idempotency_key": f"refund-{booking_id}"})
         return r.id
 
     async def transfer(self, *, booking_id, amount, currency, account_id, charge_id) -> str:  # noqa: ANN001
@@ -221,7 +224,7 @@ class FakeProvider(Provider):
     async def cancel(self, intent_id: str, booking_id: str) -> None:
         self._call("cancel", booking_id)
 
-    async def refund(self, intent_id: str, booking_id: str) -> str:
+    async def refund(self, intent_id: str, booking_id: str, amount: int | None = None) -> str:
         self._call("refund", booking_id)
         return f"re_fake_{booking_id}"
 

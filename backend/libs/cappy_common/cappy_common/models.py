@@ -146,6 +146,10 @@ class _ListingBase(CamelModel):
     active: bool
     # Booked without the owner answering: confirmed once the card is held.
     instant_book: bool = False
+    # What a renter gets back if they cancel an accepted booking (see
+    # booking/cancellation.py). Only "flexible" is offered until counsel
+    # confirms the others against the EU withdrawal right.
+    cancellation_policy: Literal["flexible", "moderate", "strict"] = "flexible"
 
 
 class WindowListing(_ListingBase):
@@ -286,6 +290,7 @@ class ListingSnapshot(CamelModel):
     owner_name: str
     photo: str | None = None
     instant_book: bool = False
+    cancellation_policy: str = "flexible"
 
 
 class MatchView(CamelModel):
@@ -320,6 +325,8 @@ class Booking(CamelModel):
     can_start_from: Iso | None = None
     # The owner's rating of the renter (1-5), once given.
     renter_rating: int | None = None
+    # What a cancellation refunded (cents), once cancelled.
+    refund_amount: int | None = None
 
 
 class World(CamelModel):

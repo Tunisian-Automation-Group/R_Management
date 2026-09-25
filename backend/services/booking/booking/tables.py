@@ -53,6 +53,8 @@ class BookingRow(Base):
     outcome: Mapped[dict | None] = mapped_column(JsonType, nullable=True)
     # The owner's rating of the renter (two-way reviews), once given.
     renter_rating: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    # What the cancellation refunded, in cents.
+    refund_amount: Mapped[int | None] = mapped_column(Integer, nullable=True)
     # What the client sent in Idempotency-Key, so a retried POST returns the
     # booking it already made instead of making a second one.
     idempotency_key: Mapped[str | None] = mapped_column(String(80), nullable=True)

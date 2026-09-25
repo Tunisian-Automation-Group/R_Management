@@ -42,6 +42,7 @@ def to_booking(row: BookingRow, viewer: str) -> Booking:
         handover=Handover.model_validate(row.handover) if row.handover and row.status in SHOWS_HANDOVER else None,
         can_start_from=iso_from_datetime(row.window_start - START_EARLY) if row.status == "accepted" else None,
         renter_rating=row.renter_rating,
+        refund_amount=row.refund_amount,
     )
 
 
@@ -66,6 +67,7 @@ def status_event(row: BookingRow, before: str | None, by: str) -> dict:
         "title": row.listing_snapshot["title"],
         "amount": row.amount,
         "currency": row.currency,
+        "refundAmount": row.refund_amount,
         "windowStart": iso_from_datetime(row.window_start),
         "windowEnd": iso_from_datetime(row.window_end),
     }

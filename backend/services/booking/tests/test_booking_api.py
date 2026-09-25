@@ -617,3 +617,32 @@ def test_the_owner_rates_the_renter_once_after_completion(client, app, issuer, b
     assert rate(HOST, 5).status_code == 409
     call(app, app.state.relay.flush)
     assert [(e.data["renterId"], e.data["quality"]) for e in broker.of_type(RENTER_RATED)] == [(BUYER, 4)]
+
+
+def test_cancellation_policy_decides_the_refund(issuer, broker, payments):
+    matching = FakeMatching()
+    matching.listing = matching.listing.model_copy(update={"cancellation_policy": "strict"})
+    settings = Settings(
+        app_env="test", database_url="sqlite+aiosqlite://", internal_token="i" * 40, paid_cancellation_policies=True
+    )
+    app = build_app(settings, matching=matching, payments=payments, catalog=FakeCatalog(), verifier=issuer.verifier())
+    with TestClient(app) as c:
+        app.state._portal = c.portal
+        # Accepted, starting in 3 days: strict keeps half.
+        bid = c.post("/bookings", json=_body(start_h=72), headers=issuer.headers(BUYER)).json()["booking"]["id"]
+        _authorise(app, bid)
+        c.post(f"/bookings/{bid}/accept", headers=issuer.headers(HOST))
+        quote = c.get(f"/bookings/{bid}/cancellation", headers=issuer.headers(BUYER)).json()
+        assert quote == {"refundAmount": 2300, "currency": "eur", "policy": "strict"}
+        assert c.get(f"/bookings/{bid}/cancellation", headers=issuer.headers(HOST)).json()["refundAmount"] == 4600, (
+            "owner cancels: in full"
+        )
+        done = c.post(f"/bookings/{bid}/cancel", headers=issuer.headers(BUYER)).json()
+        assert done["status"] == "cancelled" and done["refundAmount"] == 2300
+
+
+def test_flexible_only_until_counsel_confirms(client, app, issuer):
+    bid = _requested(client, app, issuer, start_h=30)
+    _do(client, issuer, HOST, bid, "accept")
+    q = client.get(f"/bookings/{bid}/cancellation", headers=issuer.headers(BUYER)).json()
+    assert q["policy"] == "flexible" and q["refundAmount"] == 4600

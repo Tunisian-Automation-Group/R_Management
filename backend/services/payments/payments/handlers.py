@@ -74,9 +74,30 @@ def handlers(provider: Provider, service_name: str, payouts_on: bool = True) -> 
             await provider.cancel(row.intent_id, row.booking_id)
             row.status = "cancelled"
         elif to == "cancelled" and row.status == "captured":
-            row.refund_id = await provider.refund(row.intent_id, row.booking_id)
+            # The cancellation policy decided the refund (booking/cancellation.py).
+            refund = d.get("refundAmount")
+            refund = row.amount if refund is None else max(0, min(row.amount, int(refund)))
+            if refund > 0:
+                row.refund_id = await provider.refund(
+                    row.intent_id, row.booking_id, None if refund == row.amount else refund
+                )
+                await outbox.add(session, PAYMENT_REFUNDED, {**facts, "amount": refund, "currency": row.currency})
+            kept = row.amount - refund
+            owner_part = kept * row.owner_net // row.amount if row.amount else 0
             row.status = "refunded"
-            await outbox.add(session, PAYMENT_REFUNDED, {**facts, "amount": row.amount, "currency": row.currency})
+            if owner_part > 0:
+                # A late cancellation: the owner keeps their share of what was kept.
+                account = await session.get(ConnectAccountRow, row.owner_id)
+                if account is None or not row.charge_id:
+                    raise NotReady(f"cannot pay out {row.booking_id}: no connected account or charge")
+                row.transfer_id = await provider.transfer(
+                    booking_id=row.booking_id,
+                    amount=owner_part,
+                    currency=row.currency,
+                    account_id=account.account_id,
+                    charge_id=row.charge_id,
+                )
+                await outbox.add(session, PAYOUT_SENT, {**facts, "amount": owner_part, "currency": row.currency})
         elif to == "completed" and row.status == "captured" and row.chargeback_at is not None:
             log.error("CHARGEBACK hold: not paying out booking %s", row.booking_id)
             return

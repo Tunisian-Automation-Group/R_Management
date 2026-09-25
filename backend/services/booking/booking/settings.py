@@ -32,6 +32,9 @@ class Settings(CommonSettings):
     # space on runs already going, nobody drives someone else's van).
     verify_categories: str = ""
     verify_above_cents: int = 30_000
+    # Moderate and strict cancellation policies charge for late cancellations;
+    # off until counsel confirms them against the EU withdrawal right (G-B2).
+    paid_cancellation_policies: bool = False
     # Kill switch (docs/runbook.md): false stops new bookings; everything
     # already booked carries on.
     accepting_bookings: bool = True

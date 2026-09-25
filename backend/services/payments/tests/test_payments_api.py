@@ -454,3 +454,20 @@ def test_stripe_identity_outcome_comes_by_webhook(stripe_app, issuer, broker):
     assert c.get("/payments/identity", headers=h).json()["status"] == "verified"
     call(app, app.state.relay.flush)
     assert len(broker.of_type(IDENTITY_VERIFIED)) == 1
+
+
+def test_a_late_cancellation_refunds_part_and_pays_the_owner_their_share(client, app, provider, broker):
+    _intent(client)
+    _status(app, "bk_1", "accepted")
+    ev = Event(
+        id=new_id("ev"),
+        type=BOOKING_STATUS_CHANGED,
+        source="booking",
+        occurred_at=now_iso(),
+        data={"bookingId": "bk_1", "to": "cancelled", "refundAmount": 2300},
+    )
+    assert call(app, app.state.dispatcher.handle, ev)
+    assert [op for op, _ in provider.calls] == ["intent", "capture", "refund", "transfer"]
+    call(app, app.state.relay.flush)
+    assert broker.of_type(PAYMENT_REFUNDED)[0].data["amount"] == 2300
+    assert broker.of_type(PAYOUT_SENT)[0].data["amount"] == 2000, "the owner's 4000/4600 of the 2300 kept"

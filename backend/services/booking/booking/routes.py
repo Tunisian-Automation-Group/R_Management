@@ -34,6 +34,7 @@ from cappy_common.pagination import Page, clamp_limit
 from cappy_common.runtime import ReadTx, Tx
 from cappy_common.timeutil import dt_from_iso, iso_from_datetime
 
+from .cancellation import refund_amount
 from .clients import PaymentStart
 from .messages import blocked_between
 from .repository import SHOWS_HANDOVER, BookingRepository, to_booking
@@ -182,6 +183,7 @@ async def create_booking(
             "category": view.listing.category,
             "ownerName": view.owner.name,
             "instantBook": view.listing.instant_book,
+            "cancellationPolicy": view.listing.cancellation_policy,
             **({"photo": view.listing.photos[0]} if view.listing.photos else {}),
         },
         idempotency_key=idempotency_key,
@@ -215,6 +217,20 @@ def _contention(e: DBAPIError) -> bool:
     code = getattr(getattr(e, "orig", None), "sqlstate", None) or getattr(getattr(e, "orig", None), "pgcode", None)
     name = type(getattr(e, "orig", e)).__name__
     return code in ("40P01", "55P03", "57014") or "Deadlock" in name or "QueryCanceled" in name
+
+
+def _refund(request: Request, row: BookingRow, user: str, now: datetime) -> int:
+    policy = (row.listing_snapshot or {}).get("cancellationPolicy", "flexible")
+    if not request.app.state.settings.paid_cancellation_policies:
+        policy = "flexible"
+    return refund_amount(
+        policy,
+        row.amount,
+        charged=row.status in ("accepted", "active"),
+        by_owner=user == row.owner_id,
+        now=now,
+        window_start=row.window_start,
+    )
 
 
 async def _replay(request: Request, row: BookingRow, fingerprint: str, viewer: str) -> BookingCreated:
@@ -282,6 +298,8 @@ async def _transition(
         raise Conflict("the hand-over can be marked from 30 minutes before the booked time")
     if to not in ("awaiting_payment", "requested"):
         fields["expires_at"] = None
+    if to == "cancelled":
+        fields["refund_amount"] = _refund(request, row, user, now)
     await repo.move(row, to, user, now, **fields)
     return to_booking(row, user)
 
@@ -380,6 +398,27 @@ async def rate(
 
 class RenterRatingIn(CamelModel):
     quality: int = Field(ge=1, le=5)
+
+
+class CancellationQuote(CamelModel):
+    refund_amount: int
+    currency: str
+    policy: str
+
+
+@router.get("/bookings/{booking_id}/cancellation", response_model=CancellationQuote)
+async def cancellation_quote(
+    booking_id: str,
+    request: Request,
+    repo: BookingRepository = Depends(get_repo),
+    p: Principal = Depends(require_principal),
+) -> CancellationQuote:
+    """What cancelling now would refund, shown before anyone confirms."""
+    row = await repo.visible(booking_id, p.sub)
+    policy = (row.listing_snapshot or {}).get("cancellationPolicy", "flexible")
+    if not request.app.state.settings.paid_cancellation_policies:
+        policy = "flexible"
+    return CancellationQuote(refund_amount=_refund(request, row, p.sub, _now()), currency=row.currency, policy=policy)
 
 
 @router.post("/bookings/{booking_id}/rate-renter", response_model=Booking)

@@ -163,7 +163,7 @@ Decisions for the business (not code):
 - [ ] G-B3 DPAs with every processor, records of processing, DPIA for ID checks — the business, with counsel
 - [ ] G-B4 BZSt registration for DAC7
 
-Soon after launch (backend done so far: instant book; two-way reviews, owners rating renters, with a renter record on profiles; publishing both reviews blind at once is still to do): cancellation tiers, duration discounts, helpdesk, analytics warehouse, feature flags and A/B tests, e-invoices (2027), KYBC, DSA Section 3 when no longer small.
+Soon after launch (backend done so far: instant book; cancellation policies flexible/moderate/strict with partial refunds and the owner's share of what is kept, and a refund preview (`/api/bookings/{id}/cancellation`), with only flexible enabled until counsel confirms (G-B2); two-way reviews, owners rating renters, with a renter record on profiles; publishing both reviews blind at once is still to do): duration discounts, helpdesk, analytics warehouse, feature flags and A/B tests, e-invoices (2027), KYBC, DSA Section 3 when no longer small.
 
 ## Load
 
