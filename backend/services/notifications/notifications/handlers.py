@@ -11,7 +11,7 @@ import logging
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from cappy_common.events import BOOKING_STATUS_CHANGED, PAYOUT_SENT, PROFILE_DELETED, Event, Handler
+from cappy_common.events import BOOKING_MESSAGE, BOOKING_STATUS_CHANGED, PAYOUT_SENT, PROFILE_DELETED, Event, Handler
 
 from .mail import Directory, Email, Mailer
 from .push import Pusher
@@ -63,8 +63,25 @@ def messages(event: Event, web: str) -> list[tuple[str, str, str]]:
     return table.get(to, [])
 
 
+def chat_push(event: Event, web: str) -> tuple[str, str, str] | None:
+    """A new message: pushed to the other side, never emailed (a conversation
+    would fill their inbox)."""
+    if event.type != BOOKING_MESSAGE:
+        return None
+    d = event.data
+    return (
+        d["recipientId"],
+        f"New message: {d.get('title', 'your booking')}",
+        f"Open the conversation\n\n{web}/bookings/{d['bookingId']}",
+    )
+
+
 def handlers(directory: Directory, mailer: Mailer, web: str, pusher: Pusher | None = None) -> dict[str, Handler]:
     async def notify(session: AsyncSession, event: Event) -> None:
+        if (chat := chat_push(event, web.rstrip("/"))) is not None:
+            if pusher is not None:
+                await _push(session, pusher, *chat)
+            return
         for sub, subject, text in messages(event, web.rstrip("/")):
             if pusher is not None:
                 await _push(session, pusher, sub, subject, text)
@@ -80,7 +97,7 @@ def handlers(directory: Directory, mailer: Mailer, web: str, pusher: Pusher | No
 
         await session.execute(delete(DeviceRow).where(DeviceRow.user_id == event.data["ownerId"]))
 
-    return {BOOKING_STATUS_CHANGED: notify, PAYOUT_SENT: notify, PROFILE_DELETED: forget}
+    return {BOOKING_STATUS_CHANGED: notify, PAYOUT_SENT: notify, BOOKING_MESSAGE: notify, PROFILE_DELETED: forget}
 
 
 async def _push(session: AsyncSession, pusher: Pusher, sub: str, title: str, text: str) -> None:

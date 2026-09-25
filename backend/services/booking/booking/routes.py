@@ -26,7 +26,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from cappy_common.app import ApiRouter
 from cappy_common.auth import Principal, require_internal, require_principal
-from cappy_common.errors import ApiError, Conflict, Invalid, NotFound, RateLimited, Unavailable
+from cappy_common.errors import ApiError, Conflict, Forbidden, Invalid, NotFound, RateLimited, Unavailable
 from cappy_common.events import BOOKING_RATED
 from cappy_common.ids import new_id
 from cappy_common.models import Booking, CamelModel, Iso, Outcome, Requirement
@@ -35,6 +35,7 @@ from cappy_common.runtime import ReadTx, Tx
 from cappy_common.timeutil import dt_from_iso, iso_from_datetime
 
 from .clients import PaymentStart
+from .messages import blocked_between
 from .repository import SHOWS_HANDOVER, BookingRepository, to_booking
 from .settings import Settings
 from .state import Action, check_can_rate, next_status
@@ -144,6 +145,9 @@ async def create_booking(
     )
     if view.owner.id == p.sub:
         raise Invalid("you cannot book your own listing")
+    async with db.session() as s:
+        if await blocked_between(s, p.sub, view.owner.id):
+            raise Forbidden("this listing is not available to you")
 
     now = _now()
     m = view.match

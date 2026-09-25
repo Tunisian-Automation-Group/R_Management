@@ -12,6 +12,7 @@ from . import repository
 from .clients import Catalog, HttpCatalog, HttpMatching, HttpPayments, Matching, Payments
 from .handlers import handlers
 from .jobs import sweep
+from .messages import router as messages_router
 from .routes import internal, router
 from .settings import Settings
 from .tables import Base
@@ -40,6 +41,7 @@ def build_app(
     app.state.payments = payments or HttpPayments(settings.payments_url, token)
     app.state.catalog = catalog or HttpCatalog(settings.catalog_url, token)
     app.include_router(router)
+    app.include_router(messages_router)
     app.include_router(internal)
     return app
 

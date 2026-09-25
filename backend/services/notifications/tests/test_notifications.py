@@ -114,3 +114,24 @@ def test_devices_get_pushes_and_gone_ones_are_forgotten():
         pusher.sent.clear()
         c.portal.call(app.state.dispatcher.handle, _change("requested", by="payments"))
         assert pusher.sent == []
+
+
+def test_a_chat_message_is_pushed_never_emailed():
+    from notifications.push import LogPusher
+
+    from cappy_common.events import BOOKING_MESSAGE
+    from cappy_common.testing import TestIssuer
+
+    issuer, pusher, mailer = TestIssuer(), LogPusher(), LogMailer()
+    settings = Settings(app_env="test", database_url="sqlite+aiosqlite://", internal_token="i" * 40)
+    app = build_app(settings, directory=People(), mailer=mailer, pusher=pusher, verifier=issuer.verifier())
+    with TestClient(app) as c:
+        c.post(
+            "/notifications/devices",
+            json={"platform": "android", "token": "tok-host-9"},
+            headers=issuer.headers("host"),
+        )
+        ev = _event(BOOKING_MESSAGE, bookingId="bk_1", senderId="buyer", recipientId="host", title="Table saw")
+        c.portal.call(app.state.dispatcher.handle, ev)
+    assert [t for _, t in pusher.sent] == ["New message: Table saw"]
+    assert mailer.sent == []

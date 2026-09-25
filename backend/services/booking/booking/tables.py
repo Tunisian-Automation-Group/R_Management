@@ -67,6 +67,31 @@ class BookingRow(Base):
     )
 
 
+class MessageRow(Base):
+    """What the two sides of a booking say to each other. Stored as shown:
+    contact details are masked before it is saved if the booking was not
+    accepted yet (docs/research/2026-09-launch-gaps.md)."""
+
+    __tablename__ = "booking_messages"
+    id: Mapped[str] = mapped_column(String(40), primary_key=True)
+    booking_id: Mapped[str] = mapped_column(String(40), ForeignKey("bookings.id", ondelete="CASCADE"))
+    sender_id: Mapped[str] = mapped_column(String(64))
+    body: Mapped[str] = mapped_column(String(2000))
+    at: Mapped[datetime] = mapped_column(UtcDateTime)
+
+
+Index("ix_booking_messages_booking_at", MessageRow.booking_id, MessageRow.at)
+
+
+class BlockRow(Base):
+    """Someone who does not want to hear from, or be booked by, someone else."""
+
+    __tablename__ = "blocks"
+    blocker_id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    blocked_id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    at: Mapped[datetime] = mapped_column(UtcDateTime)
+
+
 class TransitionRow(Base):
     """Every status change, by whom and when: the audit trail support and
     disputes need, and what a timeline on the booking screen is drawn from."""

@@ -52,6 +52,8 @@ _tracer = trace.get_tracer(__name__)
 BOOKING_REQUESTED = "booking.requested"  # awaiting the owner (payment authorised)
 BOOKING_STATUS_CHANGED = "booking.status_changed"
 BOOKING_RATED = "booking.rated"
+# A message between the two sides of a booking.
+BOOKING_MESSAGE = "booking.message"
 BOOKING_CREATED = "booking.created"  # awaiting payment authorisation
 PAYMENT_AUTHORISED = "payment.authorised"
 PAYMENT_FAILED = "payment.failed"
@@ -70,6 +72,7 @@ ALL_TYPES = frozenset(
         BOOKING_REQUESTED,
         BOOKING_STATUS_CHANGED,
         BOOKING_RATED,
+        BOOKING_MESSAGE,
         BOOKING_CREATED,
         PAYMENT_AUTHORISED,
         PAYMENT_FAILED,

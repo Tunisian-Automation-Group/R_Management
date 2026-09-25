@@ -17,6 +17,7 @@ types = [
     "payment.payout_sent",
     "payment.payouts_ready",
     "profile.deleted",
+    "booking.message",
     "listing.changed",
 ]
 for t in types:
@@ -26,7 +27,7 @@ expected = {
     "catalog": {"booking.rated", "payment.payouts_ready"},
     "booking": {"payment.authorised", "listing.changed"},
     "payments": {"booking.status_changed", "profile.deleted"},
-    "notifications": {"booking.status_changed", "payment.payout_sent", "profile.deleted"},
+    "notifications": {"booking.status_changed", "payment.payout_sent", "profile.deleted", "booking.message"},
 }
 for svc, url in out["queue_urls"].items():
     got = set()

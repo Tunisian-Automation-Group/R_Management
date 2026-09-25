@@ -460,3 +460,38 @@ def test_an_accepted_booking_says_when_the_hand_over_opens(client, app, issuer):
     start = datetime.fromisoformat(b["match"]["start"].replace("Z", "+00:00"))
     opens = datetime.fromisoformat(b["canStartFrom"].replace("Z", "+00:00"))
     assert start - opens == timedelta(minutes=30)
+
+
+def test_contact_details_are_masked_until_the_booking_is_accepted(client, app, issuer, broker):
+    from booking.messages import HIDDEN
+    from cappy_common.events import BOOKING_MESSAGE
+
+    bid = _requested(client, app, issuer)
+    say = lambda who, text: client.post(  # noqa: E731
+        f"/bookings/{bid}/messages", json={"body": text}, headers=issuer.headers(who)
+    )
+    early = say(BUYER, "Call me on +49 151 2345 6789 or mail erin@example.com, see www.mydeals.com").json()
+    assert "2345" not in early["body"] and "example.com" not in early["body"] and "mydeals" not in early["body"]
+    assert early["body"].count(HIDDEN) == 3 and early["mine"] is True
+    assert say(HOST, "Can you come at 3? I have 2 saws.").json()["body"] == "Can you come at 3? I have 2 saws."
+    _do(client, issuer, HOST, bid, "accept")
+    assert "+49 151" in say(HOST, "Ring +49 151 9999 0000 at the gate").json()["body"], "shared once accepted"
+    page = client.get(f"/bookings/{bid}/messages", headers=issuer.headers(HOST)).json()
+    assert [m["mine"] for m in page["items"]] == [False, True, True]
+    assert client.get(f"/bookings/{bid}/messages", headers=issuer.headers("stranger")).status_code == 404
+    call(app, app.state.relay.flush)
+    assert [e.data["recipientId"] for e in broker.of_type(BOOKING_MESSAGE)] == [HOST, BUYER, BUYER]
+
+
+def test_a_block_stops_messages_and_new_bookings(client, app, issuer):
+    bid = _requested(client, app, issuer)
+    assert client.put(f"/me/blocks/{BUYER}", headers=issuer.headers(HOST)).status_code == 204
+    assert client.get("/me/blocks", headers=issuer.headers(HOST)).json() == [BUYER]
+    r = client.post(f"/bookings/{bid}/messages", json={"body": "hello?"}, headers=issuer.headers(BUYER))
+    assert r.status_code == 403
+    assert client.post("/bookings", json=_body(start_h=40), headers=issuer.headers(BUYER)).status_code == 403
+    client.delete(f"/me/blocks/{BUYER}", headers=issuer.headers(HOST))
+    assert (
+        client.post(f"/bookings/{bid}/messages", json={"body": "hello?"}, headers=issuer.headers(BUYER)).status_code
+        == 201
+    )

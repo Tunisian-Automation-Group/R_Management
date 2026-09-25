@@ -14,6 +14,9 @@ from gateway.settings import Settings
     [
         ("/me", CATALOG),
         ("/me/listings", CATALOG),
+        ("/me/blocks", BOOKING),
+        ("/me/blocks/someone", BOOKING),
+        ("/bookings/bk_1/messages", BOOKING),
         ("/districts", CATALOG),
         ("/cities", CATALOG),
         ("/owners/o1", CATALOG),
