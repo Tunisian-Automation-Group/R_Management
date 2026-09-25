@@ -168,6 +168,7 @@ Soon after launch: two-way blind reviews, cancellation tiers, instant book, dura
 ## Load
 
 - [x] L-1 `make load`: 50 concurrent browsers for 60 s plus contested bookings. Result: 20,580 requests, 0 failures; 5 contested windows, exactly 1 winner each; p50 about 100 ms, p95 about 430 ms (single-process containers on a laptop)
-- [ ] L-2 Spike: 10× the baseline arrival rate for 60 s; shedding keeps accepted requests fast
+- [x] L-2 Spike: 30/s → 300/s for 60 s: 16,204 requests, 0 failures, p99 ≈ 220 ms, no shedding needed. At a 1,000/s target the single-process generator topped out (~125/s achieved) with 0 failures, p99 ≈ 1 s: the real breakpoint test belongs on staging (L-5)
 - [ ] L-3 Soak: an hour at normal load; connections, memory and queue ages stay flat
+- [ ] L-5 Breakpoint and soak on staging in AWS with a distributed generator (k6 cloud or several workers), to size task maxima and ACUs
 - [ ] L-4 Mixed journeys with an open arrival model (90% browse, 8% book, 2% accept/complete)
