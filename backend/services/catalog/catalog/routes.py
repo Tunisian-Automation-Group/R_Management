@@ -3,7 +3,7 @@ from __future__ import annotations
 import asyncio
 import json
 import re
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 
 from fastapi import Depends, Query, Request, Response, UploadFile, status
 from pydantic import Field, TypeAdapter, ValidationError
@@ -11,7 +11,7 @@ from pydantic import Field, TypeAdapter, ValidationError
 from cappy_common.app import ApiRouter
 from cappy_common.auth import Principal, optional_principal, require_internal, require_principal
 from cappy_common.categories import mode_of
-from cappy_common.errors import Conflict, Forbidden, Invalid, NotFound, Unavailable
+from cappy_common.errors import Conflict, Forbidden, Invalid, NotFound, RateLimited, Unavailable
 from cappy_common.events import LISTING_CHANGED, PROFILE_CREATED, PROFILE_DELETED
 from cappy_common.models import CamelModel, District, Iso, Listing, Owner, Review, Slot, World
 from cappy_common.pagination import Page, clamp_limit
@@ -214,6 +214,7 @@ async def _validate_listing(
     owned = await repo.media_owned_by({n for n in names if n}, owner_id)
     if len(owned) != len(set(names)):
         raise Invalid("a listing can only show photos its owner uploaded")
+    await repo.mark_used(owned, owner_id)
     return listing
 
 
@@ -484,6 +485,8 @@ async def upload(
 ) -> Uploaded:
     """One photograph in, its URL out, to go in a listing's ``photos``."""
     settings = request.app.state.settings
+    if await repo.uploads_since(p.sub, datetime.now(UTC) - timedelta(days=1)) >= settings.media_daily_quota:
+        raise RateLimited("that is a lot of photos for one day; try again tomorrow")
     data = await file.read(settings.media_max_bytes + 1)
     # Decoding a photo takes up to ~4 bytes per pixel, twice over: at most two
     # at a time per task keeps a burst of uploads from exhausting its memory.

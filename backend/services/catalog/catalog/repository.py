@@ -706,6 +706,28 @@ class CatalogRepository:
             )
             await self.s.flush()
 
+    async def uploads_since(self, owner_id: str, since: datetime) -> int:
+        q = select(func.count()).where(MediaRow.owner_id == owner_id, MediaRow.created_at >= since)
+        return (await self.s.execute(q)).scalar_one()
+
+    async def mark_used(self, names: set[str], owner_id: str) -> None:
+        if names:
+            await self.s.execute(
+                update(MediaRow).where(MediaRow.name.in_(names), MediaRow.owner_id == owner_id).values(used=True)
+            )
+
+    async def orphans(self, older_than: datetime, limit: int) -> list[MediaRow]:
+        q = (
+            select(MediaRow)
+            .where(MediaRow.used.is_(False), MediaRow.created_at < older_than)
+            .limit(limit)
+            .with_for_update(skip_locked=True)
+        )
+        return list((await self.s.execute(q)).scalars())
+
+    async def still_held(self, name: str) -> bool:
+        return (await self.s.execute(select(MediaRow.name).where(MediaRow.name == name).limit(1))).first() is not None
+
     async def media_owned_by(self, names: set[str], owner_id: str) -> set[str]:
         if not names:
             return set()

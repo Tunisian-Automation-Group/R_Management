@@ -179,3 +179,5 @@ class MediaRow(Base):
     width: Mapped[int] = mapped_column(Integer)
     height: Mapped[int] = mapped_column(Integer)
     created_at: Mapped[datetime] = mapped_column(UtcDateTime)
+    # Set once a listing shows it. Uploads never used are swept after a day.
+    used: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")

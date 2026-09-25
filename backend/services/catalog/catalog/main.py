@@ -9,6 +9,7 @@ from cappy_common.runtime import Runtime
 
 from .clients import Bookings, HttpBookings
 from .handlers import on_booking_rated, on_payouts_ready
+from .jobs import sweep_orphans
 from .media import MediaStore, make_store
 from .routes import internal, router
 from .settings import Settings
@@ -29,6 +30,7 @@ def build_app(
         settings,
         metadata=Base.metadata,
         handlers={BOOKING_RATED: on_booking_rated, PAYOUTS_READY: on_payouts_ready},
+        loops=[sweep_orphans],
         on_stop=close,
     )
     app = create_app(

@@ -81,6 +81,9 @@ class MediaStore:
     async def get(self, name: str) -> bytes:
         raise NotImplementedError
 
+    async def delete(self, name: str) -> None:
+        raise NotImplementedError
+
 
 class DirectoryStore(MediaStore):
     def __init__(self, root: str) -> None:
@@ -104,6 +107,10 @@ class DirectoryStore(MediaStore):
         if not path.is_file():
             raise NotFound("no such photo")
         return await asyncio.to_thread(path.read_bytes)
+
+    async def delete(self, name: str) -> None:
+        if NAME.match(name):
+            await asyncio.to_thread((self.root / name).unlink, True)
 
 
 class S3Store(MediaStore):
@@ -138,6 +145,10 @@ class S3Store(MediaStore):
         except self._s3.exceptions.NoSuchKey as e:
             raise NotFound("no such photo") from e
         return await asyncio.to_thread(obj["Body"].read)
+
+    async def delete(self, name: str) -> None:
+        if NAME.match(name):
+            await asyncio.to_thread(self._s3.delete_object, Bucket=self.bucket, Key=self._key(name))
 
 
 def make_store(settings: Any) -> MediaStore:

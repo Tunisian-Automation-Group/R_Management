@@ -25,6 +25,8 @@ class Settings(CommonSettings):
     # decompression bombs before they are decoded.
     media_max_edge: int = 2000
     media_max_pixels: int = 16_000_000
+    # Photos one person may upload in 24 hours (a listing takes a handful).
+    media_daily_quota: int = 100
 
     # A search never considers more than this many candidate listings; they are
     # the nearest ones matching the category and time window.

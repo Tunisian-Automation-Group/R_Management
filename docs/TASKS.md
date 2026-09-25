@@ -69,7 +69,7 @@ Status: `[ ]` open · `[~]` in progress · `[x]` done (commit) · `[-]` dropped 
 - [x] T-03 Per-upstream bulkheads and per-route timeouts in the gateway
 - [x] T-05 Last-known-good JWKS so new tasks verify tokens during a Cognito outage
 - [x] T-08 Search needs 3+ characters (trigram index), checked with a plan at scale
-- [ ] T-09 Per-user daily upload quota; sweep orphaned photos
+- [x] T-09 100 photos per person per day; uploads never used on a listing swept after a day (a shared file only when nobody holds it)
 - [x] T-10 Nearest-first candidates: districts nearest first (the nearest 200), each answered from its own index, stopping at the cap. At 100k listings: 16.8 ms local (was 36), 21 ms EU-wide (was 47)
 - [x] T-11 Matching degrades without busy windows when booking is down
 - [x] T-16 Exponential backoff per SQS message before the DLQ (hours, not minutes)

@@ -125,6 +125,12 @@ def _profile(client, issuer, sub="user-a", name="Ada Lovelace"):
     return r.json()
 
 
+def _png(shade: int = 90) -> bytes:
+    buf = io.BytesIO()
+    Image.new("RGB", (40, 30), (10, 200, shade)).save(buf, format="PNG")
+    return buf.getvalue()
+
+
 def _jpeg_with_gps() -> bytes:
     img = Image.new("RGB", (3000, 2000), (200, 80, 40))
     exif = Image.Exif()
@@ -608,3 +614,51 @@ def test_the_listings_kill_switch(issuer, broker, tmp_path, bookings):
         _profile(c, issuer)
         r = c.post("/listings", json={"listing": _window_listing()}, headers=issuer.headers("user-a"))
         assert r.status_code == 503
+
+
+def test_upload_quota(issuer, broker, tmp_path, bookings):
+    settings = Settings(
+        app_env="test", database_url="sqlite+aiosqlite://", internal_token="i" * 40, media_daily_quota=2
+    )
+    app = build_app(settings, media_store=DirectoryStore(str(tmp_path)), bookings=bookings, verifier=issuer.verifier())
+    with TestClient(app) as c:
+        h = issuer.headers("user-a")
+        codes = [
+            c.post("/uploads", files={"file": ("p.png", _png(shade), "image/png")}, headers=h).status_code
+            for shade in (0, 120, 250)
+        ]
+        assert codes == [201, 201, 429]
+        # Once over the quota even a repeat is refused: the check comes first.
+        assert c.post("/uploads", files={"file": ("p.png", _png(0), "image/png")}, headers=h).status_code == 429
+
+
+def test_unused_uploads_are_swept_and_shared_ones_kept(client, app, issuer, tmp_path):
+    from datetime import UTC, datetime, timedelta
+
+    from sqlalchemy import update
+
+    from catalog.jobs import sweep_orphans_once
+    from catalog.tables import MediaRow
+
+    same = _jpeg_with_gps()
+    urls = {}
+    for who, name in (("user-a", "Ada Lovelace"), ("user-b", "Bo Builder")):
+        _profile(client, issuer, sub=who, name=name)
+        urls[who] = client.post(
+            "/uploads", files={"file": ("p.jpg", same, "image/jpeg")}, headers=issuer.headers(who)
+        ).json()["url"]
+    # user-b uses it on a listing; user-a never does.
+    body = {"listing": _window_listing(photos=[urls["user-b"]]), "slots": [_slot()]}
+    assert client.post("/listings", json=body, headers=issuer.headers("user-b")).status_code == 201
+    lonely = client.post(
+        "/uploads", files={"file": ("q.png", _png(), "image/png")}, headers=issuer.headers("user-a")
+    ).json()["url"]
+
+    async def age():
+        async with app.state.db.transaction() as s:
+            await s.execute(update(MediaRow).values(created_at=datetime.now(UTC) - timedelta(days=2)))
+
+    _run(app, age)
+    assert _run(app, lambda: sweep_orphans_once(app)) == 1, "only the photo nobody holds is deleted"
+    assert client.get(lonely).status_code == 404
+    assert client.get(urls["user-b"]).status_code == 200
