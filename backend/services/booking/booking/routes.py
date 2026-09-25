@@ -25,7 +25,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from cappy_common.app import ApiRouter
 from cappy_common.auth import Principal, require_internal, require_principal
-from cappy_common.errors import Conflict, Invalid, Unavailable
+from cappy_common.errors import ApiError, Conflict, Invalid, Unavailable
 from cappy_common.events import BOOKING_RATED
 from cappy_common.ids import new_id
 from cappy_common.models import Booking, CamelModel, Iso, Outcome, Requirement
@@ -184,6 +184,7 @@ async def _with_payment(request: Request, row: BookingRow, viewer: str) -> Booki
             requester_id=row.requester_id,
             owner_id=row.owner_id,
             amount=row.amount,
+            owner_net=row.match["quote"]["ownerNet"],
             currency=row.currency,
         )
     except Exception as e:
@@ -194,6 +195,8 @@ async def _with_payment(request: Request, row: BookingRow, viewer: str) -> Booki
             if fresh.status == "awaiting_payment":
                 await repo.move(fresh, "payment_failed", "system", _now(), expires_at=None)
         app.state.relay.wake()
+        if isinstance(e, ApiError) and e.status < 500:
+            raise  # a refusal worth showing as it is: the owner cannot be paid yet, say
         raise Unavailable("we could not start the payment, and you have not been charged; try again") from e
     return BookingCreated(booking=to_booking(row, viewer), payment=payment)
 

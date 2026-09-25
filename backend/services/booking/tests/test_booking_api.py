@@ -12,7 +12,7 @@ from booking.jobs import sweep_once
 from booking.main import build_app
 from booking.settings import Settings
 from booking.tables import BookingRow
-from cappy_common.errors import Unavailable
+from cappy_common.errors import Conflict, Unavailable
 from cappy_common.events import (
     BOOKING_RATED,
     BOOKING_STATUS_CHANGED,
@@ -58,10 +58,14 @@ class FakePayments(Payments):
     def __init__(self) -> None:
         self.started: list[str] = []
         self.down = False
+        self.refuse = False
 
-    async def start(self, *, booking_id, requester_id, owner_id, amount, currency) -> PaymentStart:  # noqa: ANN001
+    async def start(self, *, booking_id, requester_id, owner_id, amount, owner_net, currency) -> PaymentStart:  # noqa: ANN001
         if self.down:
             raise Unavailable("stripe is down")
+        if self.refuse:
+            raise Conflict("this owner cannot take payments yet")
+        assert owner_net < amount
         self.started.append(booking_id)
         return PaymentStart(client_secret=f"pi_{booking_id}_secret", intent_id=f"pi_{booking_id}")
 
@@ -180,6 +184,14 @@ def test_payments_down_releases_the_window(client, issuer, payments):
     assert b["status"] == "payment_failed"
     payments.down = False
     _book(client, issuer)  # the window is free again
+
+
+def test_an_owner_who_cannot_be_paid_cannot_be_booked(client, issuer, payments):
+    payments.refuse = True
+    r = client.post("/bookings", json=_body(), headers=issuer.headers(BUYER))
+    assert r.status_code == 409 and "payments" in r.json()["error"]["message"]
+    payments.refuse = False
+    _book(client, issuer)
 
 
 def test_the_owner_sees_it_only_once_the_card_is_authorised(client, app, issuer, broker):

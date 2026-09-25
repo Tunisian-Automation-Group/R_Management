@@ -15,10 +15,6 @@ import uuid
 import pytest
 
 
-def pytest_configure(config):
-    config.addinivalue_line("markers", "postgres: needs a real Postgres server (CAPPY_TEST_PG)")
-
-
 @pytest.fixture()
 async def postgres_url():
     """A brand-new, empty database for one test, dropped afterwards."""

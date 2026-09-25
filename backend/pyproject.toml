@@ -25,7 +25,10 @@ cappy-common = { workspace = true }
 asyncio_mode = "auto"
 asyncio_default_fixture_loop_scope = "function"
 testpaths = ["libs", "services"]
-markers = ["postgres: needs a real Postgres server (CAPPY_TEST_PG)"]
+markers = [
+    "postgres: needs a real Postgres server (CAPPY_TEST_PG)",
+    "stripe_mock: needs stripe-mock (CAPPY_TEST_STRIPE_MOCK)",
+]
 
 [tool.ruff]
 line-length = 120

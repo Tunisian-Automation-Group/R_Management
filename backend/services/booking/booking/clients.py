@@ -26,7 +26,7 @@ class Matching:
 
 class Payments:
     async def start(
-        self, *, booking_id: str, requester_id: str, owner_id: str, amount: Cents, currency: str
+        self, *, booking_id: str, requester_id: str, owner_id: str, amount: Cents, owner_net: Cents, currency: str
     ) -> PaymentStart:
         """Idempotent per booking: asking twice returns the same intent."""
         raise NotImplementedError
@@ -51,12 +51,13 @@ class HttpPayments(Payments):
     def __init__(self, base_url: str, token: str) -> None:
         self._c = ServiceClient(base_url, internal_token=token)
 
-    async def start(self, *, booking_id, requester_id, owner_id, amount, currency) -> PaymentStart:  # noqa: ANN001
+    async def start(self, *, booking_id, requester_id, owner_id, amount, owner_net, currency) -> PaymentStart:  # noqa: ANN001
         body = {
             "bookingId": booking_id,
             "requesterId": requester_id,
             "ownerId": owner_id,
             "amount": amount,
+            "ownerNet": owner_net,
             "currency": currency,
         }
         return PaymentStart.model_validate(await self._c.post("/internal/intents", json=body))
