@@ -30,7 +30,7 @@ from cappy_common.events import BOOKING_RATED
 from cappy_common.ids import new_id
 from cappy_common.models import Booking, CamelModel, Iso, Outcome, Requirement
 from cappy_common.pagination import Page, clamp_limit
-from cappy_common.runtime import Tx
+from cappy_common.runtime import ReadTx, Tx
 from cappy_common.timeutil import dt_from_iso, iso_from_datetime
 
 from .clients import PaymentStart
@@ -365,7 +365,10 @@ async def bookings_of(person: str, repo: BookingRepository = Depends(get_repo)) 
 
 
 @internal.post("/busy", response_model=dict[str, list[tuple[Iso, Iso]]])
-async def busy(body: BusyIn, repo: BookingRepository = Depends(get_repo)) -> dict[str, list[tuple[str, str]]]:
+async def busy(body: BusyIn, request: Request, session: AsyncSession = ReadTx) -> dict[str, list[tuple[str, str]]]:
+    """From the reader: a window booked a moment ago may still show as free,
+    in which case the booking itself is refused by the constraint."""
+    repo = BookingRepository(session, request.app.state.outbox)
     if not body.listing_ids:
         return {}
     return await repo.busy(body.listing_ids, dt_from_iso(body.start), dt_from_iso(body.until))

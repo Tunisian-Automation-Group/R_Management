@@ -74,3 +74,33 @@ async def test_concurrent_ratings_never_lose_an_increment(postgres_url):
         assert after.rating_sum == before + 40
     finally:
         await db.dispose()
+
+
+def test_public_reads_run_read_only_on_the_reader(postgres_url):
+    """Search, listing pages and candidates work inside READ ONLY transactions
+    (the reader), so none of them can quietly write."""
+    from fastapi.testclient import TestClient
+
+    from cappy_common.testing import TestIssuer
+    from catalog.main import build_app
+    from catalog.settings import Settings
+
+    upgrade(MIGRATIONS, postgres_url)
+    settings = Settings(
+        app_env="test", database_url=postgres_url, database_read_url=postgres_url, internal_token="i" * 40
+    )
+    app = build_app(settings, verifier=TestIssuer().verifier())
+    with TestClient(app) as c:
+
+        async def seed():
+            async with app.state.db.transaction() as s:
+                await CatalogRepository(s).load_seed(build_world())
+
+        c.portal.call(seed)
+        assert app.state.read_db is not app.state.db
+        assert c.get("/search", params={"q": "saw"}).json()["items"]
+        assert c.get("/listings/l9").status_code == 200
+        assert c.get("/cities").status_code == 200
+        body = {"origin": "Kreuzberg", "maxKm": 50, "start": now_iso(), "until": now_iso()[:4] + "-12-31T00:00:00Z"}
+        r = c.post("/internal/candidates", json=body, headers={"X-Internal-Token": "i" * 40})
+        assert r.status_code == 200, r.text

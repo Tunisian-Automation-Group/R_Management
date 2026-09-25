@@ -48,6 +48,7 @@ locals {
     for s in local.services : s => merge(
       s == "gateway" ? {} : { INTERNAL_TOKEN = aws_secretsmanager_secret.internal_token.arn },
       contains(local.db_services, s) ? { DATABASE_URL = aws_secretsmanager_secret.db_url[s].arn } : {},
+      contains(local.read_services, s) ? { DATABASE_READ_URL = aws_secretsmanager_secret.db_read_url[s].arn } : {},
       s == "payments" ? {
         STRIPE_SECRET_KEY      = "${aws_secretsmanager_secret.stripe.arn}:STRIPE_SECRET_KEY::"
         STRIPE_WEBHOOK_SECRET  = "${aws_secretsmanager_secret.stripe.arn}:STRIPE_WEBHOOK_SECRET::"

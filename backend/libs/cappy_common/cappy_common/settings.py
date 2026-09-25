@@ -42,6 +42,10 @@ class CommonSettings(BaseSettings):
     booking_url: str = "http://localhost:8003"
     payments_url: str = "http://localhost:8005"
 
+    # Aurora's reader endpoint, for services with heavy public reads. Empty:
+    # reads go to the writer.
+    database_read_url: str = ""
+
     # --- service-to-service ------------------------------------------------
     # Every ``/internal/*`` route requires this in ``X-Internal-Token``. The
     # network already keeps those routes private (the gateway never routes

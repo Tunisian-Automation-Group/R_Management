@@ -17,7 +17,7 @@ from contextlib import asynccontextmanager
 from typing import Any
 
 from fastapi import Depends, FastAPI, Request
-from sqlalchemy import MetaData
+from sqlalchemy import MetaData, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from .auth import make_verifier
@@ -48,6 +48,7 @@ class Runtime:
         self.on_start = on_start
         self.on_stop = on_stop
         self.db: Database | None = None
+        self.read_db: Database | None = None
         self.outbox: Outbox | None = None
         self.relay: OutboxRelay | None = None
         if metadata is not None:
@@ -87,6 +88,11 @@ class Runtime:
                     await self.db.create_all(self.metadata)
                 app.state.db = self.db
                 app.state.readiness.append(_named("database", self.db.ping))
+                # Aurora's reader, for reads that tolerate a few milliseconds of
+                # lag. Without one configured, reads use the writer.
+                read_url = getattr(s, "database_read_url", "")
+                self.read_db = Database(read_url, application_name=f"{s.service_name}-read") if read_url else self.db
+                app.state.read_db = self.read_db
 
                 publisher = make_publisher(s)
                 self.outbox = Outbox(self.outbox_table, s.service_name)
@@ -131,6 +137,8 @@ class Runtime:
                 if publisher:
                     await publisher.aclose()
                 if self.db:
+                    if self.read_db is not self.db:
+                        await self.read_db.dispose()
                     await self.db.dispose()
 
         return lifespan
@@ -179,3 +187,18 @@ async def db_session(request: Request) -> AsyncIterator[AsyncSession]:
 
 # The one way a route gets a database session: committed before the response.
 Tx = Depends(db_session, scope="function")
+
+
+async def db_read_session(request: Request) -> AsyncIterator[AsyncSession]:
+    """A read-only session on the reader. For public reads that need not see a
+    write made a moment ago (search, listing pages, availability); never for
+    reading back what the caller just changed."""
+    db: Database = request.app.state.read_db
+    async with db.sessions() as session:
+        async with session.begin():
+            if db.is_postgres:
+                await session.execute(text("SET TRANSACTION READ ONLY"))
+            yield session
+
+
+ReadTx = Depends(db_read_session, scope="function")

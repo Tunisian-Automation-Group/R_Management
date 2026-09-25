@@ -108,6 +108,22 @@ resource "aws_secretsmanager_secret_version" "db_url" {
   secret_string = "postgresql+asyncpg://${each.key}:${random_password.db_service[each.key].result}@${aws_rds_cluster.main.endpoint}:5432/${each.key}?ssl=require"
 }
 
+# The reader endpoint, for services whose public reads can lag a few ms.
+locals {
+  read_services = ["catalog", "booking"]
+}
+
+resource "aws_secretsmanager_secret" "db_read_url" {
+  for_each = toset(local.read_services)
+  name     = "${local.name}/${each.key}/database-read-url"
+}
+
+resource "aws_secretsmanager_secret_version" "db_read_url" {
+  for_each      = toset(local.read_services)
+  secret_id     = aws_secretsmanager_secret.db_read_url[each.key].id
+  secret_string = "postgresql+asyncpg://${each.key}:${random_password.db_service[each.key].result}@${aws_rds_cluster.main.reader_endpoint}:5432/${each.key}?ssl=require"
+}
+
 resource "aws_secretsmanager_secret" "db_admin_url" {
   name = "${local.name}/database-admin-url"
 }

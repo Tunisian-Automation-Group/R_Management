@@ -15,7 +15,7 @@ from cappy_common.errors import Conflict, Forbidden, Invalid, NotFound
 from cappy_common.events import LISTING_CHANGED, PROFILE_CREATED, PROFILE_DELETED
 from cappy_common.models import CamelModel, District, Iso, Listing, Owner, Review, Slot, World
 from cappy_common.pagination import Page, clamp_limit
-from cappy_common.runtime import Tx
+from cappy_common.runtime import ReadTx, Tx
 from cappy_common.timeutil import HOUR_MS, dt_from_iso, ms_from_iso, now_iso
 
 from . import media
@@ -32,6 +32,11 @@ MAX_SLOTS_PER_CALL = 200
 
 
 async def get_repo(request: Request, session=Tx) -> CatalogRepository:
+    return CatalogRepository(session, bookable_only=request.app.state.settings.require_payable_owners)
+
+
+async def get_read_repo(request: Request, session=ReadTx) -> CatalogRepository:
+    """Public reads, served by the reader (a few ms behind the writer)."""
     return CatalogRepository(session, bookable_only=request.app.state.settings.require_payable_owners)
 
 
@@ -268,12 +273,12 @@ async def export_me(request: Request, repo=Depends(get_repo), p: Principal = Dep
 
 
 @router.get("/districts", response_model=dict[str, District])
-async def districts(repo=Depends(get_repo)) -> dict[str, District]:
+async def districts(repo=Depends(get_read_repo)) -> dict[str, District]:
     return await repo.districts()
 
 
 @router.get("/cities", response_model=list[City])
-async def cities(repo=Depends(get_repo)) -> list[City]:
+async def cities(repo=Depends(get_read_repo)) -> list[City]:
     return [
         City(city=c.metro, country=c.country, lat=c.lat, lng=c.lng, listings=c.listings) for c in await repo.cities()
     ]
@@ -281,7 +286,7 @@ async def cities(repo=Depends(get_repo)) -> list[City]:
 
 @router.get("/districts/nearest", response_model=NearestDistrict)
 async def nearest(
-    lat: float = Query(ge=-90, le=90), lng: float = Query(ge=-180, le=180), repo=Depends(get_repo)
+    lat: float = Query(ge=-90, le=90), lng: float = Query(ge=-180, le=180), repo=Depends(get_read_repo)
 ) -> NearestDistrict:
     found = await repo.nearest_district(lat, lng)
     if not found:
@@ -293,13 +298,13 @@ async def nearest(
 
 
 @router.get("/owners/{owner_id}", response_model=Owner)
-async def owner(owner_id: str, repo=Depends(get_repo)) -> Owner:
+async def owner(owner_id: str, repo=Depends(get_read_repo)) -> Owner:
     return await repo.owner(owner_id)
 
 
 @router.get("/listings/{listing_id}", response_model=ListingDetail)
 async def listing_detail(
-    listing_id: str, repo=Depends(get_repo), p: Principal | None = Depends(optional_principal)
+    listing_id: str, repo=Depends(get_read_repo), p: Principal | None = Depends(optional_principal)
 ) -> ListingDetail:
     row = await repo.listing_row(listing_id)
     listing = await repo.listing(listing_id)
@@ -318,7 +323,7 @@ async def listing_detail(
 
 @router.get("/listings/{listing_id}/reviews", response_model=Page[Review])
 async def listing_reviews(
-    listing_id: str, cursor: str | None = None, limit: int | None = None, repo=Depends(get_repo)
+    listing_id: str, cursor: str | None = None, limit: int | None = None, repo=Depends(get_read_repo)
 ) -> Page[Review]:
     await repo.listing_row(listing_id)
     items, nxt = await repo.reviews(listing_id, cursor=cursor, limit=clamp_limit(limit))
@@ -332,7 +337,7 @@ async def search(
     category: str | None = None,
     cursor: str | None = None,
     limit: int | None = None,
-    repo=Depends(get_repo),
+    repo=Depends(get_read_repo),
     p: Principal | None = Depends(optional_principal),
 ) -> Page[ListingView]:
     items, nxt = await repo.search(q=q, metro=metro, category=category, cursor=cursor, limit=clamp_limit(limit))
@@ -514,7 +519,7 @@ async def unsave(listing_id: str, repo=Depends(get_repo), p: Principal = Depends
 
 
 @internal.post("/candidates", response_model=World)
-async def candidates(body: CandidatesIn, request: Request, repo=Depends(get_repo)) -> World:
+async def candidates(body: CandidatesIn, request: Request, repo=Depends(get_read_repo)) -> World:
     origin = await repo.district(body.origin)
     cap = body.cap or request.app.state.settings.candidate_cap
     return await repo.candidates(
@@ -530,11 +535,11 @@ async def candidates(body: CandidatesIn, request: Request, repo=Depends(get_repo
 
 @internal.get("/listings/{listing_id}/context", response_model=World)
 async def listing_context(
-    listing_id: str, after: str | None = None, origin: str | None = None, repo=Depends(get_repo)
+    listing_id: str, after: str | None = None, origin: str | None = None, repo=Depends(get_read_repo)
 ) -> World:
     return await repo.listing_context(listing_id, after=dt_from_iso(after or now_iso()), origin=origin)
 
 
 @internal.get("/owners/{owner_id}", response_model=Owner)
-async def internal_owner(owner_id: str, repo=Depends(get_repo)) -> Owner:
+async def internal_owner(owner_id: str, repo=Depends(get_read_repo)) -> Owner:
     return await repo.owner(owner_id)
