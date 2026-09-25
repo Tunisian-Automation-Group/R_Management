@@ -288,6 +288,23 @@ async def test_relay_keeps_events_when_publishing_fails(stores):
     assert healthy.published[0].data == {"n": 1}
 
 
+async def test_a_row_that_keeps_failing_stops_blocking_the_rest(stores):
+    from sqlalchemy import update
+
+    from cappy_common.events import MAX_ATTEMPTS
+
+    db, _, outbox_t, _ = stores
+    out = Outbox(outbox_t, "test")
+    async with db.transaction() as s:
+        poison = await out.add(s, BOOKING_RATED, {"n": "poison"})
+    async with db.transaction() as s:
+        await s.execute(update(outbox_t).where(outbox_t.c.id == poison.id).values(attempts=MAX_ATTEMPTS))
+        await out.add(s, BOOKING_RATED, {"n": "next"})
+    broker = MemoryBroker()
+    assert await OutboxRelay(db, outbox_t, broker).flush() == 1
+    assert [e.data["n"] for e in broker.published] == ["next"]
+
+
 async def test_consumer_is_idempotent_and_never_acks_failures(stores):
     db, things, outbox_t, processed = stores
     seen = []

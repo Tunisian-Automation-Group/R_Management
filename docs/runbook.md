@@ -78,6 +78,11 @@ Both are recorded in the booking's audit trail as `support:<name>`.
 - **Rotate a service's database password**: taint
   `module.platform.random_password.db_service["<service>"]`, then deploy. The
   migrate task sets the new password before the services roll.
+- **Stripe test mode locally**: set the test keys and `COMPOSE_PROFILES=stripe`,
+  `PAYMENTS_PROVIDER=stripe` in `.env`; `make up` then gives every demo owner a
+  verified test connected account (`python -m payments.cli demo-payouts`, test
+  keys only). The webhook secret is `docker run --rm stripe/stripe-cli listen
+  --api-key $STRIPE_SECRET_KEY --print-secret`.
 - **Demo data**: staging only.
   `aws ecs run-task … --overrides '{"containerOverrides":[{"name":"catalog","command":["python","-m","catalog.cli","seed-demo"]}]}'`.
   The command refuses to run in prod.

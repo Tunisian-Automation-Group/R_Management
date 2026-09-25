@@ -128,6 +128,17 @@ Status: `[x]` done (with the commit that did it) · `[~]` in progress ·
 - [-] Per-event source verification: a sender sets its own source, so it proves nothing;
       per-publisher topics if the threat model needs it (runbook, known limits)
 
+## Phase 13 — Store ready, payments for real, verified by someone else (GOAL items 9–11)
+- [x] Stripe test mode end to end: CLI forwards webhooks in the stack; e2e confirms with Stripe's
+      test card and follows capture and a real transfer to a verified test connected account (72693fb)
+- [x] Account deletion and data export (App Store, GDPR) (141924b)
+- [x] Native shells decided: Capacitor (ADR 0012); gateway CORS for the shells (141924b)
+- [x] Public reads on the Aurora reader (450d397); shared vocabulary cached at the edge (98f0364)
+- [ ] Web: delete account + export in Profile; privacy and terms pages; media URLs resolved
+      against the API origin; Capacitor projects (ios/android), deep-link files
+- [ ] Independent browser verification: rounds until a full pass finds nothing
+- [ ] Load test against the local stack: no errors under sustained concurrent use
+
 ## Definition of done
 
 | Goal criterion | Evidence | Status |

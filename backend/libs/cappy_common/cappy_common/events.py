@@ -156,6 +156,9 @@ class Publisher:
         """Release resources."""
 
 
+MAX_ATTEMPTS = 20
+
+
 class OutboxRelay:
     """Moves committed outbox rows onto the bus."""
 
@@ -176,7 +179,11 @@ class OutboxRelay:
 
     async def _once(self) -> int:
         async with self.db.transaction() as s:
-            q = select(self.table.c.id, self.table.c.body).where(self.table.c.sent_at.is_(None))
+            # A row that keeps failing is set aside after MAX_ATTEMPTS so it cannot
+            # hold up everything behind it (the log says so each time it fails).
+            q = select(self.table.c.id, self.table.c.body).where(
+                self.table.c.sent_at.is_(None), self.table.c.attempts < MAX_ATTEMPTS
+            )
             q = q.order_by(self.table.c.created_at).limit(self.batch_size)
             if self.db.is_postgres:
                 q = q.with_for_update(skip_locked=True)
