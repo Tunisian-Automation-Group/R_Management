@@ -300,3 +300,20 @@ def test_a_declined_capture_tells_booking_and_takes_nothing(client, app, provide
     # The booking then becomes payment_failed; nothing further happens here.
     _status(app, "bk_1", "payment_failed")
     assert [op for op, _ in provider.calls] == ["intent"]
+
+
+def test_accounts_the_fake_provider_made_do_not_count_with_stripe(stripe_app):
+    app, c = stripe_app
+
+    async def leftover():
+        from datetime import UTC, datetime
+
+        async with app.state.db.transaction() as s:
+            s.add(
+                ConnectAccountRow(
+                    owner_id="host", account_id="acct_fake_host", payouts_enabled=True, updated_at=datetime.now(UTC)
+                )
+            )
+
+    call(app, leftover)
+    assert _intent(c).status_code == 409

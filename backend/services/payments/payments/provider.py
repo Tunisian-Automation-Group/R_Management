@@ -26,6 +26,11 @@ class AccountStatus:
     details_submitted: bool
 
 
+# Accounts the fake provider made. They mean nothing to Stripe, so an
+# environment switched to Stripe must not treat their owners as payable.
+FAKE_ACCOUNT_PREFIX = "acct_fake_"
+
+
 class Declined(Exception):
     """Stripe refused for good (a reversed authorisation, a closed account):
     retrying will not help, so the booking is told instead."""
@@ -201,7 +206,7 @@ class FakeProvider(Provider):
         return f"tr_fake_{booking_id}"
 
     async def create_account(self, owner_id: str) -> str:
-        return f"acct_fake_{owner_id}"[:80]
+        return f"{FAKE_ACCOUNT_PREFIX}{owner_id}"[:80]
 
     async def onboarding_link(self, account_id: str, return_url: str, refresh_url: str) -> str:
         return return_url

@@ -55,3 +55,18 @@ that works, a file that exists).
    emulated AWS; one command runs every test; unit tests need no Docker.
 8. **Documented.** How to run, test, deploy and operate it; why it is built
    the way it is (ADRs).
+
+## The brief, extended (2026-09-25, verbatim)
+
+> get the webhook and add it to the .env file, and the /goal is to keep working on the code until you are 100% that this can be in production and used by millions of users and can be scaled like uber or any of these apps, keep working for hours until you know it is fine and have an agent seperate from you verifying your work opening browser testing each and every functionality and again and again, this is the goal until you keep finding and solving all bugs. this is an app that will be in app store and web and google stores and so on, keep working until you verify everything with the verify agent.
+
+What this adds to "production ready":
+
+9. **Verified by someone else.** A separate agent, not the one who wrote the
+   code, drives the real app in a browser through every feature, again after
+   every round of fixes, until a full pass finds nothing.
+10. **Store ready.** The same app ships on the web, the App Store and Google
+    Play, and meets what those stores require: in-app account deletion,
+    privacy policy and terms, data export (GDPR), and working deep links.
+11. **Payments for real.** The Stripe test-mode flow (card form, webhook,
+    capture, refund, payout) works end to end, not only the fake provider.

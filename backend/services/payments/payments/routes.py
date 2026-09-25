@@ -19,7 +19,7 @@ from cappy_common.events import PAYMENT_AUTHORISED, PAYOUTS_READY
 from cappy_common.models import CamelModel
 from cappy_common.runtime import Tx
 
-from .provider import Provider
+from .provider import FAKE_ACCOUNT_PREFIX, Provider
 from .tables import PROCESSED, ConnectAccountRow, PaymentRow
 
 log = logging.getLogger(__name__)
@@ -134,6 +134,8 @@ async def create_intent(body: IntentIn, request: Request) -> IntentOut:
                 )
                 if not account.payouts_enabled:
                     await _update_account(request, session, account, True, True)
+            if provider.name != "fake" and account is not None and account.account_id.startswith(FAKE_ACCOUNT_PREFIX):
+                account = None  # made by the fake provider: Stripe has never heard of it
             if account is None or not account.payouts_enabled:
                 # ADR 0005: nobody books an owner we could not pay.
                 raise Conflict("this owner has not finished setting up payments yet, so they cannot take bookings")

@@ -6,6 +6,13 @@ import { useToast } from '../store.tsx'
 import { Screen } from '../components/AppShell.tsx'
 import { Button, Field, Input, Segmented } from '../components/ui.tsx'
 
+/** `label:email:password;…` from VITE_DEMO_ACCOUNTS (written by the local bootstrap). */
+const DEMO = ((import.meta.env.VITE_DEMO_ACCOUNTS as string | undefined) ?? '')
+  .split(';')
+  .map((entry) => entry.split(':'))
+  .filter((parts) => parts.length === 3)
+  .map(([label, email, password]) => ({ label, email, password }))
+
 /** in: sign in · up: create · confirm: the emailed code · forgot / reset: a new password */
 type Mode = 'in' | 'up' | 'confirm' | 'forgot' | 'reset'
 
@@ -146,7 +153,7 @@ export function Login() {
         {needsPassword && (
           <Field
             label={mode === 'reset' ? 'New password' : 'Password'}
-            hint={mode === 'in' ? undefined : 'At least eight characters, with a number, a capital and a symbol.'}
+            hint={mode === 'in' ? undefined : 'At least ten characters, with a number, a capital and a lowercase letter.'}
             htmlFor="f-password"
           >
             <Input
@@ -174,6 +181,35 @@ export function Login() {
           {busy ? 'One moment…' : copy.submit}
         </Button>
       </form>
+
+      {mode === 'in' && DEMO.length > 0 && (
+        // Local and staging builds only (VITE_DEMO_ACCOUNTS is never set for
+        // production): one tap into a seeded account.
+        <div className="mt-6 space-y-2" data-testid="demo-accounts">
+          {DEMO.map(({ label, email: demoEmail, password: demoPassword }) => (
+            <Button
+              key={demoEmail}
+              variant="secondary"
+              className="w-full"
+              disabled={busy}
+              onClick={async () => {
+                setBusy(true)
+                setError(null)
+                try {
+                  await auth.signIn(demoEmail, demoPassword)
+                  nav(next, { replace: true })
+                } catch (e) {
+                  setError(e instanceof Error ? e.message : 'Could not sign in')
+                } finally {
+                  setBusy(false)
+                }
+              }}
+            >
+              Continue as {label}
+            </Button>
+          ))}
+        </div>
+      )}
 
       <p className="mt-6 text-center text-[13.5px] text-[var(--ink-3)]">
         {mode === 'in' && (

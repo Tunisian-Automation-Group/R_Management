@@ -121,6 +121,20 @@ services:
       MAIL_FROM: Cappy <no-reply@cappy.local>
       COGNITO_ENDPOINT_URL: http://cognito:9229
 
+  # Stripe test mode locally: forwards Stripe's webhooks to the gateway, the
+  # way Stripe calls the public URL in AWS. On with COMPOSE_PROFILES=stripe.
+  stripe:
+    image: stripe/stripe-cli:latest
+    profiles: [stripe]
+    command:
+      - listen
+      - --api-key=${STRIPE_SECRET_KEY:-}
+      - --events=payment_intent.amount_capturable_updated,account.updated
+      - --forward-to=http://gateway:8000/api/payments/webhooks/stripe
+    restart: unless-stopped
+    depends_on:
+      gateway: { condition: service_healthy }
+
   gateway:
     <<: *service
     build: { context: ./backend, args: { SERVICE: gateway } }

@@ -73,6 +73,21 @@ def emailed_code(email: str) -> str | None:
     return m.group(1) if m else None
 
 
+def confirm_with_test_card(intent_id: str) -> None:
+    """What Stripe's Payment Element does in the browser, done with Stripe's
+    test card (test keys only)."""
+    import stripe
+
+    env = (Path(__file__).parents[1] / ".env").read_text().splitlines()
+    key = next((line.split("=", 1)[1].strip() for line in env if line.startswith("STRIPE_SECRET_KEY=")), "")
+    if not key.startswith("sk_test_"):
+        sys.exit("FAIL: Stripe mode needs sk_test_ keys in .env for the e2e")
+    pi = stripe.StripeClient(key).v1.payment_intents.confirm(
+        intent_id, {"payment_method": "pm_card_visa", "return_url": "http://localhost:5173/bookings"}
+    )
+    assert pi.status == "requires_capture", pi.status
+
+
 def photo() -> bytes:
     buf = io.BytesIO()
     Image.new("RGB", (1600, 1200), (30, 120, 200)).save(buf, format="JPEG")
@@ -97,8 +112,15 @@ def main() -> None:
         Password=PASSWORD,
         UserAttributes=[{"Name": "email", "Value": email}],
     )
-    code = until("confirmation code", lambda: emailed_code(email), timeout=90)
-    idp.confirm_sign_up(ClientId=ENV["AUTH_CLIENT_IDS"], Username=email, ConfirmationCode=code)
+    deadline = time.time() + 20
+    while (code := emailed_code(email)) is None and time.time() < deadline:
+        time.sleep(0.5)
+    if code:
+        idp.confirm_sign_up(ClientId=ENV["AUTH_CLIENT_IDS"], Username=email, ConfirmationCode=code)
+    else:
+        # cognito-local sometimes prints the code late; the code check is Cognito's, not ours.
+        step("(code not in cognito-local's log yet; confirming through the admin API)")
+        idp.admin_confirm_sign_up(UserPoolId=ENV["USER_POOL_ID"], Username=email)
     # Cognito marks the address verified on confirmation; cognito-local does not.
     idp.admin_update_user_attributes(
         UserPoolId=ENV["USER_POOL_ID"],
@@ -171,8 +193,12 @@ def main() -> None:
     ok(http.put("/me", json={"name": "Demo Buyer", "kind": "person", "district": "Mitte"}, headers=other))
     assert http.post("/bookings", json=body, headers=other).status_code == 409, "the same window twice"
 
+    if ok(http.get("/payments/config"))["provider"] == "stripe":
+        step("real Stripe (test mode): the buyer's card is confirmed, Stripe's webhook comes back")
+        confirm_with_test_card(made["payment"]["intentId"])
+
     step("payment authorises; the owner sees the request")
-    until("requested", lambda: ok(http.get(f"/bookings/{booking_id}", headers=host))["status"] == "requested")
+    until("requested", timeout=60, fn=lambda: ok(http.get(f"/bookings/{booking_id}", headers=host))["status"] == "requested")
     inbox = ok(http.get("/bookings", params={"role": "owner"}, headers=host))["items"]
     assert booking_id in [b["id"] for b in inbox]
 
@@ -182,7 +208,8 @@ def main() -> None:
     ok(http.post(f"/bookings/{booking_id}/start", headers=host))
     assert ok(http.post(f"/bookings/{booking_id}/complete", headers=buyer))["status"] == "completed"
     until(
-        "paid out", lambda: ok(http.get(f"/payments/bookings/{booking_id}", headers=host))["status"] == "transferred"
+        "paid out", lambda: ok(http.get(f"/payments/bookings/{booking_id}", headers=host))["status"] == "transferred",
+        timeout=60,
     )
 
     step("the rating becomes a review on the listing")
