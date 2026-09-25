@@ -405,11 +405,14 @@ resource "aws_cloudfront_response_headers_policy" "security" {
       content_security_policy = join("; ", [
         "default-src 'self'",
         "script-src 'self' https://js.stripe.com",
-        "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
-        "img-src 'self' data: blob: https://images.unsplash.com https://*.stripe.com",
+        # Fonts are self-hosted (P-26). 'unsafe-inline' stays for style
+        # attributes React sets; scripts never get it.
+        "style-src 'self' 'unsafe-inline'",
+        # Unsplash only for the demo world's photos, which never reach prod (ADR 0010).
+        "img-src 'self' data: blob: https://*.stripe.com${var.env == "prod" ? "" : " https://images.unsplash.com"}",
         "connect-src 'self' https://cognito-idp.${var.region}.amazonaws.com https://api.stripe.com",
         "frame-src https://js.stripe.com https://hooks.stripe.com",
-        "font-src 'self' data: https://fonts.gstatic.com",
+        "font-src 'self' data:",
         "object-src 'none'",
         "base-uri 'self'",
         "form-action 'self'",
