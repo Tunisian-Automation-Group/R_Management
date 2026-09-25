@@ -31,6 +31,7 @@ from cappy_common.events import (
     Outbox,
 )
 
+from .invoices import issue
 from .provider import Declined, Provider
 from .tables import OUTBOX, ConnectAccountRow, IdentityRow, PaymentRow
 
@@ -98,6 +99,13 @@ def handlers(provider: Provider, service_name: str, payouts_on: bool = True) -> 
                     charge_id=row.charge_id,
                 )
                 await outbox.add(session, PAYOUT_SENT, {**facts, "amount": owner_part, "currency": row.currency})
+                await issue(
+                    session,
+                    booking_id=row.booking_id,
+                    owner_id=row.owner_id,
+                    fee_gross=kept - owner_part,
+                    currency=row.currency,
+                )
         elif to == "completed" and row.status == "captured" and row.chargeback_at is not None:
             log.error("CHARGEBACK hold: not paying out booking %s", row.booking_id)
             return
@@ -116,6 +124,13 @@ def handlers(provider: Provider, service_name: str, payouts_on: bool = True) -> 
             )
             row.status = "transferred"
             await outbox.add(session, PAYOUT_SENT, {**facts, "amount": row.owner_net, "currency": row.currency})
+            await issue(
+                session,
+                booking_id=row.booking_id,
+                owner_id=row.owner_id,
+                fee_gross=row.amount - row.owner_net,
+                currency=row.currency,
+            )
         elif to == "completed" and row.status in ("created", "authorised"):
             # Completed without an accept (auto-completion of an accepted
             # booking always follows a capture): out of order; try again later.

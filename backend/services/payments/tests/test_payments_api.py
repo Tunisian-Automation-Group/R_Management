@@ -471,3 +471,16 @@ def test_a_late_cancellation_refunds_part_and_pays_the_owner_their_share(client,
     call(app, app.state.relay.flush)
     assert broker.of_type(PAYMENT_REFUNDED)[0].data["amount"] == 2300
     assert broker.of_type(PAYOUT_SENT)[0].data["amount"] == 2000, "the owner's 4000/4600 of the 2300 kept"
+
+
+def test_a_payout_issues_one_numbered_fee_invoice(client, app, issuer):
+    _intent(client)
+    _status(app, "bk_1", "accepted")
+    _status(app, "bk_1", "completed")
+    _status(app, "bk_1", "completed")  # redelivered: still one invoice
+    [inv] = client.get("/payments/invoices", headers=issuer.headers("host")).json()
+    assert inv["number"].endswith("-0000001") and inv["gross"] == 600 and inv["net"] + inv["vat"] == 600
+    assert inv["vatRateBps"] == 1900 and inv["net"] == 504
+    page = client.get(f"/payments/invoices/{inv['number']}", headers=issuer.headers("host"))
+    assert page.status_code == 200 and "Rechnung" in page.text and "6,00 €" in page.text
+    assert client.get(f"/payments/invoices/{inv['number']}", headers=issuer.headers("buyer")).status_code == 404

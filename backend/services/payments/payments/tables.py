@@ -53,6 +53,31 @@ class IdentityRow(Base):
     updated_at: Mapped[datetime] = mapped_column(UtcDateTime)
 
 
+class InvoiceRow(Base):
+    """The platform's invoice to an owner for its fee (Art. 226 VAT Directive;
+    GoBD: numbered without gaps, kept 10 years, never changed once issued)."""
+
+    __tablename__ = "invoices"
+    number: Mapped[str] = mapped_column(String(20), primary_key=True)
+    booking_id: Mapped[str] = mapped_column(String(40), unique=True)
+    owner_id: Mapped[str] = mapped_column(String(64), index=True)
+    net: Mapped[int] = mapped_column(Integer)
+    vat_rate_bps: Mapped[int] = mapped_column(Integer)
+    vat: Mapped[int] = mapped_column(Integer)
+    gross: Mapped[int] = mapped_column(Integer)
+    currency: Mapped[str] = mapped_column(String(3))
+    issued_at: Mapped[datetime] = mapped_column(UtcDateTime)
+
+
+class InvoiceCounterRow(Base):
+    """One row per year: the last number issued. Taken under a row lock, so
+    numbers never repeat or skip, however many payouts run at once."""
+
+    __tablename__ = "invoice_counters"
+    year: Mapped[int] = mapped_column(Integer, primary_key=True)
+    last: Mapped[int] = mapped_column(Integer)
+
+
 class ConnectAccountRow(Base):
     """An owner's Stripe Express account. Stripe holds their identity and bank
     details; we keep the id and whether they can be paid."""

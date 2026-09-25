@@ -51,3 +51,22 @@ def test_racing_intent_requests_make_one_payment(postgres_url):
         results = client.portal.call(race)
     assert [r.status_code for r in results] == [200] * 5, [r.text for r in results]
     assert len({r.json()["intentId"] for r in results}) == 1
+
+
+async def test_invoice_numbers_have_no_gaps_under_concurrency(postgres_url):
+    from payments.invoices import issue
+
+    await asyncio.to_thread(upgrade, MIGRATIONS, postgres_url)
+    db = Database(postgres_url, pool_size=10)
+    try:
+
+        async def one(n: int) -> str:
+            async with db.transaction() as s:
+                row = await issue(s, booking_id=f"bk_{n}", owner_id="o", fee_gross=600, currency="eur")
+                return row.number
+
+        numbers = await asyncio.gather(*(one(n) for n in range(20)))
+        tails = sorted(int(x.rsplit("-", 1)[1]) for x in numbers)
+        assert tails == list(range(1, 21))
+    finally:
+        await db.dispose()

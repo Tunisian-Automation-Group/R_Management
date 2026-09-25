@@ -6,6 +6,7 @@ from cappy_common.app import create_app
 from cappy_common.auth import TokenVerifier
 from cappy_common.runtime import Runtime
 
+from . import invoices
 from .handlers import handlers
 from .jobs import reconcile
 from .provider import Provider, make_provider
@@ -34,6 +35,7 @@ def build_app(
     app.state.provider = provider
     app.include_router(router)
     app.include_router(internal)
+    app.include_router(invoices.router)
     return app
 
 

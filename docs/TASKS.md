@@ -157,6 +157,8 @@ Engineering, before launch:
 - [x] G-9 Fraud rules: 10 booking requests and 20 new listings per person per day; a new owner's listing above 100 €/h waits for a staff check (`/api/admin/listings/held`, approve)
 - [~] G-10 DAC7: every category tagged with its activity (`dac7` on /api/categories; counsel confirms). Left for the business: switch on Stripe Connect platform tax reporting in the dashboard (it collects TIN and date of birth in onboarding, and Stripe withholds payouts while they are missing) and register with the BZSt (G-B4)
 
+- [x] G-11 Fee invoices to owners: issued at payout (or when a late cancellation keeps a fee), numbered without gaps per year (proven under 20 concurrent payouts), never duplicated, printable (`/api/payments/invoices`). VAT treated as German 19% included until counsel confirms reverse charge and OSS (G-B2)
+
 Decisions for the business (not code):
 - [ ] G-B1 Insurance partner or guarantee for damage (vans first) — owner of the business
 - [ ] G-B2 Terms, cancellation policy, VAT treatment of the fee, withdrawal-right scope for storage and workshops — counsel
