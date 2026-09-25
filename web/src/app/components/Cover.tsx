@@ -181,7 +181,7 @@ export function Plate({
             </span>
             {!thumb && (
               <span
-                className="plate-caption mt-2 block text-[12px] font-medium tracking-[0.04em]"
+                className="plate-caption mt-2 block text-[0.75rem] font-medium tracking-[0.04em]"
                 style={{ color: openNow ? 'var(--sky)' : 'var(--on-field-dim)' }}
               >
                 {figure === 'hours' && hoursFree >= 1
@@ -221,7 +221,7 @@ export function Plate({
         </div>
       ) : (
         <div className={`relative flex h-full items-end ${thumb ? 'p-2' : 'p-4'}`}>
-          <p className="text-[13px] font-medium" style={{ color: 'var(--on-field-dim)' }}>
+          <p className="text-[0.8125rem] font-medium" style={{ color: 'var(--on-field-dim)' }}>
             {thumb ? '' : t('Nothing free this week')}
           </p>
         </div>
@@ -251,7 +251,7 @@ export function WhenBadge({
   if (!freeNow) return null
   return (
     <span
-      className={`inline-flex items-center gap-1.5 text-[12px] font-semibold text-[var(--accent-text)] ${className}`}
+      className={`inline-flex items-center gap-1.5 text-[0.75rem] font-semibold text-[var(--accent-text)] ${className}`}
     >
       <span className="relative grid h-[7px] w-[7px] shrink-0 place-items-center">
         <span className="pulse-ring absolute inset-0 rounded-full bg-[var(--accent)]" />

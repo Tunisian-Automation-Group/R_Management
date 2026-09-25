@@ -44,7 +44,7 @@ export function Legal() {
   if (!p) return <NotFound />
   return (
     <Screen title={titleOf(p)} back="/profile">
-      <nav aria-label={t('Legal pages')} className="mb-6 flex flex-wrap gap-x-5 gap-y-2 text-[14px] font-semibold">
+      <nav aria-label={t('Legal pages')} className="mb-6 flex flex-wrap gap-x-5 gap-y-2 text-[0.875rem] font-semibold">
         {Object.entries(PAGES).map(([key, v]) => (
           <NavLink
             key={key}
@@ -64,7 +64,7 @@ export function Legal() {
           />
         </div>
       )}
-      <article className="legal space-y-4 pb-8 text-[15px] leading-[24px] text-[var(--ink-2)]">{p.body()}</article>
+      <article className="legal space-y-4 pb-8 text-[0.9375rem] leading-[1.5rem] text-[var(--ink-2)]">{p.body()}</article>
     </Screen>
   )
 }
@@ -74,7 +74,7 @@ export function AccountDeletion() {
   const de = lang() === 'de'
   return (
     <Screen title={de ? 'Konto löschen' : 'Delete your Cappy account'} back="/profile">
-      <article className="legal space-y-4 pb-8 text-[15px] leading-[24px] text-[var(--ink-2)]">
+      <article className="legal space-y-4 pb-8 text-[0.9375rem] leading-[1.5rem] text-[var(--ink-2)]">
         {de ? (
           <>
             <p>So löschst du dein Konto, in der App oder auf cappy.app:</p>

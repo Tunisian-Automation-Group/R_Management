@@ -1,8 +1,9 @@
 import { useId, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { useAuthReady, useSession } from '../../data/auth.ts'
+import { confirmTotp, startTotp, useAuthReady, useSession } from '../../data/auth.ts'
 import {
+  ApiError,
   decideReport,
   getAdminReports,
   reinstateOwner,
@@ -100,12 +101,99 @@ export function Admin() {
       </Screen>
     )
   }
+  return <Console />
+}
+
+/** Staff powers need two-step sign-in (P-3): until it is on, the server answers
+ *  every staff call with `mfa_required`, and this page sets it up. */
+function Console() {
+  const probe = useQuery({ queryKey: ['adminReports', 'open', undefined], queryFn: () => getAdminReports('open') })
+  const mfa = probe.error instanceof ApiError && probe.error.code === 'mfa_required'
   return (
     <Screen title={t('Staff console')}>
-      <Queue />
-      <Actions />
-      <Audit />
+      {mfa ? (
+        <TotpSetup onDone={() => void probe.refetch()} />
+      ) : (
+        <>
+          <Queue />
+          <Actions />
+          <Audit />
+        </>
+      )}
     </Screen>
+  )
+}
+
+function TotpSetup({ onDone }: { onDone: () => void }) {
+  const toast = useToast()
+  const [secret, setSecret] = useState<{ secret: string; uri: string } | null>(null)
+  const [code, setCode] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const run = async (step: () => Promise<void>) => {
+    setBusy(true)
+    setError(null)
+    try {
+      await step()
+    } catch (e) {
+      setError(e instanceof Error ? e.message : t('That did not work. Try again.'))
+    } finally {
+      setBusy(false)
+    }
+  }
+  return (
+    <Card className="p-5">
+      <h2 className="t-h3">{t('Set up two-step sign-in')}</h2>
+      <p className="t-sm mt-2 text-[var(--ink-3)]">
+        {t('Staff can move money and suspend people, so a password alone is not enough. Add Cappy to an authenticator app; from then on each sign-in asks for its code.')}
+      </p>
+      {!secret ? (
+        <Button className="mt-4" disabled={busy} onClick={() => void run(async () => setSecret(await startTotp()))}>
+          {busy ? t('One moment…') : t('Start')}
+        </Button>
+      ) : (
+        <form
+          className="mt-4 space-y-4"
+          onSubmit={(e) => {
+            e.preventDefault()
+            void run(async () => {
+              await confirmTotp(code)
+              toast(t('Two-step sign-in is on'))
+              onDone()
+            })
+          }}
+        >
+          {/* ponytail: no QR library installed; the otpauth link opens the authenticator on a phone, the key is typed on a computer. */}
+          <p className="t-sm">
+            <a href={secret.uri} className="font-semibold underline">
+              {t('Open in your authenticator app')}
+            </a>
+          </p>
+          <Field label={t('Or enter this key')} htmlFor="totp-secret">
+            <Input id="totp-secret" readOnly value={secret.secret} className="font-mono" onFocus={(e) => e.currentTarget.select()} />
+          </Field>
+          <Field label={t('Code from the app')} htmlFor="totp-code">
+            <Input
+              id="totp-code"
+              inputMode="numeric"
+              autoComplete="one-time-code"
+              maxLength={6}
+              value={code}
+              onChange={(e) => setCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
+              placeholder="123456"
+            />
+          </Field>
+          <Button type="submit" disabled={busy || code.length !== 6}>
+            {busy ? t('One moment…') : t('Turn on two-step sign-in')}
+          </Button>
+        </form>
+      )}
+      {error && (
+        <p role="alert" className="t-sm mt-3 font-semibold text-[var(--danger)]">
+          {error}
+        </p>
+      )}
+    </Card>
   )
 }
 
@@ -147,7 +235,7 @@ function Queue() {
             return (
               <li key={r.id}>
                 <Card className="p-4">
-                  <p className="text-[15px] font-semibold">
+                  <p className="text-[0.9375rem] font-semibold">
                     {t(REASON_LABEL[r.reason] ?? r.reason)} · {t(TARGET_LABEL[r.targetType] ?? r.targetType)}{' '}
                     {link ? (
                       <Link className="underline" to={link}>
@@ -333,7 +421,7 @@ function Audit() {
           <ul className="space-y-3">
             {audit.data!.map((a) => (
               <li key={a.id} className="border-b border-[var(--line)] pb-3 last:border-0 last:pb-0">
-                <p className="text-[14.5px] font-semibold">
+                <p className="text-[0.9062rem] font-semibold">
                   {a.action} · {a.targetType} <span className="tnum text-[var(--ink-3)]">{a.targetId}</span>
                 </p>
                 <p className="t-sm text-[var(--ink-4)]">

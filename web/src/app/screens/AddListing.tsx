@@ -3,7 +3,7 @@ import { drafts } from '../device.ts'
 import { Navigate, useNavigate, useParams } from 'react-router-dom'
 import type { CancellationPolicy, CategoryId, Material, Slot } from '../../domain/types.ts'
 import { CATEGORIES, category } from '../../domain/categories.ts'
-import { formatEur } from '../../domain/money.ts'
+import { formatMoney } from '../../domain/money.ts'
 import { messageOf, useCappy, useToast } from '../store.tsx'
 import { useSession } from '../../data/auth.ts'
 import { askForPush } from '../components/PushPrime.tsx'
@@ -154,7 +154,8 @@ type Errors = Partial<
 
 /** A photograph on its way in: shown at once from the file, sent shrunk, and
  *  carrying the server's URL once it has one. The first in the list is the cover. */
-type PhotoDraft = { key: string; preview: string; url?: string; error?: string }
+/** A picture in the form: `progress` 0–1 while it goes up, `file` kept so a failed one can be retried (U-25). */
+type PhotoDraft = { key: string; preview: string; url?: string; error?: string; progress?: number; file?: File }
 
 /** New listing at /earn/new; editing one of yours at /earn/edit/:id. */
 const clampPct = (v: string) => Math.max(0, Math.min(50, Math.round(Number(v) || 0)))
@@ -176,7 +177,7 @@ function ListingForm({ edit }: { edit?: repo.ListingView }) {
   const { state } = useCappy()
   const toast = useToast()
   const qc = useQueryClient()
-  const [createKey] = useState(() => crypto.randomUUID())
+  const attempt = repo.useAttemptKey()
   const districts = repo.useDistricts()
   const [saving, setSaving] = useState(false)
   const was = edit?.listing
@@ -283,22 +284,29 @@ function ListingForm({ edit }: { edit?: repo.ListingView }) {
     const drafts: PhotoDraft[] = picked.map((f, i) => ({
       key: `${Date.now().toString(36)}-${i}-${f.name}`,
       preview: URL.createObjectURL(f),
+      file: f,
+      progress: 0,
     }))
     setPhotos((prev) => [...prev, ...drafts])
     setTouched((t) => ({ ...t, photos: true }))
-    await Promise.all(
-      picked.map(async (file, i) => {
-        const key = drafts[i].key
-        try {
-          const url = await repo.uploadPhoto(await shrink(file), file.name.replace(/\.[^.]*$/, '') + '.jpg')
-          setPhotos((prev) => prev.map((d) => (d.key === key ? { ...d, url } : d)))
-        } catch (err) {
-          const error = err instanceof Error ? err.message : t('Upload failed')
-          setPhotos((prev) => prev.map((d) => (d.key === key ? { ...d, error } : d)))
-        }
-      }),
-    )
+    await Promise.all(drafts.map((d) => upload(d.key, d.file!)))
     setErrors((prev) => ({ ...prev, photos: undefined }))
+  }
+
+  const patchPhoto = (key: string, patch: Partial<PhotoDraft>) =>
+    setPhotos((prev) => prev.map((d) => (d.key === key ? { ...d, ...patch } : d)))
+
+  /** Shrink, then send with progress; a failure stays in the grid with its reason and a retry. */
+  const upload = async (key: string, file: File) => {
+    patchPhoto(key, { error: undefined, progress: 0 })
+    try {
+      const url = await repo.uploadPhoto(await shrink(file), file.name.replace(/\.[^.]*$/, '') + '.jpg', (progress) =>
+        patchPhoto(key, { progress }),
+      )
+      patchPhoto(key, { url, progress: undefined, file: undefined })
+    } catch (err) {
+      patchPhoto(key, { error: err instanceof Error ? err.message : t('Upload failed'), progress: undefined })
+    }
   }
 
   const removePhoto = (key: string) =>
@@ -325,7 +333,9 @@ function ListingForm({ edit }: { edit?: repo.ListingView }) {
       const until = parseDay(custom.until)!
       const start = parseClock(custom.start)!
       const end = parseClock(custom.end)!
-      const now = Date.now()
+      // The next quarter hour, as below: a retried create sends the same body (FL-1).
+      // ponytail: a retry across a quarter-hour boundary is a new key, and the server may keep both tries.
+      const now = Math.ceil(Date.now() / (15 * 60_000)) * 15 * 60_000
       const days = Math.round((until.getTime() - from.getTime()) / 86_400_000)
       for (let d = 0; d <= days; d++) {
         const day = new Date(from.getFullYear(), from.getMonth(), from.getDate() + d)
@@ -447,7 +457,14 @@ function ListingForm({ edit }: { edit?: repo.ListingView }) {
         drafts.set(draftKey, '')
         toast(t('{title} updated', { title: listing.title }))
       } else {
-        await repo.addListing(listing, buildSlots(), address.trim(), createKey)
+        const slots = buildSlots()
+        try {
+          await repo.addListing(listing, slots, address.trim(), attempt.keyFor({ listing, slots, address: address.trim() }))
+        } catch (err) {
+          attempt.settle(err)
+          throw err
+        }
+        attempt.settle()
         drafts.set(draftKey, '')
         await qc.invalidateQueries({ queryKey: ['myListings'] })
         toast(t('{title} is live', { title: listing.title }))
@@ -487,7 +504,7 @@ function ListingForm({ edit }: { edit?: repo.ListingView }) {
                   className="shrink-0 text-[var(--ink-3)]"
                 />
                 <span className="min-w-0 flex-1">
-                  <span className="block text-[15px] font-semibold">{c.label}</span>
+                  <span className="block text-[0.9375rem] font-semibold">{c.label}</span>
                   <span className="t-sm block truncate text-[var(--ink-4)]">{c.blurb}</span>
                 </span>
                 <Icon
@@ -549,7 +566,7 @@ function ListingForm({ edit }: { edit?: repo.ListingView }) {
       <button
         disabled={Boolean(was)}
         onClick={() => setCategoryId(null)}
-        className="mb-7 inline-flex min-h-[38px] items-center gap-2 rounded-[var(--radius-control)] border border-[var(--line)] px-3.5 text-[13.5px] font-semibold
+        className="mb-7 inline-flex min-h-[38px] items-center gap-2 rounded-[var(--radius-control)] border border-[var(--line)] px-3.5 text-[0.8438rem] font-semibold
           transition-colors duration-[160ms] hover:border-[var(--ink-4)]"
       >
         <Icon name={categoryIcon(meta!.icon)} size={17} className="text-[var(--accent-text)]" />
@@ -588,18 +605,36 @@ function ListingForm({ edit }: { edit?: repo.ListingView }) {
                     className={`h-full w-full object-cover transition-opacity duration-[200ms] ${pending ? 'opacity-40' : ''}`}
                   />
                   {pending && (
-                    <span className="absolute inset-0 grid place-items-center text-[12px] font-semibold text-[var(--ink-2)]">
-                      {t('Uploading…')}
+                    <span className="absolute inset-0 grid place-items-center text-[0.75rem] font-semibold text-[var(--ink-2)]">
+                      <span role="status">
+                        {p.progress ? t('Uploading… {pct} %', { pct: Math.round(p.progress * 100) }) : t('Uploading…')}
+                      </span>
+                      <span
+                        aria-hidden
+                        className="absolute inset-x-0 bottom-0 h-1 bg-[var(--accent)] transition-[width] duration-[160ms]"
+                        style={{ width: `${Math.round((p.progress ?? 0) * 100)}%` }}
+                      />
                     </span>
                   )}
                   {i === 0 && p.url && (
-                    <span className="absolute left-2 top-2 rounded-full bg-[var(--ink)] px-2 py-0.5 text-[11px] font-semibold text-[var(--on-inverse)]">
+                    <span className="absolute left-2 top-2 rounded-full bg-[var(--ink)] px-2 py-0.5 text-[0.6875rem] font-semibold text-[var(--on-inverse)]">
                       {t('Cover')}
                     </span>
                   )}
                   {p.error && (
-                    <span className="absolute inset-x-0 bottom-0 bg-[var(--danger)] px-2 py-1 text-[11px] font-semibold leading-tight text-white">
-                      {p.error}
+                    <span className="absolute inset-x-0 bottom-0 flex items-end gap-1 bg-[var(--danger)] px-2 py-1 text-[0.6875rem] font-semibold leading-tight text-white">
+                      <span className="min-w-0 flex-1" role="alert">
+                        {p.error}
+                      </span>
+                      {p.file && (
+                        <button
+                          type="button"
+                          onClick={() => void upload(p.key, p.file!)}
+                          className="min-h-6 shrink-0 rounded-full bg-white px-2 text-[var(--danger)]"
+                        >
+                          {t('Retry')}
+                        </button>
+                      )}
                     </span>
                   )}
                   <button
@@ -614,7 +649,7 @@ function ListingForm({ edit }: { edit?: repo.ListingView }) {
                     <button
                       type="button"
                       onClick={() => makeCover(p.key)}
-                      className="absolute inset-x-1.5 bottom-1.5 rounded-full bg-white/90 py-1 text-[11px] font-semibold text-[var(--ink)]"
+                      className="absolute inset-x-1.5 bottom-1.5 min-h-6 rounded-full bg-white/90 py-1 text-[0.6875rem] font-semibold text-[var(--ink)]"
                     >
                       {t('Make cover')}
                     </button>
@@ -628,7 +663,7 @@ function ListingForm({ edit }: { edit?: repo.ListingView }) {
                 onClick={() => fileInput.current?.click()}
                 className="grid aspect-[4/3] place-items-center rounded-[var(--radius-field)] border border-dashed border-[var(--line-strong)] text-[var(--ink-3)] transition-colors duration-[160ms] hover:border-[var(--ink)] hover:text-[var(--ink)]"
               >
-                <span className="flex flex-col items-center gap-1 text-[12px] font-semibold">
+                <span className="flex flex-col items-center gap-1 text-[0.75rem] font-semibold">
                   <Icon name="camera" size={20} strokeWidth={1.8} />
                   {photos.length ? t('Add another') : t('Add photos')}
                 </span>
@@ -770,12 +805,12 @@ function ListingForm({ edit }: { edit?: repo.ListingView }) {
         </Field>
 
         <Field label={t('Price')} error={errorFor('rate')} htmlFor="f-rate">
-          <MoneyInput id="f-rate" cents={rate} onCents={setRate} invalid={Boolean(errorFor('rate'))} />
+          <MoneyInput id="f-rate" cents={rate} onCents={setRate} invalid={Boolean(errorFor('rate'))} currency={was?.currency} />
         </Field>
 
         {isBatch ? (
           <Field label={t('Setup fee')} hint={t('Charged once per job, for programming and fixturing.')} htmlFor="f-setup">
-            <MoneyInput id="f-setup" cents={setupFee} onCents={setSetupFee} suffix={t('per job')} />
+            <MoneyInput id="f-setup" cents={setupFee} onCents={setSetupFee} suffix={t('per job')} currency={was?.currency} />
           </Field>
         ) : (
           <>
@@ -788,7 +823,7 @@ function ListingForm({ edit }: { edit?: repo.ListingView }) {
                   value={minHours}
                   onChange={(e) => setMinHours(Math.max(1, Number(e.target.value) || 1))}
                 />
-                <span className="shrink-0 text-[14px] text-[var(--ink-4)]">{t('to')}</span>
+                <span className="shrink-0 text-[0.875rem] text-[var(--ink-4)]">{t('to')}</span>
                 <Input
                   inputMode="numeric"
                   aria-label={t('Maximum hours')}
@@ -796,7 +831,7 @@ function ListingForm({ edit }: { edit?: repo.ListingView }) {
                   value={maxHours}
                   onChange={(e) => setMaxHours(Math.max(minHours, Number(e.target.value) || minHours))}
                 />
-                <span className="shrink-0 text-[14px] text-[var(--ink-4)]">{t('hours')}</span>
+                <span className="shrink-0 text-[0.875rem] text-[var(--ink-4)]">{t('hours')}</span>
               </div>
             </Field>
 
@@ -805,7 +840,7 @@ function ListingForm({ edit }: { edit?: repo.ListingView }) {
               hint={t('Detergent, fuel, gas, anything you top up between bookings. Leave at zero if there is none.')}
               htmlFor="f-extra"
             >
-              <MoneyInput id="f-extra" cents={extraFee} onCents={setExtraFee} suffix={t('per booking')} />
+              <MoneyInput id="f-extra" cents={extraFee} onCents={setExtraFee} suffix={t('per booking')} currency={was?.currency} />
               {extraFee > 0 && (
                 <div className="mt-2">
                   <Input
@@ -832,7 +867,7 @@ function ListingForm({ edit }: { edit?: repo.ListingView }) {
               value={dayPct}
               onChange={(e) => setDayPct(clampPct(e.target.value))}
             />
-            <span className="shrink-0 text-[14px] text-[var(--ink-4)]">{t('% from 8 h')}</span>
+            <span className="shrink-0 text-[0.875rem] text-[var(--ink-4)]">{t('% from 8 h')}</span>
             <Input
               inputMode="numeric"
               aria-label={t('Week discount, percent')}
@@ -840,7 +875,7 @@ function ListingForm({ edit }: { edit?: repo.ListingView }) {
               value={weekPct}
               onChange={(e) => setWeekPct(clampPct(e.target.value))}
             />
-            <span className="shrink-0 text-[14px] text-[var(--ink-4)]">{t('% from 40 h')}</span>
+            <span className="shrink-0 text-[0.875rem] text-[var(--ink-4)]">{t('% from 40 h')}</span>
           </div>
         </Field>
 
@@ -866,7 +901,7 @@ function ListingForm({ edit }: { edit?: repo.ListingView }) {
             onChange={(e) => setInstantBook(e.target.checked)}
           />
           <span>
-            <span className="block text-[15px] font-semibold text-[var(--ink)]">{t('Instant book')}</span>
+            <span className="block text-[0.9375rem] font-semibold text-[var(--ink)]">{t('Instant book')}</span>
             <span className="t-sm block text-[var(--ink-3)]">
               {t('Bookings are confirmed as soon as the card is held, without waiting for you to accept. You can still cancel, with a full refund to the renter.')}
             </span>
@@ -931,8 +966,8 @@ function ListingForm({ edit }: { edit?: repo.ListingView }) {
                   {availability === a.id && <Icon name="check" size={12} strokeWidth={3.5} />}
                 </span>
                 <span className="min-w-0">
-                  <span className="block text-[15px] font-semibold">{t(a.label)}</span>
-                  <span className="tnum block text-[13px] text-[var(--ink-3)]">{t(a.detail)}</span>
+                  <span className="block text-[0.9375rem] font-semibold">{t(a.label)}</span>
+                  <span className="tnum block text-[0.8125rem] text-[var(--ink-3)]">{t(a.detail)}</span>
                 </span>
               </button>
             ))}
@@ -994,7 +1029,7 @@ function ListingForm({ edit }: { edit?: repo.ListingView }) {
                     />
                   </label>
                 </div>
-                <p className="tnum text-[13px] text-[var(--ink-3)]">
+                <p className="tnum text-[0.8125rem] text-[var(--ink-3)]">
                   {customProblem(custom)
                     ? t('Each day in the range gets one idle window at those hours.')
                     : t('{days}, {first} to {last}, free {start} – {end} each day.', {
@@ -1045,9 +1080,10 @@ function ListingForm({ edit }: { edit?: repo.ListingView }) {
 
         <Card className="p-5">
           <p className="t-label mb-2 text-[var(--ink-2)]">{t('What a booking would earn you')}</p>
-          <p className="t-plate tnum text-[38px] leading-[42px] text-[var(--ink)]">
-            {formatEur(
+          <p className="t-plate tnum text-[2.375rem] leading-[2.625rem] text-[var(--ink)]">
+            {formatMoney(
               Math.round((rate * (isBatch ? 4 : minHours) + (isBatch ? setupFee : extraFee)) * 0.85),
+              was?.currency,
             )}
           </p>
           <p className="t-sm mt-1.5 text-[var(--ink-2)]">

@@ -95,7 +95,7 @@ export function LocationPicker({
           placeholder={t('City, district or country')}
           aria-label={t('Filter cities and districts')}
           className="h-10 w-full rounded-[12px] border border-[var(--line)] bg-[var(--surface)] pl-9 pr-3
-            text-[14px] outline-none placeholder:text-[var(--ink-4)] focus:border-[var(--ink-3)]
+            text-[0.875rem] outline-none placeholder:text-[var(--ink-4)] focus:border-[var(--ink-3)]
             focus-visible:outline-none"
         />
       </label>
@@ -116,7 +116,7 @@ export function LocationPicker({
                 >
                   <Icon name="pin" size={16} strokeWidth={1.8} className="shrink-0 text-[var(--ink-4)]" />
                   <span className="min-w-0 flex-1">
-                    <span className="block text-[14.5px] font-semibold">{d.name}</span>
+                    <span className="block text-[0.9062rem] font-semibold">{d.name}</span>
                     <span className="t-sm block text-[var(--ink-4)]">{d.city}</span>
                   </span>
                 </button>
@@ -150,7 +150,7 @@ export function LocationPicker({
                   >
                     <Icon name="pin" size={16} strokeWidth={1.8} className="shrink-0 text-[var(--ink-4)]" />
                     <span className="min-w-0 flex-1">
-                      <span className="block text-[14.5px] font-semibold">{c.city}</span>
+                      <span className="block text-[0.9062rem] font-semibold">{c.city}</span>
                       <span className="t-sm tnum block text-[var(--ink-4)]">
                         {plural(c.listings, '{n} listing', '{n} listings')}
                       </span>
@@ -174,7 +174,7 @@ export function LocationPicker({
         onClick={() => setOpen((o) => !o)}
         aria-haspopup="dialog"
         aria-expanded={open}
-        className="inline-flex min-h-[44px] items-center gap-1.5 rounded-full px-3 text-[13.5px] font-medium
+        className="inline-flex min-h-[44px] items-center gap-1.5 rounded-full px-3 text-[0.8438rem] font-medium
           text-[var(--ink-2)] transition-colors duration-[140ms] hover:bg-[var(--sunken)] hover:text-[var(--ink)]"
       >
         <Icon name="pin" size={15} strokeWidth={1.9} className="text-[var(--ink-3)]" />

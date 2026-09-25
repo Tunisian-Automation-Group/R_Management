@@ -35,6 +35,7 @@ const FRIENDLY: Record<string, string> = {
   UserNotFoundException: 'Check the email and the code and try again.',
   UsernameExistsException: 'There is already an account with that email. Sign in instead.',
   CodeMismatchException: 'That code is not right. Check the email and try again.',
+  EnableSoftwareTokenMFAException: 'That code is not right. Use the newest code your authenticator app shows.',
   ExpiredCodeException: 'That code has expired. Ask for a new one.',
   InvalidPasswordException: 'Use at least 12 characters. A few words you will remember work well.',
   InvalidParameterException: 'Check the email address and try again.',
@@ -42,7 +43,8 @@ const FRIENDLY: Record<string, string> = {
   TooManyRequestsException: 'Too many attempts. Wait a few minutes and try again.',
 }
 
-async function cognito<T>(action: string, body: Record<string, unknown>): Promise<T> {
+/** One Cognito call. Calls made with an access token (TOTP setup) carry no client id. */
+async function cognito<T>(action: string, body: Record<string, unknown>, withClient = true): Promise<T> {
   if (!ENDPOINT || !CLIENT_ID) throw new AuthError(t('Sign-in is not configured for this build.'), 'config')
   let res: Response
   try {
@@ -52,15 +54,20 @@ async function cognito<T>(action: string, body: Record<string, unknown>): Promis
         'Content-Type': 'application/x-amz-json-1.1',
         'X-Amz-Target': `AWSCognitoIdentityProviderService.${action}`,
       },
-      body: JSON.stringify({ ClientId: CLIENT_ID, ...body }),
+      body: JSON.stringify(withClient ? { ClientId: CLIENT_ID, ...body } : body),
     })
   } catch {
     throw new AuthError(t('Cannot reach the sign-in service. Check your connection.'), 'offline')
   }
   const data = (await res.json().catch(() => ({}))) as Record<string, unknown>
   if (!res.ok) {
-    const code = String(data.__type ?? 'Error').split('#').pop()!
-    throw new AuthError(FRIENDLY[code] ? t(FRIENDLY[code]) : String(data.message ?? t('That did not work. Try again.')), code)
+    const code = String(data.__type ?? 'Error')
+      .split('#')
+      .pop()!
+    throw new AuthError(
+      FRIENDLY[code] ? t(FRIENDLY[code]) : String(data.message ?? t('That did not work. Try again.')),
+      code,
+    )
   }
   return data as T
 }
@@ -80,7 +87,12 @@ const emit = () => listeners.forEach((fn) => fn())
 
 function claims(jwt: string): Record<string, unknown> {
   const part = jwt.split('.')[1] ?? ''
-  const json = atob(part.replace(/-/g, '+').replace(/_/g, '/').padEnd(Math.ceil(part.length / 4) * 4, '='))
+  const json = atob(
+    part
+      .replace(/-/g, '+')
+      .replace(/_/g, '/')
+      .padEnd(Math.ceil(part.length / 4) * 4, '='),
+  )
   return JSON.parse(json) as Record<string, unknown>
 }
 
@@ -112,14 +124,27 @@ function writeRefresh(value: string | null): void {
   }
 }
 
-type AuthResult = { AccessToken: string; IdToken: string; ExpiresIn: number; RefreshToken?: string }
+type AuthResult = {
+  AccessToken: string
+  IdToken: string
+  ExpiresIn: number
+  RefreshToken?: string
+}
 
 function adopt(r: AuthResult): void {
-  tokens = { access: r.AccessToken, id: r.IdToken, expiresAt: Date.now() + r.ExpiresIn * 1000 }
+  tokens = {
+    access: r.AccessToken,
+    id: r.IdToken,
+    expiresAt: Date.now() + r.ExpiresIn * 1000,
+  }
   if (r.RefreshToken) writeRefresh(r.RefreshToken)
   const c = claims(r.IdToken)
   const groups = claims(r.AccessToken)['cognito:groups']
-  session = { sub: String(c.sub), email: String(c.email ?? ''), staff: Array.isArray(groups) && groups.includes('admin') }
+  session = {
+    sub: String(c.sub),
+    email: String(c.email ?? ''),
+    staff: Array.isArray(groups) && groups.includes('admin'),
+  }
   announce(session.sub)
   // A returning device goes straight to sign-in, never the welcome again.
   setDevice({ signedInBefore: true, welcomeSeen: true })
@@ -225,17 +250,84 @@ export function useAuthReady(): boolean {
 
 // --- the flows ---------------------------------------------------------------------
 
+type Challenge = {
+  AuthenticationResult?: AuthResult
+  ChallengeName?: string
+  Session?: string
+}
+
+/** A sign-in waiting for the authenticator app's code (P-4). */
+let pending: { username: string; session: string } | null = null
+
+/** Resolves once signed in. Throws `AuthError` with code `SOFTWARE_TOKEN_MFA`
+ *  when the account has two-step sign-in: answer with `answerMfa(code)`. */
 export async function signIn(email: string, password: string): Promise<void> {
-  const out = await cognito<{ AuthenticationResult?: AuthResult; ChallengeName?: string }>('InitiateAuth', {
+  const out = await cognito<Challenge>('InitiateAuth', {
     AuthFlow: 'USER_PASSWORD_AUTH',
     AuthParameters: { USERNAME: email, PASSWORD: password },
   })
+  finish(out, email)
+}
+
+export async function answerMfa(code: string): Promise<void> {
+  if (!pending) throw new AuthError(t('Sign in again: the code step timed out.'), 'mfa-expired')
+  const out = await cognito<Challenge>('RespondToAuthChallenge', {
+    ChallengeName: 'SOFTWARE_TOKEN_MFA',
+    Session: pending.session,
+    ChallengeResponses: {
+      USERNAME: pending.username,
+      SOFTWARE_TOKEN_MFA_CODE: code,
+    },
+  })
+  finish(out, pending.username)
+}
+
+function finish(out: Challenge, username: string): void {
+  if (out.ChallengeName === 'SOFTWARE_TOKEN_MFA' && out.Session) {
+    pending = { username, session: out.Session }
+    throw new AuthError(t('Enter the code from your authenticator app.'), 'SOFTWARE_TOKEN_MFA')
+  }
   if (!out.AuthenticationResult) {
     throw new AuthError(t('This account needs a step this app does not support yet.'), out.ChallengeName ?? 'challenge')
   }
+  pending = null
   adopt(out.AuthenticationResult)
   void updateLocale(lang())
   // Push is asked for later, when it is worth something (push.ts, U-4).
+}
+
+/** Two-step sign-in with an authenticator app (TOTP), step 1: the secret to
+ *  add to the app, and the `otpauth://` link that adds it in one tap. */
+export async function startTotp(): Promise<{ secret: string; uri: string }> {
+  const access = await accessToken()
+  if (!access) throw new AuthError(t('Sign in again to set up two-step sign-in.'), 'signed-out')
+  const { SecretCode } = await cognito<{ SecretCode: string }>('AssociateSoftwareToken', { AccessToken: access }, false)
+  const label = encodeURIComponent(`Cappy:${session?.email ?? ''}`)
+  return {
+    secret: SecretCode,
+    uri: `otpauth://totp/${label}?secret=${SecretCode}&issuer=Cappy`,
+  }
+}
+
+/** Step 2: the first code from the app proves it works; then it is required at every sign-in. */
+export async function confirmTotp(code: string): Promise<void> {
+  const access = await accessToken()
+  if (!access) throw new AuthError(t('Sign in again to set up two-step sign-in.'), 'signed-out')
+  const out = await cognito<{ Status: string }>(
+    'VerifySoftwareToken',
+    { AccessToken: access, UserCode: code, FriendlyDeviceName: 'Cappy' },
+    false,
+  )
+  if (out.Status !== 'SUCCESS')
+    throw new AuthError(t('That code is not right. Use the newest code your authenticator app shows.'), 'totp')
+  await cognito(
+    'SetUserMFAPreference',
+    {
+      AccessToken: access,
+      SoftwareTokenMfaSettings: { Enabled: true, PreferredMfa: true },
+    },
+    false,
+  )
 }
 
 /** The language emails and pushes come in: Cognito's standard `locale`. */
@@ -249,7 +341,10 @@ export async function updateLocale(value: string): Promise<void> {
         'Content-Type': 'application/x-amz-json-1.1',
         'X-Amz-Target': 'AWSCognitoIdentityProviderService.UpdateUserAttributes',
       },
-      body: JSON.stringify({ AccessToken: access, UserAttributes: [{ Name: 'locale', Value: value }] }),
+      body: JSON.stringify({
+        AccessToken: access,
+        UserAttributes: [{ Name: 'locale', Value: value }],
+      }),
     })
   } catch {
     // Best effort: the next sign-in sets it again.
@@ -274,7 +369,11 @@ export const resendCode = (email: string) => cognito('ResendConfirmationCode', {
 export const forgotPassword = (email: string) => cognito('ForgotPassword', { Username: email })
 
 export const confirmForgotPassword = (email: string, code: string, password: string) =>
-  cognito('ConfirmForgotPassword', { Username: email, ConfirmationCode: code, Password: password })
+  cognito('ConfirmForgotPassword', {
+    Username: email,
+    ConfirmationCode: code,
+    Password: password,
+  })
 
 /** Deletes the sign-in itself (App Store: accounts are deletable in the app).
  *  Call after the platform has forgotten the person (DELETE /me). */
@@ -312,7 +411,11 @@ export async function signOut(opts: { everywhere?: boolean } = {}): Promise<void
       method: 'POST',
       headers: { Authorization: `Bearer ${access}` },
     }).catch(() => null)
-    if (!res?.ok) throw new AuthError(t('Your other devices could not be signed out. Check your connection and try again.'), 'everywhere')
+    if (!res?.ok)
+      throw new AuthError(
+        t('Your other devices could not be signed out. Check your connection and try again.'),
+        'everywhere',
+      )
   }
   if (access) await pushSignedOut(access)
   clearDrafts()

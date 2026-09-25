@@ -3,7 +3,7 @@ import { useNavigate, useSearchParams } from 'react-router-dom'
 import { rating } from '../../domain/types.ts'
 import { CATEGORIES, GROUPS, categoriesIn, category, durationLabel } from '../../domain/categories.ts'
 import type { SortKey } from '../../domain/match.ts'
-import { formatEur } from '../../domain/money.ts'
+import { formatMoney } from '../../domain/money.ts'
 import {
   SEARCH_MIN,
   useCities,
@@ -22,7 +22,7 @@ import { LocationPicker } from '../components/LocationPicker.tsx'
 import { distanceKm } from '../../domain/match.ts'
 import { CapacityMap, type MapLevel } from '../components/CapacityMap.tsx'
 import { Banner, Button, Chip, EmptyState, oneDecimal, Sheet, Skeleton } from '../components/ui.tsx'
-import { distance, relative, when } from '../format.ts'
+import { formatDistance, formatRadius, relative, when } from '../format.ts'
 import { plural, t } from '../../i18n.ts'
 
 // The default has to be one of these or the filter opens with nothing selected.
@@ -167,7 +167,7 @@ export function Browse() {
             aria-label={t('Search listings')}
             placeholder={t('Milling, printing, PA rig, saw')}
             onChange={(e) => send({ type: 'SEARCH_CHANGED', patch: { query: e.target.value } })}
-            className="h-[26px] w-full border-0 bg-transparent pl-7 text-[16.5px] font-medium text-[var(--ink)]
+            className="h-[26px] w-full border-0 bg-transparent pl-7 text-[1.0312rem] font-medium text-[var(--ink)]
               outline-none placeholder:font-normal placeholder:text-[var(--ink-4)]"
             style={{ fontVariationSettings: "'wdth' 104" }}
           />
@@ -219,14 +219,14 @@ export function Browse() {
                           className="w-[52px] shrink-0 rounded-[var(--radius-plate)]"
                         />
                         <span className="min-w-0 flex-1">
-                          <span className="block truncate text-[15px] font-semibold">{l.title}</span>
+                          <span className="block truncate text-[0.9375rem] font-semibold">{l.title}</span>
                           <span className="t-sm block truncate text-[var(--ink-3)]">
                             {o.name}, {l.district}
                           </span>
                         </span>
-                        <span className="tnum shrink-0 text-[14.5px] font-semibold">
-                          {formatEur(l.ratePerHour)}
-                          <span className="text-[12px] font-normal text-[var(--ink-4)]"> / h</span>
+                        <span className="tnum shrink-0 text-[0.9062rem] font-semibold">
+                          {formatMoney(l.ratePerHour, l.currency)}
+                          <span className="text-[0.75rem] font-normal text-[var(--ink-4)]"> / h</span>
                         </span>
                         <Icon
                           name="chevron-right"
@@ -253,7 +253,7 @@ export function Browse() {
                   key={c.id}
                   onClick={() => send({ type: 'SEARCH_CHANGED', patch: { categoryId: c.id } })}
                   className="inline-flex shrink-0 items-center gap-2 rounded-full border border-[var(--line)]
-                    bg-[var(--surface)] px-3.5 py-2 text-[13.5px] font-medium text-[var(--ink-2)]
+                    bg-[var(--surface)] px-3.5 py-2 text-[0.8438rem] font-medium text-[var(--ink-2)]
                     transition-colors duration-[160ms] hover:border-[var(--line-strong)] hover:text-[var(--ink)]"
                 >
                   <Icon name={categoryIcon(c.icon)} size={16} strokeWidth={1.7} className="text-[var(--ink-3)]" />
@@ -271,7 +271,7 @@ export function Browse() {
               <EmptyState
                 icon="clock"
                 title={t('Nothing free nearby today')}
-                body={t('No idle capacity within {km} km today. Widening the radius usually finds something.', { km: search.maxDistanceKm })}
+                body={t('No idle capacity within {distance} today. Widening the radius usually finds something.', { distance: formatRadius(search.maxDistanceKm) })}
                 action={
                   <Button
                     variant="secondary"
@@ -334,7 +334,7 @@ export function Browse() {
                       className="shrink-0 text-[var(--ink-3)]"
                     />
                     <span className="min-w-0 flex-1">
-                      <span className="block text-[15px] font-semibold">{c.label}</span>
+                      <span className="block text-[0.9375rem] font-semibold">{c.label}</span>
                       <span className="t-sm block truncate text-[var(--ink-4)]">{c.blurb}</span>
                     </span>
                     <Icon
@@ -387,7 +387,7 @@ export function Browse() {
                   <button
                     onClick={() => setShowMap((v) => !v)}
                     aria-pressed={showMap}
-                    className={`tap inline-flex min-h-[34px] items-center gap-1.5 rounded-[var(--radius-control)] border px-3 text-[13px] font-medium transition-colors duration-[160ms]
+                    className={`tap inline-flex min-h-[34px] items-center gap-1.5 rounded-[var(--radius-control)] border px-3 text-[0.8125rem] font-medium transition-colors duration-[160ms]
                       ${
                         showMap
                           ? 'border-[var(--field)] bg-[var(--field)] font-semibold text-[var(--on-field)]'
@@ -402,7 +402,7 @@ export function Browse() {
                     <select
                       value={sort}
                       onChange={(e) => setSort(e.target.value as SortKey)}
-                      className="min-h-[34px] appearance-none rounded-[var(--radius-control)] border border-[var(--line)] bg-transparent pl-3 pr-8 text-[13px] font-medium text-[var(--ink-2)]"
+                      className="min-h-[34px] appearance-none rounded-[var(--radius-control)] border border-[var(--line)] bg-transparent pl-3 pr-8 text-[0.8125rem] font-medium text-[var(--ink-2)]"
                     >
                       <option value="best">{t('Best match')}</option>
                       <option value="price">{t('Cheapest')}</option>
@@ -426,8 +426,8 @@ export function Browse() {
                 title={t('No idle capacity fits that')}
                 body={
                   meta.mode === 'window'
-                    ? t('Nobody within {km} km has {duration} free in the next {days} days. A shorter booking or a wider radius usually fixes it.', { km: search.maxDistanceKm, duration: durationLabel(search.hours), days: search.withinDays })
-                    : t('No machine within {km} km can finish {n} {unit} by then. Try a longer lead time or a wider radius.', { km: search.maxDistanceKm, n: search.quantity, unit: meta.unitNoun ?? '' })
+                    ? t('Nobody within {distance} has {duration} free in the next {days} days. A shorter booking or a wider radius usually fixes it.', { distance: formatRadius(search.maxDistanceKm), duration: durationLabel(search.hours), days: search.withinDays })
+                    : t('No machine within {distance} can finish {n} {unit} by then. Try a longer lead time or a wider radius.', { distance: formatRadius(search.maxDistanceKm), n: search.quantity, unit: meta.unitNoun ?? '' })
                 }
                 action={
                   <div className="flex flex-wrap justify-center gap-2">
@@ -435,7 +435,7 @@ export function Browse() {
                       variant="secondary"
                       onClick={() => send({ type: 'SEARCH_CHANGED', patch: { maxDistanceKm: 90 } })}
                     >
-                      {t('Widen to 90 km')}
+                      {t('Widen to {distance}', { distance: formatRadius(90) })}
                     </Button>
                     <Button
                       variant="secondary"
@@ -533,7 +533,7 @@ export function Browse() {
                 selected={search.maxDistanceKm === r}
                 onClick={() => send({ type: 'SEARCH_CHANGED', patch: { maxDistanceKm: r } })}
               >
-                {r} km
+                {formatRadius(r)}
               </Chip>
             ))}
           </FilterGroup>
@@ -670,11 +670,11 @@ function FeatureCard({ spot, onOpen }: { spot: Spotlight; onOpen: () => void }) 
         </span>
         <span className="mt-2.5 flex items-baseline justify-between gap-4 md:mt-5 md:border-t md:border-[var(--line)] md:pt-4">
           <span className="t-sm tnum min-w-0 truncate text-[var(--ink-3)]">
-            {spot.listing.district}, {distance(spot.distanceKm)}
+            {spot.listing.district}, {formatDistance(spot.distanceKm)}
           </span>
-          <span className="tnum shrink-0 text-[17px] font-semibold md:text-[22px]">
-            <span className="mr-1 text-[13px] font-normal text-[var(--ink-4)]">{t('from')}</span>
-            {formatEur(spot.fromPrice)}
+          <span className="tnum shrink-0 text-[1.0625rem] font-semibold md:text-[1.375rem]">
+            <span className="mr-1 text-[0.8125rem] font-normal text-[var(--ink-4)]">{t('from')}</span>
+            {formatMoney(spot.fromPrice, spot.currency)}
           </span>
         </span>
       </span>
@@ -699,7 +699,7 @@ function SpotCard({ spot, onOpen }: { spot: Spotlight; onOpen: () => void }) {
       <span className="block pt-3">
         <button
           onClick={onOpen}
-          className="line-clamp-2 block min-h-[40px] text-left text-[14.5px] font-semibold leading-[20px] after:absolute after:inset-0 after:content-['']"
+          className="line-clamp-2 block min-h-[40px] text-left text-[0.9062rem] font-semibold leading-[1.25rem] after:absolute after:inset-0 after:content-['']"
         >
           {spot.listing.title}
         </button>
@@ -715,13 +715,13 @@ function SpotCard({ spot, onOpen }: { spot: Spotlight; onOpen: () => void }) {
             {rating(spot.owner) === null && (
               <span className="mr-2 font-semibold text-[var(--ink-2)]">{t('New host')}</span>
             )}
-            {distance(spot.distanceKm)}
+            {formatDistance(spot.distanceKm)}
           </span>
           {/* "5 €" beside "212 €" with no unit could not be compared. This is the
               cheapest real booking, so it is labelled as a floor. */}
-          <span className="tnum shrink-0 text-[14.5px] font-semibold">
-            <span className="mr-1 text-[12px] font-normal text-[var(--ink-4)]">{t('from')}</span>
-            {formatEur(spot.fromPrice)}
+          <span className="tnum shrink-0 text-[0.9062rem] font-semibold">
+            <span className="mr-1 text-[0.75rem] font-normal text-[var(--ink-4)]">{t('from')}</span>
+            {formatMoney(spot.fromPrice, spot.currency)}
           </span>
         </span>
       </span>

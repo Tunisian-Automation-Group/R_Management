@@ -1,10 +1,10 @@
 import { useEffect, useId, useMemo, useState } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import type { BookingStatus } from '../../domain/types.ts'
-import { addEvidence, mediaUrl, uploadPhoto, useEvidence, type EvidenceStage } from '../../data/repo.ts'
+import { addEvidence, mediaUrl, uploadPhoto, useAttemptKey, useEvidence, type EvidenceStage } from '../../data/repo.ts'
 import { shrink } from '../photos.ts'
 import { messageOf, useMe, useToast } from '../store.tsx'
-import { ago } from '../format.ts'
+import { ago, when } from '../format.ts'
 import { Button, Card, Field, Sheet, Textarea } from './ui.tsx'
 import { plural, t } from '../../i18n.ts'
 import { Icon } from './Icon.tsx'
@@ -52,6 +52,12 @@ export function EvidencePanel({
   useEffect(() => () => previews.forEach((u) => URL.revokeObjectURL(u)), [previews])
   const [note, setNote] = useState('')
   const [busy, setBusy] = useState(false)
+  // FL-1: photos already up are not sent again on a retry, so the retried save
+  // is the same body under the same key.
+  const [uploaded, setUploaded] = useState<Record<string, string>>({})
+  const attempt = useAttemptKey()
+  // U-25: which photo is going up, and how far.
+  const [sending, setSending] = useState<{ n: number; share: number } | null>(null)
 
   const open = stage ?? prompt
   const stages = (Object.keys(CAN) as EvidenceStage[]).filter((s) => CAN[s].includes(status))
@@ -68,9 +74,24 @@ export function EvidencePanel({
     if (!open || files.length === 0) return
     setBusy(true)
     try {
-      const urls = []
-      for (const f of files) urls.push(await uploadPhoto(await shrink(f), f.name.replace(/\.\w+$/, '.jpg')))
-      await addEvidence(bookingId, open, urls, note.trim())
+      const urls: string[] = []
+      for (const [i, f] of files.entries()) {
+        const id = `${f.name}:${f.size}:${f.lastModified}`
+        setSending({ n: i + 1, share: 0 })
+        const url =
+          uploaded[id] ??
+          (await uploadPhoto(await shrink(f), f.name.replace(/\.\w+$/, '.jpg'), (share) => setSending({ n: i + 1, share })))
+        setUploaded((u) => ({ ...u, [id]: url }))
+        urls.push(url)
+      }
+      const body = { stage: open, urls, note: note.trim() }
+      try {
+        await addEvidence(bookingId, open, urls, note.trim(), attempt.keyFor(body))
+      } catch (err) {
+        attempt.settle(err)
+        throw err
+      }
+      attempt.settle()
       await qc.invalidateQueries({ queryKey: ['evidence', bookingId] })
       toast(t(SAVED[open]))
       close()
@@ -78,6 +99,7 @@ export function EvidencePanel({
       toast(messageOf(err))
     } finally {
       setBusy(false)
+      setSending(null)
     }
   }
 
@@ -87,12 +109,19 @@ export function EvidencePanel({
       <p className="t-sm mb-3 text-[var(--ink-3)]">
         {t('Photos you both take when it changes hands. Cappy looks at them first if anything goes wrong.')}
       </p>
+      {/* U-33: the window a problem can be raised in (booking's auto_complete_after_hours). */}
+      <p className="t-sm mb-3 text-[var(--ink-3)]">
+        {t('Found damage or a problem? Report it before the booking is marked complete, at the latest 48 hours after it ends.')}
+      </p>
       {items.length > 0 && (
         <ul className="mb-3 space-y-3">
           {items.map((e) => (
             <li key={e.id}>
               <p className="t-sm mb-1.5 text-[var(--ink-3)]">
-                {LABEL[e.stage]} · {e.by === me ? t('you') : otherName} · {ago(e.at)}
+                {LABEL[e.stage]} · {e.by === me ? t('you') : otherName} ·{' '}
+                <time dateTime={e.at} title={ago(e.at)}>
+                  {t('uploaded {when}', { when: when(e.at) })}
+                </time>
               </p>
               <div className="flex flex-wrap gap-2">
                 {e.photos.map((src) => (
@@ -126,7 +155,13 @@ export function EvidencePanel({
         footer={
           <div className="space-y-2">
             <Button block size="lg" disabled={busy || files.length === 0} onClick={() => void save()}>
-              {busy ? t('Uploading…') : files.length ? plural(files.length, 'Save {n} photo', 'Save {n} photos') : t('Save photos')}
+              {sending
+                ? t('Uploading {n} of {total} · {pct} %', { n: sending.n, total: files.length, pct: Math.round(sending.share * 100) })
+                : busy
+                  ? t('Uploading…')
+                  : files.length
+                    ? plural(files.length, 'Save {n} photo', 'Save {n} photos')
+                    : t('Save photos')}
             </Button>
             <Button block variant="quiet" onClick={close}>
               {t('Not now')}
@@ -150,7 +185,7 @@ export function EvidencePanel({
             />
             <label
               htmlFor={`${id}-files`}
-              className="inline-flex min-h-[48px] cursor-pointer items-center gap-2 rounded-[var(--radius-control)] border border-[var(--line-strong)] px-4 text-[14.5px] font-semibold hover:border-[var(--ink-4)] focus-within:outline"
+              className="inline-flex min-h-[48px] cursor-pointer items-center gap-2 rounded-[var(--radius-control)] border border-[var(--line-strong)] px-4 text-[0.9062rem] font-semibold hover:border-[var(--ink-4)] focus-within:outline"
             >
               <Icon name="camera" size={18} />
               {files.length ? t('Choose other photos') : t('Take or choose photos')}

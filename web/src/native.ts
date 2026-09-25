@@ -42,9 +42,27 @@ function open(link: string | undefined): void {
 let wired = false
 
 /** Deep links (Universal Links, App Links) and notification taps open inside the app. */
+/** iOS Dynamic Type (U-27): WKWebView ignores the reader's text size, so the
+ *  root follows it: `-apple-system-body` is 17px at the default "Large",
+ *  and every type size is in rem. Android's WebView scales text by itself. */
+function followDynamicType(): void {
+  const probe = document.createElement('span')
+  probe.style.font = '-apple-system-body'
+  document.body.appendChild(probe)
+  const px = parseFloat(getComputedStyle(probe).fontSize)
+  probe.remove()
+  if (px) document.documentElement.style.fontSize = `${(px / 17) * 100}%`
+}
+
 export async function wireNative(): Promise<void> {
   if (!isNative || wired) return
   wired = true
+  const platform = (window as unknown as { Capacitor?: { getPlatform?: () => string } }).Capacitor?.getPlatform?.()
+  if (platform === 'ios') {
+    followDynamicType()
+    // The reader changes it in Settings while the app is in the background.
+    document.addEventListener('visibilitychange', () => document.visibilityState === 'visible' && followDynamicType())
+  }
   const { App } = await import('@capacitor/app')
   await App.addListener('appUrlOpen', (e) => open(e.url))
   // Android back (U-5): the top sheet, then the previous screen, then out of

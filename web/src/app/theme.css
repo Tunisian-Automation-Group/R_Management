@@ -176,13 +176,24 @@ html {
   -webkit-text-size-adjust: 100%;
 }
 
+/* S-14: edge to edge. A phone on its side has the notch or the camera
+   cut-out at one end: content and fixed bars keep clear of it. */
+body {
+  padding-left: env(safe-area-inset-left, 0px);
+  padding-right: env(safe-area-inset-right, 0px);
+}
+.safe-x {
+  padding-left: max(1rem, env(safe-area-inset-left, 0px));
+  padding-right: max(1rem, env(safe-area-inset-right, 0px));
+}
+
 body {
   margin: 0;
   background: var(--page);
   color: var(--ink);
   font-family: var(--font-sans);
-  font-size: 15px;
-  line-height: 22px;
+  font-size: 0.9375rem;
+  line-height: 1.375rem;
   font-variation-settings: 'wdth' 100;
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
@@ -205,7 +216,7 @@ body {
   font-family: var(--font-display);
   font-optical-sizing: auto;
   font-variation-settings: 'opsz' 96;
-  font-size: clamp(56px, 19vw, 76px);
+  font-size: clamp(3.5rem, 19vw, 4.75rem);
   line-height: 0.88;
   letter-spacing: -0.028em;
   font-weight: 500;
@@ -213,7 +224,7 @@ body {
 .t-h1 {
   font-family: var(--font-display);
   font-variation-settings: 'opsz' 72;
-  font-size: 38px;
+  font-size: 2.375rem;
   line-height: 1.04;
   letter-spacing: -0.02em;
   font-weight: 500;
@@ -221,44 +232,44 @@ body {
 .t-h2 {
   font-family: var(--font-display);
   font-variation-settings: 'opsz' 48;
-  font-size: 27px;
+  font-size: 1.6875rem;
   line-height: 1.14;
   letter-spacing: -0.015em;
   font-weight: 500;
 }
 /* Archivo from here down. These label the machinery. */
 .t-h3 {
-  font-size: 19px;
-  line-height: 25px;
+  font-size: 1.1875rem;
+  line-height: 1.5625rem;
   letter-spacing: -0.016em;
   font-weight: 600;
 }
 .t-h4 {
-  font-size: 15.5px;
-  line-height: 21px;
+  font-size: 0.9688rem;
+  line-height: 1.3125rem;
   letter-spacing: -0.012em;
   font-weight: 600;
 }
 .t-body {
-  font-size: 15px;
-  line-height: 23px;
+  font-size: 0.9375rem;
+  line-height: 1.4375rem;
   letter-spacing: -0.005em;
 }
 .t-sm {
-  font-size: 13px;
-  line-height: 18px;
+  font-size: 0.8125rem;
+  line-height: 1.125rem;
 }
 /* Genuinely small, so the display has something to be large against. */
 .t-label {
-  font-size: 11px;
-  line-height: 14px;
+  font-size: 0.6875rem;
+  line-height: 0.875rem;
   letter-spacing: 0.06em;
   font-weight: 600;
   color: var(--ink-4);
 }
 .t-lede {
-  font-size: 17px;
-  line-height: 26px;
+  font-size: 1.0625rem;
+  line-height: 1.625rem;
   letter-spacing: -0.008em;
   font-weight: 400;
   color: var(--ink-3);
@@ -417,7 +428,7 @@ body {
     }
     .plate-figure > .plate-caption {
       margin-top: 0;
-      font-size: 13px;
+      font-size: 0.8125rem;
     }
     .plate-week {
       height: min(30cqh, 88px);
@@ -446,7 +457,7 @@ body {
     }
     .plate-day > b {
       display: block;
-      font-size: 10px;
+      font-size: 0.625rem;
       font-weight: 600;
       letter-spacing: 0.02em;
       text-align: center;
@@ -465,7 +476,7 @@ body {
       padding-bottom: 28px;
     }
     .plate-figure > .plate-caption {
-      font-size: 15px;
+      font-size: 0.9375rem;
     }
     .plate-week {
       height: min(34cqh, 124px);
@@ -475,7 +486,7 @@ body {
       gap: 10px;
     }
     .plate-day > b {
-      font-size: 11.5px;
+      font-size: 0.7188rem;
       letter-spacing: 0.04em;
     }
   }

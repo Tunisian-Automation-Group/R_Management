@@ -1,7 +1,7 @@
 import { useId, useState } from 'react'
 import { useSession } from '../../data/auth.ts'
 import { useQueryClient } from '@tanstack/react-query'
-import { REPORT_REASONS, blockPerson, sendReport, type ReportReason, type ReportTarget } from '../../data/repo.ts'
+import { REPORT_REASONS, blockPerson, sendReport, useAttemptKey, type ReportReason, type ReportTarget } from '../../data/repo.ts'
 import { messageOf, useToast } from '../store.tsx'
 import { Button, Check, Field, Input, Select, Sheet, Textarea } from './ui.tsx'
 import { t } from '../../i18n.ts'
@@ -22,12 +22,16 @@ export function ReportButton({
   targetId,
   className = '',
   compact = false,
+  offerBlock,
 }: {
   targetType: ReportTarget
   targetId: string
   className?: string
   compact?: boolean
+  /** Who sent it: after the report, blocking them is one tap (U-13). */
+  offerBlock?: { sub: string; name: string }
 }) {
+  const qc = useQueryClient()
   const session = useSession()
   const toast = useToast()
   const id = useId()
@@ -38,6 +42,7 @@ export function ReportButton({
   const [goodFaith, setGoodFaith] = useState(false)
   const [busy, setBusy] = useState(false)
   const [sent, setSent] = useState<string | null>(null)
+  const attempt = useAttemptKey()
 
   const tooShort = details.trim().length < 10
   const needsEmail = !session && !/^\S+@\S+\.\S+$/.test(email.trim())
@@ -45,16 +50,19 @@ export function ReportButton({
   const submit = async () => {
     setBusy(true)
     try {
-      const r = await sendReport({
+      const report = {
         targetType,
         targetId,
         reason,
         details: details.trim(),
         email: session ? undefined : email.trim(),
-        goodFaith: true,
-      })
+        goodFaith: true as const,
+      }
+      const r = await sendReport(report, attempt.keyFor(report))
+      attempt.settle()
       setSent(r.id)
     } catch (err) {
+      attempt.settle(err)
       toast(messageOf(err))
     } finally {
       setBusy(false)
@@ -84,9 +92,34 @@ export function ReportButton({
         title={sent ? t('Thank you') : t(TITLE[targetType])}
         footer={
           sent ? (
-            <Button block size="lg" onClick={close}>
-              {t('Done')}
-            </Button>
+            <div className="space-y-2">
+              {offerBlock && session && (
+                <Button
+                  block
+                  size="lg"
+                  variant="danger"
+                  disabled={busy}
+                  onClick={async () => {
+                    setBusy(true)
+                    try {
+                      await blockPerson(offerBlock.sub)
+                      await qc.invalidateQueries({ queryKey: ['blocks'] })
+                      toast(t('{name} is blocked', { name: offerBlock.name }))
+                      close()
+                    } catch (err) {
+                      toast(messageOf(err))
+                    } finally {
+                      setBusy(false)
+                    }
+                  }}
+                >
+                  {t('Block {name} too', { name: offerBlock.name })}
+                </Button>
+              )}
+              <Button block size="lg" variant={offerBlock && session ? 'quiet' : 'primary'} onClick={close}>
+                {t('Done')}
+              </Button>
+            </div>
           ) : (
             <Button block size="lg" disabled={busy || tooShort || needsEmail || !goodFaith} onClick={() => void submit()}>
               {t('Send report')}

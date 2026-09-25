@@ -29,6 +29,8 @@ import type {
 } from '../domain/types.ts'
 import type { ReviewSummary } from '../domain/reviews.ts'
 import type { SortKey } from '../domain/match.ts'
+import { useMemo } from 'react'
+import { attemptKeys } from '../domain/attempt.ts'
 import { accessToken, refresh, useSession } from './auth.ts'
 import { lang, t } from '../i18n.ts'
 import { isNative, platform, shareFile } from '../native.ts'
@@ -93,7 +95,11 @@ async function send(method: string, path: string, body?: unknown, headers?: Reco
 }
 
 async function call<T>(method: string, path: string, body?: unknown, headers?: Record<string, string>): Promise<T> {
-  const res = await send(method, path, body, headers)
+  return read<T>(await send(method, path, body, headers))
+}
+
+/** The answer's body, or the ApiError it stands for. */
+async function read<T>(res: Response): Promise<T> {
   if (res.status === 204) return undefined as T
   const text = await res.text()
   let data: unknown
@@ -169,6 +175,8 @@ export type Spotlight = {
   offer: Offer
   distanceKm: number
   fromPrice: number
+  /** ISO 4217 of `fromPrice` (M-3). */
+  currency?: string
   freeNow: boolean
   windowStart: string
 }
@@ -513,9 +521,14 @@ export const getIdentity = () => get<Identity>('/payments/identity')
 /** A listing as the owner writes it: ids and the owner come from the server. */
 export type ListingDraft = Listing extends infer L ? (L extends Listing ? Omit<L, 'id' | 'ownerId'> : never) : never
 
-/** Creates carry an Idempotency-Key made once per form (U-6): a double tap or a
- *  retried request after a timeout is the same listing, not two. */
+/** Creates carry an Idempotency-Key (U-6): a double tap or a retried request
+ *  after a timeout is the same listing, not two. */
 const idem = (key?: string) => (key ? { 'Idempotency-Key': key } : undefined)
+
+/** One Idempotency-Key per attempt at the same request (FL-1, domain/attempt.ts). */
+export function useAttemptKey() {
+  return useMemo(() => attemptKeys(), [])
+}
 
 export const addListing = (listing: ListingDraft, slots: Omit<Slot, 'id' | 'listingId'>[], address: string, key?: string) =>
   post<{ listing: Listing; slots: Slot[] }>('/listings', { listing, slots, address }, idem(key))
@@ -529,11 +542,42 @@ export const removeListing = (id: string) => del<void>(`/listings/${id}`)
 
 export const startPayouts = () => post<{ url: string }>('/payments/connect/onboarding')
 
-/** One photograph in, its URL out, to go in `Listing.photos`. */
-export async function uploadPhoto(image: Blob, filename = 'photo.jpg'): Promise<string> {
+/** One photograph in, its URL out, to go in `Listing.photos`. `onProgress`
+ *  gets 0–1 as it goes up (U-25): fetch cannot report that, XHR can. */
+export async function uploadPhoto(image: Blob, filename = 'photo.jpg', onProgress?: (share: number) => void): Promise<string> {
   const form = new FormData()
   form.append('file', image, filename)
-  return (await call<{ url: string }>('POST', '/uploads', form)).url
+  if (!onProgress) return (await call<{ url: string }>('POST', '/uploads', form)).url
+  const attempt = async () => {
+    const token = await accessToken()
+    return new Promise<Response>((resolve, reject) => {
+      const xhr = new XMLHttpRequest()
+      xhr.open('POST', `${API}/uploads`)
+      xhr.setRequestHeader('Accept', 'application/json')
+      xhr.setRequestHeader('X-App-Version', APP_VERSION)
+      xhr.setRequestHeader('Accept-Language', lang())
+      if (token) xhr.setRequestHeader('Authorization', `Bearer ${token}`)
+      xhr.upload.onprogress = (e) => e.lengthComputable && onProgress(e.loaded / e.total)
+      xhr.onload = () => {
+        const headers = new Headers()
+        for (const h of ['x-request-id', 'retry-after']) {
+          const v = xhr.getResponseHeader(h)
+          if (v) headers.set(h, v)
+        }
+        resolve(new Response(xhr.status === 204 ? null : xhr.responseText, { status: xhr.status, headers }))
+      }
+      xhr.onerror = () => reject(new Error('network'))
+      xhr.send(form)
+    })
+  }
+  let res: Response
+  try {
+    res = await attempt()
+    if (res.status === 401 && (await refresh())) res = await attempt()
+  } catch {
+    throw new ApiError(t('Cannot reach Cappy. Check your connection and try again.'), 0, 'offline')
+  }
+  return (await read<{ url: string }>(res)).url
 }
 
 /** A write, then re-read whatever it changed. Errors reach the caller. */
@@ -629,8 +673,10 @@ export type StatementOfReasons = {
 }
 /** How a decision rests: the rule or law, and whether a machine made it. */
 export type Grounds = { ground: 'law' | 'terms'; clause?: string; automated: boolean }
-export const sendReport = (r: { targetType: ReportTarget; targetId: string; reason: ReportReason; details: string; email?: string; goodFaith: true }) =>
-  post<Report>('/reports', r)
+export const sendReport = (
+  r: { targetType: ReportTarget; targetId: string; reason: ReportReason; details: string; email?: string; goodFaith: true },
+  key?: string,
+) => post<Report>('/reports', r, idem(key))
 
 export const useBlocks = () => {
   const session = useSession()

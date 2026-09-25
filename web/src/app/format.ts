@@ -73,14 +73,27 @@ export const sentence = (s: string) => (/[.!?]$/.test(s) ? `${s} ` : `${s}. `)
 export const responseTime = (mins: number) =>
   mins < 60 ? t('Replies in ~{n} min', { n: mins }) : t('Replies in ~{n} h', { n: Math.round(mins / 60) })
 
-/** Same-district listings geocode to one point, so "0 m" meant "near you" and read
- *  as broken. Under 300 m is walking distance, and that is what it says. */
-export const distance = (km: number) =>
-  km < 0.3
-    ? t('Nearby')
-    : km < 1
-      ? `${Math.round(km * 1000)} m`
-      : `${km.toLocaleString(locale(), { minimumFractionDigits: 1, maximumFractionDigits: 1 })} km`
+/** Where distance is read in miles: the US and the UK (GOAL 16). Everyone else, km. */
+const MILES = new Set(['US', 'GB', 'LR', 'MM'])
+const unitFor = (loc: string) => (MILES.has((loc.split('-')[1] ?? '').toUpperCase()) ? 'mile' : 'kilometer')
+
+/** "2.3 km", "1.4 mi". Same-district listings geocode to one point, so "0 m"
+ *  meant "near you" and read as broken: under 300 m says "Nearby". */
+export function formatDistance(km: number, loc: string = locale()): string {
+  if (km < 0.3) return t('Nearby')
+  const unit = unitFor(loc)
+  const n = unit === 'mile' ? km / 1.609344 : km
+  if (unit === 'kilometer' && km < 1) {
+    return new Intl.NumberFormat(loc, { style: 'unit', unit: 'meter', maximumFractionDigits: 0 }).format(Math.round(km * 1000))
+  }
+  return new Intl.NumberFormat(loc, { style: 'unit', unit, maximumFractionDigits: n < 10 ? 1 : 0 }).format(n)
+}
+
+/** A search radius, rounded the way a person says it: "20 km", "12 mi". */
+export const formatRadius = (km: number, loc: string = locale()): string =>
+  unitFor(loc) === 'mile'
+    ? new Intl.NumberFormat(loc, { style: 'unit', unit: 'mile', maximumFractionDigits: 0 }).format(km / 1.609344)
+    : new Intl.NumberFormat(loc, { style: 'unit', unit: 'kilometer', maximumFractionDigits: 0 }).format(km)
 
 /** The cancellation policies, as booking/cancellation.py applies them. */
 export const POLICIES = ['flexible', 'moderate', 'strict'] as const

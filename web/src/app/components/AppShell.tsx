@@ -3,7 +3,7 @@ import { NavLink } from 'react-router-dom'
 import { useSession } from '../../data/auth.ts'
 import { Icon, type IconName } from './Icon.tsx'
 import { useBack } from '../nav.ts'
-import { lang, setLang, t, type Lang } from '../../i18n.ts'
+import { LANGS, lang, setLang, t } from '../../i18n.ts'
 import { updateLocale } from '../../data/auth.ts'
 
 type Tab = { to: string; label: string; icon: IconName; badge?: number }
@@ -97,7 +97,7 @@ export function Dock({ badges }: { badges: Record<string, number> }) {
           {badges['/notifications'] ? (
             <span
               aria-hidden="true"
-              className="tnum absolute right-1 top-1 grid h-[15px] min-w-[15px] place-items-center rounded-[2px] bg-[var(--accent)] px-1 text-[9.5px] font-bold text-[var(--on-accent)]"
+              className="tnum absolute right-1 top-1 grid h-[15px] min-w-[15px] place-items-center rounded-[2px] bg-[var(--accent)] px-1 text-[0.5938rem] font-bold text-[var(--on-accent)]"
             >
               {badges['/notifications']}
             </span>
@@ -107,7 +107,7 @@ export function Dock({ badges }: { badges: Record<string, number> }) {
         <NavLink
           to="/earn/new"
           className="hidden shrink-0 items-center gap-2 rounded-full bg-[var(--accent)] px-4 py-2.5
-            text-[14px] font-semibold text-[var(--on-accent)] shadow-[var(--shadow-float)]
+            text-[0.875rem] font-semibold text-[var(--on-accent)] shadow-[var(--shadow-float)]
             transition-colors duration-[160ms] hover:bg-[var(--accent-hover)] md:inline-flex"
         >
           <Icon name="plus" size={16} strokeWidth={2.4} />
@@ -125,9 +125,9 @@ function TabItem({ tab }: { tab: Tab }) {
         to={tab.to}
         end={tab.to === '/'}
         className={({ isActive }) =>
-          `relative flex h-full min-h-[56px] flex-col items-center justify-center gap-[3px] text-[10.5px]
+          `relative flex h-full min-h-[56px] flex-col items-center justify-center gap-[3px] text-[0.6562rem]
            transition-colors duration-[160ms]
-           md:min-h-0 md:flex-row md:gap-2 md:rounded-full md:px-3.5 md:py-2 md:text-[14px]
+           md:min-h-0 md:flex-row md:gap-2 md:rounded-full md:px-3.5 md:py-2 md:text-[0.875rem]
            ${
              isActive
                ? 'font-semibold text-[var(--ink)]'
@@ -151,7 +151,7 @@ function TabItem({ tab }: { tab: Tab }) {
               {tab.badge ? (
                 <span
                   aria-hidden="true"
-                  className="tnum absolute -right-2 -top-1 grid h-[15px] min-w-[15px] place-items-center rounded-[2px] bg-[var(--accent)] px-1 text-[9.5px] font-bold text-[var(--on-accent)]"
+                  className="tnum absolute -right-2 -top-1 grid h-[15px] min-w-[15px] place-items-center rounded-[2px] bg-[var(--accent)] px-1 text-[0.5938rem] font-bold text-[var(--on-accent)]"
                 >
                   {tab.badge}
                 </span>
@@ -302,7 +302,7 @@ export function Screen({
       {footer && (
         <div
           ref={bar}
-          className="fixed inset-x-0 z-30 px-4 md:hidden"
+          className="safe-x fixed inset-x-0 z-30 md:hidden"
           style={{
             bottom: `calc(var(--dock-h) + 8px)`,
             paddingBottom: 'var(--safe-bottom-md)',
@@ -374,7 +374,7 @@ function SiteFooter() {
                 <li key={l.label}>
                   <NavLink
                     to={l.to}
-                    className="text-[14px] text-[var(--ink-2)] transition-opacity duration-[160ms] hover:opacity-60"
+                    className="text-[0.875rem] text-[var(--ink-2)] transition-opacity duration-[160ms] hover:opacity-60"
                   >
                     {l.label}
                   </NavLink>
@@ -417,14 +417,11 @@ function BackButton({ onClick, floating }: { onClick: () => void; floating?: boo
   )
 }
 
-/** English or Deutsch. Remounts the app in the new language, and tells Cognito
- *  (the `locale` attribute) so emails follow. */
+/** English, Deutsch or Français. Remounts the app in the new language, and
+ *  tells Cognito (the `locale` attribute) so emails follow. */
 export function LanguageSwitch() {
   const current = lang()
-  const options: { value: Lang; label: string }[] = [
-    { value: 'en', label: 'English' },
-    { value: 'de', label: 'Deutsch' },
-  ]
+  const options = LANGS
   return (
     <div role="group" aria-label={t('Language')} className="inline-flex rounded-full border border-[var(--line)] p-0.5">
       {options.map((o) => (
@@ -434,10 +431,10 @@ export function LanguageSwitch() {
           lang={o.value}
           aria-pressed={current === o.value}
           onClick={() => {
-            setLang(o.value)
+            void setLang(o.value)
             void updateLocale(o.value)
           }}
-          className={`rounded-full px-3 py-1.5 text-[13px] font-semibold transition-colors duration-[160ms] ${
+          className={`rounded-full px-3 py-1.5 text-[0.8125rem] font-semibold transition-colors duration-[160ms] ${
             current === o.value ? 'bg-[var(--field)] text-[var(--on-field)]' : 'text-[var(--ink-3)] hover:text-[var(--ink)]'
           }`}
         >
@@ -463,7 +460,7 @@ export function SectionHead({
       className={`flex items-baseline justify-between gap-4 border-t border-[var(--ink)] pb-3 pt-3 ${className}`}
     >
       <h2 className="t-h3 min-w-0">{title}</h2>
-      {aside && <span className="tnum shrink-0 text-[13px] text-[var(--ink-4)]">{aside}</span>}
+      {aside && <span className="tnum shrink-0 text-[0.8125rem] text-[var(--ink-4)]">{aside}</span>}
     </div>
   )
 }

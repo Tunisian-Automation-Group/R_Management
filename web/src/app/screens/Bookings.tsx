@@ -1,6 +1,6 @@
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import type { Booking, BookingStatus } from '../../domain/types.ts'
-import { formatEur } from '../../domain/money.ts'
+import { formatMoney } from '../../domain/money.ts'
 import { useBookings } from '../../data/repo.ts'
 import { useAuthReady, useSession } from '../../data/auth.ts'
 import { SignedOut } from '../components/SignedOut.tsx'
@@ -152,7 +152,7 @@ export function Bookings() {
           />
           <div className="min-w-0 flex-1">
             <p className="t-label mb-1">{t('Next up')}</p>
-            <p className="truncate text-[16px] font-semibold">{next.booking.listing?.title ?? t('Listing removed')}</p>
+            <p className="truncate text-[1rem] font-semibold">{next.booking.listing?.title ?? t('Listing removed')}</p>
             <p className="t-sm tnum text-[var(--ink-3)]">{range(next.booking.match.start, next.booking.match.end)}</p>
             <p className="t-sm mt-1 font-semibold text-[var(--ink-2)]">{next.action}</p>
             <Button size="sm" className="mt-3" onClick={() => nav(`/bookings/${next.booking.id}`)}>
@@ -232,11 +232,11 @@ function BookingRow({ booking, hosting, onOpen }: { booking: Booking; hosting: b
       />
       <span className="min-w-0 flex-1">
         <span className="flex items-baseline justify-between gap-3">
-          <span className={`truncate text-[15.5px] font-semibold ${dim ? 'text-[var(--ink-3)]' : ''}`}>
+          <span className={`truncate text-[0.9688rem] font-semibold ${dim ? 'text-[var(--ink-3)]' : ''}`}>
             {title}
           </span>
-          <span className="tnum shrink-0 text-[15.5px] font-bold">
-            {formatEur(hosting ? booking.match.quote.ownerNet : booking.match.quote.total)}
+          <span className="tnum shrink-0 text-[0.9688rem] font-bold">
+            {formatMoney(hosting ? booking.match.quote.ownerNet : booking.match.quote.total, booking.currency ?? booking.match.quote.currency)}
           </span>
         </span>
         <span className="t-sm mt-0.5 block truncate text-[var(--ink-3)]">{ownerName}</span>

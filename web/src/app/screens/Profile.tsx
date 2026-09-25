@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { useQueryClient } from '@tanstack/react-query'
-import { formatEur } from '../../domain/money.ts'
+import { formatMoney } from '../../domain/money.ts'
 import { PLATFORM_FEE_BPS } from '../../domain/pricing.ts'
 import {
   ApiError,
@@ -76,6 +76,8 @@ export function Profile() {
   const earned = (asHost.data?.items ?? [])
     .filter((b) => b.status === 'completed')
     .reduce((n, b) => n + b.match.quote.ownerNet, 0)
+  // ponytail: one currency per person, their market's (ADR 0013); sums never mix currencies until then.
+  const currency = asHost.data?.items[0]?.currency ?? asGuest.data?.items[0]?.currency
   const shortlist = saved.data?.items ?? []
 
   return (
@@ -93,8 +95,8 @@ export function Profile() {
         </div>
         <div className="mt-5 grid grid-cols-3 gap-3 border-t border-[var(--line)] pt-5">
           <Stat label={t('Listed')} value={String(listings.data?.items.length ?? 0)} />
-          <Stat label={t('Earned')} value={formatEur(earned)} accent />
-          <Stat label={t('Spent')} value={formatEur(spent)} />
+          <Stat label={t('Earned')} value={formatMoney(earned, currency)} accent />
+          <Stat label={t('Spent')} value={formatMoney(spent, currency)} />
         </div>
       </Card>
 
@@ -130,7 +132,7 @@ export function Profile() {
                     <span className="min-w-0 flex-1">
                       <button
                         onClick={() => nav(`/listing/${id}`)}
-                        className="block w-full truncate text-left text-[15px] font-semibold after:absolute after:inset-0 after:content-['']"
+                        className="block w-full truncate text-left text-[0.9375rem] font-semibold after:absolute after:inset-0 after:content-['']"
                       >
                         {l.title}
                       </button>
@@ -184,7 +186,7 @@ export function Profile() {
         <section>
           <SectionHead title={t('Staff')} className="mt-7" />
           <Card className="p-5">
-            <Link to="/admin" className="text-[14.5px] font-semibold underline underline-offset-4">
+            <Link to="/admin" className="text-[0.9062rem] font-semibold underline underline-offset-4">
               {t('Open the staff console')}
             </Link>
           </Card>
@@ -234,7 +236,7 @@ export function Profile() {
       <section>
         <SectionHead title={t('Help')} className="mt-7" />
         <Card className="p-5">
-          <nav aria-label={t('Help')} className="flex flex-col gap-3 text-[14.5px] font-semibold">
+          <nav aria-label={t('Help')} className="flex flex-col gap-3 text-[0.9062rem] font-semibold">
             <Link to="/help">{t('Help and answers')}</Link>
             <Link to="/help/safety">{t('How we keep you safe')}</Link>
           </nav>
@@ -251,7 +253,7 @@ export function Profile() {
       <section>
         <SectionHead title={t('Legal')} className="mt-7" />
         <Card className="p-5">
-          <nav aria-label={t('Legal')} className="flex flex-col gap-3 text-[14.5px] font-semibold">
+          <nav aria-label={t('Legal')} className="flex flex-col gap-3 text-[0.9062rem] font-semibold">
             <Link to="/legal/impressum">Impressum</Link>
             <Link to="/legal/privacy">{t('Privacy Policy')}</Link>
             <Link to="/legal/terms">{t('Terms of Use')}</Link>
@@ -265,7 +267,7 @@ export function Profile() {
 
       <button
         onClick={() => nav('/earn/new')}
-        className="mt-5 flex w-full items-center justify-center gap-2 rounded-[var(--radius-control)] border border-[var(--line)] py-3.5 text-[14px] font-semibold text-[var(--accent-text)]
+        className="mt-5 flex w-full items-center justify-center gap-2 rounded-[var(--radius-control)] border border-[var(--line)] py-3.5 text-[0.875rem] font-semibold text-[var(--accent-text)]
           transition-colors duration-[160ms] hover:border-[var(--accent)]"
       >
         <Icon name="plus" size={17} strokeWidth={2.2} />
@@ -391,7 +393,7 @@ function DeleteAccount({ open, onClose }: { open: boolean; onClose: () => void }
         </div>
       }
     >
-      <div className="space-y-3 pb-3 text-[15px] leading-[23px] text-[var(--ink-2)]">
+      <div className="space-y-3 pb-3 text-[0.9375rem] leading-[1.4375rem] text-[var(--ink-2)]">
         <p>{t('This cannot be undone.')}</p>
         <ul className="list-disc space-y-1.5 pl-5">
           <li>{t('Your sign-in, profile, saved listings and photos are deleted.')}</li>
@@ -413,7 +415,7 @@ function Stat({ label, value, accent }: { label: string; value: string; accent?:
   return (
     <div>
       <p className="t-label">{label}</p>
-      <p className={`tnum mt-1.5 text-[19px] font-bold ${accent ? 'text-[var(--accent-text)]' : ''}`}>
+      <p className={`tnum mt-1.5 text-[1.1875rem] font-bold ${accent ? 'text-[var(--accent-text)]' : ''}`}>
         {value}
       </p>
     </div>
@@ -461,7 +463,7 @@ function BlockedRow({ sub, onUnblock }: { sub: string; onUnblock: () => void }) 
   const person = useOwner(sub)
   return (
     <li className="flex items-center justify-between gap-3">
-      <span className="truncate text-[15px] font-semibold">{person.data?.name ?? t('Someone')}</span>
+      <span className="truncate text-[0.9375rem] font-semibold">{person.data?.name ?? t('Someone')}</span>
       <Button variant="secondary" size="sm" onClick={onUnblock}>
         {t('Unblock')}
       </Button>
@@ -530,12 +532,12 @@ function NotificationSettings() {
     <section>
       <SectionHead title={t('Notifications')} className="mt-7" />
       <Card className="p-5">
-        <Link to="/notifications" className="text-[14.5px] font-semibold underline underline-offset-4">
+        <Link to="/notifications" className="text-[0.9062rem] font-semibold underline underline-offset-4">
           {t('See all notifications')}
         </Link>
         {isNative && perm === 'denied' && (
           <div className="mt-4 border-t border-[var(--line)] pt-4">
-            <p className="text-[14.5px] font-semibold">{t('Notifications are off')}</p>
+            <p className="text-[0.9062rem] font-semibold">{t('Notifications are off')}</p>
             <p className="t-sm mt-1 text-[var(--ink-3)]">
               {canOpenSettings
                 ? t('You will not hear about new requests or answers until you are back in the app. Emails still arrive.')
@@ -606,7 +608,7 @@ function Channels() {
       <tbody>
         {(Object.keys(CATEGORY_LABEL) as NoticeCategory[]).map((c) => (
           <tr key={c} className="border-t border-[var(--line)]">
-            <td className="py-3 text-[14.5px]">{t(CATEGORY_LABEL[c])}</td>
+            <td className="py-3 text-[0.9062rem]">{t(CATEGORY_LABEL[c])}</td>
             {(['push', 'email'] as const).map((ch) => (
               <td key={ch} className="py-3 text-center">
                 <input

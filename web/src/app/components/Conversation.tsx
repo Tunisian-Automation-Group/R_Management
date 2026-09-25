@@ -1,6 +1,6 @@
 import { useEffect, useId, useRef, useState, type ReactNode } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
-import { HIDDEN_CONTACT, sendMessage, useMessages, type Message } from '../../data/repo.ts'
+import { HIDDEN_CONTACT, sendMessage, useAttemptKey, useMessages, type Message } from '../../data/repo.ts'
 import { messageOf, useToast } from '../store.tsx'
 import { ago } from '../format.ts'
 import { Button, Card, Textarea } from './ui.tsx'
@@ -19,7 +19,7 @@ function Body({ text, closed }: { text: string; closed: boolean }) {
       out.push(
         <span
           key={i}
-          className="mx-0.5 inline-block rounded-[var(--radius-control)] bg-[var(--sunken)] px-1.5 text-[12.5px] font-semibold text-[var(--ink-3)]"
+          className="mx-0.5 inline-block rounded-[var(--radius-control)] bg-[var(--sunken)] px-1.5 text-[0.7812rem] font-semibold text-[var(--ink-3)]"
         >
           {/* The server shows it again once the booking is accepted (V3-6); a booking
               that closed before that never reveals it. */}
@@ -27,7 +27,7 @@ function Body({ text, closed }: { text: string; closed: boolean }) {
         </span>,
       )
   })
-  return <p className="whitespace-pre-wrap break-words text-[15px] leading-[22px]">{out}</p>
+  return <p className="whitespace-pre-wrap break-words text-[0.9375rem] leading-[1.375rem]">{out}</p>
 }
 
 function Bubble({ m, otherName, closed }: { m: Message; otherName: string; closed: boolean }) {
@@ -47,7 +47,9 @@ function Bubble({ m, otherName, closed }: { m: Message; otherName: string; close
       )}
       <p className="t-sm mt-1 flex items-center gap-1 text-[var(--ink-4)]">
         {m.mine ? t('You') : otherName} · {ago(m.at)}
-        {!m.mine && <ReportButton targetType="message" targetId={m.id} compact />}
+        {!m.mine && (
+          <ReportButton targetType="message" targetId={m.id} compact offerBlock={{ sub: m.senderId, name: otherName }} />
+        )}
       </p>
     </li>
   )
@@ -77,7 +79,7 @@ export function Conversation({
     setDraftState(v)
     drafts.set(`msg.${bookingId}`, v)
   }
-  const [key, setKey] = useState(() => crypto.randomUUID())
+  const attempt = useAttemptKey()
   const online = useOnline()
   const [busy, setBusy] = useState(false)
   const end = useRef<HTMLDivElement>(null)
@@ -92,9 +94,14 @@ export function Conversation({
     if (!text) return
     setBusy(true)
     try {
-      await sendMessage(bookingId, text, key)
+      try {
+        await sendMessage(bookingId, text, attempt.keyFor(text))
+      } catch (err) {
+        attempt.settle(err)
+        throw err
+      }
+      attempt.settle()
       setDraft('')
-      setKey(crypto.randomUUID())
       await qc.invalidateQueries({ queryKey: ['messages', bookingId] })
     } catch (err) {
       toast(messageOf(err))

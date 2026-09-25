@@ -66,7 +66,7 @@ export function Welcome() {
                   <Icon name={v.icon} size={17} strokeWidth={2} />
                 </span>
                 <div>
-                  <h2 className="text-[16px] font-semibold">{t(v.title)}</h2>
+                  <h2 className="text-[1rem] font-semibold">{t(v.title)}</h2>
                   <p className="t-sm mt-1 text-[var(--on-field-dim)]">{t(v.body)}</p>
                 </div>
               </li>
@@ -81,7 +81,7 @@ export function Welcome() {
           <button
             type="button"
             onClick={() => nav('/login', { replace: true })}
-            className="min-h-[48px] rounded-[var(--radius-control)] border border-[var(--on-field-dim)] px-4 text-[15px] font-semibold"
+            className="min-h-[48px] rounded-[var(--radius-control)] border border-[var(--on-field-dim)] px-4 text-[0.9375rem] font-semibold"
           >
             {t('I have an account')}
           </button>

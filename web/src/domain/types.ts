@@ -79,7 +79,7 @@ export type District = {
    *  Kept separate from `city` so labels stay honest while distance still
    *  decides what anyone can actually reach. */
   metro: string
-  /** ISO-3166-1 alpha-2. Eurozone only for now, so one currency everywhere. */
+  /** ISO-3166-1 alpha-2. Its market sets the currency (GOAL 16, ADR 0013). */
   country: string
   lat: number
   lng: number
@@ -116,6 +116,8 @@ export type CancellationPolicy = 'flexible' | 'moderate' | 'strict'
 type ListingBase = {
   id: string
   ownerId: string
+  /** ISO 4217: what it is priced and charged in, its market's (M-3). */
+  currency?: string
   category: CategoryId
   title: string
   blurb: string
@@ -221,6 +223,8 @@ export type Quote = {
   /** 15% of total, the fee sits inside the total, it is not added on top. */
   platformFee: Cents
   ownerNet: Cents
+  /** ISO 4217, from the listing's market (M-3); absent from older servers. */
+  currency?: string
 }
 
 export type Match = {
@@ -309,6 +313,8 @@ export type Booking = {
   refundAmount?: Cents
   /** Who did not turn up, when a no-show ended it (S-11). */
   noShow?: 'owner' | 'renter'
+  /** ISO 4217: what the card is charged in (M-3). */
+  currency?: string
 }
 
 export type ListingSnapshot = {

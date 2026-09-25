@@ -85,7 +85,7 @@ export function Notifications() {
                   className={`mt-2 h-2 w-2 shrink-0 rounded-full ${n.read ? 'bg-transparent' : 'bg-[var(--accent)]'}`}
                 />
                 <span className="min-w-0 flex-1">
-                  <span className="block text-[15px] font-semibold">
+                  <span className="block text-[0.9375rem] font-semibold">
                     {n.title}
                     {!n.read && <span className="sr-only"> ({t('unread')})</span>}
                   </span>

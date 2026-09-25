@@ -8,7 +8,10 @@
     "build": "tsc -b && vite build",
     "preview": "vite preview --host",
     "check:i18n": "node scripts/check-i18n.ts",
-    "check:flags": "node scripts/check-flags.ts"
+    "check:flags": "node scripts/check-flags.ts",
+    "check:size": "node scripts/check-size.ts",
+    "check:a11y": "node scripts/check-a11y.ts",
+    "check:attempt": "node scripts/check-attempt.ts"
   },
   "dependencies": {
     "@capacitor/android": "^8.5.2",

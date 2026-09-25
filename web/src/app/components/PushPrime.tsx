@@ -58,8 +58,8 @@ export function PushPrime() {
     >
       <p className="t-body text-[var(--ink-2)]">
         {why === 'listing'
-          ? t('Requests for your listing expire after 24 hours. A notification means you answer in time.')
-          : t('The owner has 24 hours to answer. A notification tells you the moment they do, and when they write to you.')}
+          ? t('Requests lapse if you do not answer in time: within 24 hours, or before the booked time starts if that is sooner. A notification means you answer before the request lapses.')
+          : t('The owner answers before the request lapses, within 24 hours at most. A notification tells you the moment they do, and when they write to you.')}
       </p>
       <p className="t-sm mt-3 text-[var(--ink-3)]">{t('Only bookings and messages. You can turn it off any time in Settings.')}</p>
     </Sheet>

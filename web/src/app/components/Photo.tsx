@@ -111,7 +111,7 @@ export function WhenChip({
   return (
     <span
       className={`glass glass-dark tnum absolute bottom-3 left-3 rounded-full px-2.5 py-1
-        text-[12px] font-semibold ${className}`}
+        text-[0.75rem] font-semibold ${className}`}
       style={{
         // A photograph can be any colour, so the chip carries a darker tint than
         // glass over a known surface needs. At 42% over a pale upload it went

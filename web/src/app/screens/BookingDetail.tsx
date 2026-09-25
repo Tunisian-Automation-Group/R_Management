@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from 'react'
+import { lazy, Suspense, useState, type ReactNode } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { useAuthReady, useSession } from '../../data/auth.ts'
 import { SignedOut } from '../components/SignedOut.tsx'
@@ -8,9 +8,10 @@ import type { Booking, BookingStatus, Listing, Outcome, Owner } from '../../doma
 import { rating } from '../../domain/types.ts'
 import { durationLabel } from '../../domain/categories.ts'
 import { trackRecord } from '../../domain/match.ts'
-import { formatEurExact } from '../../domain/money.ts'
+import { formatMoney } from '../../domain/money.ts'
 import { PLATFORM_FEE_BPS } from '../../domain/pricing.ts'
 import {
+  useAttemptKey,
   actOnBooking,
   blockPerson,
   declineBooking,
@@ -27,7 +28,6 @@ import {
   usePaymentsConfig,
   type BookingAction,
 } from '../../data/repo.ts'
-import { PayStep } from '../components/PayStep.tsx'
 import { TraderNote } from '../components/BusinessFields.tsx'
 import { Conversation } from '../components/Conversation.tsx'
 import { EvidencePanel } from '../components/Evidence.tsx'
@@ -39,10 +39,13 @@ import { Photo } from '../components/Photo.tsx'
 import { Icon } from '../components/Icon.tsx'
 import { Avatar, Banner, Button, Card, Chip, Field, Row, Sheet, Stars, Textarea } from '../components/ui.tsx'
 import { REVIEW_TAGS } from '../../domain/reviews.ts'
-import { distance, range, relative, renterRecord, responseTime, sentence } from '../format.ts'
+import { formatDistance, range, relative, renterRecord, responseTime, sentence } from '../format.ts'
 import { useOnline } from '../components/Offline.tsx'
 import { supportHref } from './Help.tsx'
 import { locale, plural, t } from '../../i18n.ts'
+
+/** Stripe's card form, fetched only when a payment starts (S-15, V3-1). */
+const PayStep = lazy(() => import('../components/PayStep.tsx').then((m) => ({ default: m.PayStep })))
 
 const STEPS: { id: BookingStatus; label: string; note: string; ownerNote: string }[] = [
   { id: 'requested', label: 'Requested', note: 'Waiting for the owner to accept', ownerNote: 'Waiting for your answer' },
@@ -121,10 +124,22 @@ function Detail({
   const [ratingRenter, setRatingRenter] = useState(false)
   const [renterStars, setRenterStars] = useState(0)
   const [noShowOpen, setNoShowOpen] = useState(false)
-  // One key per rating form (U-6): a double tap or a retry posts one rating.
-  const [rateKey] = useState(() => crypto.randomUUID())
+  // One key per rating (U-6, FL-1): a double tap or a retry after a 5xx posts one rating.
+  const attempt = useAttemptKey()
+  /** A keyed write: the key follows the body and is kept only while an answer is unknown. */
+  const keyed = async <T,>(body: unknown, call: (key: string) => Promise<T>): Promise<T> => {
+    try {
+      const out = await call(attempt.keyFor(body))
+      attempt.settle()
+      return out
+    } catch (err) {
+      attempt.settle(err)
+      throw err
+    }
+  }
 
   const { quote } = booking.match
+  const cur = booking.currency ?? quote.currency ?? listing?.currency
   const title = booking.listing?.title ?? listing?.title ?? t('Booked listing')
   const ownerName = owner?.name ?? booking.listing?.ownerName ?? t('The owner')
   const district = booking.listing?.district ?? listing?.district ?? ''
@@ -175,13 +190,13 @@ function Detail({
   const act = (action: BookingAction, message?: string) => done(() => actOnBooking(booking.id, action), message)
   const rate = (outcome: Outcome) =>
     done(async () => {
-      await rateBooking(booking.id, outcome, rateKey)
+      await keyed(outcome, (key) => rateBooking(booking.id, outcome, key))
       // The owner's record and the listing's reviews change a moment later.
       void qc.invalidateQueries({ queryKey: ['listing', booking.match.listingId] })
       void qc.invalidateQueries({ queryKey: ['reviews', booking.match.listingId] })
     }, t('Review posted on {title}', { title }))
   const rateTheRenter = (quality: number) =>
-    done(() => rateRenter(booking.id, quality, rateKey), t('Thanks. {name} will see it once they have rated too.', { name: buyer }))
+    done(() => keyed({ quality }, (key) => rateRenter(booking.id, quality, key)), t('Thanks. {name} will see it once they have rated too.', { name: buyer }))
 
   // For the buyer, cancelling before the start is also their right of
   // withdrawal (EU consumer law), so the button says so.
@@ -378,7 +393,7 @@ function Detail({
           body={
             booking.noShow === 'owner'
               ? t('The renter gets everything back{amount}. A no-show counts against the owner.', {
-                  amount: booking.refundAmount ? ` (${formatEurExact(booking.refundAmount)})` : '',
+                  amount: booking.refundAmount ? ` (${formatMoney(booking.refundAmount, cur)})` : '',
                 })
               : t('Nothing is refunded for a missed booking; the owner is paid. If this is wrong, get help with this booking.')
           }
@@ -389,7 +404,7 @@ function Detail({
           title={t('This booking was cancelled')}
           body={
             booking.refundAmount
-              ? t('{amount} is refunded to the card.', { amount: formatEurExact(booking.refundAmount) })
+              ? t('{amount} is refunded to the card.', { amount: formatMoney(booking.refundAmount, cur) })
               : asOwner
                 ? t('The buyer gets back everything they paid, and the window is free again.')
                 : t('The hold on your card is released, and anything already charged is refunded in full.')
@@ -442,12 +457,14 @@ function Detail({
 
       {payNow && payment.data && payments.data?.publishableKey && (
         <div className="mt-4">
-          <PayStep
-            publishableKey={payments.data.publishableKey}
-            clientSecret={payment.data.clientSecret}
-            bookingId={booking.id}
-            onPaid={() => void qc.invalidateQueries({ queryKey: ['booking', booking.id] })}
-          />
+          <Suspense fallback={null}>
+            <PayStep
+              publishableKey={payments.data.publishableKey}
+              clientSecret={payment.data.clientSecret}
+              bookingId={booking.id}
+              onPaid={() => void qc.invalidateQueries({ queryKey: ['booking', booking.id] })}
+            />
+          </Suspense>
         </div>
       )}
 
@@ -460,7 +477,7 @@ function Detail({
               <li key={step.id} className="flex gap-3.5">
                 <div className="flex flex-col items-center">
                   <span
-                    className={`grid h-7 w-7 shrink-0 place-items-center rounded-[var(--radius-control)] text-[11.5px] font-bold transition-colors duration-[240ms] ${
+                    className={`grid h-7 w-7 shrink-0 place-items-center rounded-[var(--radius-control)] text-[0.7188rem] font-bold transition-colors duration-[240ms] ${
                       reached
                         ? 'bg-[var(--success)] text-white'
                         : 'border border-[var(--line-strong)] text-[var(--ink-4)]'
@@ -476,7 +493,7 @@ function Detail({
                 </div>
                 <div className={`pb-6 ${reached ? '' : 'opacity-40'}`}>
                   <p
-                    className={`text-[15.5px] leading-7 ${current ? 'font-bold' : 'font-semibold'}`}
+                    className={`text-[0.9688rem] leading-7 ${current ? 'font-bold' : 'font-semibold'}`}
                   >
                     {t(step.label)}
                   </p>
@@ -498,13 +515,13 @@ function Detail({
         <Card className="p-5">
           <h2 className="t-label mb-2.5">{t('Getting in')}</h2>
           {booking.handover?.address && (
-            <p className="text-[15.5px] font-semibold text-[var(--ink)]">{booking.handover.address}</p>
+            <p className="text-[0.9688rem] font-semibold text-[var(--ink)]">{booking.handover.address}</p>
           )}
           <p className="t-body mt-1 text-[var(--ink-2)]">{booking.handover?.instructions}</p>
           <p className="t-sm tnum mt-4 flex items-center gap-1.5 border-t border-[var(--line)] pt-4 text-[var(--ink-3)]">
             <Icon name="pin" size={14} />
             {district}
-            {!asOwner && ` · ${t('{distance} away', { distance: distance(booking.match.distanceKm) })}`}
+            {!asOwner && ` · ${t('{distance} away', { distance: formatDistance(booking.match.distanceKm) })}`}
           </p>
         </Card>
       )}
@@ -514,7 +531,7 @@ function Detail({
           <div className="flex items-center gap-3.5">
             <Avatar initials={other.initials} size={44} business={other.kind === 'business'} />
             <div className="min-w-0 flex-1">
-              <p className="truncate text-[15.5px] font-semibold">{other.name}</p>
+              <p className="truncate text-[0.9688rem] font-semibold">{other.name}</p>
               <p className="t-sm text-[var(--ink-3)]">
                 {asOwner ? renterRecord(other.renterRatingSum, other.renterJobs) : trackRecord(other)}
               </p>
@@ -539,6 +556,22 @@ function Detail({
         />
       )}
 
+      {booking.status === 'accepted' && (
+        // U-34: before the first hand-over, the four things that prevent most problems.
+        <Card className="mt-3 p-5">
+          <h2 className="t-label mb-2">{t('Before the hand-over')}</h2>
+          <ul className="t-sm list-disc space-y-1.5 pl-5 text-[var(--ink-2)]">
+            <li>{t('Meet at the address in the booking, and check it is the thing in the listing.')}</li>
+            <li>{t('Take check-in photos together: every side, any marks, the meter if it has one.')}</li>
+            <li>{t('Keep messages and payments on Cappy. Nobody from Cappy asks for money or codes elsewhere.')}</li>
+            <li>{t('If you feel unsafe, leave and call the local emergency number first, then tell us.')}</li>
+          </ul>
+          <Link to="/help/safety" className="t-sm mt-3 inline-block font-semibold underline">
+            {t('How we keep you safe')}
+          </Link>
+        </Card>
+      )}
+
       <EvidencePanel
         bookingId={booking.id}
         status={booking.status}
@@ -549,7 +582,7 @@ function Detail({
 
       <Card className="mt-3 flex flex-wrap items-center justify-between gap-3 p-5">
         <p className="t-sm text-[var(--ink-3)]">{t('Something not right? Tell us, and we see this booking with it.')}</p>
-        <div className="flex gap-4 text-[14px] font-semibold">
+        <div className="flex gap-4 text-[0.875rem] font-semibold">
           <Link to="/help/problems" className="underline">
             {t('Help')}
           </Link>
@@ -578,7 +611,7 @@ function Detail({
         <div className="my-2 border-t border-[var(--line)]" />
         {dead ? (
           booking.status === 'cancelled' && booking.refundAmount ? (
-            <Row label={t('Refunded')} value={formatEurExact(booking.refundAmount)} strong />
+            <Row label={t('Refunded')} value={formatMoney(booking.refundAmount, cur)} strong />
           ) : (
             <Row
               label={t('Charged')}
@@ -588,13 +621,13 @@ function Detail({
           )
         ) : (
           <>
-            <Row label={t('Total')} value={formatEurExact(quote.total)} strong />
+            <Row label={t('Total')} value={formatMoney(quote.total, cur)} strong />
             <Row
               label={`${t('Cappy fee')} · ${(PLATFORM_FEE_BPS / 100).toLocaleString(locale())} %`}
-              value={formatEurExact(quote.platformFee)}
+              value={formatMoney(quote.platformFee, cur)}
               tone="muted"
             />
-            <Row label={asOwner ? t('You receive') : t('{name} receives', { name: first })} value={formatEurExact(quote.ownerNet)} tone="accent" />
+            <Row label={asOwner ? t('You receive') : t('{name} receives', { name: first })} value={formatMoney(quote.ownerNet, cur)} tone="accent" />
           </>
         )}
       </Card>
@@ -703,12 +736,12 @@ function Detail({
           <Card className="mb-3 bg-[var(--sunken)] p-4 shadow-none">
             <Row
               label={asOwner ? t('{name} gets back', { name: buyer }) : t('You get back')}
-              value={refund.data ? formatEurExact(refund.data.refundAmount) : '…'}
+              value={refund.data ? formatMoney(refund.data.refundAmount, cur) : '…'}
               strong
             />
             {refund.data && refund.data.refundAmount < quote.total && (
               <p className="t-sm mt-1 text-[var(--ink-3)]">
-                {t('Of {total}, under the listing\'s cancellation policy.', { total: formatEurExact(quote.total) })}
+                {t('Of {total}, under the listing\'s cancellation policy.', { total: formatMoney(quote.total, cur) })}
               </p>
             )}
           </Card>
@@ -820,7 +853,7 @@ function Detail({
       >
         <div className="space-y-5 pb-3">
           <div>
-            <p className="mb-3 text-[14px] font-semibold text-[var(--ink-2)]">
+            <p className="mb-3 text-[0.875rem] font-semibold text-[var(--ink-2)]">
               {t('Was it ready when they said?')}
             </p>
             <div className="flex gap-2">
@@ -832,7 +865,7 @@ function Detail({
                   key={o.label}
                   onClick={() => setOnTime(o.v)}
                   aria-pressed={onTime === o.v}
-                  className={`min-h-[48px] flex-1 rounded-[var(--radius-control)] border text-[14.5px] font-semibold transition-colors duration-[160ms] ${
+                  className={`min-h-[48px] flex-1 rounded-[var(--radius-control)] border text-[0.9062rem] font-semibold transition-colors duration-[160ms] ${
                     onTime === o.v
                       ? 'border-[var(--field)] bg-[var(--field)] text-[var(--on-field)]'
                       : 'border-[var(--line)] hover:border-[var(--ink-4)]'
@@ -845,14 +878,14 @@ function Detail({
           </div>
 
           <div>
-            <p className="mb-3 text-[14px] font-semibold text-[var(--ink-2)]">
+            <p className="mb-3 text-[0.875rem] font-semibold text-[var(--ink-2)]">
               {t('How was the thing itself?')}
             </p>
             <StarPicker value={stars} onChange={setStars} label={t('How was the thing itself?')} />
           </div>
 
           <div>
-            <p className="mb-3 text-[14px] font-semibold text-[var(--ink-2)]">
+            <p className="mb-3 text-[0.875rem] font-semibold text-[var(--ink-2)]">
               {t('What stood out?')} <span className="font-normal text-[var(--ink-4)]">{t('Pick any')}</span>
             </p>
             <div className="flex flex-wrap gap-2">
@@ -945,7 +978,7 @@ function Detail({
           {asOwner
             ? t('The booking ends and {name} gets nothing back; you are paid for it. Only report this if they really did not come: they can contest it.', { name: buyer })
             : t('The booking ends and you get back everything you paid, {amount}. It counts against {name}. Only report this if they really did not come.', {
-                amount: formatEurExact(quote.total),
+                amount: formatMoney(quote.total, cur),
                 name: first,
               })}
         </p>

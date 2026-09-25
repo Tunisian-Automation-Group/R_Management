@@ -1,4 +1,4 @@
-import { useMemo, useState, useEffect } from 'react'
+import { lazy, Suspense, useMemo, useState, useEffect } from 'react'
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { NotFound } from './NotFound.tsx'
 import { useQueryClient } from '@tanstack/react-query'
@@ -7,8 +7,9 @@ import { isWindow, rating } from '../../domain/types.ts'
 import { category, durationLabel } from '../../domain/categories.ts'
 import { distanceKm, trackRecord } from '../../domain/match.ts'
 import { PLATFORM_FEE_BPS } from '../../domain/pricing.ts'
-import { formatEur, formatEurExact } from '../../domain/money.ts'
+import { formatMoney } from '../../domain/money.ts'
 import {
+  useAttemptKey,
   ApiError,
   getIdentity,
   requestBooking,
@@ -29,7 +30,6 @@ import { WhenBadge } from '../components/Cover.tsx'
 import { Photo, SaveButton } from '../components/Photo.tsx'
 import { Reviews } from '../components/Reviews.tsx'
 import { BlockButton, ReportButton } from '../components/Report.tsx'
-import { PayStep } from '../components/PayStep.tsx'
 import { TraderNote } from '../components/BusinessFields.tsx'
 import { askForPush } from '../components/PushPrime.tsx'
 import { Icon } from '../components/Icon.tsx'
@@ -46,9 +46,12 @@ import {
   oneDecimal,
   Stars,
 } from '../components/ui.tsx'
-import { cancelRate, day, distance, policyInForce, policyName, policyText, range, relative, responseTime, time } from '../format.ts'
+import { cancelRate, day, formatDistance, policyInForce, policyName, policyText, range, relative, responseTime, time } from '../format.ts'
 import { useOnline } from '../components/Offline.tsx'
 import { locale, t } from '../../i18n.ts'
+
+/** Stripe's card form, fetched only when a payment starts (S-15, V3-1). */
+const PayStep = lazy(() => import('../components/PayStep.tsx').then((m) => ({ default: m.PayStep })))
 
 const QUANTITY_STEPS = [10, 25, 50, 100, 250, 500, 1000]
 
@@ -67,6 +70,7 @@ export function Listing() {
   const paidPolicies = useFlag('paidCancellationPolicies')
 
   const listing = detail.data?.listing
+  const cur = listing?.currency
   const owner = detail.data?.owner
 
   const [hours, setHours] = useState(0)
@@ -84,8 +88,9 @@ export function Listing() {
   const [confirming, setConfirming] = useState(false)
   const online = useOnline()
   const [sending, setSending] = useState(false)
-  // One key per attempt: a retried tap is the same booking, a new attempt is a new one.
-  const [attempt, setAttempt] = useState(() => crypto.randomUUID())
+  // One key per attempt (FL-1): a retry after a 5xx or a lost connection is the
+  // same booking; another slot, a success or a definite no makes a new one.
+  const attempt = useAttemptKey()
   const [paying, setPaying] = useState<BookingCreated | null>(null)
   // A 'verification_required' booking: the one-time ID check, then the booking again.
   const [verifying, setVerifying] = useState<'ask' | 'busy' | null>(null)
@@ -143,7 +148,7 @@ export function Listing() {
   // A new window is a new attempt: never carry the last one's payment or key over.
   const startOver = () => {
     setPaying(null)
-    setAttempt(crypto.randomUUID())
+    attempt.settle()
   }
   const selectedStart = selected?.start
   useEffect(startOver, [selectedStart])
@@ -190,23 +195,23 @@ export function Listing() {
   const book = async () => {
     if (!requirement || !selected) return
     setSending(true)
+    const body = { requirement, listingId: listing.id, slotId: selected.slotId, start: selected.start, end: selected.end }
     try {
-      const made = await requestBooking(
-        { requirement, listingId: listing.id, slotId: selected.slotId, start: selected.start, end: selected.end },
-        attempt,
-      )
+      const made = await requestBooking(body, attempt.keyFor(body))
+      attempt.settle()
       // With Stripe, the card is authorised here before the owner is asked.
       if (made.payment && payments.data?.provider === 'stripe') setPaying(made)
       else sent(made.booking.id)
     } catch (err) {
       if (err instanceof ApiError && err.code === 'verification_required') {
+        // The same attempt (and key) is retried after the ID check.
         setVerifying('ask')
         return
       }
       toast(messageOf(err))
       // Taken by someone else a moment ago: show what is still free.
       if (err instanceof ApiError && err.status === 409) void offersQ.refetch()
-      setAttempt(crypto.randomUUID())
+      attempt.settle(err)
     } finally {
       setSending(false)
     }
@@ -254,10 +259,10 @@ export function Listing() {
           style={{ viewTransitionName: 'hero' }}
         >
           <span
-            className="absolute right-5 flex items-center gap-2"
+            className="absolute left-20 right-5 flex items-center justify-end gap-2"
             style={{ top: 'calc(var(--safe-top) + 14px)' }}
           >
-            <span className="glass glass-dark rounded-full px-3 py-1 text-[12px] font-semibold">
+            <span className="glass glass-dark min-w-0 truncate rounded-full px-3 py-1 text-[0.75rem] font-semibold">
               {meta.label}
             </span>
             <WhenBadge
@@ -272,12 +277,19 @@ export function Listing() {
       // panel. Same content, and the panel has the room to label it.
       footer={
         mine ? undefined : (
-          <div className="flex items-center gap-4 md:block">
-            <div className="min-w-0 flex-1">
+          // At large text sizes (U-27) the button wraps under the price instead of covering it.
+          <div className="flex flex-wrap items-center gap-x-4 gap-y-2 md:block">
+            <div className="min-w-[10rem] flex-1">
               <p className="t-label hidden md:block">{t('Your booking')}</p>
-              <p className="tnum text-[19px] font-bold leading-tight md:mt-2 md:text-[28px]">
-                {quote ? formatEur(quote.total) : '—'}
+              <p className="tnum text-[1.1875rem] font-bold leading-tight md:mt-2 md:text-[1.75rem]">
+                {quote ? formatMoney(quote.total, cur) : '—'}
               </p>
+              {/* U-20: the total is the whole price; the fee is inside it, never added at the end. */}
+              {quote && (
+                <p className="tnum truncate text-[0.7812rem] text-[var(--ink-3)]">
+                  {t('Total, incl. {fee} service fee', { fee: formatMoney(quote.platformFee, cur) })}
+                </p>
+              )}
               <p className="t-sm tnum truncate text-[var(--ink-3)] md:mt-1 md:whitespace-normal">
                 {selected ? range(selected.start, selected.end) : t('No free window')}
               </p>
@@ -319,12 +331,12 @@ export function Listing() {
       <header className="-mt-1">
         <h1 className="t-h1 text-balance">{listing.title}</h1>
         <p className="t-lede mt-2.5 text-[var(--ink-3)]">{listing.blurb}</p>
-        <div className="mt-4 flex flex-wrap items-center gap-x-4 gap-y-2 text-[14px] text-[var(--ink-3)]">
+        <div className="mt-4 flex flex-wrap items-center gap-x-4 gap-y-2 text-[0.875rem] text-[var(--ink-3)]">
           <span className="tnum inline-flex items-center gap-1.5">
             <Icon name="pin" size={15} className="text-[var(--ink-4)]" />
-            {listing.district}{km !== null ? ` · ${distance(km)}` : ''}
+            {listing.district}{km !== null ? ` · ${formatDistance(km)}` : ''}
           </span>
-          <span className="tnum">{formatEur(listing.ratePerHour)} / {t('hour')}</span>
+          <span className="tnum">{formatMoney(listing.ratePerHour, cur)} / {t('hour')}</span>
           {/* This listing's reviews; the owner's overall record is on their card below. */}
           <a
             href="#reviews"
@@ -338,7 +350,7 @@ export function Listing() {
             <Stars value={info.reviews.average} count={info.reviews.count} />
           </a>
           {listing.instantBook && (
-            <span className="inline-flex items-center gap-1 rounded-full bg-[var(--sunken)] px-2.5 py-0.5 text-[13px] font-semibold text-[var(--ink-2)]">
+            <span className="inline-flex items-center gap-1 rounded-full bg-[var(--sunken)] px-2.5 py-0.5 text-[0.8125rem] font-semibold text-[var(--ink-2)]">
               <Icon name="bolt" size={13} />
               {t('Instant book')}
             </span>
@@ -366,7 +378,7 @@ export function Listing() {
         <div className="flex items-center gap-4">
           <Avatar initials={owner.initials} size={48} business={owner.kind === 'business'} />
           <div className="min-w-0 flex-1">
-            <p className="flex items-center gap-1.5 text-[16px] font-semibold">
+            <p className="flex items-center gap-1.5 text-[1rem] font-semibold">
               <span className="truncate">{owner.name}</span>
               {owner.verified && (
                 <Icon name="shield" size={15} className="shrink-0 text-[var(--success)]" />
@@ -531,19 +543,19 @@ export function Listing() {
           <SectionHead title={t('Price')} className="mt-7" />
           <Card className="p-5">
             <Row
-              label={`${formatEur(listing.ratePerHour)}/h × ${durationLabel(quote.hours)}`}
-              value={formatEurExact(quote.base)}
+              label={`${formatMoney(listing.ratePerHour, cur)}/h × ${durationLabel(quote.hours)}`}
+              value={formatMoney(quote.base, cur)}
             />
-            {quote.extra > 0 && <Row label={quote.extraLabel} value={formatEurExact(quote.extra)} />}
+            {quote.extra > 0 && <Row label={quote.extraLabel} value={formatMoney(quote.extra, cur)} />}
             <div className="my-2 border-t border-[var(--line)]" />
             {(quote.discount ?? 0) > 0 && (
               <Row
                 label={quote.discountLabel ?? t('Discount')}
-                value={`−${formatEurExact(quote.discount ?? 0)}`}
+                value={`−${formatMoney(quote.discount ?? 0, cur)}`}
                 tone="accent"
               />
             )}
-            <Row label={t('Total')} value={formatEurExact(quote.total)} strong />
+            <Row label={t('Total')} value={formatMoney(quote.total, cur)} strong />
             <p className="t-sm mt-3 border-t border-[var(--line)] pt-3 text-[var(--ink-4)]">
               {t(
                 listing.instantBook
@@ -551,8 +563,8 @@ export function Listing() {
                   : 'Includes the {pct} % Cappy fee of {fee}. {name} receives {net}. Paid by card when {name} accepts; if they decline, the hold is released.',
                 {
                   pct: (PLATFORM_FEE_BPS / 100).toLocaleString(locale()),
-                  fee: formatEurExact(quote.platformFee),
-                  net: formatEurExact(quote.ownerNet),
+                  fee: formatMoney(quote.platformFee, cur),
+                  net: formatMoney(quote.ownerNet, cur),
                   name: first,
                 },
               )}
@@ -563,7 +575,7 @@ export function Listing() {
 
       <SectionHead title={t('Cancellation')} className="mt-7" />
       <Card className="p-5">
-        <p className="text-[15px] font-semibold">{policyName(policy)}</p>
+        <p className="text-[0.9375rem] font-semibold">{policyName(policy)}</p>
         <p className="t-sm mt-1 text-[var(--ink-3)]">
           {policyText(policy)} {t('If the owner cancels, you get everything back.')}
         </p>
@@ -580,7 +592,7 @@ export function Listing() {
       <Card className="p-5">
         <ul className="space-y-3">
           {listing.rules.map((r) => (
-            <li key={r} className="flex gap-3 text-[15px] text-[var(--ink-2)]">
+            <li key={r} className="flex gap-3 text-[0.9375rem] text-[var(--ink-2)]">
               <Icon
                 name="check"
                 size={16}
@@ -628,12 +640,14 @@ export function Listing() {
         }
       >
         {paying?.payment && payments.data?.publishableKey ? (
-          <PayStep
-            publishableKey={payments.data.publishableKey}
-            clientSecret={paying.payment.clientSecret}
-            bookingId={paying.booking.id}
-            onPaid={() => sent(paying.booking.id)}
-          />
+          <Suspense fallback={null}>
+            <PayStep
+              publishableKey={payments.data.publishableKey}
+              clientSecret={paying.payment.clientSecret}
+              bookingId={paying.booking.id}
+              onPaid={() => sent(paying.booking.id)}
+            />
+          </Suspense>
         ) : selected && quote && (
           <div className="space-y-4 pb-2">
             <div className="flex items-center gap-3.5">
@@ -645,7 +659,7 @@ export function Listing() {
                 className="w-[52px] shrink-0 rounded-[14px]"
               />
               <div className="min-w-0">
-                <p className="truncate text-[15.5px] font-semibold">{listing.title}</p>
+                <p className="truncate text-[0.9688rem] font-semibold">{listing.title}</p>
                 <p className="t-sm truncate text-[var(--ink-3)]">{owner.name}</p>
               </div>
             </div>
@@ -660,12 +674,12 @@ export function Listing() {
                     : `${quantity} ${meta.unitNoun}`
                 }
               />
-              <Row label={t('Where')} value={`${listing.district}${km !== null ? ` · ${distance(km)}` : ''}`} />
+              <Row label={t('Where')} value={`${listing.district}${km !== null ? ` · ${formatDistance(km)}` : ''}`} />
               <div className="my-2 border-t border-[var(--line)]" />
-              <Row label={t('You pay')} value={formatEurExact(quote.total)} strong />
+              <Row label={t('You pay')} value={formatMoney(quote.total, cur)} strong />
               <Row
                 label={t('{name} receives', { name: first })}
-                value={formatEurExact(quote.ownerNet)}
+                value={formatMoney(quote.ownerNet, cur)}
                 tone="accent"
               />
             </Card>
@@ -706,7 +720,7 @@ export function Listing() {
           </div>
         }
       >
-        <p className="pb-2 text-[15px] text-[var(--ink-2)]">
+        <p className="pb-2 text-[0.9375rem] text-[var(--ink-2)]">
           {t('This booking needs a one-time ID check. You photograph an ID document and your face; it takes about two minutes and is never needed again. Your booking is sent as soon as it is done.')}
         </p>
         <div className="pb-3">

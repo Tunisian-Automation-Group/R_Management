@@ -3,7 +3,7 @@ import { Link, Navigate, useNavigate, useSearchParams } from 'react-router-dom'
 import * as auth from '../../data/auth.ts'
 import { AuthError, useSession } from '../../data/auth.ts'
 import { useToast } from '../store.tsx'
-import { Screen } from '../components/AppShell.tsx'
+import { LanguageSwitch, Screen } from '../components/AppShell.tsx'
 import { Button, Field, Input, Segmented } from '../components/ui.tsx'
 import { t } from '../../i18n.ts'
 
@@ -18,15 +18,40 @@ const DEMO = ((import.meta.env.VITE_DEMO_ACCOUNTS as string | undefined) ?? '')
   .filter((parts) => parts.length === 3)
   .map(([label, email, password]) => ({ label, email, password }))
 
-/** in: sign in · up: create · confirm: the emailed code · forgot / reset: a new password */
-type Mode = 'in' | 'up' | 'confirm' | 'forgot' | 'reset'
+/** in: sign in · up: create · confirm: the emailed code · forgot / reset: a new password · mfa: the authenticator code */
+type Mode = 'in' | 'up' | 'confirm' | 'forgot' | 'reset' | 'mfa'
 
 const COPY: Record<Mode, { title: string; sub: string; submit: string }> = {
-  in: { title: 'Welcome back', sub: 'Sign in to book, to list, and to see what is waiting on you.', submit: 'Sign in' },
-  up: { title: 'Join Cappy', sub: 'One account to buy hours and to sell them. It takes a minute.', submit: 'Create account' },
-  confirm: { title: 'Check your email', sub: 'We sent you a six-digit code. It proves the address is yours.', submit: 'Confirm' },
-  forgot: { title: 'Forgot your password?', sub: 'We will email you a code to set a new one.', submit: 'Send code' },
-  reset: { title: 'Set a new password', sub: 'If there is an account for that email, we have sent it a code. Enter it with your new password.', submit: 'Save password' },
+  in: {
+    title: 'Welcome back',
+    sub: 'Sign in to book, to list, and to see what is waiting on you.',
+    submit: 'Sign in',
+  },
+  up: {
+    title: 'Join Cappy',
+    sub: 'One account to buy hours and to sell them. It takes a minute.',
+    submit: 'Create account',
+  },
+  confirm: {
+    title: 'Check your email',
+    sub: 'We sent you a six-digit code. It proves the address is yours.',
+    submit: 'Confirm',
+  },
+  forgot: {
+    title: 'Forgot your password?',
+    sub: 'We will email you a code to set a new one.',
+    submit: 'Send code',
+  },
+  reset: {
+    title: 'Set a new password',
+    sub: 'If there is an account for that email, we have sent it a code. Enter it with your new password.',
+    submit: 'Save password',
+  },
+  mfa: {
+    title: 'Two-step sign-in',
+    sub: 'Enter the six-digit code your authenticator app shows for Cappy.',
+    submit: 'Sign in',
+  },
 }
 
 /**
@@ -60,7 +85,8 @@ export function Login() {
   }, [mode])
   // Six digits typed or pasted from the email: confirm at once.
   useEffect(() => {
-    if (mode === 'confirm' && /^\d{6}$/.test(code) && !busy) document.getElementById('f-submit')?.click()
+    if ((mode === 'confirm' || mode === 'mfa') && /^\d{6}$/.test(code) && !busy)
+      document.getElementById('f-submit')?.click()
   }, [code, mode])
 
   if (session) return <Navigate to={next} replace />
@@ -106,6 +132,10 @@ export function Login() {
         }
         go('reset')
         return
+      case 'mfa':
+        await auth.answerMfa(code.trim())
+        nav(next, { replace: true })
+        return
       case 'reset':
         await auth.confirmForgotPassword(who, code.trim(), password)
         await auth.signIn(who, password)
@@ -117,7 +147,8 @@ export function Login() {
   const submit = async (e: FormEvent) => {
     e.preventDefault()
     setError(null)
-    if (!EMAIL.test(email.trim())) return setError(t('Enter your email address, like name@example.com.'))
+    if (mode !== 'mfa' && !EMAIL.test(email.trim()))
+      return setError(t('Enter your email address, like name@example.com.'))
     // The same rule as the user pool (infra/platform/identity.tf), so nobody is
     // turned away by the server for something the form could have said.
     if ((mode === 'up' || mode === 'reset') && !STRONG.test(password)) {
@@ -127,6 +158,8 @@ export function Login() {
     try {
       await run()
     } catch (err) {
+      // Staff and anyone else with two-step sign-in: the code step (P-4).
+      if (err instanceof AuthError && err.code === 'SOFTWARE_TOKEN_MFA') return go('mfa')
       setError(err instanceof Error ? err.message : t('That did not work. Try again.'))
     } finally {
       setBusy(false)
@@ -134,8 +167,12 @@ export function Login() {
   }
 
   const needsPassword = mode === 'in' || mode === 'up' || mode === 'reset'
-  const needsCode = mode === 'confirm' || mode === 'reset'
-  const copy = { title: t(COPY[mode].title), sub: t(COPY[mode].sub), submit: t(COPY[mode].submit) }
+  const needsCode = mode === 'confirm' || mode === 'reset' || mode === 'mfa'
+  const copy = {
+    title: t(COPY[mode].title),
+    sub: t(COPY[mode].sub),
+    submit: t(COPY[mode].submit),
+  }
 
   return (
     <Screen eyebrow={t('Your account')} title={copy.title} sub={copy.sub} back="/welcome">
@@ -154,19 +191,21 @@ export function Login() {
       )}
 
       <form onSubmit={submit} className="space-y-5" noValidate>
-        <Field label={t('Email')} htmlFor="f-email">
-          <Input
-            id="f-email"
-            type="email"
-            inputMode="email"
-            autoComplete="email"
-            autoCapitalize="none"
-            value={email}
-            disabled={mode === 'confirm' || mode === 'reset'}
-            onChange={(e) => setEmail(e.target.value)}
-            placeholder={t('you@example.com')}
-          />
-        </Field>
+        {mode !== 'mfa' && (
+          <Field label={t('Email')} htmlFor="f-email">
+            <Input
+              id="f-email"
+              type="email"
+              inputMode="email"
+              autoComplete="email"
+              autoCapitalize="none"
+              value={email}
+              disabled={mode === 'confirm' || mode === 'reset'}
+              onChange={(e) => setEmail(e.target.value)}
+              placeholder={t('you@example.com')}
+            />
+          </Field>
+        )}
 
         {needsCode && (
           <Field label={t('Code')} htmlFor="f-code">
@@ -203,7 +242,7 @@ export function Login() {
                 aria-pressed={reveal}
                 aria-controls="f-password"
                 onClick={() => setReveal((r) => !r)}
-                className="absolute inset-y-0 right-0 min-w-[64px] px-3 text-[13px] font-semibold text-[var(--ink-3)] hover:text-[var(--ink)]"
+                className="absolute inset-y-0 right-0 min-w-[64px] px-3 text-[0.8125rem] font-semibold text-[var(--ink-3)] hover:text-[var(--ink)]"
               >
                 {reveal ? t('Hide') : t('Show')}
               </button>
@@ -212,7 +251,7 @@ export function Login() {
         )}
 
         {error && (
-          <p role="alert" className="text-[14px] font-semibold text-[var(--danger)]">
+          <p role="alert" className="text-[0.875rem] font-semibold text-[var(--danger)]">
             {error}
           </p>
         )}
@@ -222,7 +261,7 @@ export function Login() {
           type="submit"
           block
           size="lg"
-          disabled={busy || !email || (needsPassword && !password) || (needsCode && !code)}
+          disabled={busy || (mode !== 'mfa' && !email) || (needsPassword && !password) || (needsCode && !code)}
         >
           {busy ? t('One moment…') : copy.submit}
         </Button>
@@ -245,6 +284,7 @@ export function Login() {
                   await auth.signIn(demoEmail, demoPassword)
                   nav(next, { replace: true })
                 } catch (e) {
+                  if (e instanceof AuthError && e.code === 'SOFTWARE_TOKEN_MFA') return go('mfa')
                   setError(e instanceof Error ? e.message : t('Could not sign in'))
                 } finally {
                   setBusy(false)
@@ -257,7 +297,7 @@ export function Login() {
         </div>
       )}
 
-      <p className="mt-6 text-center text-[13.5px] text-[var(--ink-3)]">
+      <p className="mt-6 text-center text-[0.8438rem] text-[var(--ink-3)]">
         {mode === 'in' && (
           <button type="button" className="font-semibold text-[var(--ink)] underline" onClick={() => go('forgot')}>
             {t('Forgot your password?')}
@@ -281,7 +321,7 @@ export function Login() {
             {cooldown > 0 ? t('Send a new code in {n} s', { n: cooldown }) : t('Send a new code')}
           </button>
         )}
-        {(mode === 'forgot' || mode === 'reset') && (
+        {(mode === 'forgot' || mode === 'reset' || mode === 'mfa') && (
           <button type="button" className="font-semibold text-[var(--ink)] underline" onClick={() => go('in')}>
             {t('Back to sign in')}
           </button>
@@ -291,12 +331,17 @@ export function Login() {
       {(mode === 'in' || mode === 'up') && (
         // U-18: why there is nothing to see before signing in.
         <p className="t-sm mx-auto mt-8 max-w-[44ch] border-t border-[var(--line)] pt-6 text-center text-[var(--ink-3)]">
-          {t('Cappy is for members: listings are people’s own things, places and times, so everyone signs in before seeing them.')}{' '}
+          {t(
+            'Cappy is for members: listings are people’s own things, places and times, so everyone signs in before seeing them.',
+          )}{' '}
           <Link to="/help/safety" className="font-semibold text-[var(--ink)] underline">
             {t('How we keep you safe')}
           </Link>
         </p>
       )}
+      <div className="mt-6 flex justify-center">
+        <LanguageSwitch />
+      </div>
     </Screen>
   )
 }

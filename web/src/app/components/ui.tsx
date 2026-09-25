@@ -12,6 +12,7 @@ import { Link } from 'react-router-dom'
 import { Icon, type IconName } from './Icon.tsx'
 import { sheetOpened } from '../sheets.ts'
 import { locale, t } from '../../i18n.ts'
+import { currencySymbol, minorPerMajor } from '../../domain/money.ts'
 
 /** 160ms for micro-interactions, decelerating. Never linear. */
 const TR =
@@ -58,9 +59,9 @@ export function Button({
   // 44px is the floor for anything you tap. `sm` is only for inline chips that
   // sit inside a larger tap target.
   const sizes: Record<string, string> = {
-    lg: 'min-h-[52px] px-7 text-[15px] font-semibold gap-2',
-    md: 'min-h-[44px] px-5 text-[14px] font-semibold gap-1.5',
-    sm: 'tap min-h-[34px] px-3.5 text-[13px] font-semibold gap-1.5',
+    lg: 'min-h-[52px] px-7 text-[0.9375rem] font-semibold gap-2',
+    md: 'min-h-[44px] px-5 text-[0.875rem] font-semibold gap-1.5',
+    sm: 'tap min-h-[34px] px-3.5 text-[0.8125rem] font-semibold gap-1.5',
   }
   const cls = `inline-flex items-center justify-center rounded-[var(--radius-control)] ${sizes[size]} ${variants[variant]} ${TR}
         disabled:pointer-events-none disabled:opacity-30 ${block ? 'w-full' : ''} ${className}`
@@ -138,7 +139,7 @@ export function Chip({
       onClick={onClick}
       aria-pressed={selected}
       aria-label={ariaLabel}
-      className={`tap inline-flex min-h-[38px] shrink-0 items-center gap-1.5 rounded-[var(--radius-control)] border px-3.5 text-[13.5px] font-medium ${TR}
+      className={`tap inline-flex min-h-[38px] shrink-0 items-center gap-1.5 rounded-[var(--radius-control)] border px-3.5 text-[0.8438rem] font-medium ${TR}
         ${
           selected
             ? 'border-[var(--field)] bg-[var(--field)] font-semibold text-[var(--on-field)]'
@@ -169,7 +170,7 @@ export function Pill({
   }[tone]
   return (
     <span
-      className={`inline-flex items-center gap-1 text-[12.5px] font-semibold underline decoration-2 underline-offset-[5px] ${tones}`}
+      className={`inline-flex items-center gap-1 text-[0.7812rem] font-semibold underline decoration-2 underline-offset-[5px] ${tones}`}
     >
       {icon && <Icon name={icon} size={13} strokeWidth={2.2} />}
       {children}
@@ -216,8 +217,8 @@ export function Stars({ value, count }: { value: number | null | undefined; coun
   return (
     <span className="inline-flex items-center gap-1">
       <Icon name="star" size={12} className="fill-[var(--ink)] text-[var(--ink)]" strokeWidth={0} />
-      <span className="tnum text-[13px] font-semibold text-[var(--ink)]">{oneDecimal(value)}</span>
-      <span className="tnum text-[13px] text-[var(--ink-4)]">({count})</span>
+      <span className="tnum text-[0.8125rem] font-semibold text-[var(--ink)]">{oneDecimal(value)}</span>
+      <span className="tnum text-[0.8125rem] text-[var(--ink-4)]">({count})</span>
     </span>
   )
 }
@@ -252,18 +253,18 @@ export function Field({
   return (
     <div>
       {/* Label above the input: never a placeholder standing in for a label. */}
-      <label htmlFor={htmlFor} className="mb-2 block text-[13.5px] font-semibold text-[var(--ink-2)]">
+      <label htmlFor={htmlFor} className="mb-2 block text-[0.8438rem] font-semibold text-[var(--ink-2)]">
         {label}
       </label>
       {children}
       {/* Error sits directly under its own field, never in a summary elsewhere. */}
       {error ? (
-        <p id={htmlFor && `${htmlFor}-msg`} role="alert" className="mt-2 flex items-start gap-1.5 text-[13px] text-[var(--danger)]">
+        <p id={htmlFor && `${htmlFor}-msg`} role="alert" className="mt-2 flex items-start gap-1.5 text-[0.8125rem] text-[var(--danger)]">
           <Icon name="alert" size={14} className="mt-[2px] shrink-0" strokeWidth={2} />
           {error}
         </p>
       ) : hint ? (
-        <p id={htmlFor && `${htmlFor}-msg`} className="mt-2 text-[13px] leading-[18px] text-[var(--ink-4)]">
+        <p id={htmlFor && `${htmlFor}-msg`} className="mt-2 text-[0.8125rem] leading-[1.125rem] text-[var(--ink-4)]">
           {hint}
         </p>
       ) : null}
@@ -271,7 +272,7 @@ export function Field({
   )
 }
 
-const fieldBase = `w-full min-h-[50px] rounded-[var(--radius-field)] border bg-[var(--surface)] px-3.5 text-[16px] text-[var(--ink)]
+const fieldBase = `w-full min-h-[50px] rounded-[var(--radius-field)] border bg-[var(--surface)] px-3.5 text-[1rem] text-[var(--ink)]
   placeholder:text-[var(--ink-4)] ${TR}`
 const fieldTone = (invalid?: boolean) =>
   invalid
@@ -315,7 +316,7 @@ export function Check({
         onChange={(e) => onChange(e.target.checked)}
       />
       <span>
-        <span className="block text-[15px] font-semibold text-[var(--ink)]">{label}</span>
+        <span className="block text-[0.9375rem] font-semibold text-[var(--ink)]">{label}</span>
         {hint && <span className="t-sm block text-[var(--ink-3)]">{hint}</span>}
       </span>
     </label>
@@ -332,7 +333,7 @@ export function Textarea({
       aria-describedby={rest.id ? `${rest.id}-msg` : undefined}
       {...rest}
       aria-invalid={invalid || undefined}
-      className={`${fieldBase} resize-none py-3.5 leading-[23px] ${fieldTone(invalid)} ${className}`}
+      className={`${fieldBase} resize-none py-3.5 leading-[1.4375rem] ${fieldTone(invalid)} ${className}`}
     />
   )
 }
@@ -360,48 +361,56 @@ export function Select({
   )
 }
 
-/** Money in, cents out. Keeps the caller from ever holding a float euro. */
+/** Money in, minor units out. Keeps the caller from ever holding a float
+ *  amount. The symbol and decimals are the currency's, in the reader's format. */
 export function MoneyInput({
   cents,
   onCents,
   invalid,
   id,
   suffix,
+  currency,
 }: {
   cents: number
   onCents: (c: number) => void
   invalid?: boolean
   id?: string
   suffix?: string
+  /** ISO 4217; the listing's market's (M-4). */
+  currency?: string
 }) {
+  const minor = minorPerMajor(currency)
+  const digits = Math.round(Math.log10(minor))
   // "4,00" in German, "4.00" in English, as prices show elsewhere. Either separator typed in works.
-  const show = (c: number) => {
-    const s = ((c || 0) / 100).toFixed(2)
-    return locale() === 'de-DE' ? s.replace('.', ',') : s
-  }
+  const show = (c: number) =>
+    new Intl.NumberFormat(locale(), { minimumFractionDigits: digits, maximumFractionDigits: digits, useGrouping: false }).format(
+      (c || 0) / minor,
+    )
   const [text, setText] = useState(() => show(cents))
+  const symbol = currencySymbol(currency)
   return (
     <div className="relative">
-      <span className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-[16px] text-[var(--ink-3)]">
-        €
+      <span className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-[1rem] text-[var(--ink-3)]">
+        {symbol}
       </span>
       <Input
         id={id}
         inputMode="decimal"
         value={text}
         invalid={invalid}
-        className="tnum pl-8 pr-24 text-[17px] font-semibold"
+        className="tnum pr-24 text-[1.0625rem] font-semibold"
+        style={{ paddingLeft: `calc(1.25rem + ${symbol.length}ch)` }}
         onChange={(e) => {
           const raw = e.target.value
           const v = raw.replace(',', '.')
-          if (!/^\d*\.?\d{0,2}$/.test(v)) return
+          if (!new RegExp(`^\\d*\\.?\\d{0,${digits}}$`).test(v)) return
           setText(raw)
           const n = Number.parseFloat(v)
-          onCents(Number.isFinite(n) ? Math.round(n * 100) : 0)
+          onCents(Number.isFinite(n) ? Math.round(n * minor) : 0)
         }}
         onBlur={() => setText(show(cents))}
       />
-      <span className="pointer-events-none absolute right-4 top-1/2 -translate-y-1/2 text-[13px] text-[var(--ink-4)]">
+      <span className="pointer-events-none absolute right-4 top-1/2 -translate-y-1/2 text-[0.8125rem] text-[var(--ink-4)]">
         {suffix ?? t('/ hour')}
       </span>
     </div>
@@ -445,7 +454,7 @@ export function Segmented<T extends string>({
             role="tab"
             aria-selected={on}
             onClick={() => onChange(o.value)}
-            className={`tap relative z-[1] min-h-[44px] flex-1 px-3 text-[14px] ${TR}
+            className={`tap relative z-[1] min-h-[44px] flex-1 px-3 text-[0.875rem] ${TR}
               ${on ? 'font-semibold text-[var(--ink)]' : 'font-medium text-[var(--ink-4)] hover:text-[var(--ink-2)]'}`}
           >
             {o.label}
@@ -518,7 +527,7 @@ export function Sheet({
   if (!open) return null
 
   return (
-    <div className="fixed inset-0 z-50 flex items-end justify-center">
+    <div className="fixed inset-0 z-50 flex items-end justify-center" style={{ paddingLeft: 'env(safe-area-inset-left, 0px)', paddingRight: 'env(safe-area-inset-right, 0px)' }}>
       <div className="anim-fade absolute inset-0 bg-[var(--scrim)]" onClick={onClose} aria-hidden="true" />
       <div
         ref={panel}
@@ -614,8 +623,8 @@ export function Banner({
         strokeWidth={2.4}
       />
       <div className="min-w-0">
-        <p className={`text-[14.5px] font-semibold ${map.fg}`}>{title}</p>
-        {body && <p className="mt-1 text-[13.5px] leading-[19px] text-[var(--ink-2)]">{body}</p>}
+        <p className={`text-[0.9062rem] font-semibold ${map.fg}`}>{title}</p>
+        {body && <p className="mt-1 text-[0.8438rem] leading-[1.1875rem] text-[var(--ink-2)]">{body}</p>}
         {action && <div className="mt-3">{action}</div>}
       </div>
     </div>
@@ -640,7 +649,7 @@ export function Row({
       <span className="t-sm min-w-0 text-[var(--ink-3)]">{label}</span>
       {/* Values wrap rather than run off the edge. Some of them are sentences. */}
       <span
-        className={`tnum min-w-0 text-right ${strong ? 'text-[18px] font-bold' : 'text-[14.5px] font-medium'} ${color}`}
+        className={`tnum min-w-0 text-right ${strong ? 'text-[1.125rem] font-bold' : 'text-[0.9062rem] font-medium'} ${color}`}
       >
         {value}
       </span>
@@ -662,10 +671,10 @@ export function Toast({ message, onDone }: { message: string; onDone: () => void
     <div
       role="status"
       aria-live="polite"
-      className="anim-pop pointer-events-none fixed inset-x-0 z-[60] flex justify-center px-4"
-      style={{ bottom: 'calc(var(--dock-h) + var(--footer-h, 0px) + 20px)' }}
+      className="anim-pop safe-x pointer-events-none fixed inset-x-0 z-[60] flex justify-center"
+      style={{ bottom: 'calc(var(--dock-h) + var(--footer-h, 0px) + var(--safe-bottom-md) + 20px)' }}
     >
-      <div className="flex items-center gap-2.5 rounded-[var(--radius-control)] bg-[var(--field)] py-3 pl-3.5 pr-5 text-[14px] font-semibold text-[var(--on-field)]">
+      <div className="flex items-center gap-2.5 rounded-[var(--radius-control)] bg-[var(--field)] py-3 pl-3.5 pr-5 text-[0.875rem] font-semibold text-[var(--on-field)]">
         <span className="grid h-5 w-5 place-items-center rounded-[2px] bg-[var(--sky)] text-[var(--field)]">
           {/* The tick draws itself once the toast appears. */}
           <Icon name="check" size={14} strokeWidth={3} className="anim-draw" />

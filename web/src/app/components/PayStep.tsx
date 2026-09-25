@@ -63,6 +63,10 @@ function Form({ bookingId, onPaid }: { bookingId: string; onPaid: () => void }) 
       <Button type="submit" block size="lg" disabled={!stripe || busy || !online}>
         {busy ? t('Authorising…') : t('Book and pay')}
       </Button>
+      {/* U-34: what paying here buys, next to the button that does it. */}
+      <p className="t-sm text-center text-[var(--ink-3)]">
+        {t('Cappy holds your payment and pays the owner only once the booking has happened. Paying outside Cappy loses that protection.')}
+      </p>
     </form>
   )
 }

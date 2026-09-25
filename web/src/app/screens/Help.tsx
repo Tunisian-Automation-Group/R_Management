@@ -177,7 +177,7 @@ export function Help() {
     if (!a) return <NotFound />
     return (
       <Screen eyebrow={t('Help')} title={pick(a.title)} back="/help">
-        <article className="space-y-4 pb-8 text-[15px] leading-[24px] text-[var(--ink-2)]">
+        <article className="space-y-4 pb-8 text-[0.9375rem] leading-[1.5rem] text-[var(--ink-2)]">
           {pick(a.body).map((p) => (
             <p key={p}>{p}</p>
           ))}
@@ -191,14 +191,14 @@ export function Help() {
       <ul className="divide-y divide-[var(--line)] border-y border-[var(--line)]">
         {Object.entries(ARTICLES).map(([key, a]) => (
           <li key={key}>
-            <Link to={`/help/${key}`} className="flex min-h-[52px] items-center justify-between gap-4 py-3 text-[15px] font-semibold">
+            <Link to={`/help/${key}`} className="flex min-h-[52px] items-center justify-between gap-4 py-3 text-[0.9375rem] font-semibold">
               {pick(a.title)}
               <span aria-hidden="true" className="text-[var(--ink-4)]">›</span>
             </Link>
           </li>
         ))}
         <li>
-          <Link to="/legal/report" className="flex min-h-[52px] items-center justify-between gap-4 py-3 text-[15px] font-semibold">
+          <Link to="/legal/report" className="flex min-h-[52px] items-center justify-between gap-4 py-3 text-[0.9375rem] font-semibold">
             {t('Reporting content')}
             <span aria-hidden="true" className="text-[var(--ink-4)]">›</span>
           </Link>
@@ -218,7 +218,7 @@ function ContactCard() {
       <p className="t-sm mb-3 text-[var(--ink-3)]">
         {t('About a booking? Open it and use “Get help with this booking”, so we see which one.')}
       </p>
-      <a href={supportHref()} className="text-[14px] font-semibold underline">
+      <a href={supportHref()} className="text-[0.875rem] font-semibold underline">
         {t('Write to Cappy')}
       </a>
     </Card>

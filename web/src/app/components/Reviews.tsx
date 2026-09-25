@@ -54,7 +54,7 @@ export function Reviews({
   if (s.count === 0) {
     return (
       <div className="rounded-[var(--radius-card)] border border-dashed border-[var(--line-strong)] p-5">
-        <p className="text-[15px] font-semibold">{t('No reviews of this listing yet')}</p>
+        <p className="text-[0.9375rem] font-semibold">{t('No reviews of this listing yet')}</p>
         <p className="t-sm mt-1 text-[var(--ink-3)]">
           {ownerJobs > 0
             ? t(
@@ -89,7 +89,7 @@ export function Reviews({
             {s.topTags.map((tag) => (
               <li
                 key={tag.tag}
-                className="tnum rounded-full bg-[var(--surface)] px-3 py-1.5 text-[13px] font-medium text-[var(--ink-2)]"
+                className="tnum rounded-full bg-[var(--surface)] px-3 py-1.5 text-[0.8125rem] font-medium text-[var(--ink-2)]"
               >
                 {t(tag.tag)} <span className="text-[var(--ink-4)]">{tag.n}</span>
               </li>
@@ -104,7 +104,7 @@ export function Reviews({
             <div className="flex items-center gap-3">
               <Avatar initials={r.initials} size={34} />
               <div className="min-w-0 flex-1">
-                <p className="text-[14.5px] font-semibold">{r.author}</p>
+                <p className="text-[0.9062rem] font-semibold">{r.author}</p>
                 <p className="t-sm text-[var(--ink-4)]">{ago(r.at)}</p>
               </div>
               <span className="flex items-center gap-2">

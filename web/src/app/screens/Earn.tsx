@@ -4,7 +4,7 @@ import { useQueries, useQueryClient } from '@tanstack/react-query'
 import type { Booking, Listing, Owner, Slot } from '../../domain/types.ts'
 import { durationLabel } from '../../domain/categories.ts'
 import { idleHours } from '../../domain/availability.ts'
-import { formatEur, formatEurExact } from '../../domain/money.ts'
+import { formatMoney } from '../../domain/money.ts'
 import * as repo from '../../data/repo.ts'
 import { useAuthReady, useSession } from '../../data/auth.ts'
 import { messageOf, useToast } from '../store.tsx'
@@ -87,6 +87,8 @@ export function Earn() {
   // Earned means paid out: completed. Accepted and active are still to come.
   const earned = inbound.filter((b) => b.status === 'completed').reduce((n, b) => n + b.match.quote.ownerNet, 0)
   const upcoming = comingUp.reduce((n, b) => n + b.match.quote.ownerNet, 0)
+  // ponytail: one currency per owner, their listings' market's (ADR 0013: a person lives in one cell).
+  const currency = active[0]?.currency ?? inbound[0]?.currency
 
   const write = async (fn: () => Promise<unknown>, message: string) => {
     setBusy(true)
@@ -184,7 +186,7 @@ export function Earn() {
                     <div className="flex items-start gap-3.5">
                       <Avatar initials={who?.initials ?? '??'} size={42} />
                       <div className="min-w-0 flex-1">
-                        <p className="text-[15.5px] font-semibold">
+                        <p className="text-[0.9688rem] font-semibold">
                           {who?.name ?? t('Someone nearby')}
                         </p>
                         {who && (
@@ -195,8 +197,8 @@ export function Earn() {
                           {durationLabel(b.match.quote.hours)}
                         </p>
                       </div>
-                      <span className="tnum shrink-0 text-[17px] font-bold text-[var(--accent-text)]">
-                        {formatEur(b.match.quote.ownerNet)}
+                      <span className="tnum shrink-0 text-[1.0625rem] font-bold text-[var(--accent-text)]">
+                        {formatMoney(b.match.quote.ownerNet, b.currency ?? b.match.quote.currency)}
                       </span>
                     </div>
 
@@ -279,15 +281,15 @@ export function Earn() {
         <p className="t-label">{t('Still idle this week')}</p>
         <p className="mt-3 flex flex-wrap items-baseline gap-x-2.5">
           <span className="t-display tnum">{Math.round(hoursIdle)}</span>
-          <span className="text-[20px] font-medium text-[var(--ink-4)]">{t('hours')}</span>
+          <span className="text-[1.25rem] font-medium text-[var(--ink-4)]">{t('hours')}</span>
         </p>
         <p className="t-lede mt-3 text-[var(--ink-2)]">
-          <span className="hl font-semibold">{formatEur(unsold)}</span> {t('of time nobody is paying you for.')}
+          <span className="hl font-semibold">{formatMoney(unsold, currency)}</span> {t('of time nobody is paying you for.')}
         </p>
         {(sold > 0 || earned > 0) && (
           <p className="t-sm tnum mt-2.5 font-semibold text-[var(--success-text)]">
-            {t('{h} h sold this week · {earned} earned', { h: Math.round(sold), earned: formatEur(earned) })}
-            {upcoming > 0 && ` · ${t('{amount} to come', { amount: formatEur(upcoming) })}`}
+            {t('{h} h sold this week · {earned} earned', { h: Math.round(sold), earned: formatMoney(earned, currency) })}
+            {upcoming > 0 && ` · ${t('{amount} to come', { amount: formatMoney(upcoming, currency) })}`}
           </p>
         )}
       </section>
@@ -315,7 +317,7 @@ export function Earn() {
                   className="flex w-full items-center gap-4 py-3.5 text-left transition-opacity duration-[160ms] hover:opacity-70"
                 >
                   <span className="min-w-0 flex-1">
-                    <span className="block truncate text-[15px] font-semibold">{b.listing?.title ?? t('Your listing')}</span>
+                    <span className="block truncate text-[0.9375rem] font-semibold">{b.listing?.title ?? t('Your listing')}</span>
                     <span className="t-sm tnum block truncate text-[var(--ink-3)]">{range(b.match.start, b.match.end)}</span>
                   </span>
                   <Pill tone="success">{b.status === 'active' ? t('In progress') : t('Confirmed')}</Pill>
@@ -347,9 +349,9 @@ export function Earn() {
                       className={`w-[56px] shrink-0 rounded-[var(--radius-plate)] ${l.active ? '' : 'opacity-40'}`}
                     />
                     <div className="min-w-0 flex-1">
-                      <p className="truncate text-[15.5px] font-semibold">{l.title}</p>
+                      <p className="truncate text-[0.9688rem] font-semibold">{l.title}</p>
                       <p className="t-sm tnum text-[var(--ink-3)]">
-                        {formatEur(l.ratePerHour)}/h ·{' '}
+                        {formatMoney(l.ratePerHour, l.currency)}/h ·{' '}
                         {l.active ? t('{h} h free this week', { h: Math.round(h) }) : t('Paused')}
                       </p>
                     </div>
@@ -415,12 +417,12 @@ export function Earn() {
                   className="flex w-full items-center gap-4 py-3.5 text-left transition-opacity duration-[160ms] hover:opacity-70"
                 >
                   <span className="min-w-0 flex-1">
-                    <span className="block truncate text-[15px] font-semibold">{inv.description ?? t('Cappy fee for booking {id}', { id: inv.bookingId.slice(-6).toUpperCase() })}</span>
+                    <span className="block truncate text-[0.9375rem] font-semibold">{inv.description ?? t('Cappy fee for booking {id}', { id: inv.bookingId.slice(-6).toUpperCase() })}</span>
                     <span className="t-sm tnum block text-[var(--ink-3)]">
                       {inv.number} · {new Date(inv.issuedAt).toLocaleDateString(locale())}
                     </span>
                   </span>
-                  <span className="tnum shrink-0 text-[15px] font-semibold">{formatEurExact(inv.gross)}</span>
+                  <span className="tnum shrink-0 text-[0.9375rem] font-semibold">{formatMoney(inv.gross, inv.currency)}</span>
                 </button>
               </li>
             ))}
@@ -436,13 +438,13 @@ export function Earn() {
             <div className="flex items-center gap-3.5">
               <Avatar initials={you.initials} size={44} />
               <div className="min-w-0 flex-1">
-                <p className="text-[15.5px] font-semibold">{you.name}</p>
+                <p className="text-[0.9688rem] font-semibold">{you.name}</p>
                 <p className="t-sm tnum text-[var(--ink-3)]">
                   {plural(you.jobsDone, '{n} booking', '{n} bookings')} ·{' '}
                   {t('{pct} % on time', { pct: Math.round((you.onTimeJobs / Math.max(1, you.jobsDone)) * 100) })}
                 </p>
               </div>
-              <span className="tnum text-[19px] font-bold">
+              <span className="tnum text-[1.1875rem] font-bold">
                 {you.jobsDone ? `${oneDecimal(you.ratingSum / you.jobsDone)}★` : t('New')}
               </span>
             </div>

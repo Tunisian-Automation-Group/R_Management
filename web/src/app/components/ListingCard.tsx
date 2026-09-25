@@ -1,10 +1,10 @@
 import type { Listing, Match, Owner, Slot } from '../../domain/types.ts'
 import { isWindow, rating } from '../../domain/types.ts'
 import { durationLabel } from '../../domain/categories.ts'
-import { formatEur } from '../../domain/money.ts'
+import { formatMoney } from '../../domain/money.ts'
 import { Photo } from './Photo.tsx'
 import { Stars } from './ui.tsx'
-import { distance, range } from '../format.ts'
+import { formatDistance, range } from '../format.ts'
 import { t } from '../../i18n.ts'
 
 /**
@@ -50,8 +50,8 @@ export function ListingCard({
         <span className="min-w-0">
           <span className="flex items-baseline justify-between gap-3">
             <span className="t-h4 min-w-0 truncate">{listing.title}</span>
-            <span className="tnum shrink-0 text-[16px] font-semibold">
-              {formatEur(match.quote.total)}
+            <span className="tnum shrink-0 text-[1rem] font-semibold">
+              {formatMoney(match.quote.total, match.quote.currency)}
             </span>
           </span>
           <span className="t-sm mt-1 block truncate text-[var(--ink-3)]">
@@ -60,25 +60,25 @@ export function ListingCard({
         </span>
 
         <span className="mt-3 block">
-          <span className="tnum block text-[13px] font-medium text-[var(--ink)]">
+          <span className="tnum block text-[0.8125rem] font-medium text-[var(--ink)]">
             {range(match.start, match.end)}
           </span>
           <span className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1">
-            <span className="tnum text-[13px] text-[var(--ink-4)]">
-              {distance(match.distanceKm)}
+            <span className="tnum text-[0.8125rem] text-[var(--ink-4)]">
+              {formatDistance(match.distanceKm)}
             </span>
-            <span className="tnum text-[13px] text-[var(--ink-4)]">
+            <span className="tnum text-[0.8125rem] text-[var(--ink-4)]">
               {isWindow(listing)
                 ? durationLabel(match.quote.hours)
                 : t('{duration} incl. setup', { duration: durationLabel(match.quote.hours) })}
             </span>
             {/* The owner's record over all their jobs, not this listing's reviews: labelled so. */}
             <span className="inline-flex items-baseline gap-1" title={t("The owner's rating across all their jobs")}>
-              <span className="text-[12px] text-[var(--ink-4)]">{t('Host')}</span>
+              <span className="text-[0.75rem] text-[var(--ink-4)]">{t('Host')}</span>
               <Stars value={stars} count={owner.jobsDone} />
             </span>
             {rank === 0 && (
-              <span className="text-[12.5px] font-semibold text-[var(--accent-text)]">
+              <span className="text-[0.7812rem] font-semibold text-[var(--accent-text)]">
                 {t('Best match')}
               </span>
             )}

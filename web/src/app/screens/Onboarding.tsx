@@ -105,7 +105,7 @@ export function Onboarding() {
         </Field>
         <Check checked={adult} onChange={setAdult} label={t('I am 18 or older')} hint={t('Cappy is for adults: bookings are contracts.')} />
         {error && (
-          <p role="alert" className="text-[14px] font-semibold text-[var(--danger)]">
+          <p role="alert" className="text-[0.875rem] font-semibold text-[var(--danger)]">
             {error}
           </p>
         )}

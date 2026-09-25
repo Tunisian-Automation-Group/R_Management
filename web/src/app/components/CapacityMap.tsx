@@ -2,6 +2,7 @@ import type { KeyboardEvent } from "react";
 import type { District } from "../../domain/types.ts";
 import type { City as CityStat } from "../../data/repo.ts";
 import { plural, t } from "../../i18n.ts";
+import { formatRadius } from "../format.ts";
 
 export type MapPin = {
   id: string;
@@ -484,7 +485,7 @@ export function CapacityMap({
       type="button"
       onClick={() => onLevel(l)}
       aria-pressed={level === l}
-      className={`tap min-h-[30px] rounded-[var(--radius-control)] px-2.5 text-[12px] font-semibold transition-colors duration-[160ms]
+      className={`tap min-h-[30px] rounded-[var(--radius-control)] px-2.5 text-[0.75rem] font-semibold transition-colors duration-[160ms]
         ${level === l ? "bg-[var(--inverse)] text-[var(--on-inverse)]" : "text-[var(--ink-2)] hover:text-[var(--ink)]"}`}
     >
       {label}
@@ -526,7 +527,7 @@ export function CapacityMap({
         </div>
 
         {level === "city" && (
-          <div className="veil pointer-events-none absolute bottom-3 left-3 flex items-center gap-3 rounded-[var(--radius-control)] border border-[var(--line)] px-2.5 py-1.5 text-[11.5px] font-semibold text-[var(--ink-2)]">
+          <div className="veil pointer-events-none absolute bottom-3 left-3 flex items-center gap-3 rounded-[var(--radius-control)] border border-[var(--line)] px-2.5 py-1.5 text-[0.7188rem] font-semibold text-[var(--ink-2)]">
             <span className="inline-flex items-center gap-1.5">
               <span className="relative grid h-2.5 w-2.5 place-items-center">
                 <span className="pulse-ring absolute inset-0 rounded-full bg-[var(--sky)]" />
@@ -653,7 +654,7 @@ function CityView({
       viewBox={`0 0 ${W} ${H}`}
       className="anim-fade block h-auto w-full select-none"
       role="img"
-      aria-label={t('Map of {n} idle listings within {km} km of {place}, {free} free right now', { n: pins.length, km: radiusKm, place: origin.name, free: freeNow })}
+      aria-label={t('Map of {n} idle listings within {distance} of {place}, {free} free right now', { n: pins.length, distance: formatRadius(radiusKm), place: origin.name, free: freeNow })}
     >
       {/* distance rings, what "2.3 km" looks like */}
       {rings.map((r) => (
@@ -678,7 +679,7 @@ function CityView({
               fill="var(--map-label)"
               className="tnum"
             >
-              {r} km
+              {formatRadius(r)}
             </text>
           )}
         </g>

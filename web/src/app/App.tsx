@@ -1,5 +1,5 @@
 import { BrowserRouter, Navigate, Route, Routes, useLocation } from 'react-router-dom'
-import { useEffect } from 'react'
+import { lazy, Suspense, useEffect, type ComponentType } from 'react'
 import { QueryClientProvider } from '@tanstack/react-query'
 import { AppProvider, useCappy } from './store.tsx'
 import { APP_VERSION, queryClient, useAppConfig, useBookings, useMeQuery, useNotices, versionBelow } from '../data/repo.ts'
@@ -9,25 +9,31 @@ import { device } from './device.ts'
 import { OfflineBar } from './components/Offline.tsx'
 import { PushPrime } from './components/PushPrime.tsx'
 import { Welcome } from './screens/Welcome.tsx'
-import { Help } from './screens/Help.tsx'
-import { Notifications } from './screens/Notifications.tsx'
 import { Dock } from './components/AppShell.tsx'
 import { ErrorBoundary } from './components/ErrorBoundary.tsx'
 import { Toast } from './components/ui.tsx'
 import { Browse } from './screens/Browse.tsx'
 import { Listing } from './screens/Listing.tsx'
 import { Bookings } from './screens/Bookings.tsx'
-import { BookingDetail } from './screens/BookingDetail.tsx'
-import { Earn } from './screens/Earn.tsx'
-import { AddListing } from './screens/AddListing.tsx'
-import { Profile } from './screens/Profile.tsx'
 import { Login } from './screens/Login.tsx'
-import { Onboarding } from './screens/Onboarding.tsx'
-import { AccountDeletion, Legal } from './screens/Legal.tsx'
-import { Admin } from './screens/Admin.tsx'
 import { NotFound } from './screens/NotFound.tsx'
 import { Screen } from './components/AppShell.tsx'
 import { t, useLang } from '../i18n.ts'
+
+/** A screen fetched when first opened (S-15): the first paint carries only
+ *  the way in, browsing and a listing. */
+const page = <K extends string>(load: () => Promise<Record<K, ComponentType>>, name: K) =>
+  lazy(() => load().then((m) => ({ default: m[name] })))
+const Help = page(() => import('./screens/Help.tsx'), 'Help')
+const Notifications = page(() => import('./screens/Notifications.tsx'), 'Notifications')
+const Earn = page(() => import('./screens/Earn.tsx'), 'Earn')
+const AddListing = page(() => import('./screens/AddListing.tsx'), 'AddListing')
+const Profile = page(() => import('./screens/Profile.tsx'), 'Profile')
+const Legal = page(() => import('./screens/Legal.tsx'), 'Legal')
+const AccountDeletion = page(() => import('./screens/Legal.tsx'), 'AccountDeletion')
+const Admin = page(() => import('./screens/Admin.tsx'), 'Admin')
+const BookingDetail = page(() => import('./screens/BookingDetail.tsx'), 'BookingDetail')
+const Onboarding = page(() => import('./screens/Onboarding.tsx'), 'Onboarding')
 
 /** A new screen starts at the top, the way a native push does. */
 function ScrollReset() {
@@ -66,7 +72,9 @@ function Gate() {
     return (
       <>
         <OfflineBar />
-        <PublicRoutes />
+        <Suspense fallback={null}>
+          <PublicRoutes />
+        </Suspense>
         <Toasts />
       </>
     )
@@ -131,13 +139,14 @@ function Member() {
       {/* Keyboard users skip the navigation; the nav comes first in the page. */}
       <a
         href="#main"
-        className="sr-only z-[70] rounded-[var(--radius-control)] bg-[var(--field)] px-4 py-3 text-[14px] font-semibold text-[var(--on-field)]
+        className="sr-only z-[70] rounded-[var(--radius-control)] bg-[var(--field)] px-4 py-3 text-[0.875rem] font-semibold text-[var(--on-field)]
           focus:not-sr-only focus:fixed focus:left-4 focus:top-4"
       >
         {t('Skip to content')}
       </a>
       <OfflineBar />
       <Dock badges={badges} />
+      <Suspense fallback={null}>
       {needsProfile ? (
         <Onboarding />
       ) : (
@@ -161,6 +170,7 @@ function Member() {
           <Route path="*" element={<NotFound />} />
         </Routes>
       )}
+      </Suspense>
       <PushPrime />
       <Toasts />
     </>

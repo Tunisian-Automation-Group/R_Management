@@ -4,21 +4,34 @@
 // Shrinking on the device keeps the upload quick on mobile data, keeps the
 // store small, and turns HEIC (which only Safari can show) into JPEG, which
 // everything can. App layer: it needs a canvas, so it never goes in domain/.
+import { t } from '../i18n.ts'
 
-/** Longest edge after shrinking. Enough for a full-width hero on a phone. */
-const MAX_EDGE = 1600
+/** Longest edge after shrinking (U-25): sharp on a desktop hero and a
+ *  high-density phone, and a fraction of the camera's file. */
+const MAX_EDGE = 2048
 const QUALITY = 0.82
+
+/** HEIC/HEIF: an iPhone's own format, which only Safari decodes. */
+const isHeic = (f: File) => /image\/hei[cf]/i.test(f.type) || /\.hei[cf]$/i.test(f.name)
+
+/** Thrown when a picture cannot be turned into something every browser shows. */
+export class UnreadablePhoto extends Error {}
 
 /**
  * The picture as a JPEG no larger than MAX_EDGE on its longest side, rotated
- * the way the camera meant it. Falls back to the original file when the
- * browser cannot decode it, and lets the server say what it thinks of that.
+ * the way the camera meant it. Safari turns HEIC into JPEG here; a browser
+ * that cannot read HEIC refuses it with a reason rather than upload a file
+ * nobody else could see. Other undecodable files go up as they are, and the
+ * server says what it thinks of them.
  */
 export async function shrink(file: File): Promise<Blob> {
   let bitmap: ImageBitmap
   try {
     bitmap = await createImageBitmap(file, { imageOrientation: 'from-image' })
   } catch {
+    if (isHeic(file)) {
+      throw new UnreadablePhoto(t('This browser cannot read HEIC photos. Take a screenshot of it, or on the iPhone set Camera → Formats → Most Compatible, and add it again.'))
+    }
     return file
   }
   try {
