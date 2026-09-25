@@ -33,6 +33,13 @@ Severity: **P0** exploitable or loses data today · **P1** blocks launch ·
 
 **Correctness**
 
+- **Commit after response** (found during the rebuild). The per-request
+  session dependency committed in its teardown, which FastAPI runs *after* the
+  response is sent: a commit that failed (a constraint, a lost connection)
+  still answered 200. Fixed with `scope="function"` dependencies (`Tx`).
+- **Pagination cursors lost precision** (found during the rebuild). Cursors
+  rounded timestamps to milliseconds; rows keep microseconds, so a page could
+  skip or repeat rows created in the same millisecond.
 - **Double booking.** Offers are computed from idle windows without
   subtracting existing bookings, and nothing prevents two overlapping bookings
   on one listing. Two buyers can buy the same machine-hours.
