@@ -393,8 +393,10 @@ def test_a_declined_capture_releases_the_booking(client, app, issuer):
 def test_what_is_open_and_everything_for_one_person(client, app, issuer):
     bid = _requested(client, app, issuer)
     assert client.get(f"/internal/people/{BUYER}/open").status_code == 403
-    assert client.get(f"/internal/people/{BUYER}/open", headers=INTERNAL).json() == {"open": 1}
-    assert client.get(f"/internal/people/{HOST}/open", headers=INTERNAL).json() == {"open": 1}
+    opened = client.get(f"/internal/people/{BUYER}/open", headers=INTERNAL).json()
+    booked = client.get(f"/bookings/{bid}", headers=issuer.headers(BUYER)).json()
+    assert opened == {"open": 1, "until": booked["match"]["end"]}, "until the booked window ends"
+    assert client.get(f"/internal/people/{HOST}/open", headers=INTERNAL).json()["open"] == 1
     _do(client, issuer, BUYER, bid, "cancel")
     assert client.get(f"/internal/people/{BUYER}/open", headers=INTERNAL).json() == {"open": 0}
     [b] = client.get(f"/internal/people/{BUYER}/bookings", headers=INTERNAL).json()
@@ -691,3 +693,17 @@ def test_suspending_someone_declines_their_pending_requests(client, app, issuer)
         Event(id=new_id("ev"), type=OWNER_SUSPENDED, source="catalog", occurred_at=now_iso(), data={"ownerId": BUYER}),
     )
     assert client.get(f"/bookings/{bid}", headers=issuer.headers(HOST)).json()["status"] == "declined"
+
+
+def test_a_retried_message_is_sent_once_and_pay_outside_is_flagged(client, app, issuer):
+    bid = _requested(client, app, issuer)
+    h = {**issuer.headers(BUYER), "Idempotency-Key": "k-msg-1"}
+    body = {"body": "Can I pay you by PayPal instead?"}
+    first = client.post(f"/bookings/{bid}/messages", json=body, headers=h)
+    again = client.post(f"/bookings/{bid}/messages", json=body, headers=h)
+    assert first.status_code == again.status_code == 201 and first.json()["id"] == again.json()["id"]
+    assert first.json()["flagged"] is True, "asking to pay around Cappy is flagged, not blocked"
+    page = client.get(f"/bookings/{bid}/messages", headers=issuer.headers(HOST)).json()["items"]
+    assert len(page) == 1 and page[0]["flagged"] is True
+    changed = client.post(f"/bookings/{bid}/messages", json={"body": "something else"}, headers=h)
+    assert changed.status_code == 422

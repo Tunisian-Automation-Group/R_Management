@@ -89,8 +89,9 @@ def test_public_reads_run_read_only_on_the_reader(postgres_url):
     settings = Settings(
         app_env="test", database_url=postgres_url, database_read_url=postgres_url, internal_token="i" * 40
     )
-    app = build_app(settings, verifier=TestIssuer().verifier())
-    with TestClient(app) as c:
+    issuer = TestIssuer()
+    app = build_app(settings, verifier=issuer.verifier())
+    with TestClient(app, headers=issuer.headers("viewer-1")) as c:
 
         async def seed():
             async with app.state.db.transaction() as s:

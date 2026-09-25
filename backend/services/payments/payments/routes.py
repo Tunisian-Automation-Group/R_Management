@@ -7,7 +7,7 @@ from datetime import UTC, datetime
 
 from fastapi import Depends, Request
 from pydantic import Field
-from sqlalchemy import insert, select
+from sqlalchemy import func, insert, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -272,6 +272,18 @@ async def identity_status(session: AsyncSession = Tx, p: Principal = Depends(req
 
 
 # --- internal: a person's data export --------------------------------------------------------
+
+
+@internal.get("/people/{person}/open")
+async def open_payouts(person: str, session: AsyncSession = Tx) -> dict:
+    """Before an account is deleted: money captured for them and not paid out
+    yet (a completed booking waiting for its payout, or one held)."""
+    n = (
+        await session.execute(
+            select(func.count()).where(PaymentRow.owner_id == person, PaymentRow.status == "captured")
+        )
+    ).scalar_one()
+    return {"pendingPayouts": n}
 
 
 @internal.get("/people/{person}/export")

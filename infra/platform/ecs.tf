@@ -200,7 +200,7 @@ locals {
     payments = []
     notifications = [
       { Effect = "Allow", Action = ["ses:SendEmail", "ses:SendRawEmail"], Resource = "*", Condition = { StringEquals = { "ses:FromAddress" = "no-reply@${var.domain}" } } },
-      { Effect = "Allow", Action = ["cognito-idp:AdminGetUser", "cognito-idp:ListUsers"], Resource = aws_cognito_user_pool.main.arn },
+      { Effect = "Allow", Action = ["cognito-idp:AdminGetUser", "cognito-idp:ListUsers", "cognito-idp:AdminUserGlobalSignOut"], Resource = aws_cognito_user_pool.main.arn },
       { Effect = "Allow", Action = ["sns:CreatePlatformEndpoint", "sns:Publish", "sns:DeleteEndpoint"], Resource = "*" },
     ]
   }

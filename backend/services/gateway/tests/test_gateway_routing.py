@@ -38,6 +38,9 @@ from gateway.settings import Settings
         ("/payments/webhooks/stripe", PAYMENTS),
         ("/notifications/devices", NOTIFICATIONS),
         ("/notifications/devices/tok-1", NOTIFICATIONS),
+        ("/notifications", NOTIFICATIONS),
+        ("/notifications/read", NOTIFICATIONS),
+        ("/me/sign-out-everywhere", NOTIFICATIONS),
         ("/notifications/anything-else", None),
         # Never reachable from outside, however the path is dressed up.
         ("/internal/candidates", None),
@@ -158,6 +161,11 @@ def test_the_native_apps_may_call_the_api_cross_origin():
         assert ok.status_code == 200 and ok.headers["access-control-allow-origin"] == "capacitor://localhost"
         evil = c.options("/api/bookings", headers={"Origin": "https://evil.example", **pre})
         assert "access-control-allow-origin" not in evil.headers
+        versioned = {**pre, "Access-Control-Request-Headers": "authorization,x-app-version"}
+        assert c.options("/api/bookings", headers={"Origin": "capacitor://localhost", **versioned}).status_code == 200
+        shed = c.post("/api/matches", json={}, headers={"Origin": "capacitor://localhost"})
+        exposed = {h.strip() for h in shed.headers["access-control-expose-headers"].lower().split(",")}
+        assert {"x-request-id", "retry-after"} <= exposed and shed.headers["x-request-id"]
 
 
 def test_app_config_for_the_store_apps(gateway):

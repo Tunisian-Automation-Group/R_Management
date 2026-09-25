@@ -99,7 +99,7 @@ async function call<T>(method: string, path: string, body?: unknown, headers?: R
     data = undefined // a proxy's HTML error page, say
   }
   if (!res.ok) {
-    type Body = { code?: string; message?: string; detail?: string; until?: string }
+    type Body = { code?: string; message?: string; detail?: string; until?: string; details?: { until?: string | null } }
     const top = data as (Body & { error?: Body }) | undefined
     const err = top?.error ?? (top?.code ? { ...top, message: top.message ?? top.detail } : undefined)
     const wait = Number(res.headers.get('Retry-After'))
@@ -118,7 +118,7 @@ async function call<T>(method: string, path: string, body?: unknown, headers?: R
       res.status,
       err?.code ?? 'error',
       Number.isFinite(wait) && wait > 0 ? wait : undefined,
-      err?.until ?? top?.until,
+      err?.details?.until ?? err?.until ?? top?.until ?? undefined,
     )
   }
   return data as T

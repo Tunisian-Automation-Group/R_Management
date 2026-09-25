@@ -45,7 +45,8 @@ class FakeBookings:
         self.open: dict[str, int] = {}
 
     async def open_for(self, person):  # noqa: ANN001
-        return self.open.get(person, 0)
+        n = self.open.get(person, 0)
+        return {"open": n, "until": "2026-10-01T10:00:00Z" if n else None}
 
     async def all_for(self, person):  # noqa: ANN001
         return {"bookings": [{"id": "bk_1", "status": "completed"}], "messagesSent": [], "evidence": []}
@@ -67,13 +68,14 @@ def app(issuer, broker, tmp_path, bookings):
         internal_token="i" * 40,
         media_dir=str(tmp_path / "media"),
     )
-    from catalog.clients import Payments
+    from catalog.clients import Notifications, Payments
 
     return build_app(
         settings,
         media_store=DirectoryStore(str(tmp_path / "media")),
         bookings=bookings,
         payments=Payments(),
+        notifications=Notifications(),
         verifier=issuer.verifier(),
     )
 
@@ -529,9 +531,25 @@ def test_deleting_an_account_forgets_what_is_theirs(client, app, issuer, booking
     assert data["profile"]["name"] == "Ada Lovelace" and [l["id"] for l in data["listings"]] == [lid]
     assert data["saved"][0]["listingId"] == "l9" and data["bookings"]
 
+    assert data["notifications"] == []
     bookings.open["user-a"] = 1
-    assert client.delete("/me", headers=h).status_code == 409, "not while a booking is open"
+    refused = client.delete("/me", headers=h)
+    assert refused.status_code == 409, "not while a booking is open"
+    assert refused.json()["error"]["code"] == "open_obligations"
+    assert refused.json()["error"]["details"] == {
+        "openBookings": 1,
+        "pendingPayouts": 0,
+        "until": "2026-10-01T10:00:00Z",
+    }
     bookings.open["user-a"] = 0
+
+    async def owed(person):  # noqa: ANN001
+        return 1
+
+    app.state.payments.pending_payouts = owed
+    refused = client.delete("/me", headers=h)
+    assert refused.status_code == 409 and refused.json()["error"]["details"]["pendingPayouts"] == 1, "nor money owed"
+    del app.state.payments.pending_payouts
     assert client.delete("/me", headers=h).status_code == 204
     assert client.get(f"/listings/{lid}").status_code == 404
     assert client.get("/search", params={"q": "unique lathe"}).json()["items"] == []
@@ -890,3 +908,25 @@ def test_a_take_down_purges_the_listing_from_the_cdn(issuer, broker, tmp_path, b
         assert c.post("/admin/listings/l9/take-down", json=why, headers=_staff(issuer)).status_code == 204
     [call_] = calls
     assert call_["DistributionId"] == "E123" and "/api/listings/l9*" in call_["InvalidationBatch"]["Paths"]["Items"]
+
+
+def test_a_retried_listing_create_makes_one_listing(client, issuer):
+    _profile(client, issuer)
+    h = {**issuer.headers("user-a"), "Idempotency-Key": "k-listing-1"}
+    body = {"listing": _window_listing(title="Retried lathe"), "slots": [_slot()]}
+    first, again = client.post("/listings", json=body, headers=h), client.post("/listings", json=body, headers=h)
+    assert first.status_code == again.status_code == 201
+    assert first.json()["listing"]["id"] == again.json()["listing"]["id"], "the lost answer, not a second listing"
+    other = {"listing": _window_listing(title="Another lathe"), "slots": [_slot()]}
+    assert client.post("/listings", json=other, headers=h).status_code == 422, "same key, different request"
+    # Keys are per person: someone else's identical key is their own.
+    _profile(client, issuer, sub="user-b", name="Bea")
+    theirs = client.post("/listings", json=body, headers={**issuer.headers("user-b"), "Idempotency-Key": "k-listing-1"})
+    assert theirs.status_code == 201 and theirs.json()["listing"]["id"] != first.json()["listing"]["id"]
+
+
+def test_a_retried_report_files_one_report(client, issuer):
+    h = {**issuer.headers("user-a"), "Idempotency-Key": "k-report-1"}
+    body = {"targetType": "listing", "targetId": "l9", "reason": "spam", "details": "Looks like spam to me"}
+    first, again = client.post("/reports", json=body, headers=h), client.post("/reports", json=body, headers=h)
+    assert first.status_code == again.status_code == 201 and first.json()["id"] == again.json()["id"]

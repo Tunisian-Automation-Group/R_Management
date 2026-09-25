@@ -8,7 +8,8 @@ from cappy_common.http import ServiceClient
 
 
 class Bookings:
-    async def open_for(self, person: str) -> int:
+    async def open_for(self, person: str) -> dict:
+        """``{"open": n, "until": iso | None}``."""
         raise NotImplementedError
 
     async def all_for(self, person: str) -> list[dict]:
@@ -22,6 +23,9 @@ class Payments:
     async def export_for(self, person: str) -> dict:
         return {}
 
+    async def pending_payouts(self, person: str) -> int:
+        return 0
+
     async def aclose(self) -> None:
         """Release resources."""
 
@@ -33,6 +37,9 @@ class HttpPayments(Payments):
     async def export_for(self, person: str) -> dict:
         return await self._c.get(f"/internal/people/{quote(person, safe='')}/export")
 
+    async def pending_payouts(self, person: str) -> int:
+        return (await self._c.get(f"/internal/people/{quote(person, safe='')}/open"))["pendingPayouts"]
+
     async def aclose(self) -> None:
         await self._c.aclose()
 
@@ -41,11 +48,31 @@ class HttpBookings(Bookings):
     def __init__(self, base_url: str, token: str) -> None:
         self._c = ServiceClient(base_url, internal_token=token)
 
-    async def open_for(self, person: str) -> int:
-        return (await self._c.get(f"/internal/people/{quote(person, safe='')}/open"))["open"]
+    async def open_for(self, person: str) -> dict:
+        return await self._c.get(f"/internal/people/{quote(person, safe='')}/open")
 
     async def all_for(self, person: str) -> dict:
         """Bookings, messages sent and hand-over photos, for an export."""
+        return await self._c.get(f"/internal/people/{quote(person, safe='')}/export")
+
+    async def aclose(self) -> None:
+        await self._c.aclose()
+
+
+class Notifications:
+    async def export_for(self, person: str) -> list[dict]:
+        return []
+
+    async def aclose(self) -> None:
+        """Release resources."""
+
+
+class HttpNotifications(Notifications):
+    def __init__(self, base_url: str, token: str) -> None:
+        self._c = ServiceClient(base_url, internal_token=token)
+
+    async def export_for(self, person: str) -> list[dict]:
+        """The in-app notifications they were sent."""
         return await self._c.get(f"/internal/people/{quote(person, safe='')}/export")
 
     async def aclose(self) -> None:

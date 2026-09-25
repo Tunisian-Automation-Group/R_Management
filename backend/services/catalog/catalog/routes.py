@@ -13,6 +13,7 @@ from cappy_common.auth import Principal, optional_principal, require_internal, r
 from cappy_common.categories import mode_of
 from cappy_common.errors import Conflict, Forbidden, Invalid, NotFound, RateLimited, Unavailable
 from cappy_common.events import LISTING_CHANGED, PROFILE_CREATED, PROFILE_DELETED
+from cappy_common.idempotency import IdempotencyKey, fingerprint, remember, replayed
 from cappy_common.models import CamelModel, District, Iso, Listing, Owner, Review, Slot, World
 from cappy_common.pagination import Page, clamp_limit
 from cappy_common.runtime import ReadTx, Tx
@@ -20,6 +21,7 @@ from cappy_common.timeutil import HOUR_MS, dt_from_iso, ms_from_iso, now_iso
 
 from . import media
 from .repository import CatalogRepository
+from .tables import IDEMPOTENCY
 
 # Signed-in only (GOAL 13): nothing of the product is served to anonymous
 # callers. Photos are the exception (an <img> cannot send a token; their names
@@ -271,8 +273,17 @@ async def delete_me(request: Request, repo=Depends(get_repo), p: Principal = Dep
     still open on either side: those have to finish or be cancelled first. The
     app then deletes the sign-in itself (Cognito DeleteUser). Bookings and
     payments are kept as the law requires; they hold no personal data."""
-    if await request.app.state.bookings.open_for(p.sub):
-        raise Conflict("finish or cancel your open bookings before deleting your account")
+    opened = await request.app.state.bookings.open_for(p.sub)
+    payouts = await request.app.state.payments.pending_payouts(p.sub)
+    if opened["open"] or payouts:
+        # Deleting would strand the other side of a booking, or money owed to
+        # them: say what is in the way and until when (Apple 5.1.1(v) allows
+        # a delay if the app says why).
+        raise Conflict(
+            "finish or cancel your open bookings, and wait for your payouts, before deleting your account",
+            code="open_obligations",
+            details={"openBookings": opened["open"], "pendingPayouts": payouts, "until": opened.get("until")},
+        )
     await repo.forget(p.sub)
     await _outbox(request).add(repo.s, PROFILE_DELETED, {"ownerId": p.sub})
     return Response(status_code=status.HTTP_204_NO_CONTENT)
@@ -284,6 +295,7 @@ async def export_me(request: Request, repo=Depends(get_repo), p: Principal = Dep
     data = await repo.export(p.sub)
     data.update(await request.app.state.bookings.all_for(p.sub))
     data["payments"] = await request.app.state.payments.export_for(p.sub)
+    data["notifications"] = await request.app.state.notifications.export_for(p.sub)
     data["exportedAt"] = now_iso()
     return Response(
         content=json.dumps(data, indent=1, ensure_ascii=False),
@@ -400,8 +412,15 @@ class CreatedListing(CamelModel):
 
 @router.post("/listings", response_model=CreatedListing, status_code=status.HTTP_201_CREATED)
 async def create_listing(
-    body: ListingIn, request: Request, repo=Depends(get_repo), p: Principal = Depends(require_principal)
+    body: ListingIn,
+    request: Request,
+    repo=Depends(get_repo),
+    p: Principal = Depends(require_principal),
+    key: str | None = IdempotencyKey,
 ) -> CreatedListing:
+    fp = fingerprint(request, body)
+    if (done := await replayed(repo.s, IDEMPOTENCY, p.sub, key, fp)) is not None:
+        return done
     if not request.app.state.settings.accepting_listings:
         raise Unavailable("new listings are paused for a moment; please try again later")
     if await repo.find_owner(p.sub) is None:
@@ -422,7 +441,9 @@ async def create_listing(
     else:
         held = False
     await _outbox(request).add(repo.s, LISTING_CHANGED, {"listingId": created.id, "change": "created"})
-    return CreatedListing(listing=created, slots=slots, held=held)
+    answer = CreatedListing(listing=created, slots=slots, held=held)
+    await remember(repo.s, IDEMPOTENCY, p.sub, key, fp, answer)
+    return answer
 
 
 @router.put("/listings/{listing_id}", response_model=Listing)

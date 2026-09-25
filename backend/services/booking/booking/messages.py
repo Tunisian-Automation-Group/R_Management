@@ -7,6 +7,7 @@ get scammed and owners go unpaid (Airbnb and Vinted both enforce this).
 
 from __future__ import annotations
 
+import logging
 import re
 from datetime import UTC, datetime
 
@@ -19,6 +20,7 @@ from cappy_common.app import ApiRouter
 from cappy_common.auth import Principal, require_principal
 from cappy_common.errors import Forbidden, Invalid
 from cappy_common.events import BOOKING_MESSAGE
+from cappy_common.idempotency import IdempotencyKey, fingerprint, remember, replayed
 from cappy_common.ids import new_id
 from cappy_common.models import CamelModel, Iso
 from cappy_common.pagination import Page, clamp_limit, decode_cursor, encode_cursor
@@ -26,8 +28,9 @@ from cappy_common.runtime import Tx
 from cappy_common.timeutil import dt_from_iso, iso_from_datetime
 
 from .repository import SHOWS_HANDOVER, BookingRepository
-from .tables import BlockRow, MessageRow
+from .tables import IDEMPOTENCY, BlockRow, MessageRow
 
+log = logging.getLogger(__name__)
 router = ApiRouter()
 HIDDEN = "[shared once the booking is accepted]"
 
@@ -47,7 +50,20 @@ _HANDLES = re.compile(
     r"\b(whats\s*app|telegram|signal|instagram|insta|snap(chat)?)\b\s*(me|at|on|via|:)?\s*(@[\w.]+|\+?\d[\d\s-]{5,}\d)",
     re.I,
 )
+# DE89 3704 0044 0532 0130 00, with or without the spaces.
+_IBAN = re.compile(r"\b[a-z]{2}\d{2}(?: ?[a-z0-9]{4}){3,7}(?: ?[a-z0-9]{1,3})?\b", re.I)
+# Asking to be paid around Cappy: not blocked (people ask innocently), but
+# flagged on the message, warned about in the app and logged for moderation.
+_OUTSIDE = re.compile(
+    r"\b(pay(ing)?\s+(me\s+)?(outside|directly|in\s+cash|off[- ]?(platform|app|cappy))|paypal|"
+    r"(bank|wire)\s*transfer|überweis\w*|außerhalb\s+(von\s+)?cappy|bar\s+bezahl\w*|western\s+union)",
+    re.I,
+)
 _TOKEN = "\u0000{}\u0000"
+
+
+def flagged(text: str) -> bool:
+    return bool(_OUTSIDE.search(text))
 
 
 def mask(text: str) -> str:
@@ -59,7 +75,7 @@ def mask(text: str) -> str:
         return _TOKEN.format(len(kept) - 1)
 
     text = _DATE.sub(keep, text)
-    for pattern in (_EMAIL, _EMAIL_SPELLED, _HANDLES, _URL):
+    for pattern in (_EMAIL, _EMAIL_SPELLED, _HANDLES, _IBAN, _URL):
         text = pattern.sub(HIDDEN, text)
     text = _PHONE.sub(lambda m: HIDDEN if sum(c.isdigit() for c in m.group(0)) >= 7 else m.group(0), text)
     return re.sub("\u0000(\\d+)\u0000", lambda m: kept[int(m.group(1))], text)
@@ -75,11 +91,18 @@ class Message(CamelModel):
     body: str
     at: Iso
     mine: bool
+    # Asks to pay around Cappy: the app warns both sides.
+    flagged: bool = False
 
 
 def _view(row: MessageRow, viewer: str) -> Message:
     return Message(
-        id=row.id, sender_id=row.sender_id, body=row.body, at=iso_from_datetime(row.at), mine=row.sender_id == viewer
+        id=row.id,
+        sender_id=row.sender_id,
+        body=row.body,
+        at=iso_from_datetime(row.at),
+        mine=row.sender_id == viewer,
+        flagged=row.flagged,
     )
 
 
@@ -100,7 +123,11 @@ async def send(
     request: Request,
     session: AsyncSession = Tx,
     p: Principal = Depends(require_principal),
+    key: str | None = IdempotencyKey,
 ) -> Message:
+    fp = fingerprint(request, body)
+    if (done := await replayed(session, IDEMPOTENCY, p.sub, key, fp)) is not None:
+        return done
     repo = BookingRepository(session, request.app.state.outbox)
     row = await repo.visible(booking_id, p.sub)
     other = row.owner_id if p.sub == row.requester_id else row.requester_id
@@ -111,7 +138,12 @@ async def send(
         raise Invalid("say something")
     if row.status not in SHOWS_HANDOVER:
         text = mask(text)
-    msg = MessageRow(id=new_id("msg"), booking_id=row.id, sender_id=p.sub, body=text, at=datetime.now(UTC))
+    suspicious = flagged(body.body)
+    if suspicious:
+        log.warning("message on %s from %s asks to pay outside Cappy", row.id, p.sub)
+    msg = MessageRow(
+        id=new_id("msg"), booking_id=row.id, sender_id=p.sub, body=text, at=datetime.now(UTC), flagged=suspicious
+    )
     session.add(msg)
     await session.flush()
     await repo.outbox.add(
@@ -120,7 +152,9 @@ async def send(
         {"bookingId": row.id, "senderId": p.sub, "recipientId": other, "title": row.listing_snapshot["title"]},
     )
     request.app.state.relay.wake()
-    return _view(msg, p.sub)
+    answer = _view(msg, p.sub)
+    await remember(session, IDEMPOTENCY, p.sub, key, fp, answer)
+    return answer
 
 
 @router.get("/bookings/{booking_id}/messages", response_model=Page[Message])

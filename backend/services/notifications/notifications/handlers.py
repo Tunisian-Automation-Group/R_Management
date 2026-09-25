@@ -7,7 +7,9 @@ sends the email again, which beats never sending it.
 
 from __future__ import annotations
 
+import hashlib
 import logging
+from datetime import UTC, datetime
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -24,7 +26,7 @@ from cappy_common.events import (
 
 from .mail import Directory, Email, Mailer
 from .push import Pusher
-from .tables import DeviceRow
+from .tables import DeviceRow, InboxRow
 from .texts import money, render
 
 log = logging.getLogger(__name__)
@@ -103,13 +105,17 @@ def moderation_mail(event: Event, web: str) -> list[Message]:
 def handlers(directory: Directory, mailer: Mailer, web: str, pusher: Pusher | None = None) -> dict[str, Handler]:
     web = web.rstrip("/")
 
-    async def deliver(session: AsyncSession, msg: Message, *, email: bool = True, push: bool = True) -> None:
+    async def deliver(
+        session: AsyncSession, event: Event, msg: Message, *, email: bool = True, push: bool = True
+    ) -> None:
         sub, explicit, key, params = msg
         address, locale = (explicit, None) if explicit else await directory.person_of(sub) if sub else (None, None)
         params = dict(params)
         if "_cents" in params:
             params["amount"] = money(*params.pop("_cents"), locale)
         subject, text = render(key, locale, **params)
+        if sub:
+            await _keep(session, event, sub, key, subject, text, _app_path(params, web))
         if push and pusher is not None and sub:
             await _push(session, pusher, sub, subject, text)
         if email:
@@ -121,19 +127,20 @@ def handlers(directory: Directory, mailer: Mailer, web: str, pusher: Pusher | No
     async def notify(session: AsyncSession, event: Event) -> None:
         if event.type in (REPORT_RECEIVED, MODERATION_DECISION):
             for msg in moderation_mail(event, web):
-                await deliver(session, msg, push=False)
+                await deliver(session, event, msg, push=False)
             return
         if (chat := chat_push(event, web)) is not None:
-            await deliver(session, chat, email=False)
+            await deliver(session, event, chat, email=False)
             return
         for msg in messages(event, web):
-            await deliver(session, msg)
+            await deliver(session, event, msg)
 
     async def forget(session: AsyncSession, event: Event) -> None:
         """Account deleted: no more pushes to their devices."""
         from sqlalchemy import delete
 
         await session.execute(delete(DeviceRow).where(DeviceRow.user_id == event.data["ownerId"]))
+        await session.execute(delete(InboxRow).where(InboxRow.user_id == event.data["ownerId"]))
 
     return {
         BOOKING_STATUS_CHANGED: notify,
@@ -155,3 +162,19 @@ async def _push(session: AsyncSession, pusher: Pusher, sub: str, title: str, tex
         if device.endpoint and not await pusher.send(device.endpoint, title, body, link):
             log.info("device of %s is gone; forgetting it", sub)
             await session.delete(device)
+
+
+def _app_path(params: dict, web: str) -> str | None:
+    """Where tapping the item goes, inside the app."""
+    if link := params.get("link"):
+        return link.removeprefix(web) or "/"
+    return "/earn" if "booking" in params else None
+
+
+async def _keep(session: AsyncSession, event: Event, sub: str, key: str, title: str, text: str, link: str | None):
+    item_id = "ntf_" + hashlib.sha256(f"{event.id}:{sub}:{key}".encode()).hexdigest()[:32]
+    if await session.get(InboxRow, item_id) is None:
+        body = text.partition("\n\n")[0]
+        session.add(
+            InboxRow(id=item_id, user_id=sub, kind=key, title=title, body=body, link=link, at=datetime.now(UTC))
+        )

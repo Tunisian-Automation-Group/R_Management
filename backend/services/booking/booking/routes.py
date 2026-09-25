@@ -27,6 +27,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from cappy_common.app import ApiRouter
 from cappy_common.auth import Principal, require_admin, require_internal, require_principal
 from cappy_common.errors import ApiError, Conflict, Forbidden, Invalid, NotFound, RateLimited, Unavailable
+from cappy_common.idempotency import IdempotencyKey, fingerprint, remember, replayed
 from cappy_common.ids import new_id
 from cappy_common.models import Booking, CamelModel, Iso, Outcome, Requirement
 from cappy_common.pagination import Page, clamp_limit
@@ -39,7 +40,7 @@ from .messages import blocked_between
 from .repository import REVIEW_WINDOW, SHOWS_HANDOVER, BookingRepository, to_booking
 from .settings import Settings
 from .state import Action, check_can_rate, next_status
-from .tables import BookingRow, SuspendedRow, VerifiedRow
+from .tables import IDEMPOTENCY, BookingRow, SuspendedRow, VerifiedRow
 
 log = logging.getLogger(__name__)
 router = ApiRouter()
@@ -368,11 +369,16 @@ async def payment(booking_id: str, request: Request, p: Principal = Me) -> Payme
 async def rate(
     booking_id: str,
     outcome: Outcome,
+    request: Request,
     repo: BookingRepository = Depends(get_repo),
     p: Principal = Depends(require_principal),
+    key: str | None = IdempotencyKey,
 ) -> Booking:
     """``booking.rated`` feeds the owner's record and becomes a review. It is
     dated at the end of the booked window, not when the buyer got round to it."""
+    fp = fingerprint(request, outcome)
+    if (done := await replayed(repo.s, IDEMPOTENCY, p.sub, key, fp)) is not None:
+        return done
     row = await repo.visible(booking_id, p.sub, lock=True)
     check_can_rate(row.status, row.outcome is not None, p.sub, row.requester_id)
     now = _now()
@@ -383,7 +389,9 @@ async def rate(
     await repo.s.flush()
     if row.renter_rating is not None:
         await repo.publish_reviews(row, now)
-    return to_booking(row, p.sub)
+    answer = to_booking(row, p.sub)
+    await remember(repo.s, IDEMPOTENCY, p.sub, key, fp, answer)
+    return answer
 
 
 class RenterRatingIn(CamelModel):
@@ -415,11 +423,16 @@ async def cancellation_quote(
 async def rate_renter(
     booking_id: str,
     body: RenterRatingIn,
+    request: Request,
     repo: BookingRepository = Depends(get_repo),
     p: Principal = Depends(require_principal),
+    key: str | None = IdempotencyKey,
 ) -> Booking:
     """Two-way reviews: the owner rates the renter after a completed booking,
     once. Builds the renter's record other owners see before accepting."""
+    fp = fingerprint(request, body)
+    if (done := await replayed(repo.s, IDEMPOTENCY, p.sub, key, fp)) is not None:
+        return done
     row = await repo.visible(booking_id, p.sub, lock=True)
     if p.sub != row.owner_id:
         raise Forbidden("only the owner can rate the renter")
@@ -435,7 +448,9 @@ async def rate_renter(
     await repo.s.flush()
     if row.outcome is not None:
         await repo.publish_reviews(row, now)
-    return to_booking(row, p.sub)
+    answer = to_booking(row, p.sub)
+    await remember(repo.s, IDEMPOTENCY, p.sub, key, fp, answer)
+    return answer
 
 
 # --- internal: matching asks what is already taken -------------------------------------------
@@ -471,12 +486,15 @@ async def resolve(booking_id: str, body: ResolveIn, repo: BookingRepository = De
 
 class OpenBookings(CamelModel):
     open: int
+    # When the last open booking's window ends.
+    until: Iso | None = None
 
 
 @internal.get("/people/{person}/open", response_model=OpenBookings)
 async def open_bookings(person: str, repo: BookingRepository = Depends(get_repo)) -> OpenBookings:
     """Before an account is deleted: is anything still in flight for them?"""
-    return OpenBookings(open=await repo.open_for(person))
+    n, until = await repo.open_for(person)
+    return OpenBookings(open=n, until=iso_from_datetime(until) if until else None)
 
 
 class PersonExport(CamelModel):

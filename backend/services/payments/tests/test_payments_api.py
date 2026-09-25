@@ -114,7 +114,10 @@ def test_money_follows_the_booking(client, app, provider, broker):
     _intent(client)
     assert _status(app, "bk_1", "accepted")
     assert call(app, _payment, app, "bk_1").status == "captured"
+    owed = lambda: client.get("/internal/people/host/open", headers=INTERNAL).json()  # noqa: E731
+    assert owed() == {"pendingPayouts": 1}, "the host cannot delete their account before being paid"
     assert _status(app, "bk_1", "completed")
+    assert owed() == {"pendingPayouts": 0}
     p = call(app, _payment, app, "bk_1")
     assert p.status == "transferred" and p.transfer_id
     assert [op for op, _ in provider.calls] == ["intent", "capture", "transfer"]

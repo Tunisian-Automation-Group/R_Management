@@ -202,13 +202,15 @@ class BookingRepository:
         nxt = encode_cursor({"at": rows[-1].created_at.isoformat(), "id": rows[-1].id}) if more else None
         return rows, nxt
 
-    async def open_for(self, person: str) -> int:
-        """Bookings of this person, on either side, that are not settled yet."""
-        q = select(func.count()).where(
+    async def open_for(self, person: str) -> tuple[int, datetime | None]:
+        """Bookings of this person, on either side, that are not settled yet,
+        and when the last of them ends."""
+        q = select(func.count(), func.max(BookingRow.window_end)).where(
             or_(BookingRow.requester_id == person, BookingRow.owner_id == person),
             BookingRow.status.in_(OPEN),
         )
-        return (await self.s.execute(q)).scalar_one()
+        n, until = (await self.s.execute(q)).one()
+        return n, until
 
     async def all_for(self, person: str, limit: int = 10_000) -> list[BookingRow]:
         """Everything, for a data export. ponytail: capped at 10k; stream it if anyone gets near."""

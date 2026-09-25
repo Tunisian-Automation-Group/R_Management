@@ -8,7 +8,7 @@ from cappy_common.events import BOOKING_RATED, PAYOUTS_READY, RENTER_RATED
 from cappy_common.runtime import Runtime
 
 from . import moderation
-from .clients import Bookings, HttpBookings, HttpPayments, Payments
+from .clients import Bookings, HttpBookings, HttpNotifications, HttpPayments, Notifications, Payments
 from .handlers import on_booking_rated, on_payouts_ready, on_renter_rated
 from .jobs import sweep_orphans
 from .media import MediaStore, make_store
@@ -23,11 +23,13 @@ def build_app(
     media_store: MediaStore | None = None,
     bookings: Bookings | None = None,
     payments: Payments | None = None,
+    notifications: Notifications | None = None,
     verifier: TokenVerifier | None = None,
 ) -> FastAPI:
     async def close(app: FastAPI) -> None:
         await app.state.bookings.aclose()
         await app.state.payments.aclose()
+        await app.state.notifications.aclose()
 
     runtime = Runtime(
         settings,
@@ -47,6 +49,9 @@ def build_app(
     app.state.media = media_store or make_store(settings)
     app.state.bookings = bookings or HttpBookings(settings.booking_url, settings.internal_token.get_secret_value())
     app.state.payments = payments or HttpPayments(settings.payments_url, settings.internal_token.get_secret_value())
+    app.state.notifications = notifications or HttpNotifications(
+        settings.notifications_url, settings.internal_token.get_secret_value()
+    )
     app.include_router(router)
     app.include_router(media_router)
     app.include_router(moderation.public)

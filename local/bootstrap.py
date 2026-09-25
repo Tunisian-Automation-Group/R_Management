@@ -114,7 +114,11 @@ def identity() -> dict:
     idp = client("cognito-idp", COGNITO)
     pools = [p for p in idp.list_user_pools(MaxResults=60)["UserPools"] if p["Name"] == "cappy"]
     pool = pools[0]["Id"] if pools else idp.create_user_pool(
-        PoolName="cappy", UsernameAttributes=["email"], AutoVerifiedAttributes=["email"]
+        PoolName="cappy",
+        UsernameAttributes=["email"],
+        AutoVerifiedAttributes=["email"],
+        # As in infra/platform/identity.tf: 12 characters, no composition rules.
+        Policies={"PasswordPolicy": {"MinimumLength": 12, "RequireUppercase": False, "RequireLowercase": False, "RequireNumbers": False, "RequireSymbols": False}},
     )["UserPool"]["Id"]
     clients = [c for c in idp.list_user_pool_clients(UserPoolId=pool, MaxResults=60)["UserPoolClients"] if c["ClientName"] == "web"]
     app_client = clients[0]["ClientId"] if clients else idp.create_user_pool_client(

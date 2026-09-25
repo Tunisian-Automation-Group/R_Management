@@ -16,9 +16,12 @@ class ApiError(Exception):
     status = 500
     code = "internal"
 
-    def __init__(self, message: str, *, status: int | None = None, code: str | None = None):
+    def __init__(
+        self, message: str, *, status: int | None = None, code: str | None = None, details: object | None = None
+    ):
         super().__init__(message)
         self.message = message
+        self.details = details
         if status is not None:
             self.status = status
         if code is not None:
@@ -84,7 +87,9 @@ def install_error_handlers(app: FastAPI) -> None:
     async def _api_error(_: Request, exc: ApiError) -> JSONResponse:
         # A 503 says when to come back, so clients spread their retries out.
         headers = {"Retry-After": "2"} if exc.status == 503 else None
-        return JSONResponse(status_code=exc.status, content=error_body(exc.code, exc.message), headers=headers)
+        return JSONResponse(
+            status_code=exc.status, content=error_body(exc.code, exc.message, exc.details), headers=headers
+        )
 
     @app.exception_handler(RequestValidationError)
     async def _validation(_: Request, exc: RequestValidationError) -> JSONResponse:

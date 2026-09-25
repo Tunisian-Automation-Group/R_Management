@@ -15,11 +15,12 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from sqlalchemy import CheckConstraint, ForeignKey, Index, Integer, String, UniqueConstraint
+from sqlalchemy import Boolean, CheckConstraint, ForeignKey, Index, Integer, String, UniqueConstraint
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
 from cappy_common.db import JsonType, UtcDateTime, new_metadata
 from cappy_common.events import event_tables
+from cappy_common.idempotency import idempotency_table
 
 
 class Base(DeclarativeBase):
@@ -27,6 +28,7 @@ class Base(DeclarativeBase):
 
 
 OUTBOX, PROCESSED = event_tables(Base.metadata)
+IDEMPOTENCY = idempotency_table(Base.metadata)
 
 NO_DOUBLE_BOOKING = "ex_bookings_no_double_booking"
 
@@ -86,6 +88,8 @@ class MessageRow(Base):
     sender_id: Mapped[str] = mapped_column(String(64))
     body: Mapped[str] = mapped_column(String(2000))
     at: Mapped[datetime] = mapped_column(UtcDateTime)
+    # Asks to pay around Cappy (messages.flagged): shown with a warning, kept for moderation.
+    flagged: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
 
 
 Index("ix_booking_messages_booking_at", MessageRow.booking_id, MessageRow.at)

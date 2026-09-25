@@ -205,7 +205,10 @@ def create_app(
             CORSMiddleware,
             allow_origins=settings.cors_origin_list,
             allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE"],
-            allow_headers=["authorization", "content-type", "idempotency-key", "x-request-id"],
+            allow_headers=["authorization", "content-type", "idempotency-key", "x-request-id", "x-app-version"],
+            # The native shells are cross-origin: without this they cannot read
+            # the request id (support) or when to retry.
+            expose_headers=["x-request-id", "retry-after"],
             max_age=600,
         )
     # Added innermost first: security headers wrap everything, so even a 413 or

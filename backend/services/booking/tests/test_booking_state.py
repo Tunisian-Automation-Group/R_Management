@@ -94,6 +94,25 @@ def test_masking_keeps_dates_and_catches_contact_details():
         "shop at example.berlin",
         "whatsapp me +49 151 234 5678",
         "insta @erin.makes",
+        "IBAN DE89 3704 0044 0532 0130 00",
+        "send it to DE89370400440532013000",
+        "details on https://pay.example/erin",
     ]
     assert [t for t in kept if mask(t) != t] == []
     assert [t for t in hidden if mask(t) == t] == []
+
+
+def test_asking_to_pay_around_cappy_is_flagged_not_blocked():
+    from booking.messages import flagged
+
+    asks = [
+        "can you pay me directly?",
+        "I prefer PayPal",
+        "bank transfer is cheaper for both of us",
+        "Lieber per Überweisung",
+        "wir machen das außerhalb von Cappy",
+        "let's pay outside the app",
+    ]
+    fine = ["I paid through the app", "the transfer of the van is at 10:00", "direct sunlight in the workshop"]
+    assert [t for t in asks if not flagged(t)] == []
+    assert [t for t in fine if flagged(t)] == []

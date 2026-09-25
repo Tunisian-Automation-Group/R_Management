@@ -182,3 +182,72 @@ def test_a_german_speaker_is_written_to_in_german():
 def test_an_instant_booking_tells_both_sides(app):
     sent = _sent(app, _change("accepted", by="payments", frm="awaiting_payment"))
     assert sent == [("buyer@example.com", "Confirmed: Table saw"), ("host@example.com", "New booking: Table saw")]
+
+
+def test_the_notification_centre_lists_marks_read_exports_and_forgets():
+    from notifications.push import LogPusher
+
+    from cappy_common.events import PROFILE_DELETED
+    from cappy_common.testing import TestIssuer
+
+    issuer, people = TestIssuer(), People()
+    settings = Settings(app_env="test", database_url="sqlite+aiosqlite://", internal_token="i" * 40)
+    app = build_app(settings, directory=people, mailer=LogMailer(), pusher=LogPusher(), verifier=issuer.verifier())
+    host, buyer = issuer.headers("host"), issuer.headers("buyer")
+    with TestClient(app) as c:
+        assert c.get("/notifications").status_code == 401
+        e = _change("requested", by="payments")
+        for ev in (e, e, _event(PAYOUT_SENT, bookingId="bk_1", ownerId="host", amount=4000, currency="eur")):
+            c.portal.call(app.state.dispatcher.handle, ev)
+        box = c.get("/notifications", headers=host).json()
+        assert box["unread"] == 2, "a redelivered event shows once"
+        assert [(i["kind"], i["link"], i["read"]) for i in box["items"]] == [
+            ("paid", "/earn", False),
+            ("requested", "/bookings/bk_1", False),
+        ], "newest first, links inside the app"
+        assert box["items"][1]["title"] == "New request: Table saw" and "Answer within a day" in box["items"][1]["body"]
+        assert c.get("/notifications", headers=buyer).json() == {"items": [], "unread": 0}, "only their own"
+
+        page = c.get("/notifications", params={"limit": 1}, headers=host).json()
+        rest = c.get("/notifications", params={"limit": 1, "cursor": page["next"]}, headers=host).json()
+        assert [i["kind"] for i in page["items"] + rest["items"]] == ["paid", "requested"] and "next" not in rest
+
+        first = box["items"][0]["id"]
+        assert c.post("/notifications/read", json={"ids": [first]}, headers=buyer).status_code == 204
+        assert c.get("/notifications", headers=host).json()["unread"] == 2, "nobody marks another's"
+        c.post("/notifications/read", json={"ids": [first]}, headers=host)
+        assert c.get("/notifications", headers=host).json()["unread"] == 1
+        c.post("/notifications/read", json={}, headers=host)
+        assert c.get("/notifications", headers=host).json()["unread"] == 0
+
+        assert c.get("/internal/people/host/export").status_code == 403
+        assert len(c.get("/internal/people/host/export", headers={"X-Internal-Token": "i" * 40}).json()) == 2
+        c.portal.call(app.state.dispatcher.handle, _event(PROFILE_DELETED, ownerId="host"))
+        assert c.get("/notifications", headers=host).json()["items"] == [], "deleted with the account"
+
+
+def test_signing_out_everywhere_revokes_tokens_and_forgets_devices():
+    from notifications.push import LogPusher
+
+    from cappy_common.testing import TestIssuer
+
+    class Signing(People):
+        signed_out: list[str] = []
+
+        async def sign_out_everywhere(self, sub: str) -> None:
+            self.signed_out.append(sub)
+
+    issuer, people, pusher = TestIssuer(), Signing(), LogPusher()
+    settings = Settings(app_env="test", database_url="sqlite+aiosqlite://", internal_token="i" * 40)
+    app = build_app(settings, directory=people, mailer=LogMailer(), pusher=pusher, verifier=issuer.verifier())
+    with TestClient(app) as c:
+        c.post(
+            "/notifications/devices",
+            json={"platform": "ios", "token": "tok-lost-phone"},
+            headers=issuer.headers("host"),
+        )
+        assert c.post("/me/sign-out-everywhere").status_code == 401
+        assert c.post("/me/sign-out-everywhere", headers=issuer.headers("host")).status_code == 204
+        assert people.signed_out == ["host"]
+        c.portal.call(app.state.dispatcher.handle, _change("requested", by="payments"))
+        assert pusher.sent == [], "the lost phone gets nothing"

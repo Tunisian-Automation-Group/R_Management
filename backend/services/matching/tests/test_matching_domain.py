@@ -363,3 +363,24 @@ def test_longer_bookings_get_the_owner_s_duration_discount():
     assert week.discount == round(week.base * 0.25)
     assert week.total == week.base - week.discount + 500, "extras are never discounted"
     assert week.platform_fee + week.owner_net == week.total
+
+
+# U-8 - the night the clocks go back (Europe/Berlin, 25 Oct 2026, 03:00 CEST -> 02:00 CET)
+def test_a_booking_across_the_dst_change_is_the_hours_booked_and_priced(world, saw):
+    from datetime import datetime
+    from zoneinfo import ZoneInfo
+
+    berlin = ZoneInfo("Europe/Berlin")
+    # Midnight to 07:00 on the wall clock is eight real hours that night.
+    start = datetime(2026, 10, 25, 0, 0, tzinfo=berlin)
+    end = datetime(2026, 10, 25, 7, 0, tzinfo=berlin)
+    slot = Slot(id="dst", listing_id="l8", start=start.isoformat(), end=end.isoformat(), hours_usable=8)
+    offers = offers_for([slot], 3, start.isoformat(), end.isoformat())
+    assert len(offers) == 11, "starts every half hour from 00:00 to 05:00 real time (wall clock 04:00)"
+    for o in offers:
+        assert ms_from_iso(o.end) - ms_from_iso(o.start) == 3 * HOUR_MS, "three real hours, whatever the clock says"
+    across = next(o for o in offers if o.start == iso_from_ms(int(start.timestamp() * 1000) + 2 * HOUR_MS))
+    local = [datetime.fromisoformat(t.replace("Z", "+00:00")).astimezone(berlin) for t in (across.start, across.end)]
+    assert [t.strftime("%H:%M %Z") for t in local] == ["02:00 CEST", "04:00 CET"], "02:00 to 04:00 on the wall is 3 h"
+    q = quote_for(saw.model_copy(update={"hours": 3}), listing(world, "l8"))
+    assert q and q.hours == 3 and q.base == 3 * listing(world, "l8").rate_per_hour

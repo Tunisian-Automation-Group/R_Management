@@ -18,6 +18,7 @@ from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
 from cappy_common.db import JsonType, UtcDateTime, new_metadata
 from cappy_common.events import event_tables
+from cappy_common.idempotency import idempotency_table
 
 
 class Base(DeclarativeBase):
@@ -25,6 +26,7 @@ class Base(DeclarativeBase):
 
 
 OUTBOX, PROCESSED = event_tables(Base.metadata)
+IDEMPOTENCY = idempotency_table(Base.metadata)
 
 
 class DistrictRow(Base):

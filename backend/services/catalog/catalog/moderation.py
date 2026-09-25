@@ -21,13 +21,14 @@ from cappy_common.app import ApiRouter
 from cappy_common.auth import Principal, optional_principal, require_admin
 from cappy_common.errors import Conflict, Invalid, NotFound, RateLimited
 from cappy_common.events import MODERATION_DECISION, OWNER_SUSPENDED, REPORT_RECEIVED
+from cappy_common.idempotency import IdempotencyKey, fingerprint, remember, replayed
 from cappy_common.ids import new_id
 from cappy_common.models import CamelModel, Iso
 from cappy_common.pagination import Page, clamp_limit, decode_cursor, encode_cursor
 from cappy_common.runtime import Tx
 from cappy_common.timeutil import dt_from_iso, iso_from_datetime
 
-from .tables import ListingRow, ModerationActionRow, OwnerRow, ReportRow
+from .tables import IDEMPOTENCY, ListingRow, ModerationActionRow, OwnerRow, ReportRow
 
 log = logging.getLogger(__name__)
 public = ApiRouter()
@@ -84,8 +85,17 @@ def _view(r: ReportRow) -> Report:
 
 @public.post("/reports", response_model=Report, status_code=status.HTTP_201_CREATED)
 async def report(
-    body: ReportIn, request: Request, session: AsyncSession = Tx, p: Principal | None = Depends(optional_principal)
+    body: ReportIn,
+    request: Request,
+    session: AsyncSession = Tx,
+    p: Principal | None = Depends(optional_principal),
+    key: str | None = IdempotencyKey,
 ) -> Report:
+    # Signed-in only: an anonymous key is nobody's, and a replay would show one
+    # stranger's report to another.
+    key, fp = (key if p else None), fingerprint(request, body)
+    if p and (done := await replayed(session, IDEMPOTENCY, p.sub, key, fp)) is not None:
+        return done
     if p is None and body.email is None:
         raise Invalid("leave an email so we can tell you what we decide")
     # A signed-in reporter hears back on their own address, never one they type.
@@ -131,7 +141,10 @@ async def report(
             "targetType": row.target_type,
         },
     )
-    return _view(row)
+    answer = _view(row)
+    if p:
+        await remember(session, IDEMPOTENCY, p.sub, key, fp, answer)
+    return answer
 
 
 # --- staff ---------------------------------------------------------------------------------

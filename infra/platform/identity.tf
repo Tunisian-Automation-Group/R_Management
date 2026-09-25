@@ -20,11 +20,14 @@ resource "aws_cognito_user_pool" "main" {
     enabled = true
   }
 
+  # NIST SP 800-63B-4: length, not composition rules (they make passwords
+  # more predictable, not stronger). Breached passwords: Cognito threat
+  # protection's compromised-credentials check (T-06).
   password_policy {
-    minimum_length                   = 10
-    require_lowercase                = true
-    require_uppercase                = true
-    require_numbers                  = true
+    minimum_length                   = 12
+    require_lowercase                = false
+    require_uppercase                = false
+    require_numbers                  = false
     require_symbols                  = false
     temporary_password_validity_days = 3
   }

@@ -27,6 +27,9 @@ class Directory:
         """(verified email, locale). Locale is Cognito's standard attribute."""
         return await self.email_of(sub), None
 
+    async def sign_out_everywhere(self, sub: str) -> None:
+        """Revoke every refresh token they hold."""
+
 
 class Mailer:
     async def send(self, email: Email) -> None: ...
@@ -36,6 +39,7 @@ class CognitoDirectory(Directory):
     def __init__(self, settings) -> None:  # noqa: ANN001
         self._c = aws_client("cognito-idp", settings, settings.cognito_endpoint_url)
         self._pool = settings.user_pool_id
+        self._local = bool(settings.cognito_endpoint_url)
 
     def _lookup(self, sub: str) -> tuple[str | None, str | None]:
         # With email as the sign-in attribute (our pools) Cognito's username is
@@ -56,6 +60,29 @@ class CognitoDirectory(Directory):
 
     async def email_of(self, sub: str) -> str | None:
         return (await self.person_of(sub))[0]
+
+    def _username(self, sub: str) -> str:
+        try:
+            return self._c.admin_get_user(UserPoolId=self._pool, Username=sub)["Username"]
+        except self._c.exceptions.UserNotFoundException:
+            users = self._c.list_users(UserPoolId=self._pool, Filter=f'sub = "{sub}"', Limit=1)["Users"]
+            if not users:
+                raise
+            return users[0]["Username"]
+
+    def _sign_out(self, sub: str) -> None:
+        if self._local:
+            # cognito-local answers "Unsupported" (after four slow retries); locally only the devices go.
+            log.warning("cognito-local cannot sign %s out everywhere; skipped", sub)
+            return
+        try:
+            self._c.admin_user_global_sign_out(UserPoolId=self._pool, Username=self._username(sub))
+        except self._c.exceptions.UserNotFoundException:
+            return  # nothing left to sign out
+
+    async def sign_out_everywhere(self, sub: str) -> None:
+        if sub and '"' not in sub:
+            await asyncio.to_thread(self._sign_out, sub)
 
     async def person_of(self, sub: str) -> tuple[str | None, str | None]:
         if not sub or '"' in sub:
