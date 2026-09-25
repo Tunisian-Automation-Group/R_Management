@@ -77,3 +77,13 @@ resource "aws_cognito_user_pool_client" "web" {
 locals {
   auth_issuer = "https://cognito-idp.${var.region}.amazonaws.com/${aws_cognito_user_pool.main.id}"
 }
+
+# The pool's signing keys at deploy time. Services start with them, so a task
+# launched while Cognito is unreachable still verifies tokens (resilience F5).
+# Cognito does not rotate these keys by itself; the next deploy refreshes them.
+data "http" "jwks" {
+  url = "${local.auth_issuer}/.well-known/jwks.json"
+  request_headers = {
+    Accept = "application/json"
+  }
+}

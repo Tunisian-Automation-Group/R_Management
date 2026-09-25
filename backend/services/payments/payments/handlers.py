@@ -77,6 +77,9 @@ def handlers(provider: Provider, service_name: str) -> dict[str, Handler]:
             row.refund_id = await provider.refund(row.intent_id, row.booking_id)
             row.status = "refunded"
             await outbox.add(session, PAYMENT_REFUNDED, {**facts, "amount": row.amount, "currency": row.currency})
+        elif to == "completed" and row.status == "captured" and row.chargeback_at is not None:
+            log.error("CHARGEBACK hold: not paying out booking %s", row.booking_id)
+            return
         elif to == "completed" and row.status == "captured":
             account = await session.get(ConnectAccountRow, row.owner_id)
             if account is None or not row.charge_id:

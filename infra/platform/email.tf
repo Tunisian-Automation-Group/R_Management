@@ -43,3 +43,38 @@ resource "aws_route53_record" "dmarc" {
   ttl     = 600
   records = ["v=DMARC1; p=quarantine; rua=mailto:dmarc@${var.domain}"]
 }
+
+# Addresses that bounced or complained are never mailed again (SES keeps the
+# list). Sending to them is what gets an account's sending paused, and with it
+# Cognito's sign-up codes (resilience F22).
+resource "aws_sesv2_account_suppression_attributes" "main" {
+  suppressed_reasons = ["BOUNCE", "COMPLAINT"]
+}
+
+resource "aws_cloudwatch_metric_alarm" "ses_bounce_rate" {
+  alarm_name          = "${local.name}-ses-bounce-rate"
+  alarm_description   = "SES reviews accounts above 5% bounces; act before then"
+  namespace           = "AWS/SES"
+  metric_name         = "Reputation.BounceRate"
+  statistic           = "Maximum"
+  period              = 3600
+  evaluation_periods  = 1
+  threshold           = 0.02
+  comparison_operator = "GreaterThanThreshold"
+  treat_missing_data  = "notBreaching"
+  alarm_actions       = local.alarm_actions
+}
+
+resource "aws_cloudwatch_metric_alarm" "ses_complaint_rate" {
+  alarm_name          = "${local.name}-ses-complaint-rate"
+  alarm_description   = "SES reviews accounts above 0.1% complaints"
+  namespace           = "AWS/SES"
+  metric_name         = "Reputation.ComplaintRate"
+  statistic           = "Maximum"
+  period              = 3600
+  evaluation_periods  = 1
+  threshold           = 0.0005
+  comparison_operator = "GreaterThanThreshold"
+  treat_missing_data  = "notBreaching"
+  alarm_actions       = local.alarm_actions
+}

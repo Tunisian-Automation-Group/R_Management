@@ -329,3 +329,40 @@ def test_a_deleted_profile_loses_its_payout_link(client, app, issuer):
     )
     assert call(app, app.state.dispatcher.handle, ev)
     assert client.get("/payments/connect/status", headers=issuer.headers("leaver")).json()["connected"] is False
+
+
+def test_a_chargeback_holds_the_payout(stripe_app, broker):
+    from datetime import UTC, datetime
+
+    app, c = stripe_app
+
+    async def captured():
+        async with app.state.db.transaction() as s:
+            s.add(
+                ConnectAccountRow(
+                    owner_id="host", account_id="acct_1", payouts_enabled=True, updated_at=datetime.now(UTC)
+                )
+            )
+            now = datetime.now(UTC)
+            s.add(
+                PaymentRow(
+                    booking_id="bk_cb",
+                    intent_id="pi_cb",
+                    requester_id="buyer",
+                    owner_id="host",
+                    amount=4600,
+                    owner_net=4000,
+                    currency="eur",
+                    status="captured",
+                    charge_id="ch_cb",
+                    created_at=now,
+                    updated_at=now,
+                )
+            )
+
+    call(app, captured)
+    body, headers = _signed(_event("charge.dispute.created", {"id": "dp_1", "object": "dispute", "charge": "ch_cb"}))
+    assert c.post("/payments/webhooks/stripe", content=body, headers=headers).status_code == 200
+    assert call(app, _payment, app, "bk_cb").chargeback_at is not None
+    assert _status(app, "bk_cb", "completed")
+    assert call(app, _payment, app, "bk_cb").status == "captured", "not paid out"

@@ -129,3 +129,29 @@ resource "aws_cloudwatch_metric_alarm" "db_capacity" {
   comparison_operator = "GreaterThanOrEqualToThreshold"
   alarm_actions       = local.alarm_actions
 }
+
+# A chargeback holds a payout and needs a person (docs/runbook.md).
+resource "aws_cloudwatch_log_metric_filter" "chargebacks" {
+  name           = "${local.name}-chargebacks"
+  log_group_name = aws_cloudwatch_log_group.service["payments"].name
+  pattern        = "\"CHARGEBACK\""
+  metric_transformation {
+    name      = "Chargebacks"
+    namespace = "Cappy/${var.env}"
+    value     = "1"
+  }
+}
+
+resource "aws_cloudwatch_metric_alarm" "chargebacks" {
+  alarm_name          = "${local.name}-chargeback"
+  alarm_description   = "A card holder disputed a charge; the payout is held. See docs/runbook.md"
+  namespace           = "Cappy/${var.env}"
+  metric_name         = "Chargebacks"
+  statistic           = "Sum"
+  period              = 300
+  evaluation_periods  = 1
+  threshold           = 0
+  comparison_operator = "GreaterThanThreshold"
+  treat_missing_data  = "notBreaching"
+  alarm_actions       = local.alarm_actions
+}

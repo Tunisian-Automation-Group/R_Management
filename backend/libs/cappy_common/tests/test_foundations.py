@@ -363,3 +363,33 @@ async def test_prune_keeps_what_may_still_be_needed():
         assert sorted((await s.execute(select(outbox.c.id))).scalars()) == ["o1", "o2"], "unsent is never pruned"
         assert (await s.execute(select(func.count()).select_from(processed))).scalar() == 1
     await db.dispose()
+
+
+def test_failed_messages_back_off_to_hours_not_minutes():
+    from cappy_common.events import retry_delay
+
+    first, later = retry_delay(1), [retry_delay(n) for n in range(1, 13)]
+    assert 15 <= first <= 30
+    assert max(later) <= 900
+    assert sum(later) > 3600, "twelve tries span over an hour, even jittered low"
+
+
+async def test_a_task_started_during_an_identity_outage_uses_the_deploy_time_keys():
+    import httpx
+
+    from cappy_common.auth import TokenVerifier
+    from cappy_common.testing import TEST_CLIENT, TEST_ISSUER, TestIssuer
+
+    issuer = TestIssuer()
+
+    def down(request):
+        raise httpx.ConnectError("cognito unreachable")
+
+    v = TokenVerifier(
+        issuer=TEST_ISSUER,
+        jwks_url="https://cognito.example/jwks.json",
+        client_ids=[TEST_CLIENT],
+        fallback_jwks=issuer.jwks,
+        http=httpx.AsyncClient(transport=httpx.MockTransport(down)),
+    )
+    assert (await v.verify(issuer.token("someone"))).sub == "someone"

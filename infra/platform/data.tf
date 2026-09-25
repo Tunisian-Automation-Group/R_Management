@@ -80,7 +80,9 @@ resource "aws_rds_cluster" "main" {
 }
 
 resource "aws_rds_cluster_instance" "main" {
-  count                        = var.db_instances
+  count = var.db_instances
+  # Readers in tier 1 scale with the writer, so a failover lands on a warm one.
+  promotion_tier               = 1
   identifier                   = "${local.name}-${count.index}"
   cluster_identifier           = aws_rds_cluster.main.id
   instance_class               = "db.serverless"
@@ -151,4 +153,39 @@ resource "aws_secretsmanager_secret_version" "internal_token" {
 # the keys never reach state or the repository.
 resource "aws_secretsmanager_secret" "stripe" {
   name = "${local.name}/stripe"
+}
+
+# --- the connection budget (research: Aurora Serverless v2 max_connections is
+# fixed by the maximum ACU, and ECS autoscaling is how it runs out) ---------------
+locals {
+  # Per task: SQLAlchemy pool 5 + overflow 10, for the writer and (where
+  # configured) the reader. Deploys run up to 200% of tasks.
+  connections_per_task = 15
+  peak_connections = 2 * sum([
+    for s in local.db_services : var.scale[s].max * local.connections_per_task * (contains(local.read_services, s) ? 2 : 1)
+  ])
+  # max_connections = min(5000, instance memory / 9531392); 1 ACU = 2 GiB.
+  max_connections = min(5000, floor(var.db_max_acu * 2147483648 / 9531392))
+}
+
+check "connection_budget" {
+  assert {
+    condition     = local.peak_connections < 0.8 * local.max_connections
+    error_message = "At full scale during a deploy the services could open ${local.peak_connections} connections, over 80% of the ${local.max_connections} Aurora allows at ${var.db_max_acu} ACU: raise db_max_acu, lower task maxima, or add RDS Proxy (T-24)."
+  }
+}
+
+resource "aws_cloudwatch_metric_alarm" "replica_lag" {
+  alarm_name          = "${local.name}-replica-lag"
+  alarm_description   = "Reader more than 1 s behind: public reads are stale; check write load"
+  namespace           = "AWS/RDS"
+  metric_name         = "AuroraReplicaLag"
+  dimensions          = { DBClusterIdentifier = aws_rds_cluster.main.cluster_identifier }
+  statistic           = "Maximum"
+  period              = 60
+  evaluation_periods  = 5
+  threshold           = 1000
+  comparison_operator = "GreaterThanThreshold"
+  treat_missing_data  = "notBreaching"
+  alarm_actions       = local.alarm_actions
 }

@@ -8,16 +8,17 @@ locals {
   servers = ["catalog", "matching", "booking", "payments"]
 
   common_env = {
-    APP_ENV         = var.env
-    LOG_JSON        = "true"
-    AWS_REGION      = var.region
-    EVENT_BUS_URL   = "sns://${module.messaging.topic_arn}"
-    AUTH_ISSUER     = local.auth_issuer
-    AUTH_CLIENT_IDS = aws_cognito_user_pool_client.web.id
-    CATALOG_URL     = "http://catalog:8000"
-    MATCHING_URL    = "http://matching:8000"
-    BOOKING_URL     = "http://booking:8000"
-    PAYMENTS_URL    = "http://payments:8000"
+    APP_ENV            = var.env
+    LOG_JSON           = "true"
+    AWS_REGION         = var.region
+    EVENT_BUS_URL      = "sns://${module.messaging.topic_arn}"
+    AUTH_ISSUER        = local.auth_issuer
+    AUTH_CLIENT_IDS    = aws_cognito_user_pool_client.web.id
+    AUTH_JWKS_FALLBACK = data.http.jwks.response_body
+    CATALOG_URL        = "http://catalog:8000"
+    MATCHING_URL       = "http://matching:8000"
+    BOOKING_URL        = "http://booking:8000"
+    PAYMENTS_URL       = "http://payments:8000"
   }
   service_env = {
     # The App Store and Google Play shells call the API cross-origin (ADR 0012).

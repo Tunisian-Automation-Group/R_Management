@@ -261,6 +261,14 @@ async def stripe_webhook(request: Request, session: AsyncSession = Tx) -> dict:
             # state rather than trusting this event's copy of it.
             status = await _provider(request).account_status(account.account_id)
             await _update_account(request, session, account, status.payouts_enabled, status.details_submitted)
+    elif kind == "charge.dispute.created":
+        q = select(PaymentRow).where(PaymentRow.charge_id == obj["charge"]).with_for_update()
+        row = (await session.execute(q)).scalar_one_or_none()
+        if row is not None and row.chargeback_at is None:
+            row.chargeback_at = _now()
+            row.updated_at = row.chargeback_at
+            # The alarm on this line (Terraform: chargebacks) pages support.
+            log.error("CHARGEBACK on booking %s (dispute %s); payout held", row.booking_id, obj.get("id"))
     else:
         log.info("ignoring stripe event %s", kind)
     return {"received": True}

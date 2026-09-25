@@ -42,7 +42,7 @@ resource "aws_sqs_queue" "events" {
   sqs_managed_sse_enabled    = true
   redrive_policy = jsonencode({
     deadLetterTargetArn = aws_sqs_queue.dlq[each.key].arn
-    maxReceiveCount     = 5
+    maxReceiveCount     = 12
   })
 }
 

@@ -61,6 +61,9 @@ class CommonSettings(BaseSettings):
     # separate because cognito-local names itself differently from the address
     # other containers reach it on.
     auth_jwks_url: str = ""
+    # The signing keys as fetched at deploy (JSON), used until the live set
+    # can be fetched: new tasks keep working through a Cognito outage.
+    auth_jwks_fallback: str = ""
     # App client ids whose access tokens we accept (comma-separated).
     auth_client_ids: str = ""
 

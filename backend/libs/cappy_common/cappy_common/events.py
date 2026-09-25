@@ -160,6 +160,13 @@ class Publisher:
 MAX_ATTEMPTS = 20
 
 
+def retry_delay(receives: int, base: int = 30, cap: int = 900) -> int:
+    """How long a failed message waits before its next try: doubling from 30 s
+    to 15 min, jittered. With maxReceiveCount 12 that is about two hours of
+    retries (a dependency outage) before the dead-letter queue and its alarm."""
+    return int(jittered(min(cap, base * 2 ** max(0, receives - 1))))
+
+
 def jittered(seconds: float) -> float:
     """Between half and all of ``seconds``, so replicas that failed together
     do not retry together (AWS Builders' Library: backoff with jitter)."""
@@ -409,6 +416,7 @@ class SqsConsumer(Consumer):
             QueueUrl=self.queue_url,
             MaxNumberOfMessages=10,
             WaitTimeSeconds=self.wait_seconds,
+            MessageSystemAttributeNames=["ApproximateReceiveCount"],
         )
         # Concurrently, so the last message of a batch is not still waiting its
         # turn when its visibility timeout runs out (and counted as a failed
@@ -420,7 +428,18 @@ class SqsConsumer(Consumer):
             event = Event.from_json(_unwrap_sns(msg["Body"]))
             await self.dispatcher.handle(event)
         except Exception:  # noqa: BLE001
-            log.exception("handling message %s failed; leaving it for redelivery", msg.get("MessageId"))
+            receives = int(msg.get("Attributes", {}).get("ApproximateReceiveCount", "1"))
+            delay = retry_delay(receives)
+            log.exception(
+                "handling message %s failed (attempt %d); retrying in %ds", msg.get("MessageId"), receives, delay
+            )
+            with contextlib.suppress(Exception):
+                await asyncio.to_thread(
+                    self._sqs.change_message_visibility,
+                    QueueUrl=self.queue_url,
+                    ReceiptHandle=msg["ReceiptHandle"],
+                    VisibilityTimeout=delay,
+                )
             return
         await asyncio.to_thread(self._sqs.delete_message, QueueUrl=self.queue_url, ReceiptHandle=msg["ReceiptHandle"])
 

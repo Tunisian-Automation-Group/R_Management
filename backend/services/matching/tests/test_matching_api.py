@@ -190,3 +190,20 @@ def test_nothing_starts_too_soon_for_the_owner_to_answer(client):
 def test_shared_vocabulary_is_cacheable_at_the_edge(client):
     for path in ("/groups", "/categories", "/review-tags"):
         assert client.get(path).headers["cache-control"] == "public, max-age=300"
+
+
+def test_search_keeps_working_when_booking_is_down(client, fakes):
+    from cappy_common.errors import Unavailable
+
+    _, bookings = fakes
+
+    async def down(*a, **k):
+        raise Unavailable("booking is down")
+
+    bookings.busy = down
+    assert client.post("/matches", json={"requirement": _saw_requirement()}).json()
+    assert client.get("/listings/l9/offers", params={"hours": 2}).json()
+    # Selling a window, though, needs booking to say it is free.
+    offer = client.get("/listings/l9/offers", params={"hours": 2}).json()[0]
+    body = {"requirement": _saw_requirement(), "listingId": "l9", **offer}
+    assert client.post("/internal/match-for-offer", json=body, headers=INTERNAL).status_code == 503

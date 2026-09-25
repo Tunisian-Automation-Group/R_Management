@@ -129,7 +129,7 @@ services:
     command:
       - listen
       - --api-key=${STRIPE_SECRET_KEY:-}
-      - --events=payment_intent.amount_capturable_updated,account.updated
+      - --events=payment_intent.amount_capturable_updated,account.updated,charge.dispute.created
       - --forward-to=http://gateway:8000/api/payments/webhooks/stripe
     restart: unless-stopped
     depends_on:

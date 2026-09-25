@@ -9,6 +9,7 @@ Nothing is cached across requests, so nothing can go stale across replicas.
 from __future__ import annotations
 
 import asyncio
+import logging
 
 from fastapi import Depends, Query, Request, Response
 from pydantic import Field
@@ -28,6 +29,7 @@ from .domain.match import SortKey, distance_km, find_matches, match_for_offer, s
 from .domain.pricing import hours_for, quote_for
 from .domain.reviews import REVIEW_TAGS
 
+log = logging.getLogger(__name__)
 router = ApiRouter()
 # The same for everyone and rarely changing: CloudFront answers these for five minutes.
 PUBLIC_CACHE = "public, max-age=300"
@@ -63,18 +65,33 @@ async def _candidates_and_busy(request: Request, req, exclude_owner: str | None)
         category=req.category,
         exclude_owner=exclude_owner,
     )
-    busy = await _bookings(request).busy([l.id for l in world.listings], start, until)
+    busy = await _busy_or_nothing(request, [l.id for l in world.listings], start, until)
     return world, busy
 
 
-async def _context(request: Request, listing_id: str, origin: str | None = None) -> tuple[World, Busy]:
-    """One listing's world and bookings, fetched in parallel."""
+async def _busy_or_nothing(request: Request, listing_ids: list[str], start: Iso, until: Iso) -> Busy:
+    """Taken windows, or none if booking cannot say right now (resilience F11):
+    search keeps working, and booking itself still refuses a taken window."""
+    try:
+        return await _bookings(request).busy(listing_ids, start, until)
+    except Exception as e:  # noqa: BLE001
+        log.warning("busy windows unavailable (%s); answering without them", e)
+        return {}
+
+
+async def _context(
+    request: Request, listing_id: str, origin: str | None = None, *, strict: bool = False
+) -> tuple[World, Busy]:
+    """One listing's world and bookings, fetched in parallel. ``strict`` when
+    the answer is about to be sold (match-for-offer): then booking must answer."""
     start = now_iso()
     until = iso_from_ms(ms_from_iso(start) + 400 * 24 * HOUR_MS)
-    world, busy = await asyncio.gather(
-        _catalog(request).listing_context(listing_id, after=start, origin=origin),
-        _bookings(request).busy([listing_id], start, until),
+    busy = (
+        _bookings(request).busy([listing_id], start, until)
+        if strict
+        else _busy_or_nothing(request, [listing_id], start, until)
     )
+    world, busy = await asyncio.gather(_catalog(request).listing_context(listing_id, after=start, origin=origin), busy)
     return world, busy
 
 
@@ -172,7 +189,7 @@ async def spotlight(
     world = await _catalog(request).candidates(
         origin=district, max_km=max_km, start=now, until=until, category=None, exclude_owner=p.sub if p else None
     )
-    busy = await _bookings(request).busy([l.id for l in world.listings], now, until)
+    busy = await _busy_or_nothing(request, [l.id for l in world.listings], now, until)
     return available_soon(world, district, max_km, now, within_hours, limit, busy)
 
 
@@ -215,7 +232,7 @@ async def match_for_offer_route(body: MatchForOfferIn, request: Request) -> Matc
     """The match for a window the buyer chose. The quote is computed here, never
     trusted from the client, and the window must still be free."""
     req = body.requirement
-    world, busy = await _context(request, body.listing_id, origin=req.district)
+    world, busy = await _context(request, body.listing_id, origin=req.district, strict=True)
     listing, owner = world.listings[0], world.owners[0]
     origin, dest = world.districts.get(req.district), world.districts.get(listing.district)
     if not origin or not dest:

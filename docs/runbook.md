@@ -24,7 +24,7 @@
    ```
    In the Stripe dashboard, add a webhook endpoint
    `https://<domain>/api/payments/webhooks/stripe` for the events
-   `payment_intent.amount_capturable_updated` and `account.updated`. Enable
+   `payment_intent.amount_capturable_updated`, `account.updated` and `charge.dispute.created`. Enable
    Connect with Express accounts.
 5. **SES**: request production access for the region, so mail reaches
    addresses that aren't verified. DKIM, SPF and DMARC records are created by

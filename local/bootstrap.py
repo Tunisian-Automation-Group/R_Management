@@ -63,7 +63,7 @@ def messaging() -> dict[str, str]:
             QueueName=f"cappy-{service}",
             Attributes={
                 "VisibilityTimeout": "120",
-                "RedrivePolicy": json.dumps({"deadLetterTargetArn": dlq_arn, "maxReceiveCount": "5"}),
+                "RedrivePolicy": json.dumps({"deadLetterTargetArn": dlq_arn, "maxReceiveCount": "12"}),
             },
         )
         arn = sqs.get_queue_attributes(QueueUrl=q["QueueUrl"], AttributeNames=["QueueArn"])["Attributes"]["QueueArn"]

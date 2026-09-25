@@ -57,6 +57,7 @@ class TokenVerifier:
         jwks_url: str,
         client_ids: list[str],
         jwks: dict | None = None,
+        fallback_jwks: dict | None = None,
         leeway_seconds: int = 30,
         min_refresh_seconds: float = 60.0,
         http: httpx.AsyncClient | None = None,
@@ -70,6 +71,10 @@ class TokenVerifier:
         self._last_refresh = float("-inf")
         self._lock = asyncio.Lock()
         self._http = http
+        if fallback_jwks is not None:
+            # The keys as they were at deploy: a task that starts while Cognito
+            # is unreachable still verifies tokens. Refreshed like any other.
+            self._load(fallback_jwks)
         if jwks is not None:
             self._load(jwks)
             # A static key set (tests) is never refreshed from the network.
@@ -184,8 +189,10 @@ def require_internal(request: Request) -> None:
 def make_verifier(settings) -> TokenVerifier | None:
     if not settings.auth_issuer:
         return None
+    fallback = json.loads(settings.auth_jwks_fallback) if settings.auth_jwks_fallback else None
     return TokenVerifier(
         issuer=settings.auth_issuer,
         jwks_url=settings.jwks_url,
         client_ids=settings.auth_client_id_list,
+        fallback_jwks=fallback,
     )
