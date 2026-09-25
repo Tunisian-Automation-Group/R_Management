@@ -145,7 +145,11 @@ Status: `[x]` done (with the commit that did it) · `[~]` in progress ·
 - [x] Load: 50 concurrent browsers + racing buyers, 0 failures; spike 30→300/s, 0 failures, p99 ≈ 220 ms
 - [x] Browser verification rounds 1 and 2 fixed (66 findings); round 3 after the trust features' UI
 - [x] Trust and compliance (API): messaging with masking, blocks, reports and moderation (DSA 16/17), check-in/out evidence, identity verification (Stripe Identity), fraud rules, DAC7 tags, German notifications
-- [ ] Web UI for the trust features, German UI, Capacitor shells, then verification round 3
+- [x] Web UI for the trust features (c0f3aac), German UI and Capacitor shells (15811c2)
+- [x] Soon-after-launch features: instant book, blind two-way reviews, cancellation policies with partial
+      refunds (gated on counsel), duration discounts, fee invoices, analytics pipeline
+- [x] Soak: 20 min, flat latency, memory, connections and queues; third review round fixed (3942e35)
+- [ ] Web for the latest features, then verification round 3
 - [ ] First AWS apply; breakpoint and soak tests on staging (L-5)
 
 ## Definition of done
