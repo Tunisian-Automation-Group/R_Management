@@ -5,6 +5,7 @@ import { formatEur } from '../../domain/money.ts'
 import { Photo } from './Photo.tsx'
 import { Stars } from './ui.tsx'
 import { distance, range } from '../format.ts'
+import { t } from '../../i18n.ts'
 
 /**
  * A result row: the owner's photograph, then what it is, then what it costs.
@@ -69,16 +70,16 @@ export function ListingCard({
             <span className="tnum text-[13px] text-[var(--ink-4)]">
               {isWindow(listing)
                 ? durationLabel(match.quote.hours)
-                : `${durationLabel(match.quote.hours)} incl. setup`}
+                : t('{duration} incl. setup', { duration: durationLabel(match.quote.hours) })}
             </span>
             {/* The owner's record over all their jobs, not this listing's reviews: labelled so. */}
-            <span className="inline-flex items-baseline gap-1" title="The owner's rating across all their jobs">
-              <span className="text-[12px] text-[var(--ink-4)]">Host</span>
+            <span className="inline-flex items-baseline gap-1" title={t("The owner's rating across all their jobs")}>
+              <span className="text-[12px] text-[var(--ink-4)]">{t('Host')}</span>
               <Stars value={stars} count={owner.jobsDone} />
             </span>
             {rank === 0 && (
               <span className="text-[12.5px] font-semibold text-[var(--accent-text)]">
-                Best match
+                {t('Best match')}
               </span>
             )}
           </span>

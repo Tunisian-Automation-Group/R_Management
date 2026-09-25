@@ -5,6 +5,7 @@ import { messageOf, useToast } from '../store.tsx'
 import { ago } from '../format.ts'
 import { Button, Card, Textarea } from './ui.tsx'
 import { ReportButton } from './Report.tsx'
+import { t } from '../../i18n.ts'
 
 /** Contact details the server hid before the booking was accepted, shown as a quiet chip. */
 function Body({ text }: { text: string }) {
@@ -18,7 +19,7 @@ function Body({ text }: { text: string }) {
           key={i}
           className="mx-0.5 inline-block rounded-[var(--radius-control)] bg-[var(--sunken)] px-1.5 text-[12.5px] font-semibold text-[var(--ink-3)]"
         >
-          contact hidden until accepted
+          {t('contact hidden until accepted')}
         </span>,
       )
   })
@@ -36,7 +37,7 @@ function Bubble({ m, otherName }: { m: Message; otherName: string }) {
         <Body text={m.body} />
       </div>
       <p className="t-sm mt-1 flex items-center gap-1 text-[var(--ink-4)]">
-        {m.mine ? 'You' : otherName} · {ago(m.at)}
+        {m.mine ? t('You') : otherName} · {ago(m.at)}
         {!m.mine && <ReportButton targetType="message" targetId={m.id} compact />}
       </p>
     </li>
@@ -84,15 +85,14 @@ export function Conversation({
 
   return (
     <Card className="mt-3 p-5">
-      <h2 className="t-label mb-1">Messages with {otherName}</h2>
+      <h2 className="t-label mb-1">{t('Messages with {name}', { name: otherName })}</h2>
       {!accepted && (
         <p className="t-sm mb-3 text-[var(--ink-3)]">
-          Phone numbers, emails and links are hidden until the booking is accepted. Keep payments on Cappy:
-          that is what protects you both.
+          {t('Phone numbers, emails and links are hidden until the booking is accepted. Keep payments on Cappy: that is what protects you both.')}
         </p>
       )}
       {items.length === 0 ? (
-        <p className="t-sm py-3 text-[var(--ink-3)]">No messages yet. Ask about the hand-over, access or anything you need.</p>
+        <p className="t-sm py-3 text-[var(--ink-3)]">{t('No messages yet. Ask about the hand-over, access or anything you need.')}</p>
       ) : (
         <ul className="max-h-[360px] space-y-3 overflow-y-auto py-2" aria-live="polite">
           {items.map((m) => (
@@ -109,21 +109,21 @@ export function Conversation({
         }}
       >
         <label htmlFor={`${id}-msg`} className="sr-only">
-          Message to {otherName}
+          {t('Message to {name}', { name: otherName })}
         </label>
         <Textarea
           id={`${id}-msg`}
           rows={2}
           maxLength={2000}
           value={draft}
-          placeholder={`Write to ${otherName}`}
+          placeholder={t('Write to {name}', { name: otherName })}
           onChange={(e) => setDraft(e.target.value)}
           onKeyDown={(e) => {
             if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) void send()
           }}
         />
         <Button type="submit" disabled={busy || !draft.trim()}>
-          Send
+          {t('Send')}
         </Button>
       </form>
     </Card>

@@ -3,6 +3,8 @@ import { NavLink } from 'react-router-dom'
 import { useSession } from '../../data/auth.ts'
 import { Icon, type IconName } from './Icon.tsx'
 import { useBack } from '../nav.ts'
+import { lang, setLang, t, type Lang } from '../../i18n.ts'
+import { updateLocale } from '../../data/auth.ts'
 
 type Tab = { to: string; label: string; icon: IconName; badge?: number }
 
@@ -30,15 +32,15 @@ type Tab = { to: string; label: string; icon: IconName; badge?: number }
  */
 export function Dock({ badges }: { badges: Record<string, number> }) {
   const tabs: Tab[] = [
-    { to: '/', label: 'Explore', icon: 'search' },
-    { to: '/bookings', label: 'Bookings', icon: 'ticket', badge: badges['/bookings'] },
-    { to: '/earn', label: 'Earn', icon: 'wallet', badge: badges['/earn'] },
-    { to: '/profile', label: 'You', icon: 'user' },
+    { to: '/', label: t('Explore'), icon: 'search' },
+    { to: '/bookings', label: t('Bookings'), icon: 'ticket', badge: badges['/bookings'] },
+    { to: '/earn', label: t('Earn'), icon: 'wallet', badge: badges['/earn'] },
+    { to: '/profile', label: t('You'), icon: 'user' },
   ]
 
   return (
     <nav
-      aria-label="Main"
+      aria-label={t('Main')}
       className="glass fixed z-40 shadow-[var(--glass-shadow-raised)]
         max-md:bottom-0 max-md:left-1/2 max-md:w-[calc(100%-32px)] max-md:max-w-[420px]
         max-md:-translate-x-1/2 max-md:rounded-[28px]
@@ -60,8 +62,8 @@ export function Dock({ badges }: { badges: Record<string, number> }) {
         </NavLink>
 
         <ul className="flex flex-1 items-stretch md:items-center md:gap-1">
-          {tabs.slice(0, 2).map((t) => (
-            <TabItem key={t.to} tab={t} />
+          {tabs.slice(0, 2).map((tab) => (
+            <TabItem key={tab.to} tab={tab} />
           ))}
 
           {/* On a phone, listing something is the supply side's whole job, so it
@@ -71,7 +73,7 @@ export function Dock({ badges }: { badges: Record<string, number> }) {
           <li className="flex shrink-0 items-center px-2 md:hidden">
             <NavLink
               to="/earn/new"
-              aria-label="List capacity you own"
+              aria-label={t('List capacity you own')}
               className="grid h-[40px] w-[44px] place-items-center rounded-full bg-[var(--accent)] text-[var(--on-accent)]
                 shadow-[var(--shadow-float)] transition-colors duration-[160ms] hover:bg-[var(--accent-hover)]"
             >
@@ -79,8 +81,8 @@ export function Dock({ badges }: { badges: Record<string, number> }) {
             </NavLink>
           </li>
 
-          {tabs.slice(2).map((t) => (
-            <TabItem key={t.to} tab={t} />
+          {tabs.slice(2).map((tab) => (
+            <TabItem key={tab.to} tab={tab} />
           ))}
         </ul>
 
@@ -91,7 +93,7 @@ export function Dock({ badges }: { badges: Record<string, number> }) {
             transition-colors duration-[160ms] hover:bg-[var(--accent-hover)] md:inline-flex"
         >
           <Icon name="plus" size={16} strokeWidth={2.4} />
-          List capacity
+          {t('List capacity')}
         </NavLink>
       </div>
     </nav>
@@ -138,7 +140,7 @@ function TabItem({ tab }: { tab: Tab }) {
               ) : null}
             </span>
             {tab.label}
-            {tab.badge ? <span className="sr-only">, {tab.badge} needing attention</span> : null}
+            {tab.badge ? <span className="sr-only">, {t('{n} needing attention', { n: tab.badge })}</span> : null}
           </>
         )}
       </NavLink>
@@ -292,24 +294,24 @@ function SiteFooter() {
   const staff = useSession()?.staff ?? false
   const groups: { title: string; links: { label: string; to: string }[] }[] = [
     {
-      title: 'Buy capacity',
+      title: t('Buy capacity'),
       links: [
-        { label: 'Explore what is free', to: '/' },
-        { label: 'Your bookings', to: '/bookings' },
+        { label: t('Explore what is free'), to: '/' },
+        { label: t('Your bookings'), to: '/bookings' },
       ],
     },
     {
-      title: 'Sell capacity',
+      title: t('Sell capacity'),
       links: [
-        { label: 'List something', to: '/earn/new' },
-        { label: 'Your listings', to: '/earn' },
+        { label: t('List something'), to: '/earn/new' },
+        { label: t('Your listings'), to: '/earn' },
       ],
     },
     {
-      title: 'Account',
+      title: t('Account'),
       links: [
-        { label: 'Profile', to: '/profile' },
-        { label: 'How Cappy works', to: '/profile' },
+        { label: t('Profile'), to: '/profile' },
+        { label: t('How Cappy works'), to: '/profile' },
       ],
     },
   ]
@@ -320,9 +322,11 @@ function SiteFooter() {
         <div className="max-w-[30ch]">
           <p className="t-h2">Cappy</p>
           <p className="t-sm mt-2 text-[var(--ink-3)]">
-            Buy the hours, not the thing. One capacity network across Europe:
-            making, moving and the kit to do it with.
+            {t('Buy the hours, not the thing. One capacity network across Europe: making, moving and the kit to do it with.')}
           </p>
+          <div className="mt-5">
+            <LanguageSwitch />
+          </div>
         </div>
         {groups.map((g) => (
           <nav key={g.title} aria-label={g.title}>
@@ -342,13 +346,15 @@ function SiteFooter() {
           </nav>
         ))}
       </div>
-      <nav aria-label="Legal" className="t-sm mt-12 flex flex-wrap gap-x-6 gap-y-2 border-t border-[var(--line)] pt-6 text-[var(--ink-4)]">
+      <nav aria-label={t('Legal')} className="t-sm mt-12 flex flex-wrap gap-x-6 gap-y-2 border-t border-[var(--line)] pt-6 text-[var(--ink-4)]">
         <NavLink to="/legal/impressum" className="hover:text-[var(--ink-2)]">Impressum</NavLink>
-        <NavLink to="/legal/privacy" className="hover:text-[var(--ink-2)]">Privacy</NavLink>
-        <NavLink to="/legal/terms" className="hover:text-[var(--ink-2)]">Terms</NavLink>
-        <NavLink to="/legal/ranking" className="hover:text-[var(--ink-2)]">Ranking</NavLink>
-        <NavLink to="/legal/report" className="hover:text-[var(--ink-2)]">Report content</NavLink>
-        {staff && <NavLink to="/admin" className="hover:text-[var(--ink-2)]">Staff</NavLink>}
+        <NavLink to="/legal/privacy" className="hover:text-[var(--ink-2)]">{t('Privacy')}</NavLink>
+        <NavLink to="/legal/terms" className="hover:text-[var(--ink-2)]">{t('Terms')}</NavLink>
+        <NavLink to="/legal/withdrawal" className="hover:text-[var(--ink-2)]">{t('Withdrawal')}</NavLink>
+        <NavLink to="/legal/ranking" className="hover:text-[var(--ink-2)]">{t('Ranking')}</NavLink>
+        <NavLink to="/legal/report" className="hover:text-[var(--ink-2)]">{t('Report content')}</NavLink>
+        <NavLink to="/account/delete" className="hover:text-[var(--ink-2)]">{t('Delete your account')}</NavLink>
+        {staff && <NavLink to="/admin" className="hover:text-[var(--ink-2)]">{t('Staff')}</NavLink>}
       </nav>
     </footer>
   )
@@ -358,7 +364,7 @@ function BackButton({ onClick, floating }: { onClick: () => void; floating?: boo
   return (
     <button
       onClick={onClick}
-      aria-label="Back"
+      aria-label={t('Back')}
       className={`grid h-10 w-10 place-items-center rounded-full transition-all duration-[160ms]
         ${
           floating
@@ -369,6 +375,37 @@ function BackButton({ onClick, floating }: { onClick: () => void; floating?: boo
     >
       <Icon name="chevron-left" size={20} strokeWidth={2.2} />
     </button>
+  )
+}
+
+/** English or Deutsch. Remounts the app in the new language, and tells Cognito
+ *  (the `locale` attribute) so emails follow. */
+export function LanguageSwitch() {
+  const current = lang()
+  const options: { value: Lang; label: string }[] = [
+    { value: 'en', label: 'English' },
+    { value: 'de', label: 'Deutsch' },
+  ]
+  return (
+    <div role="group" aria-label={t('Language')} className="inline-flex rounded-full border border-[var(--line)] p-0.5">
+      {options.map((o) => (
+        <button
+          key={o.value}
+          type="button"
+          lang={o.value}
+          aria-pressed={current === o.value}
+          onClick={() => {
+            setLang(o.value)
+            void updateLocale(o.value)
+          }}
+          className={`rounded-full px-3 py-1.5 text-[13px] font-semibold transition-colors duration-[160ms] ${
+            current === o.value ? 'bg-[var(--field)] text-[var(--on-field)]' : 'text-[var(--ink-3)] hover:text-[var(--ink)]'
+          }`}
+        >
+          {o.label}
+        </button>
+      ))}
+    </div>
   )
 }
 

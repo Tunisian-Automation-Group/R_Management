@@ -1,6 +1,7 @@
 import type { CSSProperties, ReactNode } from 'react'
 import type { CategoryId, Iso, Slot } from '../../domain/types.ts'
 import { category } from '../../domain/categories.ts'
+import { locale, t } from '../../i18n.ts'
 
 /** Matching's minimum lead time: nothing can be booked to start sooner. */
 const BOOKING_LEAD_MS = 2 * 3_600_000
@@ -31,7 +32,7 @@ type Props = {
   children?: ReactNode
 }
 
-const HH = new Intl.DateTimeFormat('en-GB', { hour: '2-digit', minute: '2-digit', hour12: false })
+const HH = { format: (d: Date) => d.toLocaleTimeString(locale(), { hour: '2-digit', minute: '2-digit', hour12: false }) }
 
 /**
  * A listing has no photograph, and a stock photo of someone else's machine
@@ -76,7 +77,7 @@ export function Plate({
     // Initial plus date, the way a wall planner labels a column. Shown only when
     // the plate is wide enough to be read as a timetable rather than an index.
     const d = new Date(from)
-    const label = `${d.toLocaleDateString('en-GB', { weekday: 'narrow' })}${d.getDate()}`
+    const label = `${d.toLocaleDateString(locale(), { weekday: 'narrow' })}${d.getDate()}`
     return { free, taken, label }
   })
   const peak = Math.max(1, ...week.map((d) => d.free))
@@ -113,12 +114,12 @@ export function Plate({
     when === null
       ? null
       : openNow
-        ? 'free now'
+        ? t('free now')
         : when.toDateString() === new Date().toDateString()
-          ? 'today'
+          ? t('today')
           : when.getTime() - day0.getTime() < 2 * DAY
-            ? 'tomorrow'
-            : when.toLocaleDateString('en-GB', { weekday: 'long' }).toLowerCase()
+            ? t('tomorrow')
+            : when.toLocaleDateString(locale(), { weekday: 'long' })
 
   return (
     <div
@@ -127,8 +128,13 @@ export function Plate({
       role="img"
       aria-label={
         when
-          ? `${meta.label}. Next free ${dayWord} at ${HH.format(when)}. ${Math.round(total)} idle hours this week.`
-          : `${meta.label}. Nothing free this week.`
+          ? t('{category}. Next free {day} at {time}. {hours} idle hours this week.', {
+              category: meta.label,
+              day: dayWord ?? '',
+              time: HH.format(when),
+              hours: Math.round(total),
+            })
+          : t('{category}. Nothing free this week.', { category: meta.label })
       }
     >
       {/* The field lifts towards the top left, the way a printed ink panel
@@ -179,8 +185,8 @@ export function Plate({
               >
                 {figure === 'hours' && hoursFree >= 1
                   ? openNow
-                    ? 'free now'
-                    : `from ${HH.format(when)} ${dayWord}`
+                    ? t('free now')
+                    : t('from {time} {day}', { time: HH.format(when), day: dayWord ?? '' })
                   : dayWord}
               </span>
             )}
@@ -215,7 +221,7 @@ export function Plate({
       ) : (
         <div className={`relative flex h-full items-end ${thumb ? 'p-2' : 'p-4'}`}>
           <p className="text-[13px] font-medium" style={{ color: 'var(--on-field-dim)' }}>
-            {thumb ? '' : 'Nothing free this week'}
+            {thumb ? '' : t('Nothing free this week')}
           </p>
         </div>
       )}

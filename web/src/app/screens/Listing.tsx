@@ -37,9 +37,11 @@ import {
   EmptyState,
   Row,
   Sheet,
+  oneDecimal,
   Stars,
 } from '../components/ui.tsx'
 import { day, distance, range, relative, responseTime, time } from '../format.ts'
+import { locale, t } from '../../i18n.ts'
 
 const QUANTITY_STEPS = [10, 25, 50, 100, 250, 500, 1000]
 
@@ -162,7 +164,7 @@ export function Listing() {
   }
 
   const sent = (bookingId: string) => {
-    toast(`Request sent to ${first}`)
+    toast(t('Request sent to {name}', { name: first }))
     void qc.invalidateQueries({ queryKey: ['bookings'] })
     setConfirming(false)
     startOver()
@@ -214,7 +216,7 @@ export function Listing() {
             </span>
             <WhenBadge
               freeNow={Boolean(selected && Date.parse(selected.start) <= Date.now())}
-              text={selected ? `Free ${relative(selected.start)}` : 'No window'}
+              text={selected ? t('Free {when}', { when: relative(selected.start) }) : t('No window')}
             />
             {!mine && <SaveButton id={listing.id} title={listing.title} className="" />}
           </span>
@@ -226,19 +228,19 @@ export function Listing() {
         mine ? undefined : (
           <div className="flex items-center gap-4 md:block">
             <div className="min-w-0 flex-1">
-              <p className="t-label hidden md:block">Your booking</p>
+              <p className="t-label hidden md:block">{t('Your booking')}</p>
               <p className="tnum text-[19px] font-bold leading-tight md:mt-2 md:text-[28px]">
                 {quote ? formatEur(quote.total) : '—'}
               </p>
               <p className="t-sm tnum truncate text-[var(--ink-3)] md:mt-1 md:whitespace-normal">
-                {selected ? range(selected.start, selected.end) : 'No free window'}
+                {selected ? range(selected.start, selected.end) : t('No free window')}
               </p>
               {/* What the price is for, so the button is not a leap. */}
               {quote && (
                 <p className="t-sm tnum hidden text-[var(--ink-3)] md:block">
                   {isWindow(listing)
                     ? durationLabel(quote.hours)
-                    : `${quantity} ${meta.unitNoun} · ${durationLabel(quote.hours)} incl. setup`}
+                    : `${quantity} ${meta.unitNoun} · ${t('{duration} incl. setup', { duration: durationLabel(quote.hours) })}`}
                 </p>
               )}
             </div>
@@ -248,13 +250,13 @@ export function Listing() {
               onClick={request}
               className="md:mt-5 md:w-full"
             >
-              Request
+              {t('Request')}
             </Button>
             {/* The worry in front of any red button is "am I paying now". Nothing
                 is charged here, so the box says so, and says who answers and when. */}
             <p className="t-sm mt-3 hidden text-center text-[var(--ink-4)] md:block">
-              Your card is only held. Nothing is charged until {first} accepts ·{' '}
-              {responseTime(owner.responseMins).replace('Replies', 'replies')}
+              {t('Your card is only held. Nothing is charged until {name} accepts', { name: first })} ·{' '}
+              {responseTime(owner.responseMins).replace(/^./, (c) => c.toLowerCase())}
             </p>
           </div>
         )
@@ -269,14 +271,14 @@ export function Listing() {
             <Icon name="pin" size={15} className="text-[var(--ink-4)]" />
             {listing.district}{km !== null ? ` · ${distance(km)}` : ''}
           </span>
-          <span className="tnum">{formatEur(listing.ratePerHour)} / hour</span>
+          <span className="tnum">{formatEur(listing.ratePerHour)} / {t('hour')}</span>
           {/* This listing's reviews; the owner's overall record is on their card below. */}
           <a
             href="#reviews"
             aria-label={
               info.reviews.average != null
-                ? `This listing: ${info.reviews.average.toFixed(1)} from ${info.reviews.count} reviews`
-                : 'No reviews of this listing yet'
+                ? t('This listing: {avg} from {n} reviews', { avg: oneDecimal(info.reviews.average), n: info.reviews.count })
+                : t('No reviews of this listing yet')
             }
             className="underline decoration-[var(--line-strong)] underline-offset-4 hover:decoration-[var(--ink)]"
           >
@@ -289,11 +291,11 @@ export function Listing() {
         <div className="mt-6">
           <Banner
             tone="warn"
-            title="This is your listing"
-            body="You are seeing it the way a buyer would. Manage availability from the Earn tab."
+            title={t('This is your listing')}
+            body={t('You are seeing it the way a buyer would. Manage availability from the Earn tab.')}
             action={
               <Button size="sm" variant="secondary" to={'/earn'}>
-                Go to Earn
+                {t('Go to Earn')}
               </Button>
             }
           />
@@ -312,13 +314,13 @@ export function Listing() {
               )}
             </p>
             <p className="t-sm text-[var(--ink-3)]">
-              {trackRecord(owner)} · since {owner.joinedYear}
+              {trackRecord(owner)} · {t('since {year}', { year: owner.joinedYear })}
             </p>
           </div>
           {/* The owner across all their listings, labelled so it is not read as this listing's. */}
           <span className="shrink-0 text-right">
             <Stars value={stars} count={owner.jobsDone} />
-            <span className="t-sm block text-[var(--ink-4)]">all their jobs</span>
+            <span className="t-sm block text-[var(--ink-4)]">{t('all their jobs')}</span>
           </span>
         </div>
         <p className="t-sm mt-4 flex items-center gap-1.5 border-t border-[var(--line)] pt-4 text-[var(--ink-3)]">
@@ -329,8 +331,8 @@ export function Listing() {
         <p className="t-sm mt-2 flex items-start gap-1.5 text-[var(--ink-3)]">
           <Icon name="info" size={14} className="mt-[3px] shrink-0 text-[var(--ink-4)]" />
           {owner.kind === 'business'
-            ? 'Business. EU consumer rights apply to your booking.'
-            : 'Private person, not a business. EU consumer rights toward businesses do not apply; Cappy’s terms and payment protection do.'}
+            ? t('Business. EU consumer rights apply to your booking.')
+            : t('Private person, not a business. EU consumer rights toward businesses do not apply; Cappy’s terms and payment protection do.')}
         </p>
         <div className="mt-3 flex flex-wrap gap-1 border-t border-[var(--line)] pt-3">
           <ReportButton targetType="owner" targetId={owner.id} />
@@ -339,14 +341,14 @@ export function Listing() {
       </Card>
 
       {/* ------------------------------------------------------- capacity */}
-      <SectionHead title="Idle time this week" className="mt-7" />
+      <SectionHead title={t('Idle time this week')} className="mt-7" />
       <Card className="p-5">
         <CapacityBar slots={slots} booked={selected} intent="buy" showLegend />
       </Card>
 
       {/* --------------------------------------------------------- amount */}
       <SectionHead
-        title={isWindow(listing) ? 'How long do you need it?' : `How many ${meta.unitNoun}?`}
+        title={isWindow(listing) ? t('How long do you need it?') : t('How many {unit}?', { unit: meta.unitNoun ?? '' })}
         className="mt-7"
       />
       <div className="flex flex-wrap gap-2">
@@ -381,22 +383,21 @@ export function Listing() {
       </div>
       {!isWindow(listing) && needed !== null && (
         <p className="t-sm mt-3 text-[var(--ink-4)]">
-          {quantity} {meta.unitNoun} is about {durationLabel(needed)} on this machine, including{' '}
-          {durationLabel(listing.setupHours)} of setup.
+          {t('{n} {unit} is about {duration} on this machine, including {setup} of setup.', { n: quantity, unit: meta.unitNoun ?? '', duration: durationLabel(needed), setup: durationLabel(listing.setupHours) })}
         </p>
       )}
 
       {/* ----------------------------------------------------- start time */}
-      <SectionHead title="Pick a start" className="mt-7" />
+      <SectionHead title={t('Pick a start')} className="mt-7" />
       {offers.length === 0 ? (
         <Card className="p-1">
           <EmptyState
             icon="calendar"
-            title="Nothing free that long"
+            title={t('Nothing free that long')}
             body={
               isWindow(listing)
-                ? `${owner.name.split(' ')[0]} has no ${durationLabel(hours)} gap in the next four weeks. A shorter booking may fit.`
-                : `${quantity} ${meta.unitNoun} needs ${needed ? durationLabel(needed) : 'more time'} and no gap that long is open. Try a smaller batch.`
+                ? t('{name} has no {duration} gap in the next four weeks. A shorter booking may fit.', { name: first, duration: durationLabel(hours) })
+                : t('{n} {unit} needs {duration} and no gap that long is open. Try a smaller batch.', { n: quantity, unit: meta.unitNoun ?? '', duration: needed ? durationLabel(needed) : t('more time') })
             }
             action={
               <Button
@@ -408,8 +409,8 @@ export function Listing() {
                 }
               >
                 {isWindow(listing)
-                  ? `Try ${durationLabel(listing.minHours)}`
-                  : `Try ${Math.max(10, Math.round(quantity / 4))} ${meta.unitNoun}`}
+                  ? t('Try {what}', { what: durationLabel(listing.minHours) })
+                  : t('Try {what}', { what: `${Math.max(10, Math.round(quantity / 4))} ${meta.unitNoun}` })}
               </Button>
             }
           />
@@ -446,7 +447,7 @@ export function Listing() {
                     key={o.start}
                     selected={selected?.start === o.start}
                     onClick={() => setPicked(o)}
-                    ariaLabel={`Start ${range(o.start, o.end)}`}
+                    ariaLabel={t('Start {when}', { when: range(o.start, o.end) })}
                   >
                     <span className="tnum">{time(o.start)}</span>
                   </Chip>
@@ -460,7 +461,7 @@ export function Listing() {
       {/* ---------------------------------------------------------- price */}
       {quote && selected && (
         <>
-          <SectionHead title="Price" className="mt-7" />
+          <SectionHead title={t('Price')} className="mt-7" />
           <Card className="p-5">
             <Row
               label={`${formatEur(listing.ratePerHour)}/h × ${durationLabel(quote.hours)}`}
@@ -468,12 +469,14 @@ export function Listing() {
             />
             {quote.extra > 0 && <Row label={quote.extraLabel} value={formatEurExact(quote.extra)} />}
             <div className="my-2 border-t border-[var(--line)]" />
-            <Row label="Total" value={formatEurExact(quote.total)} strong />
+            <Row label={t('Total')} value={formatEurExact(quote.total)} strong />
             <p className="t-sm mt-3 border-t border-[var(--line)] pt-3 text-[var(--ink-4)]">
-              Includes the {PLATFORM_FEE_BPS / 100}% Cappy fee of{' '}
-              {formatEurExact(quote.platformFee)}. {owner.name.split(' ')[0]} receives{' '}
-              {formatEurExact(quote.ownerNet)}. Paid by card when {first} accepts; if they
-              decline, the hold is released.
+              {t('Includes the {pct} % Cappy fee of {fee}. {name} receives {net}. Paid by card when {name} accepts; if they decline, the hold is released.', {
+                pct: (PLATFORM_FEE_BPS / 100).toLocaleString(locale()),
+                fee: formatEurExact(quote.platformFee),
+                net: formatEurExact(quote.ownerNet),
+                name: first,
+              })}
             </p>
           </Card>
         </>
@@ -482,11 +485,11 @@ export function Listing() {
       {/* ---------------------------------------------------- house rules */}
       {/* ---------------------------------------------------------- reviews */}
       <section id="reviews">
-        <SectionHead title="What people say" className="mt-7" />
+        <SectionHead title={t('What people say')} className="mt-7" />
         <Reviews reviews={reviews.data?.items ?? []} summary={info.reviews} ownerFirstName={first} ownerJobs={owner.jobsDone} />
       </section>
 
-      <SectionHead title="House rules" className="mt-7" />
+      <SectionHead title={t('House rules')} className="mt-7" />
       <Card className="p-5">
         <ul className="space-y-3">
           {listing.rules.map((r) => (
@@ -514,16 +517,16 @@ export function Listing() {
           // The booking made so far can still be paid from its own page.
           startOver()
         }}
-        title={paying ? 'Pay to send your request' : 'Confirm request'}
+        title={paying ? t('Pay to send your request') : t('Confirm request')}
         footer={
           paying ? undefined : (
             <div className="space-y-2">
               <Button block size="lg" disabled={sending} onClick={() => void book()}>
                 {/* The final button must say it commits to paying (§312j BGB). */}
-                {sending ? 'Sending…' : 'Book and pay'}
+                {sending ? t('Sending…') : t('Book and pay')}
               </Button>
               <Button block variant="quiet" onClick={() => setConfirming(false)}>
-                Not yet
+                {t('Not yet')}
               </Button>
             </div>
           )
@@ -553,20 +556,20 @@ export function Listing() {
             </div>
 
             <Card className="bg-[var(--sunken)] p-5 shadow-none">
-              <Row label="When" value={range(selected.start, selected.end)} />
+              <Row label={t('When')} value={range(selected.start, selected.end)} />
               <Row
-                label={isWindow(listing) ? 'Duration' : 'Batch'}
+                label={isWindow(listing) ? t('Duration') : t('Batch')}
                 value={
                   isWindow(listing)
                     ? durationLabel(quote.hours)
                     : `${quantity} ${meta.unitNoun}`
                 }
               />
-              <Row label="Where" value={`${listing.district}${km !== null ? ` · ${distance(km)}` : ''}`} />
+              <Row label={t('Where')} value={`${listing.district}${km !== null ? ` · ${distance(km)}` : ''}`} />
               <div className="my-2 border-t border-[var(--line)]" />
-              <Row label="You pay" value={formatEurExact(quote.total)} strong />
+              <Row label={t('You pay')} value={formatEurExact(quote.total)} strong />
               <Row
-                label={`${owner.name.split(' ')[0]} receives`}
+                label={t('{name} receives', { name: first })}
                 value={formatEurExact(quote.ownerNet)}
                 tone="accent"
               />
@@ -574,8 +577,8 @@ export function Listing() {
 
             <Banner
               tone="warn"
-              title="Nothing is charged yet"
-              body={`Your card is held for the total. ${first} has to accept first, usually within ${owner.responseMins} minutes; if they decline or do not answer, the hold is released.`}
+              title={t('Nothing is charged yet')}
+              body={t('Your card is held for the total. {name} has to accept first, usually within {n} minutes; if they decline or do not answer, the hold is released.', { name: first, n: owner.responseMins })}
             />
           </div>
         )}

@@ -1,6 +1,7 @@
 import type { KeyboardEvent } from "react";
 import type { District } from "../../domain/types.ts";
 import type { City as CityStat } from "../../data/repo.ts";
+import { plural, t } from "../../i18n.ts";
 
 export type MapPin = {
   id: string;
@@ -517,11 +518,11 @@ export function CapacityMap({
 
         <div
           role="group"
-          aria-label="Map level"
+          aria-label={t("Map level")}
           className="veil absolute bottom-3 right-3 flex gap-0.5 rounded-[var(--radius-control)] border border-[var(--line)] p-1"
         >
           {levelBtn("city", city)}
-          {levelBtn("europe", "Europe")}
+          {levelBtn("europe", t("Europe"))}
         </div>
 
         {level === "city" && (
@@ -531,18 +532,18 @@ export function CapacityMap({
                 <span className="pulse-ring absolute inset-0 rounded-full bg-[var(--sky)]" />
                 <span className="relative h-2 w-2 rounded-full bg-[var(--sky)]" />
               </span>
-              Free soon
+              {t('Free soon')}
             </span>
             <span className="inline-flex items-center gap-1.5">
               <span className="h-2 w-2 rounded-full bg-[var(--accent)]" />
-              Free later
+              {t('Free later')}
             </span>
           </div>
         )}
       </div>
       {level === "europe" && (
         <p className="t-sm mt-3 px-1 text-[var(--ink-4)]">
-          Each market is drawn by how much is listed there.
+          {t('Each market is drawn by how much is listed there.')}
         </p>
       )}
     </div>
@@ -652,7 +653,7 @@ function CityView({
       viewBox={`0 0 ${W} ${H}`}
       className="anim-fade block h-auto w-full select-none"
       role="img"
-      aria-label={`Map of ${pins.length} idle listings within ${radiusKm} km of ${origin.name}, ${freeNow} free right now`}
+      aria-label={t('Map of {n} idle listings within {km} km of {place}, {free} free right now', { n: pins.length, km: radiusKm, place: origin.name, free: freeNow })}
     >
       {/* distance rings, what "2.3 km" looks like */}
       {rings.map((r) => (
@@ -860,7 +861,7 @@ function EuropeView({
       viewBox={`0 0 ${W} ${H}`}
       className="anim-fade block h-auto w-full select-none"
       role="img"
-      aria-label={`Map of Europe with ${cityStats.length} cities offering idle capacity`}
+      aria-label={t('Map of Europe with {n} cities offering idle capacity', { n: cityStats.length })}
     >
       {/* graticule every 5° */}
       <g
@@ -898,7 +899,7 @@ function EuropeView({
             key={c.city}
             role="button"
             tabIndex={0}
-            aria-label={`${c.city}, nothing live yet`}
+            aria-label={t('{city}, nothing live yet', { city: c.city })}
             onClick={() => onPick(c.city)}
             onKeyDown={keyOpen(() => onPick(c.city))}
             className="group cursor-pointer outline-none"
@@ -932,7 +933,7 @@ function EuropeView({
             key={c.city}
             role="button"
             tabIndex={0}
-            aria-label={`${c.city}: ${c.listings} ${c.listings === 1 ? 'listing' : 'listings'}`}
+            aria-label={`${c.city}: ${plural(c.listings, '{n} listing', '{n} listings')}`}
             onClick={() => onPick(c.city)}
             onKeyDown={keyOpen(() => onPick(c.city))}
             className="group cursor-pointer outline-none"

@@ -4,6 +4,7 @@ import { PLATFORM_FEE_BPS } from '../../domain/pricing.ts'
 import { Screen } from '../components/AppShell.tsx'
 import { Banner } from '../components/ui.tsx'
 import { NotFound } from './NotFound.tsx'
+import { lang, t } from '../../i18n.ts'
 
 /** The operator's details, from the build (never invented). */
 const env = (k: string) => (import.meta.env[k] as string | undefined)?.trim() || undefined
@@ -15,32 +16,37 @@ const OPERATOR = {
   vat: env('VITE_LEGAL_VAT'),
 }
 const complete = Boolean(OPERATOR.company && OPERATOR.address && OPERATOR.email)
-const operator = OPERATOR.company ?? 'the operator named in the Impressum'
-const contact = OPERATOR.email ?? 'the address in the Impressum'
+// Words, not constants: they follow the language.
+const operatorName = () => OPERATOR.company ?? (lang() === 'de' ? 'der im Impressum genannte Betreiber' : 'the operator named in the Impressum')
+const contactAddr = () => OPERATOR.email ?? (lang() === 'de' ? 'siehe Impressum' : 'the address in the Impressum')
 const FEE = `${PLATFORM_FEE_BPS / 100}%`
+const FEE_DE = `${PLATFORM_FEE_BPS / 100} %`
 
-const PAGES: Record<string, { title: string; body: ReactNode }> = {
-  impressum: { title: 'Impressum', body: <Impressum /> },
-  privacy: { title: 'Privacy Policy', body: <Privacy /> },
-  terms: { title: 'Terms of Use', body: <Terms /> },
-  ranking: { title: 'How ranking works', body: <Ranking /> },
-  report: { title: 'Reporting content', body: <Reporting /> },
+const PAGES: Record<string, { title: string; titleDe: string; body: () => ReactNode }> = {
+  impressum: { title: 'Impressum', titleDe: 'Impressum', body: () => <Impressum /> },
+  privacy: { title: 'Privacy Policy', titleDe: 'Datenschutz', body: () => (lang() === 'de' ? <PrivacyDe /> : <Privacy />) },
+  terms: { title: 'Terms of Use', titleDe: 'AGB', body: () => (lang() === 'de' ? <TermsDe /> : <Terms />) },
+  withdrawal: { title: 'Right of withdrawal', titleDe: 'Widerruf', body: () => (lang() === 'de' ? <WithdrawalDe /> : <Withdrawal />) },
+  ranking: { title: 'How ranking works', titleDe: 'Ranking', body: () => (lang() === 'de' ? <RankingDe /> : <Ranking />) },
+  report: { title: 'Reporting content', titleDe: 'Inhalte melden', body: () => (lang() === 'de' ? <ReportingDe /> : <Reporting />) },
 }
+
+const titleOf = (p: { title: string; titleDe: string }) => (lang() === 'de' ? p.titleDe : p.title)
 
 export function Legal() {
   const { page = '' } = useParams()
   const p = PAGES[page]
   if (!p) return <NotFound />
   return (
-    <Screen title={p.title} back="/profile">
-      <nav aria-label="Legal pages" className="mb-6 flex gap-5 text-[14px] font-semibold">
+    <Screen title={titleOf(p)} back="/profile">
+      <nav aria-label={t('Legal pages')} className="mb-6 flex flex-wrap gap-x-5 gap-y-2 text-[14px] font-semibold">
         {Object.entries(PAGES).map(([key, v]) => (
           <NavLink
             key={key}
             to={`/legal/${key}`}
             className={({ isActive }) => (isActive ? 'text-[var(--ink)] underline underline-offset-4' : 'text-[var(--ink-4)]')}
           >
-            {v.title}
+            {titleOf(v)}
           </NavLink>
         ))}
       </nav>
@@ -48,12 +54,56 @@ export function Legal() {
         <div className="mb-6">
           <Banner
             tone="warn"
-            title="Operator details to be completed before launch"
-            body="The company name, address and contact for this service are not configured in this build."
+            title={t('Operator details to be completed before launch')}
+            body={t('The company name, address and contact for this service are not configured in this build.')}
           />
         </div>
       )}
-      <article className="legal space-y-4 pb-8 text-[15px] leading-[24px] text-[var(--ink-2)]">{p.body}</article>
+      <article className="legal space-y-4 pb-8 text-[15px] leading-[24px] text-[var(--ink-2)]">{p.body()}</article>
+    </Screen>
+  )
+}
+
+/** Public, signed in or not: how to delete an account (Google Play asks for this URL). */
+export function AccountDeletion() {
+  const de = lang() === 'de'
+  return (
+    <Screen title={de ? 'Konto löschen' : 'Delete your Cappy account'} back="/profile">
+      <article className="legal space-y-4 pb-8 text-[15px] leading-[24px] text-[var(--ink-2)]">
+        {de ? (
+          <>
+            <p>So löschst du dein Konto, in der App oder auf cappy.app:</p>
+            <ol className="list-decimal space-y-2 pl-5">
+              <li>Melde dich an.</li>
+              <li>Öffne <em>Du</em> (Profil).</li>
+              <li>Wähle <em>Konto löschen</em> und bestätige.</li>
+            </ol>
+            <p>
+              Dein Profil wird anonymisiert, deine Inserate werden sofort entfernt, deine Anmeldung wird gelöscht.
+              Solange eine Buchung noch offen ist, schließe sie zuerst ab oder storniere sie. Buchungen und Zahlungen
+              bewahren wir ohne deinen Namen so lange auf, wie Steuer- und Handelsrecht es verlangen (in Deutschland
+              bis zu zehn Jahre). Vorher kannst du unter <em>Du → Deine Daten</em> eine Kopie deiner Daten herunterladen.
+            </p>
+            <p>Kannst du dich nicht mehr anmelden? Schreib uns (Kontakt: {contactAddr()}); wir löschen dein Konto nach Prüfung.</p>
+          </>
+        ) : (
+          <>
+            <p>To delete your account, in the app or on cappy.app:</p>
+            <ol className="list-decimal space-y-2 pl-5">
+              <li>Sign in.</li>
+              <li>Open <em>You</em> (your profile).</li>
+              <li>Choose <em>Delete account</em> and confirm.</li>
+            </ol>
+            <p>
+              Your profile is anonymised, your listings are taken down at once and your sign-in is deleted. If a booking
+              is still open, finish or cancel it first. Bookings and payments are kept without your name for as long as
+              tax and commercial law requires (up to ten years in Germany). Before deleting, you can download a copy of
+              your data under <em>You → Your data</em>.
+            </p>
+            <p>Cannot sign in any more? Write to {contactAddr()} and we will delete the account once we have checked it is yours.</p>
+          </>
+        )}
+      </article>
     </Screen>
   )
 }
@@ -79,7 +129,7 @@ function Impressum() {
           E-Mail: <a href={`mailto:${OPERATOR.email}`}>{OPERATOR.email}</a>
         </p>
       ) : (
-        <p>The operator's name, address and email are added here before launch.</p>
+        <p>{t("The operator's name, address and email are added here before launch.")}</p>
       )}
       {OPERATOR.register && <p>{OPERATOR.register}</p>}
       {OPERATOR.vat && <p>USt-IdNr.: {OPERATOR.vat}</p>}
@@ -101,7 +151,7 @@ function Privacy() {
       </p>
       <H>Who is responsible</H>
       <p>
-        The controller is {operator}. Contact: {contact}.
+        The controller is {operatorName()}. Contact: {contactAddr()}.
       </p>
       <H>What we process and why</H>
       <ul className="list-disc space-y-2 pl-5">
@@ -145,7 +195,7 @@ function Privacy() {
         You can access, correct, export and delete your data. Export and deletion are in the app
         under <em>You → Your data</em>. You can also object to processing based on legitimate
         interest, restrict processing, and complain to a data protection authority. Write to{' '}
-        {contact} for anything else.
+        {contactAddr()} for anything else.
       </p>
     </>
   )
@@ -158,7 +208,7 @@ function Terms() {
       <p>
         Cappy connects owners of idle capacity (machines, workshops, vehicles, space) with people who
         want to use it for a while. The rental contract is between the owner and the buyer; Cappy
-        runs the platform and handles the payment. Cappy is operated by {operator}.
+        runs the platform and handles the payment. Cappy is operated by {operatorName()}.
       </p>
       <H>Accounts</H>
       <p>
@@ -190,10 +240,11 @@ function Terms() {
         “Withdraw from this booking”. You get back everything you paid, in full, within 14 days, to
         the card you paid with. Where you asked for the service to start within the withdrawal
         period and it has started, you pay only for the part already provided. You can also withdraw
-        by telling {operator} at {contact}, for example with this sentence: “I hereby withdraw from
+        by telling {operatorName()} at {contactAddr()}, for example with this sentence: “I hereby withdraw from
         the contract for the following booking: [booking reference], booked on [date], [name,
         address].” Bookings from private owners have no statutory right of withdrawal; you can
-        still cancel before the start for a full refund under these terms.
+        still cancel before the start for a full refund under these terms. The full instructions and the model form
+        are under <NavLink to="/legal/withdrawal" className="underline">Right of withdrawal</NavLink>.
       </p>
       <H>Reviews, ranking and reporting</H>
       <p>
@@ -251,8 +302,262 @@ function Reporting() {
         we tell the person affected why, and how to disagree.
       </p>
       <p>
-        Authorities and anyone else can reach us at {contact}. If someone is in immediate danger, call 112
+        Authorities and anyone else can reach us at {contactAddr()}. If someone is in immediate danger, call 112
         first.
+      </p>
+    </>
+  )
+}
+
+function Withdrawal() {
+  return (
+    <>
+      <p>
+        This applies when you book as a consumer from an owner who is a business (shown as “Business” on the owner's
+        card). Bookings from private people carry no statutory right of withdrawal; you can still cancel them before the
+        start for a full refund under our terms.
+      </p>
+      <H>Right of withdrawal</H>
+      <p>
+        You have the right to withdraw from this contract within fourteen days without giving any reason. The
+        withdrawal period is fourteen days from the day the contract is concluded (when the owner accepts your
+        booking). To exercise it, press “Withdraw from this booking” on the booking, or tell {operatorName()} ({contactAddr()})
+        by a clear statement, for example by email. You may use the model form below; it is not obligatory. It is enough
+        to send your statement before the period ends.
+      </p>
+      <H>Effects of withdrawal</H>
+      <p>
+        If you withdraw, we refund all payments received from you without undue delay and at the latest within fourteen
+        days, using the same means of payment you used, at no cost to you. If you asked for the service to begin during
+        the withdrawal period, you pay an amount proportionate to what was already provided up to the moment you told us
+        of the withdrawal. Your right of withdrawal ends once the booked service has been fully provided.
+      </p>
+      <H>Model withdrawal form</H>
+      <p className="whitespace-pre-line rounded-[var(--radius-card)] bg-[var(--sunken)] p-4">
+        {`To ${OPERATOR.company ?? '[operator]'}, ${OPERATOR.address ?? '[address]'}, ${OPERATOR.email ?? '[email]'}:
+I/We (*) hereby give notice that I/we (*) withdraw from my/our (*) contract for the provision of the following service:
+Booking reference:
+Ordered on (*) / received on (*):
+Name of consumer(s):
+Address of consumer(s):
+Signature of consumer(s) (only if this form is notified on paper):
+Date:
+(*) Delete as appropriate.`}
+      </p>
+    </>
+  )
+}
+
+function WithdrawalDe() {
+  return (
+    <>
+      <p>
+        Das gilt, wenn du als Verbraucher bei einem Anbieter buchst, der Unternehmer ist (auf der Karte als
+        „Unternehmen“ gekennzeichnet). Buchungen bei Privatpersonen haben kein gesetzliches Widerrufsrecht; du kannst sie
+        nach unseren AGB aber vor Beginn stornieren und bekommst alles zurück.
+      </p>
+      <H>Widerrufsbelehrung</H>
+      <p>
+        <strong>Widerrufsrecht.</strong> Du hast das Recht, binnen vierzehn Tagen ohne Angabe von Gründen diesen Vertrag
+        zu widerrufen. Die Widerrufsfrist beträgt vierzehn Tage ab dem Tag des Vertragsschlusses (wenn der Anbieter deine
+        Buchung annimmt). Um dein Widerrufsrecht auszuüben, tippe bei der Buchung auf „Von dieser Buchung zurücktreten“
+        oder informiere uns (Kontakt: {contactAddr()}) mittels einer eindeutigen Erklärung, zum Beispiel per E-Mail,
+        über deinen Entschluss, diesen Vertrag zu widerrufen. Du kannst dafür das unten stehende Muster-Widerrufsformular
+        verwenden, das jedoch nicht vorgeschrieben ist. Zur Wahrung der Widerrufsfrist reicht es aus, dass du die
+        Mitteilung vor Ablauf der Frist absendest.
+      </p>
+      <H>Folgen des Widerrufs</H>
+      <p>
+        Wenn du diesen Vertrag widerrufst, zahlen wir dir alle Zahlungen, die wir von dir erhalten haben, unverzüglich und
+        spätestens binnen vierzehn Tagen ab dem Tag zurück, an dem die Mitteilung über deinen Widerruf bei uns eingegangen
+        ist. Für diese Rückzahlung verwenden wir dasselbe Zahlungsmittel, das du bei der ursprünglichen Transaktion
+        eingesetzt hast; dir werden dafür keine Entgelte berechnet. Hast du verlangt, dass die Dienstleistung während der
+        Widerrufsfrist beginnen soll, so hast du uns einen angemessenen Betrag zu zahlen, der dem Anteil der bis zu dem
+        Zeitpunkt, zu dem du uns von der Ausübung des Widerrufsrechts unterrichtest, bereits erbrachten Leistungen
+        entspricht. Das Widerrufsrecht erlischt, wenn die gebuchte Leistung vollständig erbracht ist.
+      </p>
+      <H>Muster-Widerrufsformular</H>
+      <p className="whitespace-pre-line rounded-[var(--radius-card)] bg-[var(--sunken)] p-4">
+        {`An ${OPERATOR.company ?? '[Betreiber]'}, ${OPERATOR.address ?? '[Anschrift]'}, ${OPERATOR.email ?? '[E-Mail]'}:
+Hiermit widerrufe(n) ich/wir (*) den von mir/uns (*) abgeschlossenen Vertrag über die Erbringung der folgenden Dienstleistung:
+Buchungsnummer:
+Bestellt am (*) / erhalten am (*):
+Name des/der Verbraucher(s):
+Anschrift des/der Verbraucher(s):
+Unterschrift des/der Verbraucher(s) (nur bei Mitteilung auf Papier):
+Datum:
+(*) Unzutreffendes streichen.`}
+      </p>
+    </>
+  )
+}
+
+function PrivacyDe() {
+  return (
+    <>
+      <p>
+        Diese Erklärung beschreibt, welche personenbezogenen Daten Cappy verarbeitet, warum, und welche Rechte du hast.
+        Cappy ist ein Marktplatz, auf dem Menschen und Unternehmen ungenutzte Kapazität stundenweise vermieten.
+      </p>
+      <H>Verantwortlicher</H>
+      <p>
+        Verantwortlich ist {operatorName()}. Kontakt: {contactAddr()}.
+      </p>
+      <H>Was wir verarbeiten und warum</H>
+      <ul className="list-disc space-y-2 pl-5">
+        <li>
+          <strong>Konto</strong>: deine E-Mail-Adresse und dein Passwort (bei unserem Anmeldedienst gespeichert), um dein
+          Konto einzurichten und zu schützen. Rechtsgrundlage: Vertragserfüllung (Art. 6 Abs. 1 lit. b DSGVO).
+        </li>
+        <li>
+          <strong>Profil und Inserate</strong>: dein Name, dein Stadtteil, ob du Privatperson oder Unternehmen bist, was
+          du inserierst (Beschreibungen, Fotos, Preise, freie Zeiten, die Übergabeadresse) und deine Bewertungen, um den
+          Marktplatz zu betreiben. Art. 6 Abs. 1 lit. b DSGVO.
+        </li>
+        <li>
+          <strong>Buchungen und Zahlungen</strong>: was du gebucht oder vermietet hast, wann, zu welchem Preis, und der
+          Zahlungsstatus. Karten- und Bankdaten gibst du bei Stripe ein; sie erreichen uns nie. Art. 6 Abs. 1 lit. b
+          DSGVO sowie gesetzliche Aufbewahrungspflichten (Art. 6 Abs. 1 lit. c DSGVO).
+        </li>
+        <li>
+          <strong>Nachrichten, Übergabefotos und Meldungen</strong>: was du über eine Buchung schreibst, Fotos bei
+          Übergabe und Rückgabe und Meldungen an uns, um Buchungen abzuwickeln, Streitfälle zu klären und rechtswidrige
+          Inhalte zu bearbeiten. Art. 6 Abs. 1 lit. b und c DSGVO.
+        </li>
+        <li>
+          <strong>Identitätsprüfung</strong> (nur für hochwertige Buchungen): Stripe prüft ein Ausweisdokument und ein
+          Selfie; wir erhalten nur das Ergebnis. Art. 6 Abs. 1 lit. b und f DSGVO.
+        </li>
+        <li>
+          <strong>E-Mails und Push-Mitteilungen</strong>: Bestätigungscodes und Neuigkeiten zu Buchungen. Art. 6 Abs. 1
+          lit. b DSGVO.
+        </li>
+        <li>
+          <strong>Technische Daten</strong>: IP-Adresse, Gerät und Protokolle der Anfragen, um den Dienst sicher und
+          funktionsfähig zu halten, bis zu 90 Tage lang. Berechtigtes Interesse (Art. 6 Abs. 1 lit. f DSGVO).
+        </li>
+      </ul>
+      <H>Wer die Daten für uns verarbeitet</H>
+      <ul className="list-disc space-y-2 pl-5">
+        <li>Amazon Web Services EMEA (Hosting, Anmeldung mit Amazon Cognito, E-Mail mit Amazon SES) in der EU (Frankfurt, eu-central-1).</li>
+        <li>Stripe Payments Europe (Kartenzahlungen, Auszahlungen an Anbieter, Identitätsprüfung), als eigenständig Verantwortlicher für Zahlungsdaten.</li>
+        <li>Apple und Google, wenn du Push-Mitteilungen in der App erlaubst.</li>
+      </ul>
+      <p>Wir verkaufen deine Daten nicht und nutzen sie nicht für Werbung.</p>
+      <H>Wie lange wir sie speichern</H>
+      <p>
+        Konto und Profil, solange du das Konto hast. Löschst du es, wird dein Profil anonymisiert und deine Inserate
+        werden sofort entfernt. Buchungen und Zahlungen bewahren wir ohne deinen Namen so lange auf, wie Steuer- und
+        Handelsrecht es verlangen (in Deutschland bis zu zehn Jahre).
+      </p>
+      <H>Deine Rechte</H>
+      <p>
+        Du kannst Auskunft über deine Daten verlangen, sie berichtigen, exportieren und löschen lassen. Export und Löschung
+        findest du in der App unter <em>Du → Deine Daten</em>. Du kannst außerdem einer Verarbeitung auf Grundlage
+        berechtigter Interessen widersprechen, die Verarbeitung einschränken lassen und dich bei einer
+        Datenschutz-Aufsichtsbehörde beschweren. Für alles andere schreib uns (Kontakt: {contactAddr()}).
+      </p>
+    </>
+  )
+}
+
+function TermsDe() {
+  return (
+    <>
+      <H>Was Cappy ist</H>
+      <p>
+        Cappy bringt Anbieter ungenutzter Kapazität (Maschinen, Werkstätten, Fahrzeuge, Flächen) mit Menschen zusammen, die
+        sie für eine Weile nutzen wollen. Der Mietvertrag kommt zwischen Anbieter und Buchendem zustande; Cappy betreibt
+        die Plattform und wickelt die Zahlung ab. Betreiber von Cappy ist {operatorName()}.
+      </p>
+      <H>Konten</H>
+      <p>
+        Du machst richtige Angaben und schützt deine Anmeldedaten. Du kannst dein Konto jederzeit in der App löschen,
+        sobald keine Buchung mehr offen ist.
+      </p>
+      <H>Inserieren</H>
+      <p>
+        Anbieter beschreiben ihr Angebot wahrheitsgemäß, inserieren nur, was sie vermieten dürfen, halten es sicher
+        nutzbar und sind zu den angegebenen Zeiten da (oder stellen es bereit). Bezahlt wird nur über Cappy; Zahlungen
+        außerhalb der Plattform zu verlangen, ist nicht erlaubt.
+      </p>
+      <H>Buchen und Bezahlen</H>
+      <ul className="list-disc space-y-2 pl-5">
+        <li>Wenn du eine Buchung anfragst, wird der Preis auf deiner Karte reserviert, nicht belastet.</li>
+        <li>Belastet wird die Karte, wenn der Anbieter annimmt. Lehnt er ab oder antwortet nicht rechtzeitig, wird die Reservierung aufgehoben.</li>
+        <li>Der Anbieter wird bezahlt, wenn die Buchung abgeschlossen ist. Cappy behält eine Gebühr von {FEE_DE}; sie ist im angezeigten Preis enthalten.</li>
+      </ul>
+      <H>Stornieren und Probleme</H>
+      <p>
+        Beide Seiten können stornieren, bevor die gebuchte Zeit beginnt; der Buchende bekommt dann alles zurück. Hat sie
+        begonnen, kann der Buchende stattdessen ein Problem melden: Die Auszahlung an den Anbieter wird zurückgehalten,
+        während Cappy den Fall prüft und über Erstattung oder Auszahlung entscheidet. Gesetzliche Rechte bleiben unberührt.
+      </p>
+      <H>Widerrufsrecht</H>
+      <p>
+        Buchst du als Verbraucher bei einem Anbieter, der Unternehmer ist, hast du ein gesetzliches Widerrufsrecht. Die
+        Einzelheiten und das Muster-Widerrufsformular findest du unter <NavLink to="/legal/withdrawal" className="underline">Widerruf</NavLink>.
+        Buchungen bei Privatpersonen haben kein gesetzliches Widerrufsrecht; vor Beginn kannst du sie trotzdem nach diesen
+        AGB stornieren und bekommst alles zurück.
+      </p>
+      <H>Bewertungen, Ranking und Meldungen</H>
+      <p>
+        Bewertungen stammen nur aus abgeschlossenen Buchungen und werden vom Buchenden geschrieben. Wie Ergebnisse sortiert
+        werden, erklären wir unter „Ranking“; bessere Platzierungen kann niemand kaufen. Jeder kann ein Inserat, ein Profil,
+        eine Nachricht oder eine Bewertung mit „Melden“ melden; wir teilen der meldenden Person unsere Entscheidung mit und
+        begründen sie gegenüber jedem, dessen Inhalte wir entfernen oder dessen Konto wir einschränken.
+      </p>
+      <H>Haftung</H>
+      <p>
+        Anbieter sind verantwortlich für das, was sie vermieten, Buchende für die Nutzung. Cappy haftet unbeschränkt bei
+        Vorsatz und grober Fahrlässigkeit sowie bei Verletzung von Leben, Körper oder Gesundheit; im Übrigen nur bei
+        Verletzung wesentlicher Vertragspflichten, begrenzt auf den vertragstypischen, vorhersehbaren Schaden.
+      </p>
+      <H>Änderungen und Recht</H>
+      <p>
+        Über Änderungen dieser AGB informieren wir dich vorab per E-Mail. Es gilt deutsches Recht; der Schutz, den dir als
+        Verbraucher das Recht deines Wohnsitzlandes gibt, bleibt unberührt.
+      </p>
+    </>
+  )
+}
+
+function RankingDe() {
+  return (
+    <>
+      <p>
+        Bei einer Suche sortiert Cappy die Ergebnisse danach, wie gut jedes Inserat zu deiner Anfrage passt. Die wichtigsten
+        Kriterien, ungefähr nach Gewicht:
+      </p>
+      <ul className="list-disc space-y-2 pl-5">
+        <li><strong>Zeitliche Passung</strong>: ob das Inserat frei ist, wenn du es brauchst, und wie bald.</li>
+        <li><strong>Entfernung</strong> vom Ort deiner Suche.</li>
+        <li><strong>Preis</strong> für den beschriebenen Auftrag, Gebühr inklusive.</li>
+        <li><strong>Bewertung</strong> aus abgeschlossenen Buchungen.</li>
+        <li><strong>Zuverlässigkeit</strong>: pünktlich fertig, schnelle Antworten, keine Stornierungen.</li>
+      </ul>
+      <p>
+        Du kannst nach Preis, Entfernung oder frühestem Termin umsortieren. Eine bessere Position kann niemand kaufen: Cappy
+        hat kein bezahltes Ranking und keine Werbung in den Ergebnissen. Inserate von Anbietern, die noch keine
+        Auszahlungen empfangen können, und nach unseren AGB entfernte Inserate erscheinen nicht.
+      </p>
+    </>
+  )
+}
+
+function ReportingDe() {
+  return (
+    <>
+      <p>
+        Siehst du etwas Rechtswidriges, Gefährliches oder etwas, das gegen unsere AGB verstößt? Nutze „Melden“ beim
+        Inserat, Profil, bei der Nachricht oder Bewertung. Du brauchst dafür kein Konto; ohne Konto hinterlässt du eine
+        E-Mail-Adresse, damit wir antworten können. Wir bestätigen jede Meldung, prüfen sie und teilen dir unsere
+        Entscheidung mit. Entfernen wir Inhalte oder schränken wir ein Konto ein, sagen wir der betroffenen Person, warum,
+        und wie sie widersprechen kann.
+      </p>
+      <p>
+        Behörden und alle anderen erreichen uns ebenfalls (Kontakt: {contactAddr()}). Ist jemand in unmittelbarer Gefahr, ruf zuerst die
+        112 an.
       </p>
     </>
   )

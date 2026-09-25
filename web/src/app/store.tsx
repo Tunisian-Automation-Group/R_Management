@@ -5,6 +5,7 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useReducer,
 import type { CategoryId, Requirement } from '../domain/types.ts'
 import { category } from '../domain/categories.ts'
 import { useSession } from '../data/auth.ts'
+import { t } from '../i18n.ts'
 
 export type Search = {
   /** Where the user is searching from. A district name. */
@@ -130,7 +131,7 @@ export function useMe(): string {
 
 /** Say what went wrong in words a person can act on. */
 export const messageOf = (err: unknown) =>
-  err instanceof Error && err.message ? err.message : 'Something went wrong. Please try again.'
+  err instanceof Error && err.message ? err.message : t('Something went wrong. Please try again.')
 
 /** The search turned into something the matcher understands. */
 export function buildRequirement(search: Search, now: Date): Requirement | null {

@@ -23,6 +23,7 @@ import {
 import { DistrictSelect } from '../components/DistrictSelect.tsx'
 import { NotFound } from './NotFound.tsx'
 import { range } from '../format.ts'
+import { lang, locale, plural, t } from '../../i18n.ts'
 
 const MATERIALS: Material[] = [
   'PLA', 'PETG', 'ABS', 'ASA', 'TPU', 'Resin',
@@ -48,6 +49,8 @@ const TAKES_MATERIALS: CategoryId[] = ['fabrication', 'additive']
 
 /** "List your 3D printing", "List your event & AV": lowercase unless it starts an acronym. */
 function listYour(label: string): string {
+  // German nouns keep their capital.
+  if (lang() === 'de') return label
   return /^[A-Z][a-z]/.test(label) ? label[0].toLowerCase() + label.slice(1) : label
 }
 
@@ -75,8 +78,7 @@ const AVAILABILITY: { id: Availability; label: string; detail: string; from: num
  */
 type CustomWindow = { from: string; until: string; start: string; end: string }
 
-/** Every day in the range, at the given local hours. */
-const WEEKDAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
+const weekday = (d: Date) => d.toLocaleDateString(locale(), { weekday: 'short' })
 
 /** Longest range the form accepts. Beyond a quarter, nobody knows their idle time. */
 const MAX_CUSTOM_DAYS = 92
@@ -100,7 +102,7 @@ function parseClock(value: string): number | null {
 const isoDay = (d: Date) =>
   `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
 
-const shortDate = (d: Date) => d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })
+const shortDate = (d: Date) => d.toLocaleDateString(locale(), { day: 'numeric', month: 'short' })
 
 function defaultCustom(): CustomWindow {
   const today = new Date()
@@ -115,14 +117,14 @@ function customProblem(c: CustomWindow): string | null {
   const until = parseDay(c.until)
   const start = parseClock(c.start)
   const end = parseClock(c.end)
-  if (!from || !until) return 'Pick a first and a last day.'
-  if (until < from) return 'The last day comes before the first.'
+  if (!from || !until) return t('Pick a first and a last day.')
+  if (until < from) return t('The last day comes before the first.')
   if ((until.getTime() - from.getTime()) / 86_400_000 > MAX_CUSTOM_DAYS) {
-    return `Keep it under ${MAX_CUSTOM_DAYS} days. You can add more later.`
+    return t('Keep it under {n} days. You can add more later.', { n: MAX_CUSTOM_DAYS })
   }
-  if (start === null || end === null) return 'Pick the hours it is free on those days.'
-  if (end <= start) return 'It has to stop being free after it starts being free.'
-  if (end - start < 0.5) return 'Give people at least half an hour.'
+  if (start === null || end === null) return t('Pick the hours it is free on those days.')
+  if (end <= start) return t('It has to stop being free after it starts being free.')
+  if (end - start < 0.5) return t('Give people at least half an hour.')
   return null
 }
 
@@ -182,7 +184,7 @@ function ListingForm({ edit }: { edit?: repo.ListingView }) {
   const [address, setAddress] = useState(edit?.address ?? '')
   const [rate, setRate] = useState(was?.ratePerHour ?? 400)
   const [extraFee, setExtraFee] = useState(wasWindow?.extraFee ?? 0)
-  const [extraLabel, setExtraLabel] = useState(wasWindow && wasWindow.extraFee > 0 ? wasWindow.extraLabel : 'Consumables')
+  const [extraLabel, setExtraLabel] = useState(wasWindow && wasWindow.extraFee > 0 ? wasWindow.extraLabel : t('Consumables'))
   const [minHours, setMinHours] = useState(wasWindow?.minHours ?? 1)
   const [maxHours, setMaxHours] = useState(wasWindow?.maxHours ?? 6)
   const [machine, setMachine] = useState(wasBatch?.machine ?? '')
@@ -212,15 +214,15 @@ function ListingForm({ edit }: { edit?: repo.ListingView }) {
   // shouts at people while they are still typing the first word.
   const validate = (): Errors => {
     const e: Errors = {}
-    if (title.trim().length < 3) e.title = 'Give it a name people will recognise.'
-    if (blurb.trim().length < 10) e.blurb = 'One line on condition or what it is good for.'
-    if (rate <= 0) e.rate = 'Set a price above zero.'
+    if (title.trim().length < 3) e.title = t('Give it a name people will recognise.')
+    if (blurb.trim().length < 10) e.blurb = t('One line on condition or what it is good for.')
+    if (rate <= 0) e.rate = t('Set a price above zero.')
     if (instructions.trim().length < 10) {
-      e.instructions = 'Say how someone actually gets hold of it.'
+      e.instructions = t('Say how someone actually gets hold of it.')
     }
-    if (address.trim().length < 5) e.address = 'The street address where it is collected or used.'
-    if (isBatch && machine.trim().length < 2) e.machine = 'Which machine is it?'
-    if (photos.some((p) => !p.url && !p.error)) e.photos = 'Give the photos a moment to finish uploading.'
+    if (address.trim().length < 5) e.address = t('The street address where it is collected or used.')
+    if (isBatch && machine.trim().length < 2) e.machine = t('Which machine is it?')
+    if (photos.some((p) => !p.url && !p.error)) e.photos = t('Give the photos a moment to finish uploading.')
     if (availability === 'custom') {
       const problem = customProblem(custom)
       if (problem) e.availability = problem
@@ -253,7 +255,7 @@ function ListingForm({ edit }: { edit?: repo.ListingView }) {
           const url = await repo.uploadPhoto(await shrink(file), file.name.replace(/\.[^.]*$/, '') + '.jpg')
           setPhotos((prev) => prev.map((d) => (d.key === key ? { ...d, url } : d)))
         } catch (err) {
-          const error = err instanceof Error ? err.message : 'Upload failed'
+          const error = err instanceof Error ? err.message : t('Upload failed')
           setPhotos((prev) => prev.map((d) => (d.key === key ? { ...d, error } : d)))
         }
       }),
@@ -386,7 +388,7 @@ function ListingForm({ edit }: { edit?: repo.ListingView }) {
           minHours,
           maxHours,
           extraFee,
-          extraLabel: extraFee > 0 ? extraLabel.trim() || 'Consumables' : 'No extras',
+          extraLabel: extraFee > 0 ? extraLabel.trim() || t('Consumables') : t('No extras'),
         }
 
     setSaving(true)
@@ -400,11 +402,11 @@ function ListingForm({ edit }: { edit?: repo.ListingView }) {
         await Promise.all(
           [['myListings'], ['listing', was.id], ['offers', was.id]].map((queryKey) => qc.invalidateQueries({ queryKey })),
         )
-        toast(`${listing.title} updated`)
+        toast(t('{title} updated', { title: listing.title }))
       } else {
         await repo.addListing(listing, buildSlots(), address.trim())
         await qc.invalidateQueries({ queryKey: ['myListings'] })
-        toast(`${listing.title} is live`)
+        toast(t('{title} is live', { title: listing.title }))
       }
       nav('/earn', { replace: true })
     } catch (err) {
@@ -420,8 +422,8 @@ function ListingForm({ edit }: { edit?: repo.ListingView }) {
       <Screen
         back="/earn"
         eyebrow="New listing"
-        title="What are you lending?"
-        sub="Pick the closest thing. You can be specific on the next screen."
+        title={t('What are you lending?')}
+        sub={t('Pick the closest thing. You can be specific on the next screen.')}
       >
         <ul className="ruled border-t border-[var(--line)]">
           {CATEGORIES.map((c) => (
@@ -461,9 +463,9 @@ function ListingForm({ edit }: { edit?: repo.ListingView }) {
   return (
     <Screen
       back="/earn"
-      eyebrow={was ? 'Edit listing' : 'New listing'}
-      title={was ? was.title : `List your ${listYour(meta!.label)}`}
-      sub={was ? 'Changes show on the listing at once. Bookings already made keep what was agreed.' : 'Four minutes now, and the idle hours start paying.'}
+      eyebrow={was ? t('Edit listing') : t('New listing')}
+      title={was ? was.title : t('List your {what}', { what: listYour(meta!.label) })}
+      sub={was ? t('Changes show on the listing at once. Bookings already made keep what was agreed.') : t('Four minutes now, and the idle hours start paying.')}
       footer={
         <Button
           block
@@ -474,7 +476,7 @@ function ListingForm({ edit }: { edit?: repo.ListingView }) {
           onMouseDown={(e) => e.preventDefault()}
           onClick={() => void submit()}
         >
-          {was ? 'Save changes' : 'Publish listing'}
+          {was ? t('Save changes') : t('Publish listing')}
         </Button>
       }
     >
@@ -490,20 +492,20 @@ function ListingForm({ edit }: { edit?: repo.ListingView }) {
       </button>
 
       <div className="space-y-6">
-        <Field label="Name it" error={errorFor('title')} htmlFor="f-title">
+        <Field label={t('Name it')} error={errorFor('title')} htmlFor="f-title">
           <Input
             id="f-title"
             value={title}
             invalid={Boolean(errorFor('title'))}
             onChange={(e) => setTitle(e.target.value)}
             onBlur={blur('title')}
-            placeholder={example.title}
+            placeholder={t(example.title)}
           />
         </Field>
 
         <Field
-          label="Photos"
-          hint="Your own pictures of the actual thing. The first one is the cover."
+          label={t('Photos')}
+          hint={t('Your own pictures of the actual thing. The first one is the cover.')}
           error={errorFor('photos')}
         >
           <div className="grid grid-cols-3 gap-2">
@@ -521,12 +523,12 @@ function ListingForm({ edit }: { edit?: repo.ListingView }) {
                   />
                   {pending && (
                     <span className="absolute inset-0 grid place-items-center text-[12px] font-semibold text-[var(--ink-2)]">
-                      Uploading…
+                      {t('Uploading…')}
                     </span>
                   )}
                   {i === 0 && p.url && (
                     <span className="absolute left-2 top-2 rounded-full bg-[var(--ink)] px-2 py-0.5 text-[11px] font-semibold text-[var(--on-inverse)]">
-                      Cover
+                      {t('Cover')}
                     </span>
                   )}
                   {p.error && (
@@ -536,7 +538,7 @@ function ListingForm({ edit }: { edit?: repo.ListingView }) {
                   )}
                   <button
                     type="button"
-                    aria-label="Remove photo"
+                    aria-label={t('Remove photo')}
                     onClick={() => removePhoto(p.key)}
                     className="tap absolute right-1.5 top-1.5 grid h-7 w-7 place-items-center rounded-full bg-[var(--ink)] text-[var(--on-inverse)]"
                   >
@@ -548,7 +550,7 @@ function ListingForm({ edit }: { edit?: repo.ListingView }) {
                       onClick={() => makeCover(p.key)}
                       className="absolute inset-x-1.5 bottom-1.5 rounded-full bg-white/90 py-1 text-[11px] font-semibold text-[var(--ink)]"
                     >
-                      Make cover
+                      {t('Make cover')}
                     </button>
                   )}
                 </div>
@@ -562,7 +564,7 @@ function ListingForm({ edit }: { edit?: repo.ListingView }) {
               >
                 <span className="flex flex-col items-center gap-1 text-[12px] font-semibold">
                   <Icon name="camera" size={20} strokeWidth={1.8} />
-                  {photos.length ? 'Add another' : 'Add photos'}
+                  {photos.length ? t('Add another') : t('Add photos')}
                 </span>
               </button>
             )}
@@ -573,7 +575,7 @@ function ListingForm({ edit }: { edit?: repo.ListingView }) {
             accept="image/*"
             multiple
             className="sr-only"
-            aria-label="Choose photos"
+            aria-label={t('Choose photos')}
             onChange={(e) => {
               void addPhotos(e.target.files)
               e.target.value = ''
@@ -582,8 +584,8 @@ function ListingForm({ edit }: { edit?: repo.ListingView }) {
         </Field>
 
         <Field
-          label="One line about it"
-          hint="What a neighbour would want to know before asking."
+          label={t('One line about it')}
+          hint={t('What a neighbour would want to know before asking.')}
           error={errorFor('blurb')}
           htmlFor="f-blurb"
         >
@@ -594,25 +596,25 @@ function ListingForm({ edit }: { edit?: repo.ListingView }) {
             invalid={Boolean(errorFor('blurb'))}
             onChange={(e) => setBlurb(e.target.value)}
             onBlur={blur('blurb')}
-            placeholder={example.blurb}
+            placeholder={t(example.blurb)}
           />
         </Field>
 
         {isBatch && (
           <>
-            <Field label="Machine" error={errorFor('machine')} htmlFor="f-machine">
+            <Field label={t('Machine')} error={errorFor('machine')} htmlFor="f-machine">
               <Input
                 id="f-machine"
                 value={machine}
                 invalid={Boolean(errorFor('machine'))}
                 onChange={(e) => setMachine(e.target.value)}
                 onBlur={blur('machine')}
-                placeholder={example.machine ?? example.title}
+                placeholder={t(example.machine ?? example.title)}
               />
             </Field>
 
             {categoryId && TAKES_MATERIALS.includes(categoryId) && (
-            <Field label="Materials you stock" hint="Tap all that apply, if any.">
+            <Field label={t('Materials you stock')} hint={t('Tap all that apply, if any.')}>
               <div className="flex flex-wrap gap-2">
                 {MATERIALS.map((m) => (
                   <Chip
@@ -624,7 +626,7 @@ function ListingForm({ edit }: { edit?: repo.ListingView }) {
                       )
                     }
                   >
-                    {m}
+                    {t(m)}
                   </Chip>
                 ))}
               </div>
@@ -632,8 +634,8 @@ function ListingForm({ edit }: { edit?: repo.ListingView }) {
             )}
 
             <Field
-              label="Parts per hour"
-              hint="Roughly, once it is set up. This is what turns a quantity into a delivery date."
+              label={t('Parts per hour')}
+              hint={t('Roughly, once it is set up. This is what turns a quantity into a delivery date.')}
               htmlFor="f-throughput"
             >
               <Input
@@ -645,7 +647,7 @@ function ListingForm({ edit }: { edit?: repo.ListingView }) {
               />
             </Field>
 
-            <Field label="Setup time" hint="Hours to get a job going, before the first part." htmlFor="f-setup-hours">
+            <Field label={t('Setup time')} hint={t('Hours to get a job going, before the first part.')} htmlFor="f-setup-hours">
               <Input
                 id="f-setup-hours"
                 inputMode="decimal"
@@ -656,11 +658,11 @@ function ListingForm({ edit }: { edit?: repo.ListingView }) {
             </Field>
 
             <fieldset>
-              <legend className="t-label">Largest job it takes (mm)</legend>
+              <legend className="t-label">{t('Largest job it takes (mm)')}</legend>
               <div className="mt-2 grid grid-cols-3 gap-2">
                 {(['x', 'y', 'z'] as const).map((axis) => (
                   <label key={axis} className="block">
-                    <span className="t-sm text-[var(--ink-3)]">{{ x: 'Length', y: 'Width', z: 'Height' }[axis]}</span>
+                    <span className="t-sm text-[var(--ink-3)]">{t({ x: 'Length', y: 'Width', z: 'Height' }[axis])}</span>
                     <Input
                       inputMode="numeric"
                       className="tnum"
@@ -674,7 +676,7 @@ function ListingForm({ edit }: { edit?: repo.ListingView }) {
           </>
         )}
 
-        <Field label="Where is it?" htmlFor="f-district">
+        <Field label={t('Where is it?')} htmlFor="f-district">
           <DistrictSelect
             id="f-district"
             districts={districts.data ?? {}}
@@ -684,8 +686,8 @@ function ListingForm({ edit }: { edit?: repo.ListingView }) {
         </Field>
 
         <Field
-          label="Address"
-          hint="Only shared with the buyer once you accept their request."
+          label={t('Address')}
+          hint={t('Only shared with the buyer once you accept their request.')}
           error={errorFor('address')}
           htmlFor="f-address"
         >
@@ -701,50 +703,50 @@ function ListingForm({ edit }: { edit?: repo.ListingView }) {
           />
         </Field>
 
-        <Field label="Price" error={errorFor('rate')} htmlFor="f-rate">
+        <Field label={t('Price')} error={errorFor('rate')} htmlFor="f-rate">
           <MoneyInput id="f-rate" cents={rate} onCents={setRate} invalid={Boolean(errorFor('rate'))} />
         </Field>
 
         {isBatch ? (
-          <Field label="Setup fee" hint="Charged once per job, for programming and fixturing." htmlFor="f-setup">
-            <MoneyInput id="f-setup" cents={setupFee} onCents={setSetupFee} suffix="per job" />
+          <Field label={t('Setup fee')} hint={t('Charged once per job, for programming and fixturing.')} htmlFor="f-setup">
+            <MoneyInput id="f-setup" cents={setupFee} onCents={setSetupFee} suffix={t('per job')} />
           </Field>
         ) : (
           <>
-            <Field label="Shortest and longest booking">
+            <Field label={t('Shortest and longest booking')}>
               <div className="flex items-center gap-3">
                 <Input
                   inputMode="numeric"
-                  aria-label="Minimum hours"
+                  aria-label={t('Minimum hours')}
                   className="tnum"
                   value={minHours}
                   onChange={(e) => setMinHours(Math.max(1, Number(e.target.value) || 1))}
                 />
-                <span className="shrink-0 text-[14px] text-[var(--ink-4)]">to</span>
+                <span className="shrink-0 text-[14px] text-[var(--ink-4)]">{t('to')}</span>
                 <Input
                   inputMode="numeric"
-                  aria-label="Maximum hours"
+                  aria-label={t('Maximum hours')}
                   className="tnum"
                   value={maxHours}
                   onChange={(e) => setMaxHours(Math.max(minHours, Number(e.target.value) || minHours))}
                 />
-                <span className="shrink-0 text-[14px] text-[var(--ink-4)]">hours</span>
+                <span className="shrink-0 text-[14px] text-[var(--ink-4)]">{t('hours')}</span>
               </div>
             </Field>
 
             <Field
-              label="One-off extra"
-              hint="Detergent, fuel, gas, anything you top up between bookings. Leave at zero if there is none."
+              label={t('One-off extra')}
+              hint={t('Detergent, fuel, gas, anything you top up between bookings. Leave at zero if there is none.')}
               htmlFor="f-extra"
             >
-              <MoneyInput id="f-extra" cents={extraFee} onCents={setExtraFee} suffix="per booking" />
+              <MoneyInput id="f-extra" cents={extraFee} onCents={setExtraFee} suffix={t('per booking')} />
               {extraFee > 0 && (
                 <div className="mt-2">
                   <Input
-                    aria-label="What the extra covers"
+                    aria-label={t('What the extra covers')}
                     value={extraLabel}
                     onChange={(e) => setExtraLabel(e.target.value)}
-                    placeholder="Detergent and softener"
+                    placeholder={t('Detergent and softener')}
                   />
                 </div>
               )}
@@ -753,9 +755,9 @@ function ListingForm({ edit }: { edit?: repo.ListingView }) {
         )}
 
         {was && (
-          <Field label="Windows already listed" hint="Remove any that are no longer free.">
+          <Field label={t('Windows already listed')} hint={t('Remove any that are no longer free.')}>
             {keptSlots.length === 0 ? (
-              <p className="t-sm text-[var(--ink-3)]">None coming up.</p>
+              <p className="t-sm text-[var(--ink-3)]">{t('None coming up.')}</p>
             ) : (
               <ul className="ruled border-t border-[var(--line)]">
                 {keptSlots.map((s) => (
@@ -764,10 +766,10 @@ function ListingForm({ edit }: { edit?: repo.ListingView }) {
                     <Button
                       size="sm"
                       variant="quiet"
-                      aria-label={`Remove the window ${range(s.start, s.end)}`}
+                      aria-label={t('Remove the window {when}', { when: range(s.start, s.end) })}
                       onClick={() => setKeptSlots((prev) => prev.filter((k) => k.id !== s.id))}
                     >
-                      Remove
+                      {t('Remove')}
                     </Button>
                   </li>
                 ))}
@@ -777,8 +779,8 @@ function ListingForm({ edit }: { edit?: repo.ListingView }) {
         )}
 
         <Field
-          label={was ? 'Add more free time' : 'When is it free?'}
-          hint="Pick a pattern, or type the exact dates and hours. You can change them later."
+          label={was ? t('Add more free time') : t('When is it free?')}
+          hint={t('Pick a pattern, or type the exact dates and hours. You can change them later.')}
           error={errorFor('availability')}
         >
           <div className="space-y-2">
@@ -810,8 +812,8 @@ function ListingForm({ edit }: { edit?: repo.ListingView }) {
                   {availability === a.id && <Icon name="check" size={12} strokeWidth={3.5} />}
                 </span>
                 <span className="min-w-0">
-                  <span className="block text-[15px] font-semibold">{a.label}</span>
-                  <span className="tnum block text-[13px] text-[var(--ink-3)]">{a.detail}</span>
+                  <span className="block text-[15px] font-semibold">{t(a.label)}</span>
+                  <span className="tnum block text-[13px] text-[var(--ink-3)]">{t(a.detail)}</span>
                 </span>
               </button>
             ))}
@@ -823,7 +825,7 @@ function ListingForm({ edit }: { edit?: repo.ListingView }) {
               >
                 <div className="grid grid-cols-2 gap-3">
                   <label className="block">
-                    <span className="t-label mb-1.5 block text-[var(--ink-3)]">From</span>
+                    <span className="t-label mb-1.5 block text-[var(--ink-3)]">{t('From')}</span>
                     <Input
                       type="date"
                       value={custom.from}
@@ -835,7 +837,7 @@ function ListingForm({ edit }: { edit?: repo.ListingView }) {
                     />
                   </label>
                   <label className="block">
-                    <span className="t-label mb-1.5 block text-[var(--ink-3)]">Until</span>
+                    <span className="t-label mb-1.5 block text-[var(--ink-3)]">{t('Until')}</span>
                     <Input
                       type="date"
                       value={custom.until}
@@ -849,7 +851,7 @@ function ListingForm({ edit }: { edit?: repo.ListingView }) {
                 </div>
                 <div className="grid grid-cols-2 gap-3">
                   <label className="block">
-                    <span className="t-label mb-1.5 block text-[var(--ink-3)]">Free from</span>
+                    <span className="t-label mb-1.5 block text-[var(--ink-3)]">{t('Free from')}</span>
                     <Input
                       type="time"
                       step={900}
@@ -861,7 +863,7 @@ function ListingForm({ edit }: { edit?: repo.ListingView }) {
                     />
                   </label>
                   <label className="block">
-                    <span className="t-label mb-1.5 block text-[var(--ink-3)]">Until</span>
+                    <span className="t-label mb-1.5 block text-[var(--ink-3)]">{t('Until')}</span>
                     <Input
                       type="time"
                       step={900}
@@ -875,12 +877,14 @@ function ListingForm({ edit }: { edit?: repo.ListingView }) {
                 </div>
                 <p className="tnum text-[13px] text-[var(--ink-3)]">
                   {customProblem(custom)
-                    ? 'Each day in the range gets one idle window at those hours.'
-                    : `${customDayCount(custom)} ${customDayCount(custom) === 1 ? 'day' : 'days'}, ${
-                        WEEKDAYS[(parseDay(custom.from)!.getDay() + 6) % 7]
-                      } ${shortDate(parseDay(custom.from)!)} to ${
-                        WEEKDAYS[(parseDay(custom.until)!.getDay() + 6) % 7]
-                      } ${shortDate(parseDay(custom.until)!)}, free ${custom.start} – ${custom.end} each day.`}
+                    ? t('Each day in the range gets one idle window at those hours.')
+                    : t('{days}, {first} to {last}, free {start} – {end} each day.', {
+                        days: plural(customDayCount(custom), '{n} day', '{n} days'),
+                        first: `${weekday(parseDay(custom.from)!)} ${shortDate(parseDay(custom.from)!)}`,
+                        last: `${weekday(parseDay(custom.until)!)} ${shortDate(parseDay(custom.until)!)}`,
+                        start: custom.start,
+                        end: custom.end,
+                      })}
                 </p>
               </div>
             )}
@@ -888,8 +892,8 @@ function ListingForm({ edit }: { edit?: repo.ListingView }) {
         </Field>
 
         <Field
-          label="How does someone get it?"
-          hint="Only shown after you accept a request."
+          label={t('How does someone get it?')}
+          hint={t('Only shown after you accept a request.')}
           error={errorFor('instructions')}
           htmlFor="f-instructions"
         >
@@ -900,13 +904,13 @@ function ListingForm({ edit }: { edit?: repo.ListingView }) {
             invalid={Boolean(errorFor('instructions'))}
             onChange={(e) => setInstructions(e.target.value)}
             onBlur={blur('instructions')}
-            placeholder="Side entrance, doorbell marked Brandt. Pods are in the glass jar."
+            placeholder={t('Side entrance, doorbell marked Brandt. Pods are in the glass jar.')}
           />
         </Field>
 
-        <Field label="House rules" hint="Optional, but they prevent most of the awkward messages.">
+        <Field label={t('House rules')} hint={t('Optional, but they prevent most of the awkward messages.')}>
           <div className="flex flex-wrap gap-2">
-            {RULE_SUGGESTIONS.map((r) => (
+            {RULE_SUGGESTIONS.map((en) => t(en)).map((r) => (
               <Chip
                 key={r}
                 selected={rules.includes(r)}
@@ -921,21 +925,23 @@ function ListingForm({ edit }: { edit?: repo.ListingView }) {
         </Field>
 
         <Card className="p-5">
-          <p className="t-label mb-2 text-[var(--ink-2)]">What a booking would earn you</p>
+          <p className="t-label mb-2 text-[var(--ink-2)]">{t('What a booking would earn you')}</p>
           <p className="t-plate tnum text-[38px] leading-[42px] text-[var(--ink)]">
             {formatEur(
               Math.round((rate * (isBatch ? 4 : minHours) + (isBatch ? setupFee : extraFee)) * 0.85),
             )}
           </p>
           <p className="t-sm mt-1.5 text-[var(--ink-2)]">
-            for a {isBatch ? 'four-hour run' : `${minHours}-hour booking`}, after the 15% Cappy fee.
+            {isBatch
+              ? t('for a four-hour run, after the 15 % Cappy fee.')
+              : t('for a {n}-hour booking, after the 15 % Cappy fee.', { n: minHours })}
           </p>
         </Card>
 
         <Banner
           tone="warn"
-          title="Paid through Cappy"
-          body="Buyers pay by card when you accept. Your share goes to your bank once the booking is done; set up payouts under Earn."
+          title={t('Paid through Cappy')}
+          body={t('Buyers pay by card when you accept. Your share goes to your bank once the booking is done; set up payouts under Earn.')}
         />
       </div>
     </Screen>

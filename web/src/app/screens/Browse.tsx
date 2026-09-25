@@ -21,8 +21,9 @@ import { Photo, SaveButton, WhenChip } from '../components/Photo.tsx'
 import { LocationPicker } from '../components/LocationPicker.tsx'
 import { distanceKm } from '../../domain/match.ts'
 import { CapacityMap, type MapLevel } from '../components/CapacityMap.tsx'
-import { Banner, Button, Chip, EmptyState, Sheet, Skeleton } from '../components/ui.tsx'
+import { Banner, Button, Chip, EmptyState, oneDecimal, Sheet, Skeleton } from '../components/ui.tsx'
 import { distance, relative, when } from '../format.ts'
+import { plural, t } from '../../i18n.ts'
 
 // The default has to be one of these or the filter opens with nothing selected.
 // 75 km is the Berlin-Brandenburg belt the plan names as the first wedge, which
@@ -99,11 +100,11 @@ export function Browse() {
         <div className="pt-8">
           <Banner
             tone="danger"
-            title="Cappy is not reachable right now"
+            title={t('Cappy is not reachable right now')}
             body={failed.message}
             action={
               <Button size="sm" onClick={() => void Promise.all([districtsQ.refetch(), spotQ.refetch()])}>
-                Try again
+                {t('Try again')}
               </Button>
             }
           />
@@ -120,12 +121,11 @@ export function Browse() {
       <header className="flex items-baseline justify-between gap-3 pb-2 pt-8 md:pt-10">
         <h1 className="min-w-0">
           <span className="t-h1 md:hidden">Cappy</span>
-          <span className="t-h1 hidden md:block">Capacity near you</span>
+          <span className="t-h1 hidden md:block">{t('Capacity near you')}</span>
         </h1>
         <span className="hidden md:block">
           <span className="t-lede mt-2 block max-w-[48ch]">
-            Someone within reach has a machine, a truck or a room standing idle right
-            now. Buy the hours, not the thing.
+            {t('Someone within reach has a machine, a truck or a room standing idle right now. Buy the hours, not the thing.')}
           </span>
         </span>
         <LocationPicker
@@ -164,8 +164,8 @@ export function Browse() {
             type="search"
             enterKeyHint="search"
             value={search.query}
-            aria-label="Search listings"
-            placeholder="Milling, printing, PA rig, saw"
+            aria-label={t('Search listings')}
+            placeholder={t('Milling, printing, PA rig, saw')}
             onChange={(e) => send({ type: 'SEARCH_CHANGED', patch: { query: e.target.value } })}
             className="h-[26px] w-full border-0 bg-transparent pl-7 text-[16.5px] font-medium text-[var(--ink)]
               outline-none placeholder:font-normal placeholder:text-[var(--ink-4)]"
@@ -179,28 +179,28 @@ export function Browse() {
         {search.query.trim() ? (
           /* ---------------------------------- free-text results win over everything */
           search.query.trim().length < SEARCH_MIN ? (
-            <p className="t-sm px-1 py-4 text-[var(--ink-3)]">Type at least {SEARCH_MIN} letters to search.</p>
+            <p className="t-sm px-1 py-4 text-[var(--ink-3)]">{t('Type at least {n} letters to search.', { n: SEARCH_MIN })}</p>
           ) : searchQ.isPending ? (
             <Skeleton className="h-[160px] w-full" />
           ) : queryHits.length === 0 ? (
             <EmptyState
               icon="search"
-              title={`Nothing matching “${search.query.trim()}”`}
-              body="Try a broader word, or pick a category below."
+              title={t('Nothing matching “{q}”', { q: search.query.trim() })}
+              body={t('Try a broader word, or pick a category below.')}
               action={
                 <Button
                   variant="secondary"
                   onClick={() => send({ type: 'SEARCH_CHANGED', patch: { query: '' } })}
                 >
-                  Clear search
+                  {t('Clear search')}
                 </Button>
               }
             />
           ) : (
-            <section aria-label="Search results">
+            <section aria-label={t('Search results')}>
               <SectionHead
-                title="Results"
-                aside={`${queryHits.length} ${queryHits.length === 1 ? 'match' : 'matches'}`}
+                title={t('Results')}
+                aside={plural(queryHits.length, '{n} match', '{n} matches')}
               />
               <ul className="ruled">
                 {queryHits.map(({ listing: l, owner: o }) => {
@@ -247,7 +247,7 @@ export function Browse() {
                 of. The category index used to sit under twenty-nine cards and a
                 stats band, three screens down; it is now the first row. The full
                 grouped index further down stays, for browsing. */}
-            <nav aria-label="Categories" className="rail mt-5 pb-1 md:m-0 md:mt-5 md:flex-wrap md:p-0">
+            <nav aria-label={t('Categories')} className="rail mt-5 pb-1 md:m-0 md:mt-5 md:flex-wrap md:p-0">
               {CATEGORIES.map((c) => (
                 <button
                   key={c.id}
@@ -263,21 +263,21 @@ export function Browse() {
             </nav>
 
             <SectionHead
-              title="Free in the next 24 hours"
+              title={t('Free in the next 24 hours')}
               aside={spotlight.length > 0 ? String(spotlight.length) : undefined}
               className="mt-7"
             />
             {spotlight.length === 0 ? (
               <EmptyState
                 icon="clock"
-                title="Nothing free nearby today"
-                body={`No idle capacity within ${search.maxDistanceKm} km today. Widening the radius usually finds something.`}
+                title={t('Nothing free nearby today')}
+                body={t('No idle capacity within {km} km today. Widening the radius usually finds something.', { km: search.maxDistanceKm })}
                 action={
                   <Button
                     variant="secondary"
                     onClick={() => send({ type: 'SEARCH_CHANGED', patch: { maxDistanceKm: 90 } })}
                   >
-                    Search the whole region
+                    {t('Search the whole region')}
                   </Button>
                 }
               />
@@ -304,7 +304,7 @@ export function Browse() {
                 {!allSpots && spotlight.length > 9 && (
                   <div className="mt-6">
                     <Button variant="secondary" onClick={() => setAllSpots(true)}>
-                      Show all {spotlight.length} free today
+                      {t('Show all {n} free today', { n: spotlight.length })}
                     </Button>
                   </div>
                 )}
@@ -312,7 +312,7 @@ export function Browse() {
             )}
 
 
-            <SectionHead title="What do you need?" className="mt-14 md:mt-20" />
+            <SectionHead title={t('What do you need?')} className="mt-14 md:mt-20" />
             {/* Nine categories read as a wall. Three groups read as a decision:
                 are you short of making it, moving it, or the kit to do it with. */}
             <div className="md:grid md:grid-cols-3 md:gap-10">
@@ -378,7 +378,7 @@ export function Browse() {
               <div className="flex items-center justify-between gap-3 border-t border-[var(--line)] py-3">
                 <p className="t-sm text-[var(--ink-3)]">
                   <span className="tnum font-semibold text-[var(--ink)]">{matches.length}</span>{' '}
-                  bookable{matches.length === 1 ? ' slot' : ' slots'}
+                  {matches.length === 1 ? t('bookable slot') : t('bookable slots')}
                 </p>
                 <div className="flex items-center gap-2">
                   {/* A map answers "which of these is nearest", which is only a
@@ -395,19 +395,19 @@ export function Browse() {
                       }`}
                   >
                     <Icon name="pin" size={15} strokeWidth={2.1} />
-                    {showMap ? 'List' : 'Map'}
+                    {showMap ? t('List') : t('Map')}
                   </button>
                   <label className="relative t-sm text-[var(--ink-3)]">
-                    <span className="sr-only">Sort results</span>
+                    <span className="sr-only">{t('Sort results')}</span>
                     <select
                       value={sort}
                       onChange={(e) => setSort(e.target.value as SortKey)}
                       className="min-h-[34px] appearance-none rounded-[var(--radius-control)] border border-[var(--line)] bg-transparent pl-3 pr-8 text-[13px] font-medium text-[var(--ink-2)]"
                     >
-                      <option value="best">Best match</option>
-                      <option value="price">Cheapest</option>
-                      <option value="soonest">Soonest</option>
-                      <option value="nearest">Nearest</option>
+                      <option value="best">{t('Best match')}</option>
+                      <option value="price">{t('Cheapest')}</option>
+                      <option value="soonest">{t('Soonest')}</option>
+                      <option value="nearest">{t('Nearest')}</option>
                     </select>
                     <Icon
                       name="chevron-down"
@@ -423,11 +423,11 @@ export function Browse() {
             {!matches || matches.length === 0 ? (
               <EmptyState
                 icon="calendar"
-                title="No idle capacity fits that"
+                title={t('No idle capacity fits that')}
                 body={
                   meta.mode === 'window'
-                    ? `Nobody within ${search.maxDistanceKm} km has ${durationLabel(search.hours)} free in the next ${search.withinDays} days. A shorter booking or a wider radius usually fixes it.`
-                    : `No machine within ${search.maxDistanceKm} km can finish ${search.quantity} ${meta.unitNoun} by then. Try a longer lead time or a wider radius.`
+                    ? t('Nobody within {km} km has {duration} free in the next {days} days. A shorter booking or a wider radius usually fixes it.', { km: search.maxDistanceKm, duration: durationLabel(search.hours), days: search.withinDays })
+                    : t('No machine within {km} km can finish {n} {unit} by then. Try a longer lead time or a wider radius.', { km: search.maxDistanceKm, n: search.quantity, unit: meta.unitNoun ?? '' })
                 }
                 action={
                   <div className="flex flex-wrap justify-center gap-2">
@@ -435,13 +435,13 @@ export function Browse() {
                       variant="secondary"
                       onClick={() => send({ type: 'SEARCH_CHANGED', patch: { maxDistanceKm: 90 } })}
                     >
-                      Widen to 90 km
+                      {t('Widen to 90 km')}
                     </Button>
                     <Button
                       variant="secondary"
                       onClick={() => send({ type: 'SEARCH_CHANGED', patch: { withinDays: 21 } })}
                     >
-                      Allow 3 weeks
+                      {t('Allow 3 weeks')}
                     </Button>
                   </div>
                 }
@@ -465,7 +465,7 @@ export function Browse() {
                       id: l.id,
                       district: l.district,
                       freeNow: soon,
-                      label: `${l.title}, ${l.district}, free ${relative(m.start)}`,
+                      label: `${l.title}, ${l.district}, ${t('free {when}', { when: relative(m.start) })}`,
                     }
                   })}
                 />
@@ -492,16 +492,16 @@ export function Browse() {
       <Sheet
         open={filtersOpen}
         onClose={() => setFiltersOpen(false)}
-        title="Filters"
+        title={t('Filters')}
         footer={
           <Button block size="lg" onClick={() => setFiltersOpen(false)}>
-            Show {matches?.length ?? 0} result{matches?.length === 1 ? '' : 's'}
+            {plural(matches?.length ?? 0, 'Show {n} result', 'Show {n} results')}
           </Button>
         }
       >
         <div className="space-y-7 pb-4">
           {meta?.mode === 'window' ? (
-            <FilterGroup label="How long do you need it?">
+            <FilterGroup label={t('How long do you need it?')}>
               {(meta.quickHours ?? [1, 2, 4]).map((h) => (
                 <Chip
                   key={h}
@@ -513,7 +513,7 @@ export function Browse() {
               ))}
             </FilterGroup>
           ) : (
-            <FilterGroup label={`How many ${meta?.unitNoun ?? 'parts'}?`}>
+            <FilterGroup label={t('How many {unit}?', { unit: meta?.unitNoun ?? t('parts') })}>
               {QUANTITIES.map((q) => (
                 <Chip
                   key={q}
@@ -526,7 +526,7 @@ export function Browse() {
             </FilterGroup>
           )}
 
-          <FilterGroup label="How far will you travel?">
+          <FilterGroup label={t('How far will you travel?')}>
             {RADII.map((r) => (
               <Chip
                 key={r}
@@ -538,20 +538,20 @@ export function Browse() {
             ))}
           </FilterGroup>
 
-          <FilterGroup label="Needed within">
+          <FilterGroup label={t('Needed within')}>
             {HORIZONS.map((d) => (
               <Chip
                 key={d}
                 selected={search.withinDays === d}
                 onClick={() => send({ type: 'SEARCH_CHANGED', patch: { withinDays: d } })}
               >
-                {d === 1 ? '24 hours' : `${d} days`}
+                {d === 1 ? t('24 hours') : plural(d, '{n} day', '{n} days')}
               </Chip>
             ))}
           </FilterGroup>
 
           {matches && matches.length > 0 && (
-            <p className="t-sm text-[var(--ink-4)]">Soonest right now is {when(matches[0].match.start)}.</p>
+            <p className="t-sm text-[var(--ink-4)]">{t('Soonest right now is {when}.', { when: when(matches[0].match.start) })}</p>
           )}
         </div>
       </Sheet>
@@ -673,7 +673,7 @@ function FeatureCard({ spot, onOpen }: { spot: Spotlight; onOpen: () => void }) 
             {spot.listing.district}, {distance(spot.distanceKm)}
           </span>
           <span className="tnum shrink-0 text-[17px] font-semibold md:text-[22px]">
-            <span className="mr-1 text-[13px] font-normal text-[var(--ink-4)]">from</span>
+            <span className="mr-1 text-[13px] font-normal text-[var(--ink-4)]">{t('from')}</span>
             {formatEur(spot.fromPrice)}
           </span>
         </span>
@@ -707,19 +707,19 @@ function SpotCard({ spot, onOpen }: { spot: Spotlight; onOpen: () => void }) {
           <span className="t-sm tnum min-w-0 truncate text-[var(--ink-4)]">
             {/* Trust at a glance, before anyone opens the listing. */}
             {rating(spot.owner) !== null && (
-              <span className="mr-2 font-semibold text-[var(--ink-2)]" title="The owner's rating across all their jobs">
-                <span className="font-normal text-[var(--ink-4)]">Host </span>★ {rating(spot.owner)!.toFixed(1)}
+              <span className="mr-2 font-semibold text-[var(--ink-2)]" title={t("The owner's rating across all their jobs")}>
+                <span className="font-normal text-[var(--ink-4)]">{t('Host')} </span>★ {oneDecimal(rating(spot.owner)!)}
               </span>
             )}
             {rating(spot.owner) === null && (
-              <span className="mr-2 font-semibold text-[var(--ink-2)]">New host</span>
+              <span className="mr-2 font-semibold text-[var(--ink-2)]">{t('New host')}</span>
             )}
             {distance(spot.distanceKm)}
           </span>
           {/* "5 €" beside "212 €" with no unit could not be compared. This is the
               cheapest real booking, so it is labelled as a floor. */}
           <span className="tnum shrink-0 text-[14.5px] font-semibold">
-            <span className="mr-1 text-[12px] font-normal text-[var(--ink-4)]">from</span>
+            <span className="mr-1 text-[12px] font-normal text-[var(--ink-4)]">{t('from')}</span>
             {formatEur(spot.fromPrice)}
           </span>
         </span>

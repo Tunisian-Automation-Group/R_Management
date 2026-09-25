@@ -2,6 +2,7 @@ import { useMemo, useState, type FormEvent } from 'react'
 import { loadStripe } from '@stripe/stripe-js'
 import { Elements, PaymentElement, useElements, useStripe } from '@stripe/react-stripe-js'
 import { Banner, Button } from './ui.tsx'
+import { lang, t } from '../../i18n.ts'
 
 /**
  * The card step, with Stripe's Payment Element. Stripe handles the card and
@@ -22,7 +23,7 @@ export function PayStep({
   // Stripe.js loads only for the people who get this far.
   const stripe = useMemo(() => loadStripe(publishableKey), [publishableKey])
   return (
-    <Elements stripe={stripe} options={{ clientSecret }}>
+    <Elements stripe={stripe} options={{ clientSecret, locale: lang() }}>
       <Form bookingId={bookingId} onPaid={onPaid} />
     </Elements>
   )
@@ -46,16 +47,17 @@ function Form({ bookingId, onPaid }: { bookingId: string; onPaid: () => void }) 
       redirect: 'if_required',
     })
     setBusy(false)
-    if (failed) setError(failed.message ?? 'The payment did not go through.')
+    if (failed) setError(failed.message ?? t('The payment did not go through.'))
     else onPaid()
   }
 
   return (
     <form onSubmit={(e) => void submit(e)} className="space-y-4 pb-2">
       <PaymentElement />
-      {error && <Banner tone="danger" title="Payment not authorised" body={error} />}
+      {error && <Banner tone="danger" title={t('Payment not authorised')} body={error} />}
+      {/* The click that binds the buyer: §312j BGB wants it to say so. */}
       <Button type="submit" block size="lg" disabled={!stripe || busy}>
-        {busy ? 'Authorising…' : 'Hold the amount and send'}
+        {busy ? t('Authorising…') : t('Book and pay')}
       </Button>
     </form>
   )

@@ -1,6 +1,7 @@
 import { Component, type ReactNode } from 'react'
 import { Button } from './ui.tsx'
 import { Icon } from './Icon.tsx'
+import { t } from '../../i18n.ts'
 
 type Props = { children: ReactNode }
 type State = { error: Error | null }
@@ -26,13 +27,12 @@ export class ErrorBoundary extends Component<Props, State> {
         <span className="mb-4 grid h-12 w-12 place-items-center rounded-[var(--radius-control)] bg-[var(--danger-subtle)] text-[var(--danger)]">
           <Icon name="alert" size={26} />
         </span>
-        <h1 className="t-h3 mb-2">This screen stopped working</h1>
+        <h1 className="t-h3 mb-2">{t('This screen stopped working')}</h1>
         <p className="t-body mb-6 text-[var(--ink-3)]">
-          Something in the app broke while drawing this page. Your bookings and listings
-          are safe. Going back to Browse usually clears it.
+          {t('Something in the app broke while drawing this page. Your bookings and listings are safe. Going back to Browse usually clears it.')}
         </p>
         <Button size="lg" onClick={() => (location.href = '/')}>
-          Back to Browse
+          {t('Back to Browse')}
         </Button>
         <p className="t-sm mt-6 font-mono text-[var(--ink-4)]">{this.state.error.message}</p>
       </div>

@@ -10,6 +10,7 @@ import {
 } from 'react'
 import { Link } from 'react-router-dom'
 import { Icon, type IconName } from './Icon.tsx'
+import { locale, t } from '../../i18n.ts'
 
 /** 160ms for micro-interactions, decelerating. Never linear. */
 const TR =
@@ -203,14 +204,18 @@ export function Avatar({
 
 /* ------------------------------------------------------------------- Stars */
 
+/** 4.7 in English, 4,7 in German. */
+export const oneDecimal = (n: number) =>
+  n.toLocaleString(locale(), { minimumFractionDigits: 1, maximumFractionDigits: 1 })
+
 export function Stars({ value, count }: { value: number | null | undefined; count: number }) {
   if (value == null) {
-    return <span className="t-sm text-[var(--ink-4)]">New</span>
+    return <span className="t-sm text-[var(--ink-4)]">{t('New')}</span>
   }
   return (
     <span className="inline-flex items-center gap-1">
       <Icon name="star" size={12} className="fill-[var(--ink)] text-[var(--ink)]" strokeWidth={0} />
-      <span className="tnum text-[13px] font-semibold text-[var(--ink)]">{value.toFixed(1)}</span>
+      <span className="tnum text-[13px] font-semibold text-[var(--ink)]">{oneDecimal(value)}</span>
       <span className="tnum text-[13px] text-[var(--ink-4)]">({count})</span>
     </span>
   )
@@ -332,7 +337,7 @@ export function MoneyInput({
   onCents,
   invalid,
   id,
-  suffix = '/ hour',
+  suffix,
 }: {
   cents: number
   onCents: (c: number) => void
@@ -340,8 +345,11 @@ export function MoneyInput({
   id?: string
   suffix?: string
 }) {
-  // "4,00": the decimal comma the rest of the app shows prices with. A dot typed in still works.
-  const show = (c: number) => ((c || 0) / 100).toFixed(2).replace('.', ',')
+  // "4,00" in German, "4.00" in English, as prices show elsewhere. Either separator typed in works.
+  const show = (c: number) => {
+    const s = ((c || 0) / 100).toFixed(2)
+    return locale() === 'de-DE' ? s.replace('.', ',') : s
+  }
   const [text, setText] = useState(() => show(cents))
   return (
     <div className="relative">
@@ -365,7 +373,7 @@ export function MoneyInput({
         onBlur={() => setText(show(cents))}
       />
       <span className="pointer-events-none absolute right-4 top-1/2 -translate-y-1/2 text-[13px] text-[var(--ink-4)]">
-        {suffix}
+        {suffix ?? t('/ hour')}
       </span>
     </div>
   )
@@ -498,7 +506,7 @@ export function Sheet({
           </h2>
           <button
             onClick={onClose}
-            aria-label="Close"
+            aria-label={t('Close')}
             className={`grid h-10 w-10 shrink-0 place-items-center rounded-[var(--radius-control)] text-[var(--ink-3)] ${TR} hover:bg-[var(--sunken)] hover:text-[var(--ink)]`}
           >
             <Icon name="close" size={18} strokeWidth={2.2} />

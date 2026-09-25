@@ -21,10 +21,11 @@ import { messageOf, useToast } from '../store.tsx'
 import { DistrictSelect } from '../components/DistrictSelect.tsx'
 import { deleteAccount, signOut, useAuthReady, useSession } from '../../data/auth.ts'
 import { SignedOut } from '../components/SignedOut.tsx'
-import { Screen, SectionHead } from '../components/AppShell.tsx'
+import { LanguageSwitch, Screen, SectionHead } from '../components/AppShell.tsx'
 import { Icon } from '../components/Icon.tsx'
 import { Photo, SaveButton } from '../components/Photo.tsx'
 import { Avatar, Button, Card, Field, Input, Row, Segmented, Sheet, Skeleton } from '../components/ui.tsx'
+import { locale, t } from '../../i18n.ts'
 
 const TAKEN = ['accepted', 'active', 'completed']
 
@@ -45,7 +46,7 @@ export function Profile() {
 
   if (!authReady || (session && me.isPending)) {
     return (
-      <Screen title="You">
+      <Screen title={t('You')}>
         <Skeleton className="h-[136px] rounded-[var(--radius-card)]" />
         <Skeleton className="mt-3 h-[200px] rounded-[var(--radius-card)]" />
       </Screen>
@@ -54,8 +55,8 @@ export function Profile() {
 
   if (!session || !me.data?.owner) {
     return (
-      <Screen title="You">
-        <SignedOut what="see your profile, saved listings and record" next="/profile" />
+      <Screen title={t('You')}>
+        <SignedOut what={t('see your profile, saved listings and record')} next="/profile" />
       </Screen>
     )
   }
@@ -71,22 +72,22 @@ export function Profile() {
   const shortlist = saved.data?.items ?? []
 
   return (
-    <Screen title="You">
+    <Screen title={t('You')}>
       <Card className="p-5">
         <div className="flex items-center gap-4">
           <Avatar initials={you.initials} size={56} />
           <div className="min-w-0">
             <p className="t-h3 truncate">{you.name}</p>
             <p className="t-sm tnum text-[var(--ink-3)]">
-              {you.district} · member since {you.joinedYear}
+              {you.district} · {t('member since {year}', { year: you.joinedYear })}
             </p>
             <p className="t-sm truncate text-[var(--ink-3)]">{session.email}</p>
           </div>
         </div>
         <div className="mt-5 grid grid-cols-3 gap-3 border-t border-[var(--line)] pt-5">
-          <Stat label="Listed" value={String(listings.data?.items.length ?? 0)} />
-          <Stat label="Earned" value={formatEur(earned)} accent />
-          <Stat label="Spent" value={formatEur(spent)} />
+          <Stat label={t('Listed')} value={String(listings.data?.items.length ?? 0)} />
+          <Stat label={t('Earned')} value={formatEur(earned)} accent />
+          <Stat label={t('Spent')} value={formatEur(spent)} />
         </div>
       </Card>
 
@@ -94,14 +95,14 @@ export function Profile() {
           come back to it. */}
       <section>
         <SectionHead
-          title="Saved"
+          title={t('Saved')}
           aside={shortlist.length ? String(shortlist.length) : undefined}
           className="mt-7"
         />
         {shortlist.length === 0 ? (
           <Card className="p-5">
             <p className="t-body text-[var(--ink-3)]">
-              Tap the heart on anything you are comparing and it waits for you here.
+              {t('Tap the heart on anything you are comparing and it waits for you here.')}
             </p>
           </Card>
         ) : (
@@ -141,27 +142,28 @@ export function Profile() {
 
       <section>
         <SectionHead
-          title="Account"
+          title={t('Account')}
           aside={
             <button className="font-semibold text-[var(--accent-text)]" onClick={() => setEditing(true)}>
-              Edit profile
+              {t('Edit profile')}
             </button>
           }
           className="mt-7"
         />
         <Card className="p-5">
           <p className="t-sm text-[var(--ink-2)]">
-            Signed in as <span className="font-semibold text-[var(--ink)]">{session.email}</span> on this
-            device. Signing out keeps everything you listed and booked.
+            {t('Signed in as')}{' '}
+            <span className="font-semibold text-[var(--ink)]">{session.email}</span>
+            {' '}{t('on this device. Signing out keeps everything you listed and booked.')}
           </p>
           <Button className="mt-4" variant="secondary" onClick={() =>
               void signOut().then(() => {
                 qc.clear()
-                toast('Signed out')
+                toast(t('Signed out'))
                 nav('/')
               })
             }>
-            Sign out
+            {t('Sign out')}
           </Button>
         </Card>
       </section>
@@ -170,20 +172,20 @@ export function Profile() {
 
       {session?.staff && (
         <section>
-          <SectionHead title="Staff" className="mt-7" />
+          <SectionHead title={t('Staff')} className="mt-7" />
           <Card className="p-5">
             <Link to="/admin" className="text-[14.5px] font-semibold underline underline-offset-4">
-              Open the staff console
+              {t('Open the staff console')}
             </Link>
           </Card>
         </section>
       )}
 
       <section>
-        <SectionHead title="Your data" className="mt-7" />
+        <SectionHead title={t('Your data')} className="mt-7" />
         <Card className="p-5">
           <p className="t-sm text-[var(--ink-2)]">
-            Download everything Cappy holds about you, or delete your account.
+            {t('Download everything Cappy holds about you, or delete your account.')}
           </p>
           <div className="mt-4 flex flex-wrap gap-2">
             <Button
@@ -196,41 +198,46 @@ export function Profile() {
                   .finally(() => setBusy(false))
               }}
             >
-              Download my data
+              {t('Download my data')}
             </Button>
             <Button variant="danger" onClick={() => setDeleting(true)}>
-              Delete account
+              {t('Delete account')}
             </Button>
           </div>
         </Card>
       </section>
 
       <section>
-        <SectionHead title="How Cappy works" className="mt-7" />
+        <SectionHead title={t('How Cappy works')} className="mt-7" />
         <Card className="p-5">
           <p className="t-body text-[var(--ink-2)]">
-            Capacity is idle most of the time. Cappy sells those hours: a printer free
-            overnight, a PA rig between gigs, a mill with a gap between contracts. You
-            buy the outcome, not the machine, and one engine matches every job to
-            whoever can actually run it.
+            {t('Capacity is idle most of the time. Cappy sells those hours: a printer free overnight, a PA rig between gigs, a mill with a gap between contracts. You buy the outcome, not the machine, and one engine matches every job to whoever can actually run it.')}
           </p>
           <div className="mt-4 border-t border-[var(--line)] pt-4">
-            <Row label="Cappy fee" value={`${PLATFORM_FEE_BPS / 100}% of the booking`} />
-            <Row label="Paid by" value="Taken from the total, not added on top" />
-            <Row label="Payment" value="By card, held until the host accepts" />
+            <Row label={t('Cappy fee')} value={t('{pct} % of the booking', { pct: (PLATFORM_FEE_BPS / 100).toLocaleString(locale()) })} />
+            <Row label={t('Paid by')} value={t('Taken from the total, not added on top')} />
+            <Row label={t('Payment')} value={t('By card, held until the host accepts')} />
           </div>
         </Card>
       </section>
 
       <section>
-        <SectionHead title="Legal" className="mt-7" />
+        <SectionHead title={t('Language')} className="mt-7" />
         <Card className="p-5">
-          <nav aria-label="Legal" className="flex flex-col gap-3 text-[14.5px] font-semibold">
+          <LanguageSwitch />
+        </Card>
+      </section>
+
+      <section>
+        <SectionHead title={t('Legal')} className="mt-7" />
+        <Card className="p-5">
+          <nav aria-label={t('Legal')} className="flex flex-col gap-3 text-[14.5px] font-semibold">
             <Link to="/legal/impressum">Impressum</Link>
-            <Link to="/legal/privacy">Privacy Policy</Link>
-            <Link to="/legal/terms">Terms of Use</Link>
-            <Link to="/legal/ranking">How ranking works</Link>
-            <Link to="/legal/report">Reporting content</Link>
+            <Link to="/legal/privacy">{t('Privacy Policy')}</Link>
+            <Link to="/legal/terms">{t('Terms of Use')}</Link>
+            <Link to="/legal/withdrawal">{t('Right of withdrawal')}</Link>
+            <Link to="/legal/ranking">{t('How ranking works')}</Link>
+            <Link to="/legal/report">{t('Reporting content')}</Link>
           </nav>
         </Card>
       </section>
@@ -241,7 +248,7 @@ export function Profile() {
           transition-colors duration-[160ms] hover:border-[var(--accent)]"
       >
         <Icon name="plus" size={17} strokeWidth={2.2} />
-        List something you own
+        {t('List something you own')}
       </button>
       <EditProfile key={String(editing)} open={editing} onClose={() => setEditing(false)} you={you} />
       <DeleteAccount open={deleting} onClose={() => setDeleting(false)} />
@@ -260,13 +267,13 @@ function EditProfile({ open, onClose, you }: { open: boolean; onClose: () => voi
   const [error, setError] = useState<string | null>(null)
 
   const save = async () => {
-    if (name.trim().length < 2) return setError('Tell people what to call you.')
+    if (name.trim().length < 2) return setError(t('Tell people what to call you.'))
     setBusy(true)
     setError(null)
     try {
       await saveProfile({ name: name.trim(), kind, district })
       await qc.invalidateQueries({ queryKey: ['me'] })
-      toast('Profile saved')
+      toast(t('Profile saved'))
       onClose()
     } catch (err) {
       setError(messageOf(err))
@@ -279,29 +286,29 @@ function EditProfile({ open, onClose, you }: { open: boolean; onClose: () => voi
     <Sheet
       open={open}
       onClose={onClose}
-      title="Edit profile"
+      title={t('Edit profile')}
       footer={
         <Button block size="lg" disabled={busy} onClick={() => void save()}>
-          {busy ? 'Saving…' : 'Save'}
+          {busy ? t('Saving…') : t('Save')}
         </Button>
       }
     >
       <div className="space-y-5 pb-3">
-        <Field label="Your name" htmlFor="p-name" error={error ?? undefined}>
+        <Field label={t('Your name')} htmlFor="p-name" error={error ?? undefined}>
           <Input id="p-name" autoComplete="name" value={name} onChange={(e) => setName(e.target.value)} />
         </Field>
-        <Field label="You are">
+        <Field label={t('You are')}>
           <Segmented<'person' | 'business'>
-            label="Person or business"
+            label={t('Person or business')}
             value={kind}
             onChange={setKind}
             options={[
-              { value: 'person', label: 'A person' },
-              { value: 'business', label: 'A business' },
+              { value: 'person', label: t('A person') },
+              { value: 'business', label: t('A business') },
             ]}
           />
         </Field>
-        <Field label="Where are you?" htmlFor="p-where">
+        <Field label={t('Where are you?')} htmlFor="p-where">
           <DistrictSelect
             id="p-where"
             districts={districts.data ?? {}}
@@ -328,7 +335,7 @@ function DeleteAccount({ open, onClose }: { open: boolean; onClose: () => void }
       await deleteMe() // 409 while a booking is still open: the message says so
       await deleteAccount()
       qc.clear()
-      toast('Your account is deleted')
+      toast(t('Your account is deleted'))
       nav('/', { replace: true })
     } catch (err) {
       setError(messageOf(err))
@@ -341,26 +348,26 @@ function DeleteAccount({ open, onClose }: { open: boolean; onClose: () => void }
     <Sheet
       open={open}
       onClose={onClose}
-      title="Delete your account?"
+      title={t('Delete your account?')}
       footer={
         <div className="space-y-2">
           <Button block size="lg" variant="danger" disabled={busy} onClick={() => void remove()}>
-            {busy ? 'Deleting…' : 'Delete my account'}
+            {busy ? t('Deleting…') : t('Delete my account')}
           </Button>
           <Button block variant="quiet" onClick={onClose}>
-            Keep it
+            {t('Keep it')}
           </Button>
         </div>
       }
     >
       <div className="space-y-3 pb-3 text-[15px] leading-[23px] text-[var(--ink-2)]">
-        <p>This cannot be undone.</p>
+        <p>{t('This cannot be undone.')}</p>
         <ul className="list-disc space-y-1.5 pl-5">
-          <li>Your sign-in, profile, saved listings and photos are deleted.</li>
-          <li>Your listings are taken down, and your name is removed from reviews you wrote.</li>
-          <li>Past bookings and payments are kept, without your name, because the law requires records of them.</li>
+          <li>{t('Your sign-in, profile, saved listings and photos are deleted.')}</li>
+          <li>{t('Your listings are taken down, and your name is removed from reviews you wrote.')}</li>
+          <li>{t('Past bookings and payments are kept, without your name, because the law requires records of them.')}</li>
         </ul>
-        <p>Bookings still open (requested, confirmed or in progress) have to finish or be cancelled first.</p>
+        <p>{t('Bookings still open (requested, confirmed or in progress) have to finish or be cancelled first.')}</p>
         {error && (
           <p role="alert" className="font-semibold text-[var(--danger)]">
             {error}
@@ -391,10 +398,10 @@ function Blocked() {
   if (ids.length === 0) return null
   return (
     <section>
-      <SectionHead title="Blocked people" className="mt-7" />
+      <SectionHead title={t('Blocked people')} className="mt-7" />
       <Card className="p-5">
         <p className="t-sm mb-3 text-[var(--ink-3)]">
-          They cannot message you or book with you, and you cannot with them.
+          {t('They cannot message you or book with you, and you cannot with them.')}
         </p>
         <ul className="space-y-2">
           {ids.map((sub) => (
@@ -404,7 +411,7 @@ function Blocked() {
               onUnblock={async () => {
                 try {
                   await unblockPerson(sub)
-                  toast('Unblocked')
+                  toast(t('Unblocked'))
                 } catch (err) {
                   toast(messageOf(err))
                 } finally {
@@ -423,9 +430,9 @@ function BlockedRow({ sub, onUnblock }: { sub: string; onUnblock: () => void }) 
   const person = useOwner(sub)
   return (
     <li className="flex items-center justify-between gap-3">
-      <span className="truncate text-[15px] font-semibold">{person.data?.name ?? 'Someone'}</span>
+      <span className="truncate text-[15px] font-semibold">{person.data?.name ?? t('Someone')}</span>
       <Button variant="secondary" size="sm" onClick={onUnblock}>
-        Unblock
+        {t('Unblock')}
       </Button>
     </li>
   )

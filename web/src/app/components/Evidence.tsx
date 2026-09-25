@@ -6,13 +6,17 @@ import { shrink } from '../photos.ts'
 import { messageOf, useMe, useToast } from '../store.tsx'
 import { ago } from '../format.ts'
 import { Button, Card, Field, Sheet, Textarea } from './ui.tsx'
+import { plural, t } from '../../i18n.ts'
 
 // Mirrors booking/messages.py: when each kind of photo can be added.
 const CAN: Record<EvidenceStage, BookingStatus[]> = {
   check_in: ['accepted', 'active'],
   check_out: ['active', 'completed', 'disputed'],
 }
-const LABEL: Record<EvidenceStage, string> = { check_in: 'Check-in photos', check_out: 'Check-out photos' }
+const LABELS: Record<EvidenceStage, string> = { check_in: 'Check-in photos', check_out: 'Check-out photos' }
+const ADD: Record<EvidenceStage, string> = { check_in: 'Add check-in photos', check_out: 'Add check-out photos' }
+const SAVED: Record<EvidenceStage, string> = { check_in: 'Check-in photos saved', check_out: 'Check-out photos saved' }
+const LABEL = new Proxy(LABELS, { get: (o, k: EvidenceStage) => t(o[k]) })
 const WHY: Record<EvidenceStage, string> = {
   check_in: 'Photograph it as it is handed over: every side, any marks, the meter or counter if it has one.',
   check_out: 'Photograph it as it is handed back, the same way. Together they settle any question about damage.',
@@ -65,7 +69,7 @@ export function EvidencePanel({
       for (const f of files) urls.push(await uploadPhoto(await shrink(f), f.name.replace(/\.\w+$/, '.jpg')))
       await addEvidence(bookingId, open, urls, note.trim())
       await qc.invalidateQueries({ queryKey: ['evidence', bookingId] })
-      toast(`${LABEL[open]} saved`)
+      toast(t(SAVED[open]))
       close()
     } catch (err) {
       toast(messageOf(err))
@@ -76,23 +80,23 @@ export function EvidencePanel({
 
   return (
     <Card className="mt-3 p-5">
-      <h2 className="t-label mb-1">Hand-over photos</h2>
+      <h2 className="t-label mb-1">{t('Hand-over photos')}</h2>
       <p className="t-sm mb-3 text-[var(--ink-3)]">
-        Photos you both take when it changes hands. Cappy looks at them first if anything goes wrong.
+        {t('Photos you both take when it changes hands. Cappy looks at them first if anything goes wrong.')}
       </p>
       {items.length > 0 && (
         <ul className="mb-3 space-y-3">
           {items.map((e) => (
             <li key={e.id}>
               <p className="t-sm mb-1.5 text-[var(--ink-3)]">
-                {LABEL[e.stage]} · {e.by === me ? 'you' : otherName} · {ago(e.at)}
+                {LABEL[e.stage]} · {e.by === me ? t('you') : otherName} · {ago(e.at)}
               </p>
               <div className="flex flex-wrap gap-2">
                 {e.photos.map((src) => (
                   <a key={src} href={mediaUrl(src)} target="_blank" rel="noreferrer">
                     <img
                       src={mediaUrl(src)}
-                      alt={`${LABEL[e.stage]} by ${e.by === me ? 'you' : otherName}`}
+                      alt={t('{what} by {who}', { what: LABEL[e.stage], who: e.by === me ? t('you') : otherName })}
                       className="h-[72px] w-[72px] rounded-[10px] object-cover"
                       loading="lazy"
                     />
@@ -107,7 +111,7 @@ export function EvidencePanel({
       <div className="flex flex-wrap gap-2">
         {stages.map((s) => (
           <Button key={s} variant="secondary" icon="camera" onClick={() => setStage(s)}>
-            Add {LABEL[s].toLowerCase()}
+            {t(ADD[s])}
           </Button>
         ))}
       </div>
@@ -119,17 +123,17 @@ export function EvidencePanel({
         footer={
           <div className="space-y-2">
             <Button block size="lg" disabled={busy || files.length === 0} onClick={() => void save()}>
-              {busy ? 'Uploading…' : `Save ${files.length || ''} photo${files.length === 1 ? '' : 's'}`}
+              {busy ? t('Uploading…') : files.length ? plural(files.length, 'Save {n} photo', 'Save {n} photos') : t('Save photos')}
             </Button>
             <Button block variant="quiet" onClick={close}>
-              Not now
+              {t('Not now')}
             </Button>
           </div>
         }
       >
         <div className="space-y-4 pb-3">
-          {open && <p className="t-body text-[var(--ink-2)]">{WHY[open]}</p>}
-          <Field label="Photos" htmlFor={`${id}-files`} hint="Up to 12. Taken now works best.">
+          {open && <p className="t-body text-[var(--ink-2)]">{t(WHY[open])}</p>}
+          <Field label={t('Photos')} htmlFor={`${id}-files`} hint={t('Up to 12. Taken now works best.')}>
             <input
               id={`${id}-files`}
               type="file"
@@ -140,14 +144,14 @@ export function EvidencePanel({
               onChange={(e) => setFiles(Array.from(e.target.files ?? []).slice(0, 12))}
             />
           </Field>
-          <Field label="Note (optional)" htmlFor={`${id}-note`}>
+          <Field label={t('Note (optional)')} htmlFor={`${id}-note`}>
             <Textarea
               id={`${id}-note`}
               rows={2}
               maxLength={1000}
               value={note}
               onChange={(e) => setNote(e.target.value)}
-              placeholder="Scratch on the left side was already there"
+              placeholder={t('Scratch on the left side was already there')}
             />
           </Field>
         </div>

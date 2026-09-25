@@ -5,6 +5,8 @@ import { ReportButton } from './Report.tsx'
 import { Avatar, Button } from './ui.tsx'
 import { Icon } from './Icon.tsx'
 import { ago } from '../format.ts'
+import { plural, t } from '../../i18n.ts'
+import { oneDecimal } from './ui.tsx'
 
 /** Five stars, filled to the rating. Decorative; the number beside it is the fact. */
 export function StarRow({ value, size = 13 }: { value: number; size?: number }) {
@@ -52,11 +54,16 @@ export function Reviews({
   if (s.count === 0) {
     return (
       <div className="rounded-[var(--radius-card)] border border-dashed border-[var(--line-strong)] p-5">
-        <p className="text-[15px] font-semibold">No reviews of this listing yet</p>
+        <p className="text-[15px] font-semibold">{t('No reviews of this listing yet')}</p>
         <p className="t-sm mt-1 text-[var(--ink-3)]">
           {ownerJobs > 0
-            ? `${ownerFirstName} has ${ownerJobs} booking${ownerJobs === 1 ? '' : 's'} behind them on other listings. Whoever books this one first writes its first review.`
-            : `${ownerFirstName} is new here. Whoever books first gets to write the first one.`}
+            ? t(
+                ownerJobs === 1
+                  ? '{name} has {n} booking behind them on other listings. Whoever books this one first writes its first review.'
+                  : '{name} has {n} bookings behind them on other listings. Whoever books this one first writes its first review.',
+                { name: ownerFirstName, n: ownerJobs },
+              )
+            : t('{name} is new here. Whoever books first gets to write the first one.', { name: ownerFirstName })}
         </p>
       </div>
     )
@@ -69,22 +76,22 @@ export function Reviews({
       <div className="flex flex-wrap items-end gap-x-8 gap-y-4 rounded-[var(--radius-card)] bg-[var(--sunken)] p-5">
         <div>
           <p className="tnum flex items-baseline gap-2">
-            <span className="t-h1 leading-none">{s.average!.toFixed(1)}</span>
+            <span className="t-h1 leading-none">{oneDecimal(s.average!)}</span>
             <StarRow value={s.average!} size={15} />
           </p>
           <p className="t-sm tnum mt-1.5 text-[var(--ink-3)]">
-            {s.count} {s.count === 1 ? 'review' : 'reviews'}
-            {s.onTimeShare != null && ` · ${Math.round(s.onTimeShare * 100)}% ready on time`}
+            {plural(s.count, '{n} review', '{n} reviews')}
+            {s.onTimeShare != null && ` · ${t('{pct}% ready on time', { pct: Math.round(s.onTimeShare * 100) })}`}
           </p>
         </div>
         {s.topTags.length > 0 && (
-          <ul className="flex flex-wrap gap-2" aria-label="Mentioned most">
-            {s.topTags.map((t) => (
+          <ul className="flex flex-wrap gap-2" aria-label={t('Mentioned most')}>
+            {s.topTags.map((tag) => (
               <li
-                key={t.tag}
+                key={tag.tag}
                 className="tnum rounded-full bg-[var(--surface)] px-3 py-1.5 text-[13px] font-medium text-[var(--ink-2)]"
               >
-                {t.tag} <span className="text-[var(--ink-4)]">{t.n}</span>
+                {t(tag.tag)} <span className="text-[var(--ink-4)]">{tag.n}</span>
               </li>
             ))}
           </ul>
@@ -102,14 +109,14 @@ export function Reviews({
               </div>
               <span className="flex items-center gap-2">
                 <StarRow value={r.rating} />
-                <span className="sr-only">{r.rating} out of 5</span>
+                <span className="sr-only">{t('{n} out of 5', { n: r.rating })}</span>
               </span>
               <ReportButton targetType="review" targetId={r.id} compact />
             </div>
             {r.text && <p className="t-body mt-3 max-w-[64ch] text-[var(--ink-2)]">{r.text}</p>}
             {(r.tags.length > 0 || !r.onTime) && (
               <p className="t-sm mt-2.5 text-[var(--ink-4)]">
-                {[...r.tags, ...(r.onTime ? [] : ['Ran late'])].join(' · ')}
+                {[...r.tags, ...(r.onTime ? [] : ['Ran late'])].map((tag) => t(tag)).join(' · ')}
               </p>
             )}
           </li>
@@ -118,13 +125,12 @@ export function Reviews({
 
       {reviews.length > 3 && !all && (
         <Button variant="secondary" onClick={() => setAll(true)}>
-          Show all {reviews.length} reviews
+          {t('Show all {n} reviews', { n: reviews.length })}
         </Button>
       )}
       {/* EU consumer law (Omnibus): say how reviews are checked. */}
       <p className="t-sm mt-4 text-[var(--ink-4)]">
-        Reviews come only from completed bookings on Cappy, written by the person who booked. We do not edit
-        them or pay for them.
+        {t('Reviews come only from completed bookings on Cappy, written by the person who booked. We do not edit them or pay for them.')}
       </p>
     </div>
   )

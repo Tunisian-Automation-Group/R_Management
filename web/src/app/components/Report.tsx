@@ -4,12 +4,13 @@ import { useQueryClient } from '@tanstack/react-query'
 import { REPORT_REASONS, blockPerson, sendReport, type ReportReason, type ReportTarget } from '../../data/repo.ts'
 import { messageOf, useToast } from '../store.tsx'
 import { Button, Field, Input, Select, Sheet, Textarea } from './ui.tsx'
+import { t } from '../../i18n.ts'
 
-const WHAT: Record<ReportTarget, string> = {
-  listing: 'this listing',
-  owner: 'this person',
-  message: 'this message',
-  review: 'this review',
+const TITLE: Record<ReportTarget, string> = {
+  listing: 'Report this listing',
+  owner: 'Report this person',
+  message: 'Report this message',
+  review: 'Report this review',
 }
 
 /**
@@ -71,46 +72,46 @@ export function ReportButton({
         icon="alert"
         className={className}
         onClick={() => setOpen(true)}
-        aria-label={`Report ${WHAT[targetType]}`}
+        aria-label={t(TITLE[targetType])}
       >
-        {compact ? null : 'Report'}
+        {compact ? null : t('Report')}
       </Button>
       <Sheet
         open={open}
         onClose={close}
-        title={sent ? 'Thank you' : `Report ${WHAT[targetType]}`}
+        title={sent ? t('Thank you') : t(TITLE[targetType])}
         footer={
           sent ? (
             <Button block size="lg" onClick={close}>
-              Done
+              {t('Done')}
             </Button>
           ) : (
             <Button block size="lg" disabled={busy || tooShort || needsEmail} onClick={() => void submit()}>
-              Send report
+              {t('Send report')}
             </Button>
           )
         }
       >
         {sent ? (
           <p className="t-body pb-3 text-[var(--ink-2)]" role="status">
-            We have your report and will tell you what we decide. Your reference is{' '}
+            {t('We have your report and will tell you what we decide. Your reference is')}{' '}
             <span className="tnum font-semibold text-[var(--ink)]">{sent}</span>.
           </p>
         ) : (
           <div className="space-y-4 pb-3">
-            <Field label="What is wrong?" htmlFor={`${id}-reason`}>
+            <Field label={t('What is wrong?')} htmlFor={`${id}-reason`}>
               <Select id={`${id}-reason`} value={reason} onChange={(e) => setReason(e.target.value as ReportReason)}>
                 {REPORT_REASONS.map(([value, label]) => (
                   <option key={value} value={value}>
-                    {label}
+                    {t(label)}
                   </option>
                 ))}
               </Select>
             </Field>
             <Field
-              label="Tell us more"
+              label={t('Tell us more')}
               htmlFor={`${id}-details`}
-              hint="Where exactly, and why. At least 10 characters."
+              hint={t('Where exactly, and why. At least 10 characters.')}
             >
               <Textarea
                 id={`${id}-details`}
@@ -121,7 +122,7 @@ export function ReportButton({
               />
             </Field>
             {!session && (
-              <Field label="Your email" htmlFor={`${id}-email`} hint="So we can tell you what we decide.">
+              <Field label={t('Your email')} htmlFor={`${id}-email`} hint={t('So we can tell you what we decide.')}>
                 <Input
                   id={`${id}-email`}
                   type="email"
@@ -132,7 +133,7 @@ export function ReportButton({
               </Field>
             )}
             <p className="t-sm text-[var(--ink-3)]">
-              If someone is in danger, call 112 first. Reports are read by people at Cappy.
+              {t('If someone is in danger, call 112 first. Reports are read by people at Cappy.')}
             </p>
           </div>
         )}
@@ -152,7 +153,7 @@ export function BlockButton({ sub, name }: { sub: string; name: string }) {
     try {
       await blockPerson(sub)
       await qc.invalidateQueries({ queryKey: ['blocks'] })
-      toast(`${name} is blocked`)
+      toast(t('{name} is blocked', { name }))
       setOpen(false)
     } catch (err) {
       toast(messageOf(err))
@@ -163,22 +164,20 @@ export function BlockButton({ sub, name }: { sub: string; name: string }) {
   return (
     <>
       <Button variant="quiet" icon="close" onClick={() => setOpen(true)}>
-        Block
+        {t('Block')}
       </Button>
       <Sheet
         open={open}
         onClose={() => setOpen(false)}
-        title={`Block ${name}?`}
+        title={t('Block {name}?', { name })}
         footer={
           <Button block size="lg" variant="danger" disabled={busy} onClick={() => void block()}>
-            Block {name}
+            {t('Block {name}', { name })}
           </Button>
         }
       >
         <p className="t-body pb-3 text-[var(--ink-2)]">
-          Neither of you will be able to message the other or make new bookings with each other. Bookings you
-          already have stay as they are. You can unblock {name} from your profile. If something is wrong, report
-          them too, so Cappy can act.
+          {t('Neither of you will be able to message the other or make new bookings with each other. Bookings you already have stay as they are. You can unblock {name} from your profile. If something is wrong, report them too, so Cappy can act.', { name })}
         </p>
       </Sheet>
     </>

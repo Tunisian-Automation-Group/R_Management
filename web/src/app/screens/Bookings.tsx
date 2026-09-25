@@ -8,6 +8,7 @@ import { Screen } from '../components/AppShell.tsx'
 import { Photo } from '../components/Photo.tsx'
 import { Button, EmptyState, Pill, Segmented, Skeleton } from '../components/ui.tsx'
 import { range } from '../format.ts'
+import { t } from '../../i18n.ts'
 
 const LIVE: BookingStatus[] = ['awaiting_payment', 'requested', 'accepted', 'active', 'disputed']
 
@@ -17,25 +18,25 @@ const statusPill = (
 ): { label: string; tone: 'neutral' | 'accent' | 'success' | 'warn' | 'danger' } => {
   switch (status) {
     case 'awaiting_payment':
-      return { label: 'Authorising payment', tone: 'warn' }
+      return { label: t('Authorising payment'), tone: 'warn' }
     case 'requested':
-      return { label: 'Waiting for reply', tone: 'warn' }
+      return { label: t('Waiting for reply'), tone: 'warn' }
     case 'accepted':
-      return { label: 'Confirmed', tone: 'success' }
+      return { label: t('Confirmed'), tone: 'success' }
     case 'active':
-      return { label: 'In progress', tone: 'success' }
+      return { label: t('In progress'), tone: 'success' }
     case 'completed':
-      return rated ? { label: 'Rated', tone: 'neutral' } : { label: 'Rate it', tone: 'accent' }
+      return rated ? { label: t('Rated'), tone: 'neutral' } : { label: t('Rate it'), tone: 'accent' }
     case 'declined':
-      return { label: 'Declined', tone: 'danger' }
+      return { label: t('Declined'), tone: 'danger' }
     case 'cancelled':
-      return { label: 'Cancelled', tone: 'neutral' }
+      return { label: t('Cancelled'), tone: 'neutral' }
     case 'expired':
-      return { label: 'Expired', tone: 'neutral' }
+      return { label: t('Expired'), tone: 'neutral' }
     case 'payment_failed':
-      return { label: 'Payment failed', tone: 'danger' }
+      return { label: t('Payment failed'), tone: 'danger' }
     case 'disputed':
-      return { label: 'Under review', tone: 'warn' }
+      return { label: t('Under review'), tone: 'warn' }
   }
 }
 
@@ -53,16 +54,16 @@ export function Bookings() {
   const bookings = useBookings(role)
   // Both switches live in the URL, so back and a shared link keep them.
   const tab: 'live' | 'past' = params.get('tab') === 'past' ? 'past' : 'live'
-  const setTab = (t: 'live' | 'past') => {
+  const setTab = (to: 'live' | 'past') => {
     const next = new URLSearchParams(params)
-    if (t === 'past') next.set('tab', 'past')
+    if (to === 'past') next.set('tab', 'past')
     else next.delete('tab')
     setParams(next, { replace: true })
   }
 
   if (!authReady || (session && bookings.isPending)) {
     return (
-      <Screen title="Bookings">
+      <Screen title={t('Bookings')}>
         <div className="space-y-3 pt-2">
           {Array.from({ length: 3 }, (_, i) => (
             <Skeleton key={i} className="h-[104px] rounded-[var(--radius-card)]" />
@@ -74,8 +75,8 @@ export function Bookings() {
 
   if (!session) {
     return (
-      <Screen title="Bookings" sub="Capacity you have taken from other people.">
-        <SignedOut what="see your bookings" next="/bookings" />
+      <Screen title={t('Bookings')} sub={t('Capacity you have taken from other people.')}>
+        <SignedOut what={t('see your bookings')} next="/bookings" />
       </Screen>
     )
   }
@@ -87,29 +88,29 @@ export function Bookings() {
 
   return (
     <Screen
-      title="Bookings"
-      sub={hosting ? 'People booking what you listed.' : 'Capacity you have taken from other people.'}
+      title={t('Bookings')}
+      sub={hosting ? t('People booking what you listed.') : t('Capacity you have taken from other people.')}
     >
       <div className="pb-4">
         <Segmented
-          label="Whose bookings"
+          label={t('Whose bookings')}
           value={role}
           onChange={(r) => setParams(r === 'owner' ? { as: 'hosting' } : {}, { replace: true })}
           options={[
-            { value: 'requester', label: 'I booked' },
-            { value: 'owner', label: "I'm hosting" },
+            { value: 'requester', label: t('I booked') },
+            { value: 'owner', label: t("I'm hosting") },
           ]}
         />
       </div>
       {mine.length > 0 && (
         <div className="pb-5">
           <Segmented
-            label="Booking state"
+            label={t('Booking state')}
             value={tab}
             onChange={setTab}
             options={[
-              { value: 'live', label: `Upcoming${live.length ? ` (${live.length})` : ''}` },
-              { value: 'past', label: 'Past' },
+              { value: 'live', label: `${t('Upcoming')}${live.length ? ` (${live.length})` : ''}` },
+              { value: 'past', label: t('Past') },
             ]}
           />
         </div>
@@ -119,28 +120,28 @@ export function Bookings() {
         hosting ? (
           <EmptyState
             icon="wallet"
-            title="Nobody has booked you yet"
-            body="Accepted requests show up here, with the time and who is coming."
-            action={<Button to={'/earn'}>Go to Earn</Button>}
+            title={t('Nobody has booked you yet')}
+            body={t('Accepted requests show up here, with the time and who is coming.')}
+            action={<Button to={'/earn'}>{t('Go to Earn')}</Button>}
           />
         ) : (
           <EmptyState
             icon="ticket"
-            title="No bookings yet"
-            body="When you book someone's idle hour it shows up here. Once the owner accepts, you get the address and handover notes."
-            action={<Button to={'/'}>Find something nearby</Button>}
+            title={t('No bookings yet')}
+            body={t("When you book someone's idle hour it shows up here. Once the owner accepts, you get the address and handover notes.")}
+            action={<Button to={'/'}>{t('Find something nearby')}</Button>}
           />
         )
       ) : shown.length === 0 ? (
         <EmptyState
           icon={tab === 'live' ? 'calendar' : 'clock'}
-          title={tab === 'live' ? 'Nothing upcoming' : 'Nothing finished yet'}
+          title={tab === 'live' ? t('Nothing upcoming') : t('Nothing finished yet')}
           body={
             tab === 'live'
-              ? 'Your past bookings are under the Past tab.'
-              : 'Bookings move here once they are done, declined or cancelled.'
+              ? t('Your past bookings are under the Past tab.')
+              : t('Bookings move here once they are done, declined or cancelled.')
           }
-          action={tab === 'live' ? <Button to={'/'}>Browse capacity</Button> : undefined}
+          action={tab === 'live' ? <Button to={'/'}>{t('Browse capacity')}</Button> : undefined}
         />
       ) : (
         <ul className="ruled border-t border-[var(--line)]">
@@ -158,15 +159,15 @@ export function Bookings() {
 function BookingRow({ booking, hosting, onOpen }: { booking: Booking; hosting: boolean; onOpen: () => void }) {
   const pill =
     hosting && booking.status === 'requested'
-      ? { label: 'Needs your answer', tone: 'accent' as const }
+      ? { label: t('Needs your answer'), tone: 'accent' as const }
       : hosting && booking.status === 'completed'
-        ? { label: booking.outcome ? 'Rated' : 'Finished', tone: 'neutral' as const }
+        ? { label: booking.outcome ? t('Rated') : t('Finished'), tone: 'neutral' as const }
         : statusPill(booking.status, Boolean(booking.outcome))
   const dim = !LIVE.includes(booking.status) && booking.status !== 'completed'
   // What it looked like when it was booked, even if the listing has changed since.
-  const title = booking.listing?.title ?? 'Listing removed'
+  const title = booking.listing?.title ?? t('Listing removed')
   const photo = booking.listing?.photo
-  const ownerName = hosting ? 'You are hosting' : (booking.listing?.ownerName ?? '')
+  const ownerName = hosting ? t('You are hosting') : (booking.listing?.ownerName ?? '')
 
   return (
     <button

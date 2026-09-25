@@ -1,4 +1,5 @@
 import type { Iso, Slot } from '../../domain/types.ts'
+import { locale, t } from '../../i18n.ts'
 
 type Props = {
   slots: Slot[]
@@ -127,7 +128,7 @@ export function CapacityBar({
                 col.isToday ? 'font-bold text-[var(--ink)]' : 'font-semibold text-[var(--ink-4)]'
               }`}
             >
-              {col.date.toLocaleDateString('en-GB', { weekday: 'narrow' })}
+              {col.date.toLocaleDateString(locale(), { weekday: 'narrow' })}
               {size === 'md' && <span className="ml-0.5 opacity-80">{col.date.getDate()}</span>}
             </div>
           ))}
@@ -136,9 +137,9 @@ export function CapacityBar({
 
       {showLegend && (
         <div className="mt-4 flex flex-wrap items-center gap-x-4 gap-y-1.5 border-t border-[var(--line)] pt-3 text-[12.5px] text-[var(--ink-3)]">
-          <Key className="bg-[var(--track)]" label="In use" />
-          <Key className="bg-[var(--idle)]" label={intent === 'earn' ? 'Idle, nobody paying' : 'Free to book'} />
-          {bookedList.length > 0 && <Key className="bg-[var(--sold)]" label={intent === 'earn' ? 'Sold' : 'Your booking'} />}
+          <Key className="bg-[var(--track)]" label={t('In use')} />
+          <Key className="bg-[var(--idle)]" label={intent === 'earn' ? t('Idle, nobody paying') : t('Free to book')} />
+          {bookedList.length > 0 && <Key className="bg-[var(--sold)]" label={intent === 'earn' ? t('Sold') : t('Your booking')} />}
         </div>
       )}
     </div>

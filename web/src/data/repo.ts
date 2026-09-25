@@ -29,6 +29,8 @@ import type {
 import type { ReviewSummary } from '../domain/reviews.ts'
 import type { SortKey } from '../domain/match.ts'
 import { accessToken, refresh, useSession } from './auth.ts'
+import { t } from '../i18n.ts'
+import { shareFile } from '../native.ts'
 
 /**
  * Same origin by default: the gateway (or CloudFront) serves the app at / and
@@ -79,7 +81,7 @@ async function send(method: string, path: string, body?: unknown, headers?: Reco
     // An access token revoked or expired early: refresh once and try again.
     if (res.status === 401 && (await refresh())) res = await attempt()
   } catch {
-    throw new ApiError('Cannot reach Cappy. Check your connection and try again.', 0, 'offline')
+    throw new ApiError(t('Cannot reach Cappy. Check your connection and try again.'), 0, 'offline')
   }
   return res
 }
@@ -98,7 +100,8 @@ async function call<T>(method: string, path: string, body?: unknown, headers?: R
     const err = (data as { error?: { code?: string; message?: string } } | undefined)?.error
     const wait = Number(res.headers.get('Retry-After'))
     throw new ApiError(
-      err?.message ?? `${method} ${path} failed (${res.status})`,
+      // The server speaks English; the catalogue translates what it knows.
+      err?.message ? t(err.message) : t('Something went wrong ({status}). Try again.', { status: res.status }),
       res.status,
       err?.code ?? 'error',
       Number.isFinite(wait) && wait > 0 ? wait : undefined,
@@ -329,14 +332,16 @@ export const saveProfile = (p: Profile) => put<Owner>('/me', p)
 /** Everything of mine the platform holds, as a file download. */
 export async function exportMyData(): Promise<void> {
   const res = await send('GET', '/me/export')
-  if (!res.ok) throw new ApiError('Could not prepare your data. Try again.', res.status, 'export')
+  if (!res.ok) throw new ApiError(t('Could not prepare your data. Try again.'), res.status, 'export')
   const blob = await res.blob()
+  // A store shell has no downloads: the file goes to the share sheet.
+  if (await shareFile('cappy-my-data.json', await blob.text())) return
   const file = new File([blob], 'cappy-my-data.json', { type: 'application/json' })
   // Phones (and the store shells' web views) cannot save an <a download>; they
   // can hand a file to the share sheet ("Save to Files", mail, AirDrop).
   if (navigator.canShare?.({ files: [file] })) {
     try {
-      await navigator.share({ files: [file], title: 'My Cappy data' })
+      await navigator.share({ files: [file], title: t('My Cappy data') })
       return
     } catch (e) {
       if (e instanceof DOMException && e.name === 'AbortError') return // they closed the sheet

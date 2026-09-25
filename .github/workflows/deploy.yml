@@ -121,8 +121,13 @@ jobs:
           for f in index.html sw.js registerSW.js manifest.webmanifest; do
             [ -f "../../../web/dist/$f" ] && aws s3 cp "../../../web/dist/$f" "s3://$bucket/$f" --cache-control "no-cache"
           done
+          # Deep-link files for the store apps: JSON, never cached for long.
+          for f in apple-app-site-association assetlinks.json; do
+            [ -f "../../../web/dist/.well-known/$f" ] && aws s3 cp "../../../web/dist/.well-known/$f" \
+              "s3://$bucket/.well-known/$f" --content-type application/json --cache-control "public,max-age=300"
+          done
           aws cloudfront create-invalidation --distribution-id "$(echo "$out" | jq -r .cloudfront_id)" \
-            --paths /index.html /sw.js /registerSW.js /manifest.webmanifest
+            --paths /index.html /sw.js /registerSW.js /manifest.webmanifest '/.well-known/*'
 
       - name: Smoke test the public address
         run: |

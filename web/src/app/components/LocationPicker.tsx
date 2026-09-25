@@ -2,14 +2,10 @@ import { useEffect, useRef, useState } from 'react'
 import type { City as CityStat } from '../../data/repo.ts'
 import { Icon } from './Icon.tsx'
 import { Sheet } from './ui.tsx'
+import { locale, plural, t } from '../../i18n.ts'
 
-const COUNTRY: Record<string, string> = {
-  DE: 'Germany',
-  NL: 'Netherlands',
-  FR: 'France',
-  IT: 'Italy',
-  PT: 'Portugal',
-}
+/** "Deutschland" or "Germany", from the platform's own country names. */
+const country = (cc: string) => new Intl.DisplayNames([locale()], { type: 'region' }).of(cc) ?? cc
 
 /**
  * Where you are searching from.
@@ -71,7 +67,7 @@ export function LocationPicker({
     (c) =>
       !needle ||
       c.city.toLowerCase().includes(needle) ||
-      (COUNTRY[c.country] ?? c.country).toLowerCase().includes(needle),
+      country(c.country).toLowerCase().includes(needle),
   )
   const districtHits = needle
     ? districts.filter((d) => d.name.toLowerCase().includes(needle) && d.name !== d.city).slice(0, 8)
@@ -96,8 +92,8 @@ export function LocationPicker({
           autoFocus={wide}
           value={q}
           onChange={(e) => setQ(e.target.value)}
-          placeholder="City, district or country"
-          aria-label="Filter cities and districts"
+          placeholder={t('City, district or country')}
+          aria-label={t('Filter cities and districts')}
           className="h-10 w-full rounded-[12px] border border-[var(--line)] bg-[var(--surface)] pl-9 pr-3
             text-[14px] outline-none placeholder:text-[var(--ink-4)] focus:border-[var(--ink-3)]
             focus-visible:outline-none"
@@ -106,7 +102,7 @@ export function LocationPicker({
 
       {districtHits.length > 0 && onPickDistrict && (
         <div className="mt-4">
-          <p className="t-label px-1">Districts</p>
+          <p className="t-label px-1">{t('Districts')}</p>
           <ul className="mt-1.5">
             {districtHits.map((d) => (
               <li key={d.name}>
@@ -132,13 +128,13 @@ export function LocationPicker({
 
       {shown.length === 0 && districtHits.length === 0 && (
         <p className="t-sm px-1 py-6 text-center text-[var(--ink-4)]">
-          Nothing listed there yet.
+          {t('Nothing listed there yet.')}
         </p>
       )}
 
       {Object.entries(byCountry).map(([cc, group]) => (
         <div key={cc} className="mt-4">
-          <p className="t-label px-1">{COUNTRY[cc] ?? cc}</p>
+          <p className="t-label px-1">{country(cc)}</p>
           <ul className="mt-1.5">
             {group.map((c) => {
               const here = c.city === current
@@ -156,7 +152,7 @@ export function LocationPicker({
                     <span className="min-w-0 flex-1">
                       <span className="block text-[14.5px] font-semibold">{c.city}</span>
                       <span className="t-sm tnum block text-[var(--ink-4)]">
-                        {c.listings} {c.listings === 1 ? 'listing' : 'listings'}
+                        {plural(c.listings, '{n} listing', '{n} listings')}
                       </span>
                     </span>
                     {here && (
@@ -195,7 +191,7 @@ export function LocationPicker({
         open && (
           <div
             role="dialog"
-            aria-label="Choose a city"
+            aria-label={t('Choose a city')}
             className="anim-pop glass-strong absolute right-0 top-[calc(100%+8px)] z-50 max-h-[70vh] w-[320px]
               overflow-y-auto rounded-[20px] p-3 shadow-[var(--glass-shadow-raised)]"
           >
@@ -203,7 +199,7 @@ export function LocationPicker({
           </div>
         )
       ) : (
-        <Sheet open={open} onClose={() => setOpen(false)} title="Search near">
+        <Sheet open={open} onClose={() => setOpen(false)} title={t('Search near')}>
           <div className="pb-4">{list}</div>
         </Sheet>
       )}

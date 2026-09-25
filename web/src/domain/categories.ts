@@ -1,4 +1,5 @@
 import type { BookingMode, CategoryGroup, CategoryId } from './types.ts'
+import { locale, plural, t } from '../i18n.ts'
 
 export type CategoryMeta = {
   id: CategoryId
@@ -26,13 +27,13 @@ export type GroupMeta = {
  * Make it, move it, or borrow the kit. Every physical job is some sequence of
  * those three, and a buyer arrives knowing which one they are short of.
  */
-export const GROUPS: GroupMeta[] = [
+export const GROUPS: GroupMeta[] = localised(['label', 'blurb'], [
   { id: 'make', label: 'Make', blurb: 'Turn a drawing, a file or a spec into parts' },
   { id: 'move', label: 'Move', blurb: 'Get it across Europe, and hold it on the way' },
   { id: 'equip', label: 'Equip', blurb: 'Borrow the machine instead of buying it' },
-]
+])
 
-export const CATEGORIES: CategoryMeta[] = [
+export const CATEGORIES: CategoryMeta[] = localised(['label', 'blurb', 'unitNoun'], [
   // ------------------------------------------------------------------- make
   {
     id: 'fabrication',
@@ -119,7 +120,7 @@ export const CATEGORIES: CategoryMeta[] = [
     blurb: 'Bodies, glass, studios and treated rooms',
     quickHours: [8, 24, 72],
   },
-]
+])
 
 const BY_ID = new Map(CATEGORIES.map((c) => [c.id, c]))
 
@@ -132,12 +133,25 @@ export const category = (id: CategoryId): CategoryMeta => {
 export const categoriesIn = (group: CategoryGroup): CategoryMeta[] =>
   CATEGORIES.filter((c) => c.group === group)
 
+/** The English text is the source; reading a field gives it in the current
+ *  language (a getter, so a language switch needs nothing else). */
+function localised<T extends object>(keys: (keyof T)[], items: T[]): T[] {
+  for (const item of items)
+    for (const k of keys) {
+      const en = item[k]
+      if (typeof en === 'string') Object.defineProperty(item, k, { get: () => t(en), enumerable: true })
+    }
+  return items
+}
+
+const num = (n: number) => (+n.toFixed(n % 1 ? 1 : 0)).toLocaleString(locale())
+
 /** Hours phrased the way people say them, not as a raw number. */
 export function durationLabel(hours: number): string {
-  if (hours < 1) return `${Math.round(hours * 60)} min`
-  if (hours < 24) return `${+hours.toFixed(1)} ${hours === 1 ? 'hour' : 'hours'}`
+  if (hours < 1) return t('{n} min', { n: Math.round(hours * 60) })
+  if (hours < 24) return plural(hours, '{n} hour', '{n} hours').replace(String(hours), num(hours))
   const days = hours / 24
-  if (days < 7) return `${+days.toFixed(days % 1 ? 1 : 0)} ${days === 1 ? 'day' : 'days'}`
+  if (days < 7) return plural(days, '{n} day', '{n} days').replace(String(days), num(days))
   const weeks = days / 7
-  return `${+weeks.toFixed(weeks % 1 ? 1 : 0)} ${weeks === 1 ? 'week' : 'weeks'}`
+  return plural(weeks, '{n} week', '{n} weeks').replace(String(weeks), num(weeks))
 }

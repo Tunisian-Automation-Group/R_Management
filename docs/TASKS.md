@@ -87,6 +87,7 @@ Backend:
 - [x] V2-12 Deleted accounts: owner page 404, no `authorId` on their reviews; reviewers shown as "First L."
 - [x] V2-16 A review is dated when it was written, never in the future
 - [x] V2-20 The load test cancels the bookings it makes; demo data rebuilt clean
+- [x] Store shells: Capacitor iOS and Android projects, push registration, refresh token in app storage (V1-28), deep links (apple-app-site-association, assetlinks.json), share-sheet export, `/account/delete` for Google Play (R-13). Building and signing needs Xcode and Android Studio with the store credentials
 - [-] V2-19b Seed photos that match their listings: demo data only
 
 ## Verification round 1 — backend and data (V1)
@@ -152,7 +153,7 @@ Engineering, before launch:
 - [x] G-4 In-app messaging per booking (`/api/bookings/{id}/messages`); phone numbers, emails, links and messenger handles masked until accepted; pushed to the other side (never emailed)
 - [x] G-5 (API) Check-in and check-out photos on a booking (`/api/bookings/{id}/evidence`), the parties' own uploads, never swept
 - [x] G-6 Checkout compliance: total price including the fee; "zahlungspflichtig buchen"; trader/private owner label; withdrawal information and the withdrawal button; review-verification statement; ranking parameters page
-- [~] G-7 German localisation: every email and push in English and German, by the recipient's Cognito `locale` (done); the web UI and legal pages next (the app sets `locale` when the language changes)
+- [x] G-7 German localisation: every email and push by the recipient's Cognito `locale`; the whole web UI and legal pages (827 entries, `npm run check:i18n`), "Zahlungspflichtig buchen", Widerrufsbelehrung and Muster-Widerrufsformular
 - [x] G-8 (API) Renter identity verification with Stripe Identity (document + live selfie) for bookings above 300 € (and configurable categories); only the outcome is stored. Needs a DPIA before launch (G-B3)
 - [x] G-9 Fraud rules: 10 booking requests and 20 new listings per person per day; a new owner's listing above 100 €/h waits for a staff check (`/api/admin/listings/held`, approve)
 - [~] G-10 DAC7: every category tagged with its activity (`dac7` on /api/categories; counsel confirms). Left for the business: switch on Stripe Connect platform tax reporting in the dashboard (it collects TIN and date of birth in onboarding, and Stripe withholds payouts while they are missing) and register with the BZSt (G-B4)

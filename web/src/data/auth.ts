@@ -6,6 +6,8 @@
 // installed app stays signed in; it is what a thief would want, which is why
 // it never goes anywhere but Cognito.
 import { useSyncExternalStore } from 'react'
+import { lang, t } from '../i18n.ts'
+import { isNative, nativeStore, pushSignedIn, pushSignedOut } from '../native.ts'
 
 const REGION = import.meta.env.VITE_COGNITO_REGION as string | undefined
 const ENDPOINT = (
@@ -40,7 +42,7 @@ const FRIENDLY: Record<string, string> = {
 }
 
 async function cognito<T>(action: string, body: Record<string, unknown>): Promise<T> {
-  if (!ENDPOINT || !CLIENT_ID) throw new AuthError('Sign-in is not configured for this build.', 'config')
+  if (!ENDPOINT || !CLIENT_ID) throw new AuthError(t('Sign-in is not configured for this build.'), 'config')
   let res: Response
   try {
     res = await fetch(ENDPOINT, {
@@ -52,12 +54,12 @@ async function cognito<T>(action: string, body: Record<string, unknown>): Promis
       body: JSON.stringify({ ClientId: CLIENT_ID, ...body }),
     })
   } catch {
-    throw new AuthError('Cannot reach the sign-in service. Check your connection.', 'offline')
+    throw new AuthError(t('Cannot reach the sign-in service. Check your connection.'), 'offline')
   }
   const data = (await res.json().catch(() => ({}))) as Record<string, unknown>
   if (!res.ok) {
     const code = String(data.__type ?? 'Error').split('#').pop()!
-    throw new AuthError(FRIENDLY[code] ?? String(data.message ?? 'That did not work. Try again.'), code)
+    throw new AuthError(FRIENDLY[code] ? t(FRIENDLY[code]) : String(data.message ?? t('That did not work. Try again.')), code)
   }
   return data as T
 }
@@ -81,7 +83,13 @@ function claims(jwt: string): Record<string, unknown> {
   return JSON.parse(json) as Record<string, unknown>
 }
 
+// On the web the refresh token is in localStorage (under the CSP). In a store
+// shell it is in the platform's app storage (Capacitor Preferences), mirrored
+// here so reads stay synchronous; the mirror is filled before the first restore.
+let mirror: string | null = null
+
 function readRefresh(): string | null {
+  if (isNative) return mirror
   try {
     return localStorage.getItem(REFRESH_KEY)
   } catch {
@@ -90,6 +98,11 @@ function readRefresh(): string | null {
 }
 
 function writeRefresh(value: string | null): void {
+  if (isNative) {
+    mirror = value
+    void (value ? nativeStore.set(REFRESH_KEY, value) : nativeStore.remove(REFRESH_KEY))
+    return
+  }
   try {
     if (value) localStorage.setItem(REFRESH_KEY, value)
     else localStorage.removeItem(REFRESH_KEY)
@@ -151,7 +164,10 @@ export async function accessToken(): Promise<string | null> {
 }
 
 // Restore whatever this device had, once, at start.
-void (readRefresh() ? refresh() : Promise.resolve(false)).finally(() => {
+void (async () => {
+  if (isNative) mirror = await nativeStore.get(REFRESH_KEY)
+  if (readRefresh()) await refresh()
+})().finally(() => {
   ready = true
   emit()
 })
@@ -179,13 +195,40 @@ export async function signIn(email: string, password: string): Promise<void> {
     AuthParameters: { USERNAME: email, PASSWORD: password },
   })
   if (!out.AuthenticationResult) {
-    throw new AuthError('This account needs a step this app does not support yet.', out.ChallengeName ?? 'challenge')
+    throw new AuthError(t('This account needs a step this app does not support yet.'), out.ChallengeName ?? 'challenge')
   }
   adopt(out.AuthenticationResult)
+  void updateLocale(lang())
+  void pushSignedIn(accessToken)
+}
+
+/** The language emails and pushes come in: Cognito's standard `locale`. */
+export async function updateLocale(value: string): Promise<void> {
+  const access = tokens?.access
+  if (!access || !ENDPOINT) return
+  try {
+    await fetch(ENDPOINT, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/x-amz-json-1.1',
+        'X-Amz-Target': 'AWSCognitoIdentityProviderService.UpdateUserAttributes',
+      },
+      body: JSON.stringify({ AccessToken: access, UserAttributes: [{ Name: 'locale', Value: value }] }),
+    })
+  } catch {
+    // Best effort: the next sign-in sets it again.
+  }
 }
 
 export const signUp = (email: string, password: string) =>
-  cognito('SignUp', { Username: email, Password: password, UserAttributes: [{ Name: 'email', Value: email }] })
+  cognito('SignUp', {
+    Username: email,
+    Password: password,
+    UserAttributes: [
+      { Name: 'email', Value: email },
+      { Name: 'locale', Value: lang() },
+    ],
+  })
 
 export const confirmSignUp = (email: string, code: string) =>
   cognito('ConfirmSignUp', { Username: email, ConfirmationCode: code })
@@ -201,7 +244,7 @@ export const confirmForgotPassword = (email: string, code: string, password: str
  *  Call after the platform has forgotten the person (DELETE /me). */
 export async function deleteAccount(): Promise<void> {
   const access = await accessToken()
-  if (!access) throw new AuthError('Sign in again to delete your account.', 'signed-out')
+  if (!access) throw new AuthError(t('Sign in again to delete your account.'), 'signed-out')
   let res: Response
   try {
     res = await fetch(ENDPOINT, {
@@ -213,15 +256,16 @@ export async function deleteAccount(): Promise<void> {
       body: JSON.stringify({ AccessToken: access }),
     })
   } catch {
-    throw new AuthError('Cannot reach the sign-in service. Check your connection.', 'offline')
+    throw new AuthError(t('Cannot reach the sign-in service. Check your connection.'), 'offline')
   }
-  if (!res.ok) throw new AuthError('Your sign-in could not be deleted. Try again.', 'delete')
+  if (!res.ok) throw new AuthError(t('Your sign-in could not be deleted. Try again.'), 'delete')
   forget()
 }
 
 /** Ends the session everywhere Cognito can, and on this device regardless. */
 export async function signOut(): Promise<void> {
   const access = tokens?.access
+  if (access) await pushSignedOut(access)
   forget()
   if (!access) return
   try {

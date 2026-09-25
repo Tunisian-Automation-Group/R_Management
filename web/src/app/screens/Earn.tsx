@@ -13,8 +13,9 @@ import { Screen, SectionHead } from '../components/AppShell.tsx'
 import { CapacityBar } from '../components/CapacityBar.tsx'
 import { Photo } from '../components/Photo.tsx'
 import { Icon } from '../components/Icon.tsx'
-import { Avatar, Banner, Button, Card, Chip, EmptyState, Pill, Sheet, Skeleton } from '../components/ui.tsx'
+import { Avatar, Banner, Button, Card, Chip, EmptyState, oneDecimal, Pill, Sheet, Skeleton } from '../components/ui.tsx'
 import { ago, range } from '../format.ts'
+import { plural, t } from '../../i18n.ts'
 
 export const DECLINE_REASONS = [
   'Already promised it to someone',
@@ -115,7 +116,7 @@ export function Earn() {
 
   if (!authReady || (session && (listingsQ.isPending || inboundQ.isPending))) {
     return (
-      <Screen title="Earn">
+      <Screen title={t('Earn')}>
         <Skeleton className="h-[16px] w-[46%]" />
         <Skeleton className="mt-4 h-[60px] w-[62%]" />
         <Skeleton className="mt-4 h-[44px] w-full" />
@@ -126,8 +127,8 @@ export function Earn() {
 
   if (!session) {
     return (
-      <Screen title="Earn" sub="Everything you own has hours you never use.">
-        <SignedOut what="list something and answer requests" next="/earn" />
+      <Screen title={t('Earn')} sub={t('Everything you own has hours you never use.')}>
+        <SignedOut what={t('list something and answer requests')} next="/earn" />
       </Screen>
     )
   }
@@ -135,16 +136,16 @@ export function Earn() {
   if (mine.length === 0) {
     return (
       <Screen
-        title="Earn"
-        sub="Everything you own has hours you never use."
+        title={t('Earn')}
+        sub={t('Everything you own has hours you never use.')}
       >
         <EmptyState
           icon="wallet"
-          title="Nothing listed yet"
-          body="A printer running overnight, a PA rig between gigs, a treated room, a saw in the cupboard. If it is idle, somebody nearby needs it for an hour."
+          title={t('Nothing listed yet')}
+          body={t('A printer running overnight, a PA rig between gigs, a treated room, a saw in the cupboard. If it is idle, somebody nearby needs it for an hour.')}
           action={
             <Button size="lg" icon="plus" to={'/earn/new'}>
-              List your first thing
+              {t('List your first thing')}
             </Button>
           }
         />
@@ -154,10 +155,10 @@ export function Earn() {
 
   return (
     <Screen
-      title="Earn"
+      title={t('Earn')}
       action={
         <Button size="sm" variant="secondary" icon="plus" to={'/earn/new'}>
-          Add
+          {t('Add')}
         </Button>
       }
     >
@@ -166,12 +167,12 @@ export function Earn() {
           <Banner
             tone="warn"
             title={
-              params.get('payments') === 'done' ? 'Stripe is checking your details' : 'Set up payouts to take bookings'
+              params.get('payments') === 'done' ? t('Stripe is checking your details') : t('Set up payouts to take bookings')
             }
-            body="Buyers can only book you once Stripe knows where to send your money. It takes a few minutes, and Cappy never sees your bank details."
+            body={t('Buyers can only book you once Stripe knows where to send your money. It takes a few minutes, and Cappy never sees your bank details.')}
             action={
               <Button size="sm" disabled={busy} onClick={() => void payouts()}>
-                {connect.data.connected ? 'Continue setup' : 'Set up payouts'}
+                {connect.data.connected ? t('Continue setup') : t('Set up payouts')}
               </Button>
             }
           />
@@ -180,19 +181,18 @@ export function Earn() {
 
       {/* ------------------------------------------- the number that matters */}
       <section className="-mt-1">
-        <p className="t-label">Still idle this week</p>
+        <p className="t-label">{t('Still idle this week')}</p>
         <p className="mt-3 flex flex-wrap items-baseline gap-x-2.5">
           <span className="t-display tnum">{Math.round(hoursIdle)}</span>
-          <span className="text-[20px] font-medium text-[var(--ink-4)]">hours</span>
+          <span className="text-[20px] font-medium text-[var(--ink-4)]">{t('hours')}</span>
         </p>
         <p className="t-lede mt-3 text-[var(--ink-2)]">
-          <span className="hl font-semibold">{formatEur(unsold)}</span> of time nobody is paying
-          you for.
+          <span className="hl font-semibold">{formatEur(unsold)}</span> {t('of time nobody is paying you for.')}
         </p>
         {(sold > 0 || earned > 0) && (
           <p className="t-sm tnum mt-2.5 font-semibold text-[var(--success-text)]">
-            {Math.round(sold)} h sold this week · {formatEur(earned)} earned
-            {upcoming > 0 && ` · ${formatEur(upcoming)} to come`}
+            {t('{h} h sold this week · {earned} earned', { h: Math.round(sold), earned: formatEur(earned) })}
+            {upcoming > 0 && ` · ${t('{amount} to come', { amount: formatEur(upcoming) })}`}
           </p>
         )}
       </section>
@@ -211,8 +211,8 @@ export function Earn() {
         <SectionHead
           title={
             <span className="flex items-center gap-2.5">
-              Requests
-              {requests.length > 0 && <Pill tone="accent">{requests.length} waiting</Pill>}
+              {t('Requests')}
+              {requests.length > 0 && <Pill tone="accent">{t('{n} waiting', { n: requests.length })}</Pill>}
             </span>
           }
           className="mt-7"
@@ -221,8 +221,7 @@ export function Earn() {
         {requests.length === 0 ? (
           <Card className="p-5">
             <p className="t-body text-[var(--ink-3)]">
-              No one is waiting on you. Requests land here and the window is held until you
-              answer.
+              {t('No one is waiting on you. Requests land here and the window is held until you answer.')}
             </p>
           </Card>
         ) : (
@@ -236,10 +235,10 @@ export function Earn() {
                       <Avatar initials={who?.initials ?? '??'} size={42} />
                       <div className="min-w-0 flex-1">
                         <p className="text-[15.5px] font-semibold">
-                          {who?.name ?? 'Someone nearby'}
+                          {who?.name ?? t('Someone nearby')}
                         </p>
                         <p className="t-sm text-[var(--ink-3)]">
-                          wants {b.listing?.title ?? 'your listing'} ·{' '}
+                          {t('wants {what}', { what: b.listing?.title ?? t('your listing') })} ·{' '}
                           {durationLabel(b.match.quote.hours)}
                         </p>
                       </div>
@@ -254,7 +253,7 @@ export function Earn() {
                         {range(b.match.start, b.match.end)}
                       </p>
                       <p className="t-sm mt-1 text-[var(--ink-4)]">
-                        asked {ago(b.createdAt)} · fits a gap you are not using
+                        {t('asked {ago} · fits a gap you are not using', { ago: ago(b.createdAt) })}
                       </p>
                     </div>
 
@@ -265,10 +264,10 @@ export function Earn() {
                         className="flex-1 md:flex-none md:px-7"
                         disabled={busy}
                         onClick={() =>
-                          void write(() => repo.actOnBooking(b.id, 'accept'), 'Accepted. They have the details now')
+                          void write(() => repo.actOnBooking(b.id, 'accept'), t('Accepted. They have the details now'))
                         }
                       >
-                        Accept
+                        {t('Accept')}
                       </Button>
                       <Button
                         variant="secondary"
@@ -277,7 +276,7 @@ export function Earn() {
                           setDeclining(b)
                         }}
                       >
-                        Decline
+                        {t('Decline')}
                       </Button>
                     </div>
                   </Card>
@@ -291,7 +290,7 @@ export function Earn() {
       {/* ------------------------------------------------------ coming up */}
       {comingUp.length > 0 && (
         <section>
-          <SectionHead title="Coming up" aside={`${comingUp.length}`} className="mt-7" />
+          <SectionHead title={t('Coming up')} aside={`${comingUp.length}`} className="mt-7" />
           <ul className="ruled border-t border-[var(--line)]">
             {comingUp.map((b) => (
               <li key={b.id}>
@@ -300,10 +299,10 @@ export function Earn() {
                   className="flex w-full items-center gap-4 py-3.5 text-left transition-opacity duration-[160ms] hover:opacity-70"
                 >
                   <span className="min-w-0 flex-1">
-                    <span className="block truncate text-[15px] font-semibold">{b.listing?.title ?? 'Your listing'}</span>
+                    <span className="block truncate text-[15px] font-semibold">{b.listing?.title ?? t('Your listing')}</span>
                     <span className="t-sm tnum block truncate text-[var(--ink-3)]">{range(b.match.start, b.match.end)}</span>
                   </span>
-                  <Pill tone="success">{b.status === 'active' ? 'In progress' : 'Confirmed'}</Pill>
+                  <Pill tone="success">{b.status === 'active' ? t('In progress') : t('Confirmed')}</Pill>
                 </button>
               </li>
             ))}
@@ -313,7 +312,7 @@ export function Earn() {
 
       {/* --------------------------------------------------------- listings */}
       <section>
-        <SectionHead title="Your listings" aside={`${mine.length}`} className="mt-7" />
+        <SectionHead title={t('Your listings')} aside={`${mine.length}`} className="mt-7" />
         <ul className="space-y-3">
           {mine.map((l) => {
             const week = thisWeek(slotsFor(l.id))
@@ -335,10 +334,10 @@ export function Earn() {
                       <p className="truncate text-[15.5px] font-semibold">{l.title}</p>
                       <p className="t-sm tnum text-[var(--ink-3)]">
                         {formatEur(l.ratePerHour)}/h ·{' '}
-                        {l.active ? `${Math.round(h)} h free this week` : 'Paused'}
+                        {l.active ? t('{h} h free this week', { h: Math.round(h) }) : t('Paused')}
                       </p>
                     </div>
-                    {!l.active && <Pill tone="warn">Paused</Pill>}
+                    {!l.active && <Pill tone="warn">{t('Paused')}</Pill>}
                   </div>
 
                   {l.active && week.length > 0 && (
@@ -349,10 +348,10 @@ export function Earn() {
 
                   <div className="mt-4 flex flex-wrap gap-2 border-t border-[var(--line)] pt-4">
                     <Button size="sm" variant="secondary" to={`/listing/${l.id}`}>
-                      View as a guest
+                      {t('View as a guest')}
                     </Button>
                     <Button size="sm" variant="secondary" to={`/earn/edit/${l.id}`}>
-                      Edit
+                      {t('Edit')}
                     </Button>
                     <Button
                       size="sm"
@@ -362,15 +361,15 @@ export function Earn() {
                       onClick={() =>
                         void write(
                           () => (l.active ? repo.pauseListing(l.id) : repo.resumeListing(l.id)),
-                          l.active ? `${l.title} paused` : `${l.title} is live again`,
+                          l.active ? t('{title} paused', { title: l.title }) : t('{title} is live again', { title: l.title }),
                         )
                       }
                     >
-                      {l.active ? 'Pause' : 'Resume'}
+                      {l.active ? t('Pause') : t('Resume')}
                     </Button>
                     {/* Last, and behind a confirmation: removing is not undoable. */}
                     <Button size="sm" variant="danger" disabled={busy} className="ml-auto" onClick={() => setRemoving(l)}>
-                      Remove
+                      {t('Remove')}
                     </Button>
                   </div>
                 </Card>
@@ -383,19 +382,19 @@ export function Earn() {
       {/* ----------------------------------------------------- your record */}
       {you && (
         <section>
-          <SectionHead title="Your record as a host" className="mt-7" />
+          <SectionHead title={t('Your record as a host')} className="mt-7" />
           <Card className="p-5">
             <div className="flex items-center gap-3.5">
               <Avatar initials={you.initials} size={44} />
               <div className="min-w-0 flex-1">
                 <p className="text-[15.5px] font-semibold">{you.name}</p>
                 <p className="t-sm tnum text-[var(--ink-3)]">
-                  {you.jobsDone} booking{you.jobsDone === 1 ? '' : 's'} ·{' '}
-                  {Math.round((you.onTimeJobs / Math.max(1, you.jobsDone)) * 100)}% on time
+                  {plural(you.jobsDone, '{n} booking', '{n} bookings')} ·{' '}
+                  {t('{pct} % on time', { pct: Math.round((you.onTimeJobs / Math.max(1, you.jobsDone)) * 100) })}
                 </p>
               </div>
               <span className="tnum text-[19px] font-bold">
-                {you.jobsDone ? `${(you.ratingSum / you.jobsDone).toFixed(1)}★` : 'New'}
+                {you.jobsDone ? `${oneDecimal(you.ratingSum / you.jobsDone)}★` : t('New')}
               </span>
             </div>
           </Card>
@@ -405,7 +404,7 @@ export function Earn() {
       <Sheet
         open={Boolean(removing)}
         onClose={() => setRemoving(null)}
-        title={`Remove ${removing?.title ?? 'this listing'}?`}
+        title={t('Remove {title}?', { title: removing?.title ?? t('this listing') })}
         footer={
           <div className="space-y-2">
             <Button
@@ -417,27 +416,26 @@ export function Earn() {
                 if (!removing) return
                 const l = removing
                 setRemoving(null)
-                void write(() => repo.removeListing(l.id), `${l.title} removed`)
+                void write(() => repo.removeListing(l.id), t('{title} removed', { title: l.title }))
               }}
             >
-              Remove it
+              {t('Remove it')}
             </Button>
             <Button block variant="quiet" onClick={() => setRemoving(null)}>
-              Keep it
+              {t('Keep it')}
             </Button>
           </div>
         }
       >
         <p className="t-body pb-3 text-[var(--ink-2)]">
-          It comes off the market for good. To take a break instead, pause it: you can resume any time.
-          Bookings already confirmed are not affected.
+          {t('It comes off the market for good. To take a break instead, pause it: you can resume any time. Bookings already confirmed are not affected.')}
         </p>
       </Sheet>
 
       <Sheet
         open={Boolean(declining)}
         onClose={() => setDeclining(null)}
-        title="Decline this request"
+        title={t('Decline this request')}
         footer={
           <Button
             block
@@ -448,21 +446,21 @@ export function Earn() {
               if (!declining) return
               const id = declining.id
               setDeclining(null)
-              void write(() => repo.declineBooking(id, reason), 'Declined. They have been told')
+              void write(() => repo.declineBooking(id, reason), t('Declined. They have been told'))
             }}
           >
-            Send decline
+            {t('Send decline')}
           </Button>
         }
       >
         <div className="pb-3">
           <p className="t-body mb-5 text-[var(--ink-3)]">
-            A reason takes two seconds and keeps people booking with you again.
+            {t('A reason takes two seconds and keeps people booking with you again.')}
           </p>
           <div className="flex flex-wrap gap-2">
             {DECLINE_REASONS.map((r) => (
               <Chip key={r} selected={reason === r} onClick={() => setReason(r)}>
-                {r}
+                {t(r)}
               </Chip>
             ))}
           </div>
@@ -470,14 +468,14 @@ export function Earn() {
             {declining && mine.some((l) => l.id === declining.match.listingId && l.active) ? (
               <Banner
                 tone="warn"
-                title="The window goes back on the market"
-                body="Your listing stays live and the hours are offered to the next person searching. Their card hold is released."
+                title={t('The window goes back on the market')}
+                body={t('Your listing stays live and the hours are offered to the next person searching. Their card hold is released.')}
               />
             ) : (
               <Banner
                 tone="warn"
-                title="Their card hold is released"
-                body="This listing is paused or removed, so the hours are not offered to anyone else."
+                title={t('Their card hold is released')}
+                body={t('This listing is paused or removed, so the hours are not offered to anyone else.')}
               />
             )}
           </div>

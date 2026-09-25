@@ -16,10 +16,11 @@ import { AddListing } from './screens/AddListing.tsx'
 import { Profile } from './screens/Profile.tsx'
 import { Login } from './screens/Login.tsx'
 import { Onboarding } from './screens/Onboarding.tsx'
-import { Legal } from './screens/Legal.tsx'
+import { AccountDeletion, Legal } from './screens/Legal.tsx'
 import { Admin } from './screens/Admin.tsx'
 import { NotFound } from './screens/NotFound.tsx'
 import { Screen } from './components/AppShell.tsx'
+import { t, useLang } from '../i18n.ts'
 
 /** A new screen starts at the top, the way a native push does. */
 function ScrollReset() {
@@ -66,7 +67,7 @@ function Shell() {
         className="sr-only z-[70] rounded-[var(--radius-control)] bg-[var(--field)] px-4 py-3 text-[14px] font-semibold text-[var(--on-field)]
           focus:not-sr-only focus:fixed focus:left-4 focus:top-4"
       >
-        Skip to content
+        {t('Skip to content')}
       </a>
       <Dock badges={badges} />
       {needsProfile ? (
@@ -83,6 +84,7 @@ function Shell() {
           <Route path="/profile" element={<Profile />} />
           <Route path="/login" element={<Login />} />
           <Route path="/legal/:page" element={<Legal />} />
+          <Route path="/account/delete" element={<AccountDeletion />} />
           <Route path="/admin" element={<Admin />} />
           <Route path="*" element={<NotFound />} />
         </Routes>
@@ -99,20 +101,40 @@ const NATIVE = Boolean(
 
 function UpdateRequired() {
   return (
-    <Screen title="Update Cappy" docTitle="Update required">
+    <Screen title={t('Update Cappy')} docTitle={t('Update required')}>
       <p className="t-body max-w-[46ch] text-[var(--ink-2)]">
-        This version of the app is too old to talk to Cappy safely. Update it from the App Store
-        or Google Play to carry on; your bookings and listings are all there.
+        {t(
+          'This version of the app is too old to talk to Cappy safely. Update it from the App Store or Google Play to carry on; your bookings and listings are all there.',
+        )}
       </p>
+      <StoreLinks />
     </Screen>
   )
 }
 
+/** Where the update is. The store URLs come from the build (VITE_APP_STORE_URL,
+ *  VITE_PLAY_STORE_URL); a shell only shows the one for its own platform. */
+function StoreLinks() {
+  const platform = (window as unknown as { Capacitor?: { getPlatform?: () => string } }).Capacitor?.getPlatform?.()
+  const ios = import.meta.env.VITE_APP_STORE_URL as string | undefined
+  const android = import.meta.env.VITE_PLAY_STORE_URL as string | undefined
+  const url = platform === 'ios' ? ios : platform === 'android' ? android : (ios ?? android)
+  if (!url) return null
+  return (
+    <a href={url} className="mt-6 inline-flex rounded-[var(--radius-control)] bg-[var(--field)] px-5 py-3 font-semibold text-[var(--on-field)]">
+      {t('Update now')}
+    </a>
+  )
+}
+
 export default function App() {
+  // A new language remounts everything below, so every string re-renders
+  // (the query cache sits above and survives).
+  const lang = useLang()
   return (
     <ErrorBoundary>
       <QueryClientProvider client={queryClient}>
-        <AppProvider>
+        <AppProvider key={lang}>
           <BrowserRouter>
             <Shell />
           </BrowserRouter>

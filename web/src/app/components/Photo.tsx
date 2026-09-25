@@ -7,6 +7,7 @@ import { useSession } from '../../data/auth.ts'
 import { mediaUrl, useSaveToggle, useSaved } from '../../data/repo.ts'
 import { messageOf, useToast } from '../store.tsx'
 import { Icon } from './Icon.tsx'
+import { t } from '../../i18n.ts'
 
 /**
  * A listing's cover photograph.
@@ -104,8 +105,8 @@ export function WhenChip({
 }) {
   // "From 21:30" today, "From tomorrow 09:00" otherwise: the earliest start
   // anyone could actually book, never a time already out of reach.
-  const at = day(start) === 'today' ? time(start) : `${day(start)} ${time(start)}`
-  const label = state === 'now' ? 'Free now' : state === 'booked' ? `Booked ${at}` : `From ${at}`
+  const at = day(start) === t('today') ? time(start) : `${day(start)} ${time(start)}`
+  const label = state === 'now' ? t('Free now') : state === 'booked' ? t('Booked {at}', { at }) : t('From {at}', { at })
 
   return (
     <span
@@ -163,7 +164,7 @@ export function SaveButton({
     flip.mutate(
       { id, on: !on },
       {
-        onSuccess: () => toast(on ? 'Removed from saved' : 'Saved. Find it under You'),
+        onSuccess: () => toast(on ? t('Removed from saved') : t('Saved. Find it under You')),
         onError: (err) => toast(messageOf(err)),
       },
     )
@@ -172,7 +173,7 @@ export function SaveButton({
     <button
       type="button"
       aria-pressed={on}
-      aria-label={on ? `Remove ${title} from saved` : `Save ${title}`}
+      aria-label={on ? t('Remove {title} from saved', { title }) : t('Save {title}', { title })}
       onClick={(e) => {
         e.preventDefault()
         e.stopPropagation()

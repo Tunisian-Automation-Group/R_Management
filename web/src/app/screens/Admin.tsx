@@ -17,6 +17,7 @@ import { Screen, SectionHead } from '../components/AppShell.tsx'
 import { SignedOut } from '../components/SignedOut.tsx'
 import { Button, Card, EmptyState, Field, Input, Segmented, Sheet, Textarea } from '../components/ui.tsx'
 import { ago } from '../format.ts'
+import { t } from '../../i18n.ts'
 
 type Status = Report['status']
 type Action = 'dismiss' | 'take_down' | 'suspend'
@@ -38,25 +39,25 @@ export function Admin() {
   const ready = useAuthReady()
   if (ready && !session) {
     return (
-      <Screen title="Staff console">
-        <SignedOut what="use the staff console" next="/admin" />
+      <Screen title={t('Staff console')}>
+        <SignedOut what={t('use the staff console')} next="/admin" />
       </Screen>
     )
   }
-  if (!ready) return <Screen title="Staff console">{null}</Screen>
+  if (!ready) return <Screen title={t('Staff console')}>{null}</Screen>
   if (!session?.staff) {
     return (
-      <Screen title="Staff console">
+      <Screen title={t('Staff console')}>
         <EmptyState
           icon="shield"
-          title="Only for Cappy staff"
-          body="This account is not in the staff group. If you should have access, ask an administrator."
+          title={t('Only for Cappy staff')}
+          body={t('This account is not in the staff group. If you should have access, ask an administrator.')}
         />
       </Screen>
     )
   }
   return (
-    <Screen title="Staff console">
+    <Screen title={t('Staff console')}>
       <Queue />
       <Actions />
       <Audit />
@@ -75,18 +76,18 @@ function Queue() {
   const items = page.data?.items ?? []
   return (
     <section>
-      <SectionHead title="Reports" />
+      <SectionHead title={t('Reports')} />
       <Segmented
-        label="Which reports"
+        label={t('Which reports')}
         value={status}
         onChange={(v) => {
           setStatus(v)
           setCursor(undefined)
         }}
         options={[
-          { value: 'open', label: 'Open' },
-          { value: 'actioned', label: 'Actioned' },
-          { value: 'dismissed', label: 'Dismissed' },
+          { value: 'open', label: t('Open') },
+          { value: 'actioned', label: t('Actioned') },
+          { value: 'dismissed', label: t('Dismissed') },
         ]}
       />
       {page.isError ? (
@@ -94,7 +95,7 @@ function Queue() {
           {messageOf(page.error)}
         </p>
       ) : items.length === 0 && !page.isPending ? (
-        <p className="t-sm mt-4 text-[var(--ink-3)]">Nothing here.</p>
+        <p className="t-sm mt-4 text-[var(--ink-3)]">{t('Nothing here.')}</p>
       ) : (
         <ul className="mt-4 space-y-3">
           {items.map((r) => {
@@ -118,13 +119,13 @@ function Queue() {
                   <p className="t-body mt-2 whitespace-pre-wrap text-[var(--ink-2)]">{r.details}</p>
                   {r.statement && (
                     <p className="t-sm mt-2 text-[var(--ink-3)]">
-                      Decided: {r.decision} — {r.statement}
+                      {t('Decided')}: {r.decision} — {r.statement}
                     </p>
                   )}
                   {r.status === 'open' && (
                     <div className="mt-3">
                       <Button size="sm" variant="secondary" onClick={() => setDeciding(r)}>
-                        Decide
+                        {t('Decide')}
                       </Button>
                     </div>
                   )}
@@ -136,7 +137,7 @@ function Queue() {
       )}
       {page.data?.nextCursor && (
         <Button className="mt-3" variant="secondary" onClick={() => setCursor(page.data?.nextCursor)}>
-          Next page
+          {t('Next page')}
         </Button>
       )}
       <Decide report={deciding} onClose={() => setDeciding(null)} />
@@ -157,7 +158,7 @@ function Decide({ report, onClose }: { report: Report | null; onClose: () => voi
     setBusy(true)
     try {
       await decideReport(report.id, action, statement.trim())
-      toast('Decided. The people concerned have been told')
+      toast(t('Decided. The people concerned have been told'))
       setStatement('')
       onClose()
     } catch (err) {
@@ -173,25 +174,25 @@ function Decide({ report, onClose }: { report: Report | null; onClose: () => voi
     <Sheet
       open={Boolean(report)}
       onClose={onClose}
-      title="Decide on this report"
+      title={t('Decide on this report')}
       footer={
         <Button block size="lg" disabled={busy || short} onClick={() => void submit()}>
-          {ACTION_LABEL[action]}
+          {t(ACTION_LABEL[action])}
         </Button>
       }
     >
       <div className="space-y-4 pb-3">
-        <div className="flex flex-wrap gap-2" role="radiogroup" aria-label="Decision">
+        <div className="flex flex-wrap gap-2" role="radiogroup" aria-label={t('Decision')}>
           {actions.map((a) => (
             <Button key={a} size="sm" variant={a === action ? 'ink' : 'secondary'} aria-pressed={a === action} onClick={() => setAction(a)}>
-              {ACTION_LABEL[a]}
+              {t(ACTION_LABEL[a])}
             </Button>
           ))}
         </div>
         <Field
-          label="Statement of reasons"
+          label={t('Statement of reasons')}
           htmlFor={`${id}-why`}
-          hint="Sent to the person affected and the reporter: what was decided, the facts, and the rule or law it rests on. At least 20 characters."
+          hint={t('Sent to the person affected and the reporter: what was decided, the facts, and the rule or law it rests on. At least 20 characters.')}
         >
           <Textarea id={`${id}-why`} rows={5} maxLength={2000} value={statement} onChange={(e) => setStatement(e.target.value)} />
         </Field>
@@ -221,14 +222,14 @@ function Actions() {
   const ready = target.trim() && (!spec.needsWhy || statement.trim().length >= 20)
   const run = async () => {
     setBusy(true)
-    const t = target.trim()
+    const to = target.trim()
     const why = statement.trim()
     try {
-      if (kind === 'take_down') await takeDownListing(t, why)
-      else if (kind === 'suspend') await suspendOwner(t, why)
-      else if (kind === 'reinstate') await reinstateOwner(t, why)
-      else await resolveDispute(t, kind)
-      toast('Done')
+      if (kind === 'take_down') await takeDownListing(to, why)
+      else if (kind === 'suspend') await suspendOwner(to, why)
+      else if (kind === 'reinstate') await reinstateOwner(to, why)
+      else await resolveDispute(to, kind)
+      toast(t('Done'))
       setTarget('')
       setStatement('')
     } catch (err) {
@@ -240,25 +241,25 @@ function Actions() {
   }
   return (
     <section>
-      <SectionHead title="Act directly" className="mt-7" />
+      <SectionHead title={t('Act directly')} className="mt-7" />
       <Card className="space-y-4 p-5">
-        <div className="flex flex-wrap gap-2" role="radiogroup" aria-label="Action">
+        <div className="flex flex-wrap gap-2" role="radiogroup" aria-label={t('Action')}>
           {(Object.keys(DIRECT) as Direct[]).map((k) => (
             <Button key={k} size="sm" variant={k === kind ? 'ink' : 'secondary'} aria-pressed={k === kind} onClick={() => setKind(k)}>
-              {DIRECT[k].label}
+              {t(DIRECT[k].label)}
             </Button>
           ))}
         </div>
-        <Field label={spec.target} htmlFor={`${id}-target`}>
+        <Field label={t(spec.target)} htmlFor={`${id}-target`}>
           <Input id={`${id}-target`} value={target} onChange={(e) => setTarget(e.target.value)} autoComplete="off" />
         </Field>
         {spec.needsWhy && (
-          <Field label="Statement of reasons" htmlFor={`${id}-why`} hint="Sent to the person affected. At least 20 characters.">
+          <Field label={t('Statement of reasons')} htmlFor={`${id}-why`} hint={t('Sent to the person affected. At least 20 characters.')}>
             <Textarea id={`${id}-why`} rows={4} maxLength={2000} value={statement} onChange={(e) => setStatement(e.target.value)} />
           </Field>
         )}
         <Button disabled={busy || !ready} onClick={() => void run()}>
-          {spec.label}
+          {t(spec.label)}
         </Button>
       </Card>
     </section>
@@ -269,10 +270,10 @@ function Audit() {
   const audit = useAudit()
   return (
     <section>
-      <SectionHead title="Audit log" className="mt-7" />
+      <SectionHead title={t('Audit log')} className="mt-7" />
       <Card className="p-5">
         {(audit.data ?? []).length === 0 ? (
-          <p className="t-sm text-[var(--ink-3)]">No actions yet.</p>
+          <p className="t-sm text-[var(--ink-3)]">{t('No actions yet.')}</p>
         ) : (
           <ul className="space-y-3">
             {audit.data!.map((a) => (
@@ -281,8 +282,8 @@ function Audit() {
                   {a.action} · {a.targetType} <span className="tnum text-[var(--ink-3)]">{a.targetId}</span>
                 </p>
                 <p className="t-sm text-[var(--ink-4)]">
-                  by {a.actorId} · {ago(a.at)}
-                  {a.reportId ? ` · report ${a.reportId}` : ''}
+                  {t('by {who}', { who: a.actorId })} · {ago(a.at)}
+                  {a.reportId ? ` · ${t('report {id}', { id: a.reportId })}` : ''}
                 </p>
                 <p className="t-sm mt-1 text-[var(--ink-2)]">{a.statement}</p>
               </li>

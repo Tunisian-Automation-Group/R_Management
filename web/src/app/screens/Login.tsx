@@ -5,6 +5,7 @@ import { AuthError, useSession } from '../../data/auth.ts'
 import { useToast } from '../store.tsx'
 import { Screen } from '../components/AppShell.tsx'
 import { Button, Field, Input, Segmented } from '../components/ui.tsx'
+import { t } from '../../i18n.ts'
 
 const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 const STRONG = /^(?=.*\d)(?=.*[a-z])(?=.*[A-Z]).{10,}$/
@@ -92,7 +93,7 @@ export function Login() {
       case 'reset':
         await auth.confirmForgotPassword(who, code.trim(), password)
         await auth.signIn(who, password)
-        toast('Password changed')
+        toast(t('Password changed'))
         nav(next, { replace: true })
     }
   }
@@ -100,17 +101,17 @@ export function Login() {
   const submit = async (e: FormEvent) => {
     e.preventDefault()
     setError(null)
-    if (!EMAIL.test(email.trim())) return setError('Enter your email address, like name@example.com.')
+    if (!EMAIL.test(email.trim())) return setError(t('Enter your email address, like name@example.com.'))
     // The same rule as the user pool (infra/platform/identity.tf), so nobody is
     // turned away by the server for something the form could have said.
     if ((mode === 'up' || mode === 'reset') && !STRONG.test(password)) {
-      return setError('Use at least ten characters, with a number, a capital and a lowercase letter.')
+      return setError(t('Use at least ten characters, with a number, a capital and a lowercase letter.'))
     }
     setBusy(true)
     try {
       await run()
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'That did not work. Try again.')
+      setError(err instanceof Error ? err.message : t('That did not work. Try again.'))
     } finally {
       setBusy(false)
     }
@@ -118,26 +119,26 @@ export function Login() {
 
   const needsPassword = mode === 'in' || mode === 'up' || mode === 'reset'
   const needsCode = mode === 'confirm' || mode === 'reset'
-  const copy = COPY[mode]
+  const copy = { title: t(COPY[mode].title), sub: t(COPY[mode].sub), submit: t(COPY[mode].submit) }
 
   return (
-    <Screen eyebrow="Your account" title={copy.title} sub={copy.sub} back="/">
+    <Screen eyebrow={t('Your account')} title={copy.title} sub={copy.sub} back="/">
       {(mode === 'in' || mode === 'up') && (
         <div className="mb-6">
           <Segmented<Mode>
-            label="Sign in or create an account"
+            label={t('Sign in or create an account')}
             value={mode}
             onChange={go}
             options={[
-              { value: 'in', label: 'Sign in' },
-              { value: 'up', label: 'Create account' },
+              { value: 'in', label: t('Sign in') },
+              { value: 'up', label: t('Create account') },
             ]}
           />
         </div>
       )}
 
       <form onSubmit={submit} className="space-y-5" noValidate>
-        <Field label="Email" htmlFor="f-email">
+        <Field label={t('Email')} htmlFor="f-email">
           <Input
             id="f-email"
             type="email"
@@ -147,12 +148,12 @@ export function Login() {
             value={email}
             disabled={mode === 'confirm' || mode === 'reset'}
             onChange={(e) => setEmail(e.target.value)}
-            placeholder="you@example.com"
+            placeholder={t('you@example.com')}
           />
         </Field>
 
         {needsCode && (
-          <Field label="Code" htmlFor="f-code">
+          <Field label={t('Code')} htmlFor="f-code">
             <Input
               id="f-code"
               inputMode="numeric"
@@ -166,8 +167,8 @@ export function Login() {
 
         {needsPassword && (
           <Field
-            label={mode === 'reset' ? 'New password' : 'Password'}
-            hint={mode === 'in' ? undefined : 'At least ten characters, with a number, a capital and a lowercase letter.'}
+            label={mode === 'reset' ? t('New password') : t('Password')}
+            hint={mode === 'in' ? undefined : t('At least ten characters, with a number, a capital and a lowercase letter.')}
             htmlFor="f-password"
           >
             <Input
@@ -192,7 +193,7 @@ export function Login() {
           size="lg"
           disabled={busy || !email || (needsPassword && !password) || (needsCode && !code)}
         >
-          {busy ? 'One moment…' : copy.submit}
+          {busy ? t('One moment…') : copy.submit}
         </Button>
       </form>
 
@@ -213,13 +214,13 @@ export function Login() {
                   await auth.signIn(demoEmail, demoPassword)
                   nav(next, { replace: true })
                 } catch (e) {
-                  setError(e instanceof Error ? e.message : 'Could not sign in')
+                  setError(e instanceof Error ? e.message : t('Could not sign in'))
                 } finally {
                   setBusy(false)
                 }
               }}
             >
-              Continue as {label}
+              {t('Continue as {label}', { label: t(label) })}
             </Button>
           ))}
         </div>
@@ -228,7 +229,7 @@ export function Login() {
       <p className="mt-6 text-center text-[13.5px] text-[var(--ink-3)]">
         {mode === 'in' && (
           <button type="button" className="font-semibold text-[var(--ink)] underline" onClick={() => go('forgot')}>
-            Forgot your password?
+            {t('Forgot your password?')}
           </button>
         )}
         {mode === 'confirm' && (
@@ -238,16 +239,16 @@ export function Login() {
             onClick={() =>
               void auth
                 .resendCode(email.trim().toLowerCase())
-                .then(() => toast('A new code is on its way'))
-                .catch((err: unknown) => setError(err instanceof Error ? err.message : 'Could not send a code.'))
+                .then(() => toast(t('A new code is on its way')))
+                .catch((err: unknown) => setError(err instanceof Error ? err.message : t('Could not send a code.')))
             }
           >
-            Send a new code
+            {t('Send a new code')}
           </button>
         )}
         {(mode === 'forgot' || mode === 'reset') && (
           <button type="button" className="font-semibold text-[var(--ink)] underline" onClick={() => go('in')}>
-            Back to sign in
+            {t('Back to sign in')}
           </button>
         )}
       </p>

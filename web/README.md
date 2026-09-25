@@ -243,3 +243,66 @@ hosts and machines into local and staging only. Sign in as
 `host@demo.cappy.local` or `buyer@demo.cappy.local` (password `Demo-pass-123!`).
 With the fake payments provider no money moves and there is no card step; with
 Stripe test keys (see `.env.example`) the Payment Element appears.
+
+## Languages
+
+English and German. `src/i18n.ts` is the whole layer: the English text is the
+key (`t('Book and pay')`), `src/i18n.de.ts` is the German catalogue, and a
+missing entry falls back to English. The language is the saved choice, else the
+browser's (`de*` → German); it is switched in Profile and in the footer, sets
+`<html lang>`, and, when signed in, the Cognito `locale` attribute so emails
+follow it. Dates, numbers and money format with the chosen locale (1.234,56 €).
+
+Never call `t()` at module level: it would freeze the language at import. Keep
+English constants and translate where they render. The legal pages have their
+own German texts in `screens/Legal.tsx`.
+
+## Store apps (ADR 0012)
+
+The App Store and Google Play apps are Capacitor shells around this build
+(`capacitor.config.ts`: `app.cappy`, "Cappy", `dist/`). `ios/` and `android/`
+are generated projects, checked in; the copied web assets inside them are not.
+
+```bash
+# A shell has no same-origin /api: point the build at the public API.
+VITE_API_URL=https://<domain>/api \
+VITE_APP_STORE_URL=https://apps.apple.com/app/id<id> \
+VITE_PLAY_STORE_URL=https://play.google.com/store/apps/details?id=app.cappy \
+npm run build
+npx cap sync            # copies dist/ and the plugins into both projects
+npx cap open ios        # Xcode 16+ (Swift Package Manager; CocoaPods not needed)
+npx cap open android    # Android Studio, SDK 36
+cd android && ./gradlew bundleRelease -PappLinkHost=<domain>
+```
+
+What the shells do differently, all in `src/native.ts`:
+
+- **Sign-in** keeps the refresh token in the platform's app storage
+  (`@capacitor/preferences`), not the web view's.
+- **Push**: after sign-in the app asks to notify, registers, and sends
+  `POST /api/notifications/devices {platform, token}`; sign-out sends
+  `DELETE /api/notifications/devices/{token}`. Tapping a notification opens its
+  `link` inside the app.
+- **Deep links**: `/listing/*`, `/bookings/*` and `/earn*` on the site open in
+  the app. The build writes `dist/.well-known/apple-app-site-association` and
+  `dist/.well-known/assetlinks.json` from `VITE_APPLE_TEAM_ID` and
+  `VITE_ANDROID_SHA256` (the release certificate's SHA-256, colon-separated).
+  Unset, they carry `TEAMID` and zeros and verify nothing. Serve both as
+  `application/json`.
+- **Data export** goes to the share sheet; a web view cannot download.
+- **Too old** (below `/api/app-config`'s minimum): the update screen links to
+  the store the app came from.
+
+Before the first release, per platform:
+
+- **iOS**: set the team under Signing & Capabilities; in `ios/App/App/App.entitlements`
+  replace `applinks:cappy.example` with `applinks:<domain>` and set
+  `aps-environment` to `production` for store builds. Upload the APNs key to
+  SNS Mobile Push.
+- **Android**: add `android/app/google-services.json` from the Firebase project
+  (FCM v1) and pass `-PappLinkHost=<domain>`.
+- **API**: the gateway must allow the shells' origins (`capacitor://localhost`
+  on iOS, `https://localhost` on Android) for CORS.
+
+Account deletion is explained publicly at `/account/delete` (the stores ask for
+a URL): sign in, then Profile → Delete account.

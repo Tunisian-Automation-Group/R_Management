@@ -36,6 +36,7 @@ import { Icon } from '../components/Icon.tsx'
 import { Avatar, Banner, Button, Card, Chip, Field, Row, Sheet, Stars, Textarea } from '../components/ui.tsx'
 import { REVIEW_TAGS } from '../../domain/reviews.ts'
 import { distance, range, relative, responseTime } from '../format.ts'
+import { locale, plural, t } from '../../i18n.ts'
 
 const STEPS: { id: BookingStatus; label: string; note: string; ownerNote: string }[] = [
   { id: 'requested', label: 'Requested', note: 'Waiting for the owner to accept', ownerNote: 'Waiting for your answer' },
@@ -62,8 +63,8 @@ export function BookingDetail() {
 
   if (authReady && !session) {
     return (
-      <Screen title="Booking">
-        <SignedOut what="see this booking" next={`/bookings/${id}`} />
+      <Screen title={t('Booking')}>
+        <SignedOut what={t('see this booking')} next={`/bookings/${id}`} />
       </Screen>
     )
   }
@@ -112,15 +113,15 @@ function Detail({
   const [blocking, setBlocking] = useState(false)
 
   const { quote } = booking.match
-  const title = booking.listing?.title ?? listing?.title ?? 'Booked listing'
-  const ownerName = owner?.name ?? booking.listing?.ownerName ?? 'The owner'
+  const title = booking.listing?.title ?? listing?.title ?? t('Booked listing')
+  const ownerName = owner?.name ?? booking.listing?.ownerName ?? t('The owner')
   const district = booking.listing?.district ?? listing?.district ?? ''
   const first = ownerName.split(' ')[0]
   const stepIndex = STEPS.findIndex((s) => s.id === booking.status)
   const dead = DEAD.includes(booking.status)
   // requesterId is only ever sent to the owner.
   const asOwner = Boolean(booking.requesterId)
-  const buyer = requester?.name.split(' ')[0] ?? 'The buyer'
+  const buyer = requester?.name.split(' ')[0] ?? t('The buyer')
   const other = asOwner ? requester : owner
   const startsAt = Date.parse(booking.match.start)
   const startFrom = booking.canStartFrom ? Date.parse(booking.canStartFrom) : startsAt - START_EARLY_MS
@@ -159,18 +160,18 @@ function Detail({
       // The owner's record and the listing's reviews change a moment later.
       void qc.invalidateQueries({ queryKey: ['listing', booking.match.listingId] })
       void qc.invalidateQueries({ queryKey: ['reviews', booking.match.listingId] })
-    }, `Review posted on ${title}`)
+    }, t('Review posted on {title}', { title }))
 
   // For the buyer, cancelling before the start is also their right of
   // withdrawal (EU consumer law), so the button says so.
   const cancelButton = (
     <Button block variant="danger" disabled={busy} onClick={() => setCancelling(true)}>
-      {asOwner ? 'Cancel booking' : 'Withdraw from this booking'}
+      {asOwner ? t('Cancel booking') : t('Withdraw from this booking')}
     </Button>
   )
   const disputeButton = (
     <Button block variant="quiet" disabled={busy} onClick={() => setDisputing(true)}>
-      Report a problem
+      {t('Report a problem')}
     </Button>
   )
   const startButton = (
@@ -183,29 +184,29 @@ function Detail({
           void done(async () => {
             await actOnBooking(booking.id, 'start')
             setEvidencePrompt('check_in')
-          }, asOwner ? 'Marked as handed over' : 'Enjoy it')
+          }, asOwner ? t('Marked as handed over') : t('Enjoy it'))
         }
       >
         {canStart
           ? asOwner
-            ? 'I have handed it over'
-            : 'I have collected it'
-          : `Hand-over opens ${relative(new Date(startFrom).toISOString())}`}
+            ? t('I have handed it over')
+            : t('I have collected it')
+          : t('Hand-over opens {when}', { when: relative(new Date(startFrom).toISOString()) })}
       </Button>
       {!canStart && (
         <p className="t-sm mt-2 text-center text-[var(--ink-3)]">
-          Either of you can mark the hand-over from 30 minutes before the booked time.
+          {t('Either of you can mark the hand-over from 30 minutes before the booked time.')}
         </p>
       )}
     </div>
   )
   const home = asOwner ? (
     <Button block size="lg" variant="secondary" to={'/earn'}>
-      Back to Earn
+      {t('Back to Earn')}
     </Button>
   ) : (
     <Button block size="lg" variant="secondary" to={'/'}>
-      Browse capacity
+      {t('Browse capacity')}
     </Button>
   )
 
@@ -214,11 +215,11 @@ function Detail({
     case 'owner:requested':
       footer = (
         <div className="space-y-2">
-          <Button block size="lg" disabled={busy} onClick={() => void act('accept', `Accepted. ${buyer} has been told`)}>
-            Accept
+          <Button block size="lg" disabled={busy} onClick={() => void act('accept', t('Accepted. {name} has been told', { name: buyer }))}>
+            {t('Accept')}
           </Button>
           <Button block variant="quiet" disabled={busy} onClick={() => setDeclining(true)}>
-            Decline
+            {t('Decline')}
           </Button>
         </div>
       )
@@ -252,7 +253,7 @@ function Detail({
             disabled={busy}
             onClick={() => setFinishing(true)}
           >
-            Mark as handed back
+            {t('Mark as handed back')}
           </Button>
           {disputeButton}
         </div>
@@ -264,16 +265,16 @@ function Detail({
         <div className="space-y-2">
           {listing && listing.active && (
             <Button block size="lg" to={`/listing/${listing.id}`}>
-              Book again
+              {t('Book again')}
             </Button>
           )}
           <Button block variant="quiet" to={'/'}>
-            Find something else
+            {t('Find something else')}
           </Button>
         </div>
       ) : (
         <Button block size="lg" onClick={() => setRateOpen(true)}>
-          Rate {first}
+          {t('Rate {name}', { name: first })}
         </Button>
       )
       break
@@ -301,7 +302,7 @@ function Detail({
       <header className="-mt-1 mb-6">
         <h1 className="t-h1 text-balance">{title}</h1>
         <p className="t-lede mt-2 text-[var(--ink-3)]">
-          {asOwner ? `Booked by ${requester?.name ?? 'a buyer'}` : ownerName}
+          {asOwner ? t('Booked by {name}', { name: requester?.name ?? t('a buyer') }) : ownerName}
           {district && ` · ${district}`}
         </p>
       </header>
@@ -309,45 +310,45 @@ function Detail({
       {booking.status === 'declined' ? (
         <Banner
           tone="danger"
-          title={asOwner ? 'You declined this request' : `${first} could not take this one`}
-          body={`${booking.declineReason || 'No reason given.'} The hold on the card is released; nothing was charged.`}
+          title={asOwner ? t('You declined this request') : t('{name} could not take this one', { name: first })}
+          body={`${booking.declineReason ? t(booking.declineReason) : t('No reason given.')} ${t('The hold on the card is released; nothing was charged.')}`}
           action={
             <Button size="sm" variant="secondary" to={'/'}>
-              Find another
+              {t('Find another')}
             </Button>
           }
         />
       ) : booking.status === 'disputed' ? (
         <Banner
           tone="warn"
-          title="Under review"
+          title={t('Under review')}
           body={
             asOwner
-              ? `${buyer} reported a problem with this booking. Your payout is on hold while Cappy looks into it; we will be in touch.`
-              : 'You reported a problem. The payment is on hold while Cappy looks into it; we will be in touch.'
+              ? t('{name} reported a problem with this booking. Your payout is on hold while Cappy looks into it; we will be in touch.', { name: buyer })
+              : t('You reported a problem. The payment is on hold while Cappy looks into it; we will be in touch.')
           }
         />
       ) : booking.status === 'cancelled' ? (
         <Banner
           tone="warn"
-          title="This booking was cancelled"
+          title={t('This booking was cancelled')}
           body={
             asOwner
-              ? 'The buyer gets back everything they paid, and the window is free again.'
-              : 'The hold on your card is released, and anything already charged is refunded in full.'
+              ? t('The buyer gets back everything they paid, and the window is free again.')
+              : t('The hold on your card is released, and anything already charged is refunded in full.')
           }
         />
       ) : booking.status === 'expired' ? (
-        <Banner tone="warn" title="This request lapsed" body="It was not paid for or answered in time. Nothing was charged." />
+        <Banner tone="warn" title={t('This request lapsed')} body={t('It was not paid for or answered in time. Nothing was charged.')} />
       ) : booking.status === 'payment_failed' ? (
         <Banner
           tone="danger"
-          title="The payment could not be taken"
-          body="Nothing was charged, and the window is free again."
+          title={t('The payment could not be taken')}
+          body={t('Nothing was charged, and the window is free again.')}
           action={
             asOwner ? undefined : (
               <Button size="sm" variant="secondary" to={`/listing/${booking.match.listingId}`}>
-                Try again
+                {t('Try again')}
               </Button>
             )
           }
@@ -355,29 +356,29 @@ function Detail({
       ) : booking.status === 'awaiting_payment' ? (
         <Banner
           tone="warn"
-          title={payNow ? 'Finish paying to send your request' : 'Authorising your card'}
-          body={`${first} is asked as soon as the card is authorised.${booking.expiresAt ? ` It lapses ${relative(booking.expiresAt)} if not.` : ''}`}
+          title={payNow ? t('Finish paying to send your request') : t('Authorising your card')}
+          body={`${t('{name} is asked as soon as the card is authorised.', { name: first })}${booking.expiresAt ? ` ${t('It lapses {when} if not.', { when: relative(booking.expiresAt) })}` : ''}`}
         />
       ) : booking.status === 'requested' && asOwner ? (
         <Banner
           tone="warn"
-          title={`${buyer} wants this window`}
-          body={`${range(booking.match.start, booking.match.end)}. Their card is held and charged when you accept.${booking.expiresAt ? ` Answer ${relative(booking.expiresAt)}, or it lapses.` : ''}`}
+          title={t('{name} wants this window', { name: buyer })}
+          body={`${range(booking.match.start, booking.match.end)}. ${t('Their card is held and charged when you accept.')}${booking.expiresAt ? ` ${t('Answer {when}, or it lapses.', { when: relative(booking.expiresAt) })}` : ''}`}
         />
       ) : booking.status === 'requested' ? (
         <Banner
           tone="warn"
-          title={`Waiting for ${first}`}
-          body={`${owner ? `${responseTime(owner.responseMins)}. ` : ''}Your card is held, and charged only if they accept.`}
+          title={t('Waiting for {name}', { name: first })}
+          body={`${owner ? `${responseTime(owner.responseMins)}. ` : ''}${t('Your card is held, and charged only if they accept.')}`}
         />
       ) : booking.status === 'accepted' ? (
         <Banner
           tone="success"
-          title="Confirmed"
+          title={t("Confirmed")}
           body={
             asOwner
-              ? `${buyer} is coming ${range(booking.match.start, booking.match.end)}.`
-              : `${first} is expecting you ${range(booking.match.start, booking.match.end)}.`
+              ? t('{name} is coming {when}.', { name: buyer, when: range(booking.match.start, booking.match.end) })
+              : t('{name} is expecting you {when}.', { name: first, when: range(booking.match.start, booking.match.end) })
           }
         />
       ) : null}
@@ -420,9 +421,9 @@ function Detail({
                   <p
                     className={`text-[15.5px] leading-7 ${current ? 'font-bold' : 'font-semibold'}`}
                   >
-                    {step.label}
+                    {t(step.label)}
                   </p>
-                  <p className="t-sm text-[var(--ink-3)]">{asOwner ? step.ownerNote : step.note}</p>
+                  <p className="t-sm text-[var(--ink-3)]">{t(asOwner ? step.ownerNote : step.note)}</p>
                 </div>
               </li>
             )
@@ -434,15 +435,15 @@ function Detail({
           the address is shared with the buyer when the owner accepts. */}
       {(booking.status === 'accepted' || booking.status === 'active') && (booking.handover || listing) && (
         <Card className="p-5">
-          <h2 className="t-label mb-2.5">Getting in</h2>
+          <h2 className="t-label mb-2.5">{t('Getting in')}</h2>
           {booking.handover?.address && (
             <p className="text-[15.5px] font-semibold text-[var(--ink)]">{booking.handover.address}</p>
           )}
-          <p className="t-body mt-1 text-[var(--ink-2)]">{booking.handover?.instructions ?? listing?.instructions}</p>
+          <p className="t-body mt-1 text-[var(--ink-2)]">{booking.handover?.instructions}</p>
           <p className="t-sm tnum mt-4 flex items-center gap-1.5 border-t border-[var(--line)] pt-4 text-[var(--ink-3)]">
             <Icon name="pin" size={14} />
             {district}
-            {!asOwner && ` · ${distance(booking.match.distanceKm)} away`}
+            {!asOwner && ` · ${t('{distance} away', { distance: distance(booking.match.distanceKm) })}`}
           </p>
         </Card>
       )}
@@ -453,14 +454,14 @@ function Detail({
             <Avatar initials={other.initials} size={44} business={other.kind === 'business'} />
             <div className="min-w-0 flex-1">
               <p className="truncate text-[15.5px] font-semibold">{other.name}</p>
-              <p className="t-sm text-[var(--ink-3)]">{asOwner ? 'Booked this window' : trackRecord(other)}</p>
+              <p className="t-sm text-[var(--ink-3)]">{asOwner ? t('Booked this window') : trackRecord(other)}</p>
             </div>
             {!asOwner && <Stars value={rating(other)} count={other.jobsDone} />}
           </div>
           <div className="mt-3 flex flex-wrap gap-1 border-t border-[var(--line)] pt-3">
             <ReportButton targetType="owner" targetId={other.id} />
             <Button variant="quiet" icon="close" onClick={() => setBlocking(true)}>
-              Block
+              {t('Block')}
             </Button>
           </div>
         </Card>
@@ -483,41 +484,41 @@ function Detail({
       />
 
       <Card className="mt-3 p-5">
-        <h2 className="t-label mb-2">What you agreed</h2>
-        <Row label="When" value={range(booking.match.start, booking.match.end)} />
+        <h2 className="t-label mb-2">{t('What you agreed')}</h2>
+        <Row label={t('When')} value={range(booking.match.start, booking.match.end)} />
         <Row
-          label={booking.requirement.mode === 'window' ? 'Duration' : 'Batch'}
+          label={booking.requirement.mode === 'window' ? t('Duration') : t('Batch')}
           value={
             booking.requirement.mode === 'batch'
-              ? `${booking.requirement.quantity} parts · ${durationLabel(quote.hours)}`
+              ? `${t('{n} parts', { n: booking.requirement.quantity })} · ${durationLabel(quote.hours)}`
               : durationLabel(quote.hours)
           }
         />
         <div className="my-2 border-t border-[var(--line)]" />
         {dead ? (
           <Row
-            label="Charged"
-            value={booking.status === 'cancelled' ? 'Nothing: released or refunded' : 'Nothing: hold released'}
+            label={t('Charged')}
+            value={booking.status === 'cancelled' ? t('Nothing: released or refunded') : t('Nothing: hold released')}
             strong
           />
         ) : (
           <>
-            <Row label="Total" value={formatEurExact(quote.total)} strong />
+            <Row label={t('Total')} value={formatEurExact(quote.total)} strong />
             <Row
-              label={`Cappy fee · ${PLATFORM_FEE_BPS / 100}%`}
+              label={`${t('Cappy fee')} · ${(PLATFORM_FEE_BPS / 100).toLocaleString(locale())} %`}
               value={formatEurExact(quote.platformFee)}
               tone="muted"
             />
-            <Row label={asOwner ? 'You receive' : `${first} receives`} value={formatEurExact(quote.ownerNet)} tone="accent" />
+            <Row label={asOwner ? t('You receive') : t('{name} receives', { name: first })} value={formatEurExact(quote.ownerNet)} tone="accent" />
           </>
         )}
       </Card>
 
       {booking.outcome && (
         <Card className="anim-rise mt-3 p-5">
-          <h2 className="t-label mb-2.5">{asOwner ? `${buyer}'s rating` : 'Your rating'}</h2>
+          <h2 className="t-label mb-2.5">{asOwner ? t('Rating from {name}', { name: buyer }) : t('Your rating')}</h2>
           <div className="flex items-center gap-2">
-            <span className="flex" aria-label={`${booking.outcome.quality} out of 5`}>
+            <span className="flex" aria-label={t('{n} out of 5', { n: booking.outcome.quality })}>
               {[1, 2, 3, 4, 5].map((n) => (
                 <Icon
                   key={n}
@@ -531,11 +532,11 @@ function Detail({
               ))}
             </span>
             <span className="t-sm text-[var(--ink-3)]">
-              {booking.outcome.onTime ? 'On time' : 'Late'}
+              {booking.outcome.onTime ? t('On time') : t('Late')}
             </span>
           </div>
           <p className="t-sm mt-4 border-t border-[var(--line)] pt-4 text-[var(--ink-3)]">
-            Ratings decide where {first} ranks for the next person searching.
+            {t('Ratings decide where {name} ranks for the next person searching.', { name: first })}
           </p>
         </Card>
       )}
@@ -543,7 +544,7 @@ function Detail({
       <Sheet
         open={finishing}
         onClose={() => setFinishing(false)}
-        title="Handed back and all fine?"
+        title={t('Handed back and all fine?')}
         footer={
           <div className="space-y-2">
             <Button
@@ -556,7 +557,7 @@ function Detail({
                 setRateOpen(true)
               }}
             >
-              Yes, it is done
+              {t('Yes, it is done')}
             </Button>
             <Button
               block
@@ -567,24 +568,23 @@ function Detail({
                 setEvidencePrompt('check_out')
               }}
             >
-              Add check-out photos first
+              {t('Add check-out photos first')}
             </Button>
             <Button block variant="quiet" onClick={() => setFinishing(false)}>
-              Not yet
+              {t('Not yet')}
             </Button>
           </div>
         }
       >
         <p className="t-body pb-3 text-[var(--ink-2)]">
-          This completes the booking and pays {first}. If something went wrong, report a problem instead: the
-          payment is held until it is sorted out.
+          {t('This completes the booking and pays {name}. If something went wrong, report a problem instead: the payment is held until it is sorted out.', { name: first })}
         </p>
       </Sheet>
 
       <Sheet
         open={cancelling}
         onClose={() => setCancelling(false)}
-        title={asOwner ? 'Cancel this booking?' : 'Withdraw from this booking?'}
+        title={asOwner ? t('Cancel this booking?') : t('Withdraw from this booking?')}
         footer={
           <div className="space-y-2">
             <Button
@@ -593,31 +593,31 @@ function Detail({
               variant="danger"
               disabled={busy}
               onClick={() => {
-                void act('cancel', 'Cancelled')
+                void act('cancel', t('Cancelled'))
                 setCancelling(false)
               }}
             >
-              {asOwner ? 'Yes, cancel it' : 'Yes, withdraw'}
+              {asOwner ? t('Yes, cancel it') : t('Yes, withdraw')}
             </Button>
             <Button block variant="quiet" onClick={() => setCancelling(false)}>
-              Keep it
+              {t('Keep it')}
             </Button>
           </div>
         }
       >
         <p className="t-body pb-3 text-[var(--ink-2)]">
           {asOwner
-            ? `${buyer} will be told, and gets back everything they paid.`
+            ? t('{name} will be told, and gets back everything they paid.', { name: buyer })
             : booking.status === 'accepted'
-              ? `This is your withdrawal from the booking. ${first} will be told the window is free again, and you get back everything you paid, in full.`
-              : `This is your withdrawal from the booking. ${first} will be told the window is free again. The hold on your card is released; nothing is charged.`}
+              ? t('This is your withdrawal from the booking. {name} will be told the window is free again, and you get back everything you paid, in full.', { name: first })
+              : t('This is your withdrawal from the booking. {name} will be told the window is free again. The hold on your card is released; nothing is charged.', { name: first })}
         </p>
       </Sheet>
 
       <Sheet
         open={blocking}
         onClose={() => setBlocking(false)}
-        title={`Block ${asOwner ? buyer : first}?`}
+        title={t('Block {name}?', { name: asOwner ? buyer : first })}
         footer={
           <Button
             block
@@ -625,25 +625,23 @@ function Detail({
             variant="danger"
             disabled={busy || !other}
             onClick={() => {
-              if (other) void done(() => blockPerson(other.id), `${other.name.split(' ')[0]} is blocked`)
+              if (other) void done(() => blockPerson(other.id), t('{name} is blocked', { name: other.name.split(' ')[0] }))
               setBlocking(false)
             }}
           >
-            Block
+            {t('Block')}
           </Button>
         }
       >
         <p className="t-body pb-3 text-[var(--ink-2)]">
-          Neither of you can message the other or make new bookings with each other. This booking itself stays
-          as it is; cancel it if you need to. You can unblock them from your profile. To tell Cappy about
-          something wrong, report them as well.
+          {t('Neither of you can message the other or make new bookings with each other. This booking itself stays as it is; cancel it if you need to. You can unblock them from your profile. To tell Cappy about something wrong, report them as well.')}
         </p>
       </Sheet>
 
       <Sheet
         open={declining}
         onClose={() => setDeclining(false)}
-        title={`Decline ${buyer}'s request?`}
+        title={t('Decline the request from {name}?', { name: buyer })}
         footer={
           <Button
             block
@@ -651,18 +649,18 @@ function Detail({
             variant="danger"
             disabled={busy}
             onClick={() => {
-              void done(() => declineBooking(booking.id, reason), 'Declined. They have been told')
+              void done(() => declineBooking(booking.id, reason), t('Declined. They have been told'))
               setDeclining(false)
             }}
           >
-            Decline
+            {t('Decline')}
           </Button>
         }
       >
         <div className="flex flex-wrap gap-2 pb-3">
           {DECLINE_REASONS.map((r) => (
             <Chip key={r} selected={reason === r} onClick={() => setReason(r)}>
-              {r}
+              {t(r)}
             </Chip>
           ))}
         </div>
@@ -671,31 +669,31 @@ function Detail({
       <Sheet
         open={disputing}
         onClose={() => setDisputing(false)}
-        title="What went wrong?"
+        title={t('What went wrong?')}
         footer={
           <Button
             block
             size="lg"
             disabled={busy || !problem.trim()}
             onClick={() => {
-              void done(() => disputeBooking(booking.id, problem.trim()), 'Reported. The payment is on hold')
+              void done(() => disputeBooking(booking.id, problem.trim()), t('Reported. The payment is on hold'))
               setDisputing(false)
             }}
           >
-            Report the problem
+            {t('Report the problem')}
           </Button>
         }
       >
         <div className="space-y-3 pb-3">
           <p className="t-body text-[var(--ink-2)]">
-            The payment to {first} is held while Cappy looks into it.
+            {t('The payment to {name} is held while Cappy looks into it.', { name: first })}
           </p>
           <Textarea
             value={problem}
             onChange={(e) => setProblem(e.target.value)}
             rows={4}
             maxLength={500}
-            placeholder="They did not turn up, it was broken…"
+            placeholder={t('They did not turn up, it was broken…')}
           />
         </div>
       </Sheet>
@@ -703,7 +701,7 @@ function Detail({
       <Sheet
         open={rateOpen}
         onClose={() => setRateOpen(false)}
-        title={`How did it go with ${first}?`}
+        title={t('How did it go with {name}?', { name: first })}
         footer={
           <Button
             block
@@ -715,19 +713,19 @@ function Detail({
               setRateOpen(false)
             }}
           >
-            Submit rating
+            {t('Submit rating')}
           </Button>
         }
       >
         <div className="space-y-5 pb-3">
           <div>
             <p className="mb-3 text-[14px] font-semibold text-[var(--ink-2)]">
-              Was it ready when they said?
+              {t('Was it ready when they said?')}
             </p>
             <div className="flex gap-2">
               {[
-                { v: true, label: 'On time' },
-                { v: false, label: 'Late' },
+                { v: true, label: t('On time') },
+                { v: false, label: t('Late') },
               ].map((o) => (
                 <button
                   key={o.label}
@@ -747,14 +745,14 @@ function Detail({
 
           <div>
             <p className="mb-3 text-[14px] font-semibold text-[var(--ink-2)]">
-              How was the thing itself?
+              {t('How was the thing itself?')}
             </p>
             <div className="flex justify-between gap-1">
               {[1, 2, 3, 4, 5].map((n) => (
                 <button
                   key={n}
                   onClick={() => setStars(n)}
-                  aria-label={`${n} star${n === 1 ? '' : 's'}`}
+                  aria-label={plural(n, '{n} star', '{n} stars')}
                   aria-pressed={stars === n}
                   className="grid h-12 w-12 place-items-center rounded-[var(--radius-control)] transition-colors duration-[160ms] hover:bg-[var(--sunken)]"
                 >
@@ -771,26 +769,26 @@ function Detail({
 
           <div>
             <p className="mb-3 text-[14px] font-semibold text-[var(--ink-2)]">
-              What stood out? <span className="font-normal text-[var(--ink-4)]">Pick any</span>
+              {t('What stood out?')} <span className="font-normal text-[var(--ink-4)]">{t('Pick any')}</span>
             </p>
             <div className="flex flex-wrap gap-2">
-              {REVIEW_TAGS.map((t) => (
+              {REVIEW_TAGS.map((tag) => (
                 <Chip
-                  key={t}
-                  selected={tags.includes(t)}
+                  key={tag}
+                  selected={tags.includes(tag)}
                   onClick={() =>
-                    setTags((cur) => (cur.includes(t) ? cur.filter((x) => x !== t) : [...cur, t]))
+                    setTags((cur) => (cur.includes(tag) ? cur.filter((x) => x !== tag) : [...cur, tag]))
                   }
                 >
-                  {t}
+                  {t(tag)}
                 </Chip>
               ))}
             </div>
           </div>
 
           <Field
-            label="Anything the next person should know?"
-            hint="Optional. Shown on the listing."
+            label={t('Anything the next person should know?')}
+            hint={t('Optional. Shown on the listing.')}
             htmlFor="review-note"
           >
             <Textarea
@@ -799,13 +797,12 @@ function Detail({
               onChange={(e) => setNote(e.target.value)}
               rows={3}
               maxLength={400}
-              placeholder="Handover was quick, bring your own blades…"
+              placeholder={t('Handover was quick, bring your own blades…')}
             />
           </Field>
 
           <p className="t-sm text-[var(--ink-4)]">
-            Your rating changes who shows up first for the next person searching, and your
-            words are what they read before they decide.
+            {t('Your rating changes who shows up first for the next person searching, and your words are what they read before they decide.')}
           </p>
         </div>
       </Sheet>
