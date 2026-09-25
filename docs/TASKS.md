@@ -155,7 +155,7 @@ Engineering, before launch:
 - [ ] G-7 German localisation (UI, emails, legal pages), English kept
 - [x] G-8 (API) Renter identity verification with Stripe Identity (document + live selfie) for bookings above 300 € (and configurable categories); only the outcome is stored. Needs a DPIA before launch (G-B3)
 - [x] G-9 Fraud rules: 10 booking requests and 20 new listings per person per day; a new owner's listing above 100 €/h waits for a staff check (`/api/admin/listings/held`, approve)
-- [ ] G-10 Stripe Connect platform tax reporting (DAC7) switched on; categories tagged in or out of scope; payouts blocked when tax data is missing after reminders
+- [~] G-10 DAC7: every category tagged with its activity (`dac7` on /api/categories; counsel confirms). Left for the business: switch on Stripe Connect platform tax reporting in the dashboard (it collects TIN and date of birth in onboarding, and Stripe withholds payouts while they are missing) and register with the BZSt (G-B4)
 
 Decisions for the business (not code):
 - [ ] G-B1 Insurance partner or guarantee for damage (vans first) — owner of the business

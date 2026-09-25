@@ -207,3 +207,9 @@ def test_search_keeps_working_when_booking_is_down(client, fakes):
     offer = client.get("/listings/l9/offers", params={"hours": 2}).json()[0]
     body = {"requirement": _saw_requirement(), "listingId": "l9", **offer}
     assert client.post("/internal/match-for-offer", json=body, headers=INTERNAL).status_code == 503
+
+
+def test_every_category_is_tagged_for_dac7(client):
+    tags = {c["id"]: c["dac7"] for c in client.get("/categories").json()}
+    assert set(tags.values()) <= {"personal_service", "immovable_property", "transport", "out_of_scope"}
+    assert tags["warehousing"] == "immovable_property" and tags["events"] == "out_of_scope"
