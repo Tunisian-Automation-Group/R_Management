@@ -15,4 +15,4 @@ and what it costs. Status is `accepted` unless a later ADR supersedes it.
 | [0008](0008-aws-runtime.md) | CloudFront + WAF → ALB → ECS Fargate, Aurora Serverless v2, Terraform |
 | [0009](0009-local-parity.md) | Local parity: LocalStack + stripe-mock, one `make up` |
 | [0010](0010-no-demo-in-prod.md) | Demo data is a dev-only seeding tool, never a runtime behaviour |
-| [0013](0013-markets.md) | *Proposed:* markets as configuration; two regional cells (EU eu-central-1, North America ca-central-1) |
+| [0013](0013-markets.md) | Markets as configuration; two regional cells (EU eu-central-1, North America ca-central-1) |
