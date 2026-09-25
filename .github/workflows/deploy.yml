@@ -65,6 +65,13 @@ jobs:
     permissions: { contents: read, id-token: write }
     outputs:
       web_config: ${{ steps.web.outputs.config }}
+    # The environment's variables are the one source of these: a switch or a
+    # flag set there survives every deploy (a local apply would be undone by
+    # the next push). HCL/JSON values, e.g. SWITCHES = {"bookings":true,...}.
+    env:
+      TF_VAR_legal: ${{ vars.LEGAL }}
+      TF_VAR_switches: ${{ vars.SWITCHES || '{"bookings":true,"payouts":true,"listings":true}' }}
+      TF_VAR_feature_flags: ${{ vars.FEATURE_FLAGS }}
     steps:
       - uses: actions/checkout@v5
 
@@ -72,6 +79,9 @@ jobs:
         with:
           role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
           aws-region: ${{ env.AWS_REGION }}
+
+      - name: The operator's legal identity is set (invoices need it)
+        run: test -n "$TF_VAR_legal" || { echo "set the LEGAL variable on the ${{ env.ENV }} environment"; exit 1; }
 
       - uses: hashicorp/setup-terraform@v3
         with: { terraform_version: 1.12.2, terraform_wrapper: false }

@@ -13,6 +13,9 @@
    - `AWS_IMAGES_ROLE_ARN`, from the bootstrap output (`images-<env>`): image builds push with it and can do nothing else; the web app is built with no AWS access (P-2)
    - `ZONE_ID`, the Route 53 hosted zone of the domain
    - `ALARM_EMAIL`
+   - `LEGAL`, the operator on invoices, as JSON:
+     `{"company":"…","address":"…","vat_id":"…","tax_number":"…"}`. Deploys stop without it.
+   - `SWITCHES` and `FEATURE_FLAGS` (optional; see "Kill switches")
 
    Add the `LOCALSTACK_AUTH_TOKEN` repository secret so CI runs the e2e.
 3. **DNS**: the domain in `infra/envs/<env>/main.tf` must live in that hosted zone.
@@ -52,7 +55,7 @@
 |---|---|
 | `api-5xx-rate` | Logs of the gateway and services for `ERROR`. Every line carries `requestId`, which is also in the client's `x-request-id` response header. |
 | `api-p99-latency` | Container Insights CPU per service, and Aurora `ServerlessDatabaseCapacity`. |
-| `<service>-dead-letters` | An event failed 5 times. Read it: `aws sqs receive-message --queue-url <dlq>`. Fix the cause, then redrive with `aws sqs start-message-move-task --source-arn <dlq-arn>`. Handlers are idempotent, so redriving is safe. |
+| `<service>-dead-letters` | An event failed 12 times (about 2 h of backoff). Read it: `aws sqs receive-message --queue-url <dlq>`. Fix the cause, then redrive with `aws sqs start-message-move-task --source-arn <dlq-arn>`. Handlers are idempotent, so redriving is safe. |
 | `<service>-queue-age` | The consumer is down or too slow. Check the service is running and its logs. |
 | `db-cpu`, `db-at-max-capacity` | Raise `db_max_acu`; find the slow queries in Performance Insights. |
 
@@ -117,13 +120,14 @@ messages before acting; dismiss with a note if it is innocent.
 
 ## Kill switches
 
-Each one pauses a single thing everywhere, without shipping code:
+Each one pauses a single thing everywhere, without shipping code. The
+environment's variables in GitHub are the one place they are set, so a deploy
+never undoes them:
 
-```sh
-cd infra/envs/prod
-terraform apply -var image_tag=<the running tag> -var zone_id=… -var alarm_email=… \
-  -var 'switches={bookings=false,payouts=true,listings=true}'
-```
+1. Settings → Environments → `prod` → variable `SWITCHES`, e.g.
+   `{"bookings":false,"payouts":true,"listings":true}`.
+2. Actions → deploy → Run workflow (`env: prod`). The same image is rolled
+   out again with the new settings (about 10 minutes).
 
 | Switch | Off means | When |
 |---|---|---|
@@ -132,7 +136,7 @@ terraform apply -var image_tag=<the running tag> -var zone_id=… -var alarm_ema
 | `listings` | New listings get a 503. Existing ones stay bookable. | A spam wave |
 
 Feature flags (`cappy_common/flags.py`) roll a change out to a share of people, the same way:
-`-var 'feature_flags=newcheckout:5'`, then 25, 50, 100. `0` switches it off for everyone at once.
+the `FEATURE_FLAGS` variable, e.g. `newcheckout:5`, then 25, 50, 100, each followed by a deploy run. `0` switches it off for everyone at once.
 The apps read them from `/api/app-config` (cached up to 5 minutes).
 
 ## Restoring the database (rehearse this every quarter)

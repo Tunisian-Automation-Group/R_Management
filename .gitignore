@@ -24,3 +24,7 @@ infra/localstack/terraform.tfstate*
 infra/**/.terraform.lock.hcl.bak
 infra/platform/.build/
 __pycache__/
+
+# Operator settings (legal identity etc.): never in git
+*.tfvars
+!*.example.tfvars

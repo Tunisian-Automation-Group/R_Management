@@ -19,7 +19,11 @@ For each objective, alarm when the budget burns **14.4× faster than
 sustainable over 1 h and 5 min** (2% of the monthly budget in an hour; this
 pages), or **6× over 6 h and 30 min** (this opens a ticket). The existing
 alarms are the first pieces: 5xx rate, p99 latency, queue age and dead
-letters (`infra/platform/observability.tf`). The burn-rate alarms are T-35b.
+letters (`infra/platform/observability.tf`). Burn-rate alarms exist for one
+API-wide objective (99.5% non-5xx, `observability.tf`); the per-journey
+objectives above, with their latency thresholds, are not alarmed separately
+yet, and queue-age alarms fire at 5 minutes for every queue (stricter than the
+15- and 10-minute SLIs). Per-journey burn alarms: task T-35c.
 
 ## Error-budget policy
 

@@ -33,3 +33,12 @@ The expected token issuer and the JWKS URL are separate settings, because
 cognito-local names itself differently from the address services reach it on.
 Confirmation codes for sign-up appear in `docker compose logs cognito` (and
 `make codes`), standing in for the email Cognito sends.
+
+## Correction (2026-09-26)
+
+What runs locally is narrower than written above: LocalStack starts S3, SNS,
+SQS and SES only (no Secrets Manager or KMS), and only the messaging module
+is applied to it; there is no storage module. Plans against real AWS are not
+run at all (GOAL 12): CI runs `terraform fmt` and `validate`, so the
+`connection_budget` check and the JWKS fetch are evaluated only in a real
+deploy. The decision itself stands.
