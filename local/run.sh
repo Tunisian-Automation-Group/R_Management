@@ -12,4 +12,4 @@ export EVENT_QUEUE_URL
 if python -c "import importlib.util,sys; sys.exit(0 if importlib.util.find_spec('$SERVICE.migrations') else 1)"; then
   python -m cappy_common.migrations "$SERVICE"
 fi
-exec uvicorn --factory "$SERVICE.main:create" --host 0.0.0.0 --port 8000 --no-server-header
+exec uvicorn --factory "$SERVICE.main:create" --host 0.0.0.0 --port 8000 --timeout-keep-alive 65 --no-server-header

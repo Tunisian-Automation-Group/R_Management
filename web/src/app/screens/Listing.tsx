@@ -118,6 +118,14 @@ export function Listing() {
     return offers.find((o) => o.slotId === fromResults) ?? offers[0] ?? null
   }, [picked, offers, params])
 
+  // A new window is a new attempt: never carry the last one's payment or key over.
+  const startOver = () => {
+    setPaying(null)
+    setAttempt(crypto.randomUUID())
+  }
+  const selectedStart = selected?.start
+  useEffect(startOver, [selectedStart])
+
   if (detail.isPending) return <Screen back="/">{null}</Screen>
   if (!detail.data || !listing || !owner) return <Navigate to="/" replace />
   const info = detail.data
@@ -148,6 +156,7 @@ export function Listing() {
     toast(`Request sent to ${first}`)
     void qc.invalidateQueries({ queryKey: ['bookings'] })
     setConfirming(false)
+    startOver()
     nav(`/bookings/${bookingId}`, { replace: true })
   }
 
@@ -461,7 +470,11 @@ export function Listing() {
 
       <Sheet
         open={confirming}
-        onClose={() => setConfirming(false)}
+        onClose={() => {
+          setConfirming(false)
+          // The booking made so far can still be paid from its own page.
+          startOver()
+        }}
         title={paying ? 'Pay to send your request' : 'Confirm request'}
         footer={
           paying ? undefined : (

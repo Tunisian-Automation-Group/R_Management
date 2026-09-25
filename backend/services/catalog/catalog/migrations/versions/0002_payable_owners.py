@@ -20,7 +20,8 @@ def upgrade() -> None:
     op.create_table(
         "payable_owners",
         sa.Column("owner_id", sa.String(length=64), nullable=False),
-        sa.Column("since", sa.DateTime(timezone=True), nullable=False),
+        sa.Column("ready", sa.Boolean(), nullable=False),
+        sa.Column("as_of", sa.DateTime(timezone=True), nullable=False),
         sa.PrimaryKeyConstraint("owner_id", name=op.f("pk_payable_owners")),
     )
 

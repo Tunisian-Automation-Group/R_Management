@@ -34,12 +34,18 @@ class CognitoDirectory(Directory):
         self._pool = settings.user_pool_id
 
     def _lookup(self, sub: str) -> str | None:
-        # With email as the sign-in attribute Cognito's username *is* the sub,
-        # but filtering on sub works whichever way the pool was set up.
-        users = self._c.list_users(UserPoolId=self._pool, Filter=f'sub = "{sub}"', Limit=1)["Users"]
-        if not users:
-            return None
-        attrs = {a["Name"]: a["Value"] for a in users[0].get("Attributes", [])}
+        # With email as the sign-in attribute (our pools) Cognito's username is
+        # the sub, so AdminGetUser, which has far more quota than ListUsers,
+        # finds them directly. ListUsers is the fallback for other pools.
+        try:
+            user = self._c.admin_get_user(UserPoolId=self._pool, Username=sub)
+            raw = user.get("UserAttributes", [])
+        except self._c.exceptions.UserNotFoundException:
+            users = self._c.list_users(UserPoolId=self._pool, Filter=f'sub = "{sub}"', Limit=1)["Users"]
+            if not users:
+                return None
+            raw = users[0].get("Attributes", [])
+        attrs = {a["Name"]: a["Value"] for a in raw}
         if attrs.get("email_verified") not in ("true", True):
             return None  # never mail an address nobody proved they own
         return attrs.get("email")

@@ -16,7 +16,7 @@ import { Icon } from '../components/Icon.tsx'
 import { Avatar, Banner, Button, Card, Chip, EmptyState, Pill, Sheet, Skeleton } from '../components/ui.tsx'
 import { ago, range } from '../format.ts'
 
-const DECLINE_REASONS = [
+export const DECLINE_REASONS = [
   'Already promised it to someone',
   'Turns out I need it then',
   'It needs a repair first',

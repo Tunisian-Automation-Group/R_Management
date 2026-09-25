@@ -56,13 +56,10 @@ resource "aws_iam_openid_connect_provider" "github" {
 }
 
 locals {
-  # Pull requests may plan (read-only). Only jobs in a protected GitHub
-  # environment (required reviewers for prod) may apply.
+  # Only deploy jobs, in a protected GitHub environment and running the
+  # workflow from main, may assume a role. Pull requests get no AWS access at
+  # all: CI needs none, and state holds secrets.
   roles = {
-    plan = {
-      subjects = ["repo:${var.github_repo}:pull_request", "repo:${var.github_repo}:ref:refs/heads/main"]
-      policy   = "arn:aws:iam::aws:policy/ReadOnlyAccess"
-    }
     deploy-staging = {
       subjects = ["repo:${var.github_repo}:environment:staging"]
       policy   = "arn:aws:iam::aws:policy/AdministratorAccess"
@@ -84,8 +81,12 @@ resource "aws_iam_role" "github" {
       Principal = { Federated = aws_iam_openid_connect_provider.github.arn }
       Action    = "sts:AssumeRoleWithWebIdentity"
       Condition = {
-        StringEquals = { "token.actions.githubusercontent.com:aud" = "sts.amazonaws.com" }
-        StringLike   = { "token.actions.githubusercontent.com:sub" = each.value.subjects }
+        StringEquals = {
+          "token.actions.githubusercontent.com:aud"              = "sts.amazonaws.com"
+          "token.actions.githubusercontent.com:ref"              = "refs/heads/main"
+          "token.actions.githubusercontent.com:job_workflow_ref" = "${var.github_repo}/.github/workflows/deploy.yml@refs/heads/main"
+        }
+        StringLike = { "token.actions.githubusercontent.com:sub" = each.value.subjects }
       }
     }]
   })
@@ -96,19 +97,6 @@ resource "aws_iam_role_policy_attachment" "github" {
   for_each   = local.roles
   role       = aws_iam_role.github[each.key].name
   policy_arn = each.value.policy
-}
-
-# The plan role must read state and take the lock.
-resource "aws_iam_role_policy" "plan_state" {
-  role = aws_iam_role.github["plan"].name
-  policy = jsonencode({
-    Version = "2012-10-17"
-    Statement = [{
-      Effect   = "Allow"
-      Action   = ["s3:GetObject", "s3:PutObject", "s3:DeleteObject", "s3:ListBucket"]
-      Resource = [aws_s3_bucket.state.arn, "${aws_s3_bucket.state.arn}/*"]
-    }]
-  })
 }
 
 output "role_arns" {

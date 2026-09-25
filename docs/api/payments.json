@@ -215,7 +215,7 @@
  "paths": {
   "/internal/intents": {
    "post": {
-    "description": "Idempotent per booking: a retried booking gets the same intent back.",
+    "description": "Idempotent per booking: a retried booking gets the same intent back.\n\nNo database connection is held while Stripe answers: a slow Stripe must\nnot use up the pool that every other request needs.",
     "operationId": "create_intent_internal_intents_post",
     "requestBody": {
      "content": {

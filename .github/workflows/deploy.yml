@@ -28,6 +28,8 @@ env:
 
 jobs:
   deploy:
+    # Only main is ever deployed (the AWS roles also refuse any other ref).
+    if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     environment: ${{ inputs.env || 'staging' }}
     steps:
@@ -88,9 +90,20 @@ jobs:
         run: |
           terraform apply -input=false -auto-approve -var image_tag=$TAG \
             -var zone_id=${{ vars.ZONE_ID }} -var alarm_email=${{ vars.ALARM_EMAIL }}
-          cluster=$(terraform output -json platform | jq -r .cluster)
+          out=$(terraform output -json platform)
+          cluster=$(echo "$out" | jq -r .cluster)
           aws ecs wait services-stable --cluster "$cluster" \
             --services gateway catalog matching booking payments notifications
+          # "Stable" is also what a rolled-back service is: check each one is
+          # really running the task definition this deploy registered.
+          for s in gateway catalog matching booking payments notifications; do
+            want=$(echo "$out" | jq -r ".service_task_definitions.$s")
+            read -r got state < <(aws ecs describe-services --cluster "$cluster" --services "$s" \
+              --query "services[0].deployments[?status=='PRIMARY'] | [0].[taskDefinition,rolloutState]" --output text)
+            if [ "$got" != "$want" ] || [ "$state" != "COMPLETED" ]; then
+              echo "$s is on $got ($state), not $want: the release was rolled back"; exit 1
+            fi
+          done
 
       - uses: actions/setup-node@v5
         with: { node-version: 22, cache: npm, cache-dependency-path: web/package-lock.json }

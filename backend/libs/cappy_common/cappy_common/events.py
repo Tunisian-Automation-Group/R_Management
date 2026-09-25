@@ -30,10 +30,10 @@ import logging
 from collections import defaultdict
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
-from sqlalchemy import Column, Index, Integer, MetaData, String, Table, insert, select, update
+from sqlalchemy import Column, Index, Integer, MetaData, String, Table, delete, insert, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -228,6 +228,32 @@ class OutboxRelay:
 Handler = Callable[[AsyncSession, Event], Awaitable[None]]
 
 
+# Sent events are kept a week for investigation. Processed markers must outlive
+# anything that could still be redelivered: the dead-letter queue keeps
+# messages 14 days, so markers are kept 21.
+SENT_RETENTION = timedelta(days=7)
+PROCESSED_RETENTION = timedelta(days=21)
+
+
+async def prune(db: Database, outbox: Table, processed: Table, *, batch: int = 5000) -> int:
+    """Delete what is past retention, in small batches so no statement holds
+    locks or runs into the statement timeout. Returns rows deleted."""
+    now = datetime.now(UTC)
+    total = 0
+    for table, key, ts, older in (
+        (outbox, outbox.c.id, outbox.c.sent_at, now - SENT_RETENTION),
+        (processed, processed.c.event_id, processed.c.processed_at, now - PROCESSED_RETENTION),
+    ):
+        while True:
+            async with db.transaction() as s:
+                ids = select(key).where(ts.is_not(None), ts < older).limit(batch).scalar_subquery()
+                n = (await s.execute(delete(table).where(key.in_(ids)))).rowcount or 0
+            total += n
+            if n < batch:
+                break
+    return total
+
+
 class Dispatcher:
     """Routes an event to its handler exactly once per consumer, in one
     transaction with the handler's own writes."""
@@ -312,8 +338,13 @@ class MemoryBroker(Publisher):
 def aws_client(service: str, settings: Any, endpoint_url: str = ""):
     """A boto3 client; locally pointed at LocalStack (or ``endpoint_url``)."""
     import boto3
+    from botocore.config import Config
 
-    kwargs: dict[str, Any] = {"region_name": settings.aws_region}
+    # Adaptive retries back off when AWS throttles (SES, Cognito quotas).
+    kwargs: dict[str, Any] = {
+        "region_name": settings.aws_region,
+        "config": Config(retries={"mode": "adaptive", "max_attempts": 8}, connect_timeout=5, read_timeout=25),
+    }
     if endpoint_url or settings.aws_endpoint_url:
         kwargs["endpoint_url"] = endpoint_url or settings.aws_endpoint_url
     return boto3.client(service, **kwargs)
@@ -362,16 +393,19 @@ class SqsConsumer(Consumer):
             MaxNumberOfMessages=10,
             WaitTimeSeconds=self.wait_seconds,
         )
-        for msg in resp.get("Messages", []):
-            try:
-                event = Event.from_json(_unwrap_sns(msg["Body"]))
-                await self.dispatcher.handle(event)
-            except Exception:  # noqa: BLE001
-                log.exception("handling message %s failed; leaving it for redelivery", msg.get("MessageId"))
-                continue
-            await asyncio.to_thread(
-                self._sqs.delete_message, QueueUrl=self.queue_url, ReceiptHandle=msg["ReceiptHandle"]
-            )
+        # Concurrently, so the last message of a batch is not still waiting its
+        # turn when its visibility timeout runs out (and counted as a failed
+        # receive towards the dead-letter queue without ever being tried).
+        await asyncio.gather(*(self._one(m) for m in resp.get("Messages", [])))
+
+    async def _one(self, msg: dict) -> None:
+        try:
+            event = Event.from_json(_unwrap_sns(msg["Body"]))
+            await self.dispatcher.handle(event)
+        except Exception:  # noqa: BLE001
+            log.exception("handling message %s failed; leaving it for redelivery", msg.get("MessageId"))
+            return
+        await asyncio.to_thread(self._sqs.delete_message, QueueUrl=self.queue_url, ReceiptHandle=msg["ReceiptHandle"])
 
     async def run(self) -> None:
         while True:

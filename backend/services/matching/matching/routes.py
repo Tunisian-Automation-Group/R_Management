@@ -42,15 +42,15 @@ def _bookings(request: Request) -> Bookings:
     return request.app.state.bookings
 
 
-def _window(req) -> tuple[Iso, Iso]:  # noqa: ANN001
-    now = now_iso()
+def _window(request: Request, req) -> tuple[Iso, Iso]:  # noqa: ANN001
+    now = _earliest_start(request)
     until = req.latest if req.mode == "window" else req.deadline
     start = max(now, req.earliest) if req.mode == "window" else now
     return start, until
 
 
 async def _candidates_and_busy(request: Request, req, exclude_owner: str | None) -> tuple[World, Busy]:  # noqa: ANN001
-    start, until = _window(req)
+    start, until = _window(request, req)
     if ms_from_iso(until) <= ms_from_iso(start):
         return World(owners=[], listings=[], slots=[], districts={}, reviews=[]), {}
     world = await _catalog(request).candidates(
@@ -74,6 +74,13 @@ async def _context(request: Request, listing_id: str, origin: str | None = None)
         _bookings(request).busy([listing_id], start, until),
     )
     return world, busy
+
+
+def _earliest_start(request: Request) -> Iso:
+    """The owner needs time to answer a request (and the buyer to pay), so
+    nothing can be booked to start sooner than this."""
+    lead = request.app.state.settings.min_lead_minutes * 60_000
+    return iso_from_ms(ms_from_iso(now_iso()) + lead)
 
 
 # --- shapes -------------------------------------------------------------------------
@@ -135,7 +142,7 @@ async def matches(
     """Ranked capacity for a requirement. Your own listings are never results."""
     req = body.requirement
     world, busy = await _candidates_and_busy(request, req, p.sub if p else None)
-    found = sort_matches(find_matches(req, world, now_iso(), busy), body.sort)[: body.limit]
+    found = sort_matches(find_matches(req, world, _earliest_start(request), busy), body.sort)[: body.limit]
     listings = {l.id: l for l in world.listings}
     owners = {o.id: o for o in world.owners}
     return [MatchView(match=m, listing=listings[m.listing_id], owner=owners[m.owner_id]) for m in found]
@@ -151,7 +158,7 @@ async def spotlight(
     p: Principal | None = Depends(optional_principal),
 ) -> list[Spotlight]:
     """What is genuinely free near you soon, across every category."""
-    now = now_iso()
+    now = _earliest_start(request)
     until = iso_from_ms(ms_from_iso(now) + int(within_hours * HOUR_MS))
     world = await _catalog(request).candidates(
         origin=district, max_km=max_km, start=now, until=until, category=None, exclude_owner=p.sub if p else None
@@ -171,7 +178,7 @@ async def offers(
 ) -> list[Offer]:
     """Every start that fits ``hours`` of work, excluding what is already booked."""
     world, busy = await _context(request, listing_id)
-    start = max(from_ or now_iso(), now_iso())
+    start = max(from_ or now_iso(), _earliest_start(request))
     end = until or iso_from_ms(ms_from_iso(start) + 28 * 24 * HOUR_MS)
     return offers_for(world.slots, hours, start, end, limit, busy.get(listing_id))
 
@@ -213,8 +220,8 @@ async def match_for_offer_route(body: MatchForOfferIn, request: Request) -> Matc
     start, end = ms_from_iso(body.start), ms_from_iso(body.end)
     if not (ms_from_iso(slot.start) <= start < end <= ms_from_iso(slot.end)):
         raise Invalid("the requested window does not sit inside that idle slot")
-    if start < ms_from_iso(now_iso()):
-        raise Invalid("that window has already started")
+    if start < ms_from_iso(_earliest_start(request)):
+        raise Invalid("that window starts too soon for the owner to answer; pick a later one")
     hours = hours_for(req, listing)
     if hours is not None and abs((end - start) / HOUR_MS - hours) > 0.01:
         raise Invalid(f"that requirement needs {hours:g} hours, not {(end - start) / HOUR_MS:g}")

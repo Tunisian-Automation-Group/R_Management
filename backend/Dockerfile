@@ -19,4 +19,4 @@ COPY --from=build --chown=app:app /app/.venv /app/.venv
 USER app
 EXPOSE 8000
 # The venv's python is at the same path in both stages, so the copied entry points work.
-CMD ["sh", "-c", "exec uvicorn --factory ${SERVICE}.main:create --host 0.0.0.0 --port ${PORT} --proxy-headers --forwarded-allow-ips='*' --timeout-graceful-shutdown 20 --no-server-header"]
+CMD ["sh", "-c", "exec uvicorn --factory ${SERVICE}.main:create --host 0.0.0.0 --port ${PORT} --proxy-headers --forwarded-allow-ips='*' --timeout-graceful-shutdown 20 --timeout-keep-alive 65 --no-server-header"]

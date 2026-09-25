@@ -45,7 +45,7 @@ locals {
   }
   secrets = {
     for s in local.services : s => merge(
-      { INTERNAL_TOKEN = aws_secretsmanager_secret.internal_token.arn },
+      s == "gateway" ? {} : { INTERNAL_TOKEN = aws_secretsmanager_secret.internal_token.arn },
       contains(local.db_services, s) ? { DATABASE_URL = aws_secretsmanager_secret.db_url[s].arn } : {},
       s == "payments" ? {
         STRIPE_SECRET_KEY      = "${aws_secretsmanager_secret.stripe.arn}:STRIPE_SECRET_KEY::"
@@ -184,7 +184,7 @@ locals {
     payments = []
     notifications = [
       { Effect = "Allow", Action = ["ses:SendEmail", "ses:SendRawEmail"], Resource = "*", Condition = { StringEquals = { "ses:FromAddress" = "no-reply@${var.domain}" } } },
-      { Effect = "Allow", Action = ["cognito-idp:ListUsers"], Resource = aws_cognito_user_pool.main.arn },
+      { Effect = "Allow", Action = ["cognito-idp:AdminGetUser", "cognito-idp:ListUsers"], Resource = aws_cognito_user_pool.main.arn },
     ]
   }
 }
@@ -334,6 +334,31 @@ resource "aws_appautoscaling_policy" "cpu" {
     scale_out_cooldown = 30
     predefined_metric_specification {
       predefined_metric_type = "ECSServiceAverageCPUUtilization"
+    }
+  }
+}
+
+# Consumers wait on I/O (Stripe, SES, the database), so CPU says little about
+# how far behind they are: they also scale on their queue's backlog.
+resource "aws_appautoscaling_policy" "backlog" {
+  for_each           = module.messaging.queue_names
+  name               = "backlog"
+  policy_type        = "TargetTrackingScaling"
+  service_namespace  = aws_appautoscaling_target.service[each.key].service_namespace
+  resource_id        = aws_appautoscaling_target.service[each.key].resource_id
+  scalable_dimension = aws_appautoscaling_target.service[each.key].scalable_dimension
+  target_tracking_scaling_policy_configuration {
+    target_value       = 100
+    scale_in_cooldown  = 300
+    scale_out_cooldown = 60
+    customized_metric_specification {
+      namespace   = "AWS/SQS"
+      metric_name = "ApproximateNumberOfMessagesVisible"
+      statistic   = "Average"
+      dimensions {
+        name  = "QueueName"
+        value = each.value
+      }
     }
   }
 }

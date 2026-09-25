@@ -1,9 +1,14 @@
 from __future__ import annotations
 
+from typing import ClassVar
+
 from cappy_common.settings import CommonSettings
 
 
 class Settings(CommonSettings):
+    # It routes; each service verifies tokens and guards its own /internal.
+    verifies_tokens: ClassVar[bool] = False
+    uses_internal_token: ClassVar[bool] = False
     service_name: str = "gateway"
     upstream_timeout_seconds: float = 15.0
     # Photos are the one large body (the catalog's own limit is the real one).

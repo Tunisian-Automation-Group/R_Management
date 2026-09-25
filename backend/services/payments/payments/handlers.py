@@ -22,6 +22,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from cappy_common.events import (
     BOOKING_STATUS_CHANGED,
     PAYMENT_CAPTURED,
+    PAYMENT_FAILED,
     PAYMENT_REFUNDED,
     PAYOUT_SENT,
     Event,
@@ -29,7 +30,7 @@ from cappy_common.events import (
     Outbox,
 )
 
-from .provider import Provider
+from .provider import Declined, Provider
 from .tables import OUTBOX, ConnectAccountRow, PaymentRow
 
 log = logging.getLogger(__name__)
@@ -56,7 +57,16 @@ def handlers(provider: Provider, service_name: str) -> dict[str, Handler]:
         facts = {"bookingId": row.booking_id, "ownerId": row.owner_id, "requesterId": row.requester_id}
 
         if to == "accepted" and row.status in ("created", "authorised"):
-            row.charge_id = await provider.capture(row.intent_id, row.booking_id)
+            try:
+                row.charge_id = await provider.capture(row.intent_id, row.booking_id)
+            except Declined as e:
+                # Nothing was taken; the booking cannot go ahead. Booking moves
+                # it to payment_failed, which releases the window and tells both.
+                log.warning("capture declined for %s: %s", row.booking_id, e)
+                row.status = "failed"
+                row.updated_at = now
+                await outbox.add(session, PAYMENT_FAILED, {**facts, "stage": "capture"})
+                return
             row.status = "captured"
             await outbox.add(session, PAYMENT_CAPTURED, {**facts, "amount": row.amount, "currency": row.currency})
         elif to in RELEASE and row.status in ("created", "authorised"):

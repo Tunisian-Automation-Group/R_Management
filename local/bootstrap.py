@@ -62,7 +62,7 @@ def messaging() -> dict[str, str]:
         q = sqs.create_queue(
             QueueName=f"cappy-{service}",
             Attributes={
-                "VisibilityTimeout": "60",
+                "VisibilityTimeout": "120",
                 "RedrivePolicy": json.dumps({"deadLetterTargetArn": dlq_arn, "maxReceiveCount": "5"}),
             },
         )

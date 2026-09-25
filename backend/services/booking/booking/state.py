@@ -1,11 +1,15 @@
 """The booking state machine, as data.
 
     awaiting_payment --authorised--> requested --accept--> accepted --start--> active --complete--> completed
-          |                             |                     |                                      (--rate)
-          +--payment failed--> payment_failed               cancel (refunded if already captured)
-          +--expire--> expired          +--decline--> declined
+          |                             |                     |   \                  |                (--rate)
+          +--payment failed--> payment_failed               cancel  capture declined  dispute (buyer)
+          +--expire--> expired          +--decline--> declined       -> payment_failed   -> disputed
                                         +--expire--> expired
-    cancel: from awaiting_payment, requested or accepted, by either party
+    cancel: from awaiting_payment, requested or accepted, by either party, and only
+            before the window starts. After that the buyer disputes instead.
+    start:  from 30 minutes before the window, by either party.
+    dispute: from accepted or active once the window has started, by the buyer. The
+            payout is held until support resolves it (docs/runbook.md).
 
 Transitions a person makes name who may make them. The rest are made by the
 system: a payment result, the expiry sweep, the auto-completion sweep.
@@ -32,11 +36,12 @@ Status = Literal[
     "cancelled",
     "expired",
     "payment_failed",
+    "disputed",
 ]
 HOLDING: frozenset[str] = frozenset({"awaiting_payment", "requested", "accepted", "active"})
 FINAL: frozenset[str] = frozenset({"completed", "declined", "cancelled", "expired", "payment_failed"})
 
-Action = Literal["accept", "decline", "start", "complete", "cancel"]
+Action = Literal["accept", "decline", "start", "complete", "cancel", "dispute"]
 SystemAction = Literal["authorised", "payment_failed", "expire", "auto_complete"]
 Role = Literal["requester", "owner", "either"]
 
@@ -56,11 +61,13 @@ TRANSITIONS: dict[Action, Transition] = {
     # The buyer confirms the job is done; the sweep does it if they never do.
     "complete": Transition(frozenset({"active"}), "completed", "requester"),
     "cancel": Transition(frozenset({"awaiting_payment", "requested", "accepted"}), "cancelled", "either"),
+    "dispute": Transition(frozenset({"accepted", "active"}), "disputed", "requester"),
 }
 
 SYSTEM: dict[SystemAction, tuple[frozenset[str], Status]] = {
     "authorised": (frozenset({"awaiting_payment"}), "requested"),
-    "payment_failed": (frozenset({"awaiting_payment"}), "payment_failed"),
+    # Also after accept: the capture can be declined (the hold was reversed).
+    "payment_failed": (frozenset({"awaiting_payment", "accepted"}), "payment_failed"),
     "expire": (frozenset({"awaiting_payment", "requested"}), "expired"),
     "auto_complete": (frozenset({"accepted", "active"}), "completed"),
 }

@@ -276,6 +276,9 @@ export const requestBooking = (
 export type BookingAction = 'accept' | 'start' | 'complete' | 'cancel'
 export const actOnBooking = (id: string, action: BookingAction) => post<Booking>(`/bookings/${id}/${action}`)
 export const declineBooking = (id: string, reason: string) => post<Booking>(`/bookings/${id}/decline`, { reason })
+export const disputeBooking = (id: string, reason: string) => post<Booking>(`/bookings/${id}/dispute`, { reason })
+/** The card step for a booking still awaiting payment (404 once there is nothing to pay). */
+export const getBookingPayment = (id: string) => get<PaymentStart>(`/bookings/${id}/payment`)
 export const rateBooking = (id: string, outcome: Outcome) => post<Booking>(`/bookings/${id}/rate`, outcome)
 
 /** A listing as the owner writes it: ids and the owner come from the server. */

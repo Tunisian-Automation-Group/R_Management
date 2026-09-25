@@ -230,6 +230,8 @@ export type BookingStatus =
   /** Nobody paid, or nobody answered, in time. Nothing was charged. */
   | 'expired'
   | 'payment_failed'
+  /** The buyer reported a problem after the window began; the payout waits for review. */
+  | 'disputed'
 
 export type Outcome = {
   onTime: boolean

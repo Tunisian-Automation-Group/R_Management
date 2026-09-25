@@ -173,7 +173,8 @@ def test_payout_readiness_is_announced_once_per_change(client, app, broker):
     _intent(client, "bk_a", owner="new-host")
     _intent(client, "bk_b", owner="new-host")
     call(app, app.state.relay.flush)
-    assert [e.data for e in broker.of_type(PAYOUTS_READY)] == [{"ownerId": "new-host", "ready": True}]
+    [e] = broker.of_type(PAYOUTS_READY)
+    assert (e.data["ownerId"], e.data["ready"]) == ("new-host", True) and e.data["asOf"]
 
 
 def test_config_and_onboarding(client, issuer):
@@ -196,8 +197,10 @@ class _StripeShaped(StripeProvider):
     async def create_intent(self, *, booking_id, amount, currency, metadata) -> Intent:  # noqa: ANN001
         return Intent(id=f"pi_{booking_id}", client_secret="pi_secret")
 
+    status = AccountStatus(False, False)
+
     async def account_status(self, account_id: str) -> AccountStatus:
-        return AccountStatus(False, False)
+        return self.status
 
 
 def _signed(payload: dict, secret: str = WEBHOOK_SECRET) -> tuple[bytes, dict]:
@@ -268,15 +271,32 @@ def test_webhook_keeps_accounts_current(stripe_app, issuer, broker):
             s.add(ConnectAccountRow(owner_id="host", account_id="acct_9", updated_at=datetime.now(UTC)))
 
     call(app, connect)
+    # The webhook asks Stripe for the current state rather than trusting the payload.
+    app.state.provider.status = AccountStatus(True, True)
     body, headers = _signed(
         _event("account.updated", {"id": "acct_9", "payouts_enabled": True, "details_submitted": True})
     )
     assert c.post("/payments/webhooks/stripe", content=body, headers=headers).status_code == 200
     assert c.get("/payments/connect/status", headers=issuer.headers("host")).json()["payoutsEnabled"] is True
     call(app, app.state.relay.flush)
-    assert [e.data for e in broker.of_type(PAYOUTS_READY)] == [{"ownerId": "host", "ready": True}]
+    assert [(e.data["ownerId"], e.data["ready"]) for e in broker.of_type(PAYOUTS_READY)] == [("host", True)]
 
 
 def test_deployed_payments_require_stripe():
     with pytest.raises(RuntimeError, match="PAYMENTS_PROVIDER"):
         Settings(app_env="prod", internal_token="i" * 40, auth_issuer="https://x", auth_client_ids="c")
+
+
+def test_a_declined_capture_tells_booking_and_takes_nothing(client, app, provider, broker):
+    from cappy_common.events import PAYMENT_FAILED
+
+    _intent(client)
+    provider.failing.add("capture_declined")
+    assert _status(app, "bk_1", "accepted")
+    assert call(app, _payment, app, "bk_1").status == "failed"
+    call(app, app.state.relay.flush)
+    [failed] = broker.of_type(PAYMENT_FAILED)
+    assert failed.data["bookingId"] == "bk_1" and failed.data["stage"] == "capture"
+    # The booking then becomes payment_failed; nothing further happens here.
+    _status(app, "bk_1", "payment_failed")
+    assert [op for op, _ in provider.calls] == ["intent"]

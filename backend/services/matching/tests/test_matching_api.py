@@ -9,7 +9,7 @@ from cappy_common.errors import NotFound
 from cappy_common.fixtures import build_world
 from cappy_common.models import World
 from cappy_common.testing import TestIssuer
-from cappy_common.timeutil import DAY_MS, iso_from_ms, ms_from_iso, now_iso, now_ms
+from cappy_common.timeutil import DAY_MS, HOUR_MS, iso_from_ms, ms_from_iso, now_iso, now_ms
 from matching.clients import Bookings, Catalog
 from matching.main import build_app
 from matching.settings import Settings
@@ -176,3 +176,12 @@ def test_quote_and_feasibility(client):
     assert q["feasibility"]["feasible"] and q["quote"]["total"] == q["quote"]["platformFee"] + q["quote"]["ownerNet"]
     f = client.post("/feasibility", json={"requirement": _saw_requirement(hours=200), "listingId": "l9"}).json()
     assert not f["feasible"] and f["blockers"]
+
+
+def test_nothing_starts_too_soon_for_the_owner_to_answer(client):
+    soon = ms_from_iso(now_iso()) + 2 * HOUR_MS - 60_000
+    offers = client.get("/listings/l9/offers", params={"hours": 2}).json()
+    assert offers and all(ms_from_iso(o["start"]) >= soon for o in offers)
+    early = {"slotId": offers[0]["slotId"], "start": now_iso(), "end": iso_from_ms(now_ms() + 2 * HOUR_MS)}
+    body = {"requirement": _saw_requirement(), "listingId": "l9", **early}
+    assert client.post("/internal/match-for-offer", json=body, headers=INTERNAL).status_code == 422

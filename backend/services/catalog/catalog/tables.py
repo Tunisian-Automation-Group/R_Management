@@ -152,7 +152,9 @@ class PayableOwnerRow(Base):
 
     __tablename__ = "payable_owners"
     owner_id: Mapped[str] = mapped_column(String(64), primary_key=True)
-    since: Mapped[datetime] = mapped_column(UtcDateTime)
+    ready: Mapped[bool] = mapped_column(Boolean)
+    # When payments decided it. Events can arrive out of order; older ones lose.
+    as_of: Mapped[datetime] = mapped_column(UtcDateTime)
 
 
 class MediaRow(Base):

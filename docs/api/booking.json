@@ -185,6 +185,7 @@
      },
      "status": {
       "enum": [
+       "disputed",
        "awaiting_payment",
        "requested",
        "accepted",
@@ -344,6 +345,21 @@
      "z"
     ],
     "title": "Dims",
+    "type": "object"
+   },
+   "DisputeIn": {
+    "properties": {
+     "reason": {
+      "maxLength": 500,
+      "minLength": 1,
+      "title": "Reason",
+      "type": "string"
+     }
+    },
+    "required": [
+     "reason"
+    ],
+    "title": "DisputeIn",
     "type": "object"
    },
    "HTTPValidationError": {
@@ -603,6 +619,28 @@
      "ownerNet"
     ],
     "title": "Quote",
+    "type": "object"
+   },
+   "ResolveIn": {
+    "properties": {
+     "by": {
+      "description": "who at support decided",
+      "maxLength": 64,
+      "minLength": 1,
+      "title": "By",
+      "type": "string"
+     },
+     "outcome": {
+      "pattern": "^(pay_owner|refund_buyer)$",
+      "title": "Outcome",
+      "type": "string"
+     }
+    },
+    "required": [
+     "outcome",
+     "by"
+    ],
+    "title": "ResolveIn",
     "type": "object"
    },
    "ValidationError": {
@@ -1050,6 +1088,96 @@
     "summary": "Decline"
    }
   },
+  "/bookings/{booking_id}/dispute": {
+   "post": {
+    "description": "Something went wrong once the booked time began. The payout is held\nand the booking no longer completes by itself; support resolves it.",
+    "operationId": "dispute_bookings__booking_id__dispute_post",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "booking_id",
+      "required": true,
+      "schema": {
+       "title": "Booking Id",
+       "type": "string"
+      }
+     }
+    ],
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/DisputeIn"
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Booking"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Dispute"
+   }
+  },
+  "/bookings/{booking_id}/payment": {
+   "get": {
+    "description": "The card step again, for a buyer who left it half way. Payments returns\nthe same intent however often it is asked.",
+    "operationId": "payment_bookings__booking_id__payment_get",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "booking_id",
+      "required": true,
+      "schema": {
+       "title": "Booking Id",
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/PaymentStart"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Payment"
+   }
+  },
   "/bookings/{booking_id}/rate": {
    "post": {
     "description": "``booking.rated`` feeds the owner's record and becomes a review. It is\ndated at the end of the booked window, not when the buyer got round to it.",
@@ -1137,6 +1265,56 @@
      }
     },
     "summary": "Start"
+   }
+  },
+  "/internal/bookings/{booking_id}/resolve": {
+   "post": {
+    "description": "Support settles a dispute (docs/runbook.md). Paying the owner completes\nthe booking (payments transfers); refunding cancels it (payments refunds).",
+    "operationId": "resolve_internal_bookings__booking_id__resolve_post",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "booking_id",
+      "required": true,
+      "schema": {
+       "title": "Booking Id",
+       "type": "string"
+      }
+     }
+    ],
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/ResolveIn"
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Booking"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Resolve"
    }
   },
   "/internal/busy": {

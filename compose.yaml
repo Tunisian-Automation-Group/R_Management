@@ -93,6 +93,9 @@ services:
       <<: *env
       DATABASE_URL: postgresql+asyncpg://cappy:cappy@postgres:5432/booking
       SWEEP_SECONDS: "5"
+      # So `make e2e` can walk one booking from request to payout in a minute
+      # rather than waiting for the booked time. Deployed, the default (30) holds.
+      START_EARLY_MINUTES: "100000"
 
   payments:
     <<: *service

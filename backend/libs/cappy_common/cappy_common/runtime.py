@@ -22,7 +22,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from .auth import make_verifier
 from .db import Database
-from .events import Dispatcher, Handler, Outbox, OutboxRelay, event_tables, make_consumer, make_publisher
+from .events import Dispatcher, Handler, Outbox, OutboxRelay, event_tables, make_consumer, make_publisher, prune
 from .observability import setup_tracing
 
 log = logging.getLogger(__name__)
@@ -56,6 +56,10 @@ class Runtime:
                 self.outbox_table, self.processed_table = event_tables(metadata)
             else:
                 self.outbox_table, self.processed_table = existing, metadata.tables["processed_events"]
+
+    async def _prune(self, _app: FastAPI) -> None:
+        """Hourly, on every replica (the deletes are idempotent and batched)."""
+        await _prune_loop(self)
 
     @property
     def creates_schema(self) -> bool:
@@ -106,6 +110,8 @@ class Runtime:
                     tasks.append(asyncio.create_task(self.relay.run(), name=f"{s.service_name}:relay"))
                 if consumer:
                     tasks.append(asyncio.create_task(consumer.run(), name=f"{s.service_name}:consumer"))
+                if self.db is not None:
+                    tasks.append(asyncio.create_task(_forever(self._prune, app), name=f"{s.service_name}:prune"))
                 for loop in self.loops:
                     tasks.append(asyncio.create_task(_forever(loop, app), name=f"{s.service_name}:{loop.__name__}"))
             try:
@@ -128,6 +134,11 @@ class Runtime:
                     await self.db.dispose()
 
         return lifespan
+
+
+async def _prune_loop(runtime: Runtime) -> None:
+    await prune(runtime.db, runtime.outbox_table, runtime.processed_table)
+    await asyncio.sleep(3600)
 
 
 def _named(name: str, fn: Callable[[], Awaitable[None]]) -> Callable[[], Awaitable[None]]:

@@ -24,7 +24,7 @@ class Settings(CommonSettings):
     # Longest edge after re-encoding, and the pixel budget that refuses
     # decompression bombs before they are decoded.
     media_max_edge: int = 2000
-    media_max_pixels: int = 40_000_000
+    media_max_pixels: int = 16_000_000
 
     # A search never considers more than this many candidate listings; they are
     # the nearest ones matching the category and time window.

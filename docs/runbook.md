@@ -4,8 +4,9 @@
 
 1. **Account bootstrap** (once per AWS account, by a person with admin rights):
    `cd infra/bootstrap && terraform init && terraform apply -var github_repo=<owner>/<repo>`.
-   This creates the state bucket and the GitHub OIDC roles `plan`, `deploy-staging`
-   and `deploy-prod`.
+   This creates the state bucket and the GitHub OIDC roles `deploy-staging` and
+   `deploy-prod`, which only the deploy workflow running from `main`, inside
+   that GitHub environment, can assume.
 2. **GitHub**: create the environments `staging` and `prod`, and require a
    reviewer on `prod`. In each environment set these variables:
    - `AWS_DEPLOY_ROLE_ARN`, from the bootstrap output
@@ -50,6 +51,24 @@
 | `<service>-queue-age` | The consumer is down or too slow. Check the service is running and its logs. |
 | `db-cpu`, `db-at-max-capacity` | Raise `db_max_acu`; find the slow queries in Performance Insights. |
 
+## A buyer reported a problem (disputed booking)
+
+A `disputed` booking has been paid (captured) but not paid out, and it will
+not complete by itself. Read the buyer's reason (`declineReason`) and hear
+both sides. Then settle it from inside the network (for example with ECS Exec
+into any booking task):
+
+```sh
+curl -s -X POST http://localhost:8000/internal/bookings/<id>/resolve \
+  -H "X-Internal-Token: $INTERNAL_TOKEN" -H 'content-type: application/json' \
+  -d '{"outcome":"pay_owner","by":"<your name>"}'     # or "refund_buyer"
+```
+
+- `pay_owner` completes the booking, and payments transfers the owner's share.
+- `refund_buyer` cancels it, and payments refunds the buyer in full.
+
+Both are recorded in the booking's audit trail as `support:<name>`.
+
 ## Everyday operations
 
 - **A shell in a running task**:
@@ -69,5 +88,9 @@
   "load more" using the `nextCursor` the API already returns.
 - Rate limiting is per IP, done by WAF. Add per-user limits (they need shared
   state such as Redis) when metrics show abuse from signed-in accounts.
-- A buyer who cancels an accepted booking is refunded in full. Put a
-  cancellation policy in `payments/handlers.py` before it is needed.
+- Cancelling an accepted booking before its time starts refunds in full; after
+  that the buyer can only dispute. Put a partial-refund policy in
+  `payments/handlers.py` if late cancellations should cost something.
+- Every service can publish any event type to the one topic. A compromised
+  service could forge events; per-publisher topics (and consumers checking
+  which topic a message came from) close that when the threat model needs it.

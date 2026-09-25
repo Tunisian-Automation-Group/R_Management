@@ -314,3 +314,35 @@ async def test_consumer_is_idempotent_and_never_acks_failures(stores):
     # redelivery will try again rather than being skipped.
     assert ids == {"a"} and done == {good.id}
     assert seen == [good.id, bad.id]
+
+
+async def test_prune_keeps_what_may_still_be_needed():
+    from datetime import UTC, datetime, timedelta
+
+    from sqlalchemy import func, insert, select
+
+    from cappy_common.db import Database, new_metadata
+    from cappy_common.events import event_tables, prune
+
+    md = new_metadata()
+    outbox, processed = event_tables(md)
+    db = Database("sqlite+aiosqlite://")
+    await db.create_all(md)
+    now = datetime.now(UTC)
+    async with db.transaction() as s:
+        for i, (sent, age) in enumerate([(True, 8), (True, 1), (False, 30)]):
+            at = now - timedelta(days=age)
+            await s.execute(
+                insert(outbox).values(
+                    id=f"o{i}", type="t", body={}, created_at=at, sent_at=at if sent else None, attempts=0
+                )
+            )
+        for i, age in enumerate([22, 20]):
+            await s.execute(
+                insert(processed).values(event_id=f"p{i}", type="t", processed_at=now - timedelta(days=age))
+            )
+    assert await prune(db, outbox, processed, batch=1) == 2
+    async with db.session() as s:
+        assert sorted((await s.execute(select(outbox.c.id))).scalars()) == ["o1", "o2"], "unsent is never pruned"
+        assert (await s.execute(select(func.count()).select_from(processed))).scalar() == 1
+    await db.dispose()

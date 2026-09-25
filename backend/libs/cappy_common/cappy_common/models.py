@@ -60,6 +60,7 @@ Material = Literal[
 ]
 
 BookingStatus = Literal[
+    "disputed",
     "awaiting_payment",
     "requested",
     "accepted",

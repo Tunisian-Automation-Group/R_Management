@@ -155,14 +155,14 @@ class CatalogRepository:
         not offered to buyers at all."""
         if not self.bookable_only:
             return []
-        return [ListingRow.owner_id.in_(select(PayableOwnerRow.owner_id))]
+        return [ListingRow.owner_id.in_(select(PayableOwnerRow.owner_id).where(PayableOwnerRow.ready))]
 
-    async def set_payable(self, owner_id: str, ready: bool) -> None:
-        row = await self.s.get(PayableOwnerRow, owner_id)
-        if ready and row is None:
-            self.s.add(PayableOwnerRow(owner_id=owner_id, since=_now()))
-        elif not ready and row is not None:
-            await self.s.delete(row)
+    async def set_payable(self, owner_id: str, ready: bool, as_of: datetime) -> None:
+        row = await self.s.get(PayableOwnerRow, owner_id, with_for_update=True)
+        if row is None:
+            self.s.add(PayableOwnerRow(owner_id=owner_id, ready=ready, as_of=as_of))
+        elif as_of > row.as_of:
+            row.ready, row.as_of = ready, as_of
         await self.s.flush()
 
     # --- districts and places ---------------------------------------------------
@@ -459,8 +459,11 @@ class CatalogRepository:
         )
 
     async def listing_context(self, listing_id: str, *, after: datetime, origin: str | None = None) -> World:
-        """One listing and everything needed to price and schedule it."""
+        """One listing and everything needed to price and schedule it. A
+        paused listing has nothing to offer anyone."""
         listing = await self.listing(listing_id)
+        if not listing.active:
+            raise NotFound(f"listing {listing_id} is not taking bookings")
         owner = await self.owner(listing.owner_id)
         names = {listing.district} | ({origin} if origin else set())
         rows = (await self.s.execute(select(DistrictRow).where(DistrictRow.name.in_(names)))).scalars()

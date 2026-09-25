@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import re
 from datetime import UTC, datetime
 
@@ -23,6 +24,7 @@ router = ApiRouter()
 internal = ApiRouter(prefix="/internal", dependencies=[Depends(require_internal)])
 
 _listing = TypeAdapter(Listing)
+_DECODING = asyncio.Semaphore(2)
 MAX_PHOTOS = 12
 MAX_RULES = 12
 MAX_SLOTS_PER_CALL = 200
@@ -426,15 +428,16 @@ async def upload(
     """One photograph in, its URL out, to go in a listing's ``photos``."""
     settings = request.app.state.settings
     data = await file.read(settings.media_max_bytes + 1)
-    import asyncio
-
-    processed = await asyncio.to_thread(
-        media.process,
-        data,
-        max_bytes=settings.media_max_bytes,
-        max_edge=settings.media_max_edge,
-        max_pixels=settings.media_max_pixels,
-    )
+    # Decoding a photo takes up to ~4 bytes per pixel, twice over: at most two
+    # at a time per task keeps a burst of uploads from exhausting its memory.
+    async with _DECODING:
+        processed = await asyncio.to_thread(
+            media.process,
+            data,
+            max_bytes=settings.media_max_bytes,
+            max_edge=settings.media_max_edge,
+            max_pixels=settings.media_max_pixels,
+        )
     await request.app.state.media.put(processed.name, processed.data)
     await repo.record_media(processed.name, p.sub, len(processed.data), processed.width, processed.height)
     return Uploaded(

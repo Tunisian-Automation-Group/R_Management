@@ -20,6 +20,8 @@ class Settings(CommonSettings):
     # How often the sweeps run, per replica. They use SKIP LOCKED, so every
     # replica can run them without doing the same work twice.
     sweep_seconds: float = 30.0
+    # Either party can mark the hand-over from this long before the window.
+    start_early_minutes: int = 30
 
     @property
     def payment_timeout(self) -> timedelta:

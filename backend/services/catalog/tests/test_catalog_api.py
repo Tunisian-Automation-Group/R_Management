@@ -456,13 +456,14 @@ def test_only_owners_who_can_be_paid_are_offered(issuer, broker, tmp_path):
                 l["ownerId"] for l in c.post("/internal/candidates", json=body, headers=INTERNAL).json()["listings"]
             }
 
-        def ready(owner, ok):
+        def ready(owner, ok, as_of=None):
+            data = {"ownerId": owner, "ready": ok, **({"asOf": as_of} if as_of else {})}
             e = Event(
                 id=new_id("ev"),
                 type=PAYOUTS_READY,
                 source="payments",
                 occurred_at=now_iso(),
-                data={"ownerId": owner, "ready": ok},
+                data=data,
             )
             c.portal.call(app.state.dispatcher.handle, e)
 
@@ -472,4 +473,7 @@ def test_only_owners_who_can_be_paid_are_offered(issuer, broker, tmp_path):
         assert offered() == {"o1"}
         assert c.get("/search", params={"q": "saw"}).json()["items"]
         ready("o1", False)
+        assert offered() == set()
+        # A stale "ready" that arrives late changes nothing.
+        ready("o1", True, as_of="2020-01-01T00:00:00+00:00")
         assert offered() == set()

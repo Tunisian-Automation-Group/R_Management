@@ -10,6 +10,11 @@ output "services" {
   value = local.services
 }
 
+# What each service must be running after a deploy (the deploy checks it).
+output "service_task_definitions" {
+  value = { for k, v in aws_ecs_task_definition.service : k => v.arn }
+}
+
 output "migrate_task_definitions" {
   value = { for k, v in aws_ecs_task_definition.migrate : k => v.arn }
 }

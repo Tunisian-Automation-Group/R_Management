@@ -10,7 +10,7 @@ import { Photo } from '../components/Photo.tsx'
 import { Button, EmptyState, Pill, Segmented, Skeleton } from '../components/ui.tsx'
 import { range } from '../format.ts'
 
-const LIVE: BookingStatus[] = ['awaiting_payment', 'requested', 'accepted', 'active']
+const LIVE: BookingStatus[] = ['awaiting_payment', 'requested', 'accepted', 'active', 'disputed']
 
 const statusPill = (
   status: BookingStatus,
@@ -35,6 +35,8 @@ const statusPill = (
       return { label: 'Expired', tone: 'neutral' }
     case 'payment_failed':
       return { label: 'Payment failed', tone: 'danger' }
+    case 'disputed':
+      return { label: 'Under review', tone: 'warn' }
   }
 }
 

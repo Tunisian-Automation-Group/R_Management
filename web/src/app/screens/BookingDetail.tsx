@@ -1,13 +1,26 @@
 import { useState, type ReactNode } from 'react'
 import { Navigate, useNavigate, useParams } from 'react-router-dom'
-import { useQueryClient } from '@tanstack/react-query'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import type { Booking, BookingStatus, Listing, Outcome, Owner } from '../../domain/types.ts'
 import { rating } from '../../domain/types.ts'
 import { durationLabel } from '../../domain/categories.ts'
 import { trackRecord } from '../../domain/match.ts'
 import { formatEurExact } from '../../domain/money.ts'
 import { PLATFORM_FEE_BPS } from '../../domain/pricing.ts'
-import { actOnBooking, rateBooking, useBooking, useListing, useOwner, type BookingAction } from '../../data/repo.ts'
+import {
+  actOnBooking,
+  declineBooking,
+  disputeBooking,
+  getBookingPayment,
+  rateBooking,
+  useBooking,
+  useListing,
+  useOwner,
+  usePaymentsConfig,
+  type BookingAction,
+} from '../../data/repo.ts'
+import { PayStep } from '../components/PayStep.tsx'
+import { DECLINE_REASONS } from './Earn.tsx'
 import { messageOf, useToast } from '../store.tsx'
 import { Screen } from '../components/AppShell.tsx'
 import { Photo } from '../components/Photo.tsx'
@@ -16,14 +29,16 @@ import { Avatar, Banner, Button, Card, Chip, Field, Row, Sheet, Stars, Textarea 
 import { REVIEW_TAGS } from '../../domain/reviews.ts'
 import { distance, range, relative, responseTime } from '../format.ts'
 
-const STEPS: { id: BookingStatus; label: string; note: string }[] = [
-  { id: 'requested', label: 'Requested', note: 'Waiting for the owner to accept' },
-  { id: 'accepted', label: 'Confirmed', note: 'The window is held for you' },
-  { id: 'active', label: 'In progress', note: 'You have it now' },
-  { id: 'completed', label: 'Finished', note: 'Handed back' },
+const STEPS: { id: BookingStatus; label: string; note: string; ownerNote: string }[] = [
+  { id: 'requested', label: 'Requested', note: 'Waiting for the owner to accept', ownerNote: 'Waiting for your answer' },
+  { id: 'accepted', label: 'Confirmed', note: 'The window is held for you', ownerNote: 'The window is held for them' },
+  { id: 'active', label: 'In progress', note: 'You have it now', ownerNote: 'They have it now' },
+  { id: 'completed', label: 'Finished', note: 'Handed back', ownerNote: 'Handed back; your payout is on its way' },
 ]
 
 const DEAD: BookingStatus[] = ['declined', 'cancelled', 'expired', 'payment_failed']
+// Start may be marked from half an hour before the window; the backend refuses earlier.
+const START_EARLY_MS = 30 * 60_000
 
 export function BookingDetail() {
   const { id } = useParams()
@@ -32,20 +47,44 @@ export function BookingDetail() {
   // the booking's own snapshot covers the rest.
   const listing = useListing(booking.data?.match.listingId)
   const owner = useOwner(booking.data?.match.ownerId)
+  // Present only when the viewer is the owner: the person asking them.
+  const requester = useOwner(booking.data?.requesterId)
 
   if (booking.isPending) return <Screen back="/bookings">{null}</Screen>
   if (!booking.data) return <Navigate to="/bookings" replace />
 
   // Remount when the booking changes so the rating form never carries over.
-  return <Detail key={booking.data.id} booking={booking.data} listing={listing.data?.listing} owner={owner.data} />
+  return (
+    <Detail
+      key={booking.data.id}
+      booking={booking.data}
+      listing={listing.data?.listing}
+      owner={owner.data}
+      requester={requester.data}
+    />
+  )
 }
 
-function Detail({ booking, listing, owner }: { booking: Booking; listing?: Listing; owner?: Owner }) {
+function Detail({
+  booking,
+  listing,
+  owner,
+  requester,
+}: {
+  booking: Booking
+  listing?: Listing
+  owner?: Owner
+  requester?: Owner
+}) {
   const nav = useNavigate()
   const qc = useQueryClient()
   const toast = useToast()
 
   const [cancelling, setCancelling] = useState(false)
+  const [declining, setDeclining] = useState(false)
+  const [reason, setReason] = useState(DECLINE_REASONS[0])
+  const [disputing, setDisputing] = useState(false)
+  const [problem, setProblem] = useState('')
   const [rateOpen, setRateOpen] = useState(false)
   const [stars, setStars] = useState(0)
   const [onTime, setOnTime] = useState<boolean | null>(null)
@@ -60,6 +99,23 @@ function Detail({ booking, listing, owner }: { booking: Booking; listing?: Listi
   const first = ownerName.split(' ')[0]
   const stepIndex = STEPS.findIndex((s) => s.id === booking.status)
   const dead = DEAD.includes(booking.status)
+  // requesterId is only ever sent to the owner.
+  const asOwner = Boolean(booking.requesterId)
+  const buyer = requester?.name.split(' ')[0] ?? 'The buyer'
+  const other = asOwner ? requester : owner
+  const startsAt = Date.parse(booking.match.start)
+  const canStart = Date.now() >= startsAt - START_EARLY_MS
+  const begun = Date.now() >= startsAt
+
+  const payments = usePaymentsConfig()
+  const payNow =
+    !asOwner && booking.status === 'awaiting_payment' && payments.data?.provider === 'stripe'
+  const payment = useQuery({
+    queryKey: ['bookingPayment', booking.id],
+    queryFn: () => getBookingPayment(booking.id),
+    enabled: payNow,
+    retry: false,
+  })
 
   const done = async (write: () => Promise<unknown>, message?: string) => {
     setBusy(true)
@@ -85,46 +141,89 @@ function Detail({ booking, listing, owner }: { booking: Booking; listing?: Listi
       void qc.invalidateQueries({ queryKey: ['reviews', booking.match.listingId] })
     }, `Review posted on ${title}`)
 
+  const cancelButton = (
+    <Button block variant="danger" disabled={busy} onClick={() => setCancelling(true)}>
+      {booking.status === 'accepted' ? 'Cancel booking' : 'Cancel request'}
+    </Button>
+  )
+  const disputeButton = (
+    <Button block variant="quiet" disabled={busy} onClick={() => setDisputing(true)}>
+      Report a problem
+    </Button>
+  )
+  const startButton = (
+    <Button block size="lg" disabled={busy || !canStart} onClick={() => void act('start', asOwner ? 'Marked as handed over' : 'Enjoy it')}>
+      {canStart
+        ? asOwner
+          ? 'I have handed it over'
+          : 'I have collected it'
+        : `Hand-over opens ${relative(new Date(startsAt - START_EARLY_MS).toISOString())}`}
+    </Button>
+  )
+  const home = asOwner ? (
+    <Button block size="lg" variant="secondary" onClick={() => nav('/earn')}>
+      Back to Earn
+    </Button>
+  ) : (
+    <Button block size="lg" variant="secondary" onClick={() => nav('/')}>
+      Browse capacity
+    </Button>
+  )
+
   let footer: ReactNode
-  switch (booking.status) {
+  switch (asOwner ? `owner:${booking.status}` : booking.status) {
+    case 'owner:requested':
+      footer = (
+        <div className="space-y-2">
+          <Button block size="lg" disabled={busy} onClick={() => void act('accept', `Accepted. ${buyer} has been told`)}>
+            Accept
+          </Button>
+          <Button block variant="quiet" disabled={busy} onClick={() => setDeclining(true)}>
+            Decline
+          </Button>
+        </div>
+      )
+      break
+    case 'owner:accepted':
+      footer = (
+        <div className="space-y-2">
+          {startButton}
+          {!begun && cancelButton}
+        </div>
+      )
+      break
     case 'awaiting_payment':
     case 'requested':
-      footer = (
-        <Button block size="lg" variant="danger" disabled={busy} onClick={() => setCancelling(true)}>
-          Cancel request
-        </Button>
-      )
+      footer = cancelButton
       break
     case 'accepted':
       footer = (
-        <Button
-          block
-          size="lg"
-          disabled={busy}
-          onClick={() => void act('start', 'Enjoy it')}
-        >
-          I have collected it
-        </Button>
+        <div className="space-y-2">
+          {startButton}
+          {begun ? disputeButton : cancelButton}
+        </div>
       )
       break
     case 'active':
       footer = (
-        <Button
-          block
-          size="lg"
-          disabled={busy}
-          onClick={() => {
-            void act('complete')
-            setRateOpen(true)
-          }}
-        >
-          Mark as handed back
-        </Button>
+        <div className="space-y-2">
+          <Button
+            block
+            size="lg"
+            disabled={busy}
+            onClick={() => {
+              void act('complete')
+              setRateOpen(true)
+            }}
+          >
+            Mark as handed back
+          </Button>
+          {disputeButton}
+        </div>
       )
       break
     case 'completed':
       // A finished booking that went well is the likeliest next booking there is.
-      // "Book something else" sent people back to a search they had already done.
       footer = booking.outcome ? (
         <div className="space-y-2">
           {listing && listing.active && (
@@ -143,11 +242,7 @@ function Detail({ booking, listing, owner }: { booking: Booking; listing?: Listi
       )
       break
     default:
-      footer = (
-        <Button block size="lg" variant="secondary" onClick={() => nav('/')}>
-          Browse capacity
-        </Button>
-      )
+      footer = home
   }
 
   return (
@@ -185,6 +280,16 @@ function Detail({ booking, listing, owner }: { booking: Booking; listing?: Listi
             </Button>
           }
         />
+      ) : booking.status === 'disputed' ? (
+        <Banner
+          tone="warn"
+          title="Under review"
+          body={
+            asOwner
+              ? `${buyer} reported a problem with this booking. Your payout is on hold while Cappy looks into it; we will be in touch.`
+              : 'You reported a problem. The payment is on hold while Cappy looks into it; we will be in touch.'
+          }
+        />
       ) : booking.status === 'cancelled' ? (
         <Banner tone="warn" title="This booking was cancelled" body="Any hold on your card is released, and anything already paid is refunded." />
       ) : booking.status === 'expired' ? (
@@ -192,19 +297,27 @@ function Detail({ booking, listing, owner }: { booking: Booking; listing?: Listi
       ) : booking.status === 'payment_failed' ? (
         <Banner
           tone="danger"
-          title="The payment did not go through"
-          body="Nothing was charged and the window is free again. Try booking it once more."
+          title="The payment could not be taken"
+          body="Nothing was charged, and the window is free again."
           action={
-            <Button size="sm" variant="secondary" onClick={() => nav(`/listing/${booking.match.listingId}`)}>
-              Try again
-            </Button>
+            asOwner ? undefined : (
+              <Button size="sm" variant="secondary" onClick={() => nav(`/listing/${booking.match.listingId}`)}>
+                Try again
+              </Button>
+            )
           }
         />
       ) : booking.status === 'awaiting_payment' ? (
         <Banner
           tone="warn"
-          title="Authorising your card"
+          title={payNow ? 'Finish paying to send your request' : 'Authorising your card'}
           body={`${first} is asked as soon as the card is authorised.${booking.expiresAt ? ` It lapses ${relative(booking.expiresAt)} if not.` : ''}`}
+        />
+      ) : booking.status === 'requested' && asOwner ? (
+        <Banner
+          tone="warn"
+          title={`${buyer} wants this window`}
+          body={`${range(booking.match.start, booking.match.end)}. Their card is held and charged when you accept.${booking.expiresAt ? ` Answer ${relative(booking.expiresAt)}, or it lapses.` : ''}`}
         />
       ) : booking.status === 'requested' ? (
         <Banner
@@ -216,11 +329,26 @@ function Detail({ booking, listing, owner }: { booking: Booking; listing?: Listi
         <Banner
           tone="accent"
           title="Confirmed"
-          body={`${first} is expecting you ${range(booking.match.start, booking.match.end)}.`}
+          body={
+            asOwner
+              ? `${buyer} is coming ${range(booking.match.start, booking.match.end)}.`
+              : `${first} is expecting you ${range(booking.match.start, booking.match.end)}.`
+          }
         />
       ) : null}
 
-      {!dead && (
+      {payNow && payment.data && payments.data?.publishableKey && (
+        <div className="mt-4">
+          <PayStep
+            publishableKey={payments.data.publishableKey}
+            clientSecret={payment.data.clientSecret}
+            bookingId={booking.id}
+            onPaid={() => void qc.invalidateQueries({ queryKey: ['booking', booking.id] })}
+          />
+        </div>
+      )}
+
+      {!dead && booking.status !== 'disputed' && (
         <ol className="mt-6">
           {STEPS.map((step, i) => {
             const reached = i <= stepIndex
@@ -249,7 +377,7 @@ function Detail({ booking, listing, owner }: { booking: Booking; listing?: Listi
                   >
                     {step.label}
                   </p>
-                  <p className="t-sm text-[var(--ink-3)]">{step.note}</p>
+                  <p className="t-sm text-[var(--ink-3)]">{asOwner ? step.ownerNote : step.note}</p>
                 </div>
               </li>
             )
@@ -269,15 +397,15 @@ function Detail({ booking, listing, owner }: { booking: Booking; listing?: Listi
         </Card>
       )}
 
-      {owner && (
+      {other && (
         <Card className="mt-3 p-5">
           <div className="flex items-center gap-3.5">
-            <Avatar initials={owner.initials} size={44} business={owner.kind === 'business'} />
+            <Avatar initials={other.initials} size={44} business={other.kind === 'business'} />
             <div className="min-w-0 flex-1">
-              <p className="truncate text-[15.5px] font-semibold">{owner.name}</p>
-              <p className="t-sm text-[var(--ink-3)]">{trackRecord(owner)}</p>
+              <p className="truncate text-[15.5px] font-semibold">{other.name}</p>
+              <p className="t-sm text-[var(--ink-3)]">{asOwner ? 'Booked this window' : trackRecord(other)}</p>
             </div>
-            <Stars value={rating(owner)} count={owner.jobsDone} />
+            {!asOwner && <Stars value={rating(other)} count={other.jobsDone} />}
           </div>
         </Card>
       )}
@@ -300,12 +428,12 @@ function Detail({ booking, listing, owner }: { booking: Booking; listing?: Listi
           value={formatEurExact(quote.platformFee)}
           tone="muted"
         />
-        <Row label={`${first} receives`} value={formatEurExact(quote.ownerNet)} tone="accent" />
+        <Row label={asOwner ? 'You receive' : `${first} receives`} value={formatEurExact(quote.ownerNet)} tone="accent" />
       </Card>
 
       {booking.outcome && (
         <Card className="anim-rise mt-3 p-5">
-          <h2 className="t-label mb-2.5">Your rating</h2>
+          <h2 className="t-label mb-2.5">{asOwner ? `${buyer}'s rating` : 'Your rating'}</h2>
           <div className="flex items-center gap-2">
             <span className="flex" aria-label={`${booking.outcome.quality} out of 5`}>
               {[1, 2, 3, 4, 5].map((n) => (
@@ -333,7 +461,7 @@ function Detail({ booking, listing, owner }: { booking: Booking; listing?: Listi
       <Sheet
         open={cancelling}
         onClose={() => setCancelling(false)}
-        title="Cancel this request?"
+        title={booking.status === 'accepted' ? 'Cancel this booking?' : 'Cancel this request?'}
         footer={
           <div className="space-y-2">
             <Button
@@ -342,7 +470,7 @@ function Detail({ booking, listing, owner }: { booking: Booking; listing?: Listi
               variant="danger"
               disabled={busy}
               onClick={() => {
-                void act('cancel', 'Request cancelled')
+                void act('cancel', 'Cancelled')
                 setCancelling(false)
               }}
             >
@@ -355,9 +483,72 @@ function Detail({ booking, listing, owner }: { booking: Booking; listing?: Listi
         }
       >
         <p className="t-body pb-3 text-[var(--ink-2)]">
-          {first} will be told the window is free again. The hold on your card is released;
-          nothing is charged.
+          {asOwner
+            ? `${buyer} will be told, and gets back everything they paid.`
+            : booking.status === 'accepted'
+              ? `${first} will be told the window is free again, and you get back everything you paid.`
+              : `${first} will be told the window is free again. The hold on your card is released; nothing is charged.`}
         </p>
+      </Sheet>
+
+      <Sheet
+        open={declining}
+        onClose={() => setDeclining(false)}
+        title={`Decline ${buyer}'s request?`}
+        footer={
+          <Button
+            block
+            size="lg"
+            variant="danger"
+            disabled={busy}
+            onClick={() => {
+              void done(() => declineBooking(booking.id, reason), 'Declined. They have been told')
+              setDeclining(false)
+            }}
+          >
+            Decline
+          </Button>
+        }
+      >
+        <div className="flex flex-wrap gap-2 pb-3">
+          {DECLINE_REASONS.map((r) => (
+            <Chip key={r} selected={reason === r} onClick={() => setReason(r)}>
+              {r}
+            </Chip>
+          ))}
+        </div>
+      </Sheet>
+
+      <Sheet
+        open={disputing}
+        onClose={() => setDisputing(false)}
+        title="What went wrong?"
+        footer={
+          <Button
+            block
+            size="lg"
+            disabled={busy || !problem.trim()}
+            onClick={() => {
+              void done(() => disputeBooking(booking.id, problem.trim()), 'Reported. The payment is on hold')
+              setDisputing(false)
+            }}
+          >
+            Report the problem
+          </Button>
+        }
+      >
+        <div className="space-y-3 pb-3">
+          <p className="t-body text-[var(--ink-2)]">
+            The payment to {first} is held while Cappy looks into it.
+          </p>
+          <Textarea
+            value={problem}
+            onChange={(e) => setProblem(e.target.value)}
+            rows={4}
+            maxLength={500}
+            placeholder="They did not turn up, it was broken…"
+          />
+        </div>
       </Sheet>
 
       <Sheet

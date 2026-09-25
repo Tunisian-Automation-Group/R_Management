@@ -13,7 +13,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from cappy_common.app import ApiRouter
 from cappy_common.auth import Principal, require_internal, require_principal
-from cappy_common.errors import Conflict, Invalid, NotFound
+from cappy_common.db import insert_or_ignore
+from cappy_common.errors import Conflict, Invalid, NotFound, Unavailable
 from cappy_common.events import PAYMENT_AUTHORISED, PAYOUTS_READY
 from cappy_common.models import CamelModel
 from cappy_common.runtime import Tx
@@ -78,8 +79,14 @@ async def _update_account(
     changed = account.payouts_enabled != payouts
     account.payouts_enabled, account.details_submitted = payouts, submitted
     account.updated_at = _now()
+    await session.flush()
     if changed:
-        await request.app.state.outbox.add(session, PAYOUTS_READY, {"ownerId": account.owner_id, "ready": payouts})
+        # asOf lets the catalog ignore an older state that arrives late.
+        await request.app.state.outbox.add(
+            session,
+            PAYOUTS_READY,
+            {"ownerId": account.owner_id, "ready": payouts, "asOf": account.updated_at.isoformat()},
+        )
 
 
 async def _authorised(request: Request, session: AsyncSession, row: PaymentRow) -> bool:
@@ -96,53 +103,77 @@ async def _authorised(request: Request, session: AsyncSession, row: PaymentRow) 
 
 
 @internal.post("/intents", response_model=IntentOut)
-async def create_intent(body: IntentIn, request: Request, session: AsyncSession = Tx) -> IntentOut:
-    """Idempotent per booking: a retried booking gets the same intent back."""
+async def create_intent(body: IntentIn, request: Request) -> IntentOut:
+    """Idempotent per booking: a retried booking gets the same intent back.
+
+    No database connection is held while Stripe answers: a slow Stripe must
+    not use up the pool that every other request needs."""
     provider = _provider(request)
+    db = request.app.state.db
     if body.owner_net > body.amount:
         raise Invalid("the owner's share cannot exceed the price")
-    row = await session.get(PaymentRow, body.booking_id)
+
+    async with db.transaction() as session:
+        row = await session.get(PaymentRow, body.booking_id)
+        if row is None:
+            account = await session.get(ConnectAccountRow, body.owner_id)
+            if provider.name == "fake" and account is None:
+                # Locally every owner can be paid. Racing first bookings of a
+                # new owner both land here; one inserts, both then read it.
+                await insert_or_ignore(
+                    session,
+                    ConnectAccountRow,
+                    owner_id=body.owner_id,
+                    account_id=await provider.create_account(body.owner_id),
+                    payouts_enabled=False,
+                    details_submitted=False,
+                    updated_at=_now(),
+                )
+                account = await session.get(
+                    ConnectAccountRow, body.owner_id, with_for_update=True, populate_existing=True
+                )
+                if not account.payouts_enabled:
+                    await _update_account(request, session, account, True, True)
+            if account is None or not account.payouts_enabled:
+                # ADR 0005: nobody books an owner we could not pay.
+                raise Conflict("this owner has not finished setting up payments yet, so they cannot take bookings")
+    request.app.state.relay.wake()
     if row is not None:
         return IntentOut(client_secret=await provider.client_secret(row.intent_id), intent_id=row.intent_id)
 
-    account = await session.get(ConnectAccountRow, body.owner_id)
-    if provider.name == "fake" and account is None:
-        account = ConnectAccountRow(
-            owner_id=body.owner_id,
-            account_id=await provider.create_account(body.owner_id),
-            payouts_enabled=False,
-            details_submitted=False,
-            updated_at=_now(),
+    try:
+        # Stripe returns the same intent for the same key, so two racing
+        # requests for one booking get one intent.
+        intent = await provider.create_intent(
+            booking_id=body.booking_id,
+            amount=body.amount,
+            currency=body.currency,
+            metadata={"requesterId": body.requester_id, "ownerId": body.owner_id},
         )
-        session.add(account)
-        await _update_account(request, session, account, True, True)
-    if account is None or not account.payouts_enabled:
-        # ADR 0005: nobody books an owner we could not pay.
-        raise Conflict("this owner has not finished setting up payments yet, so they cannot take bookings")
+    except Exception as e:  # noqa: BLE001 - transient by default: booking keeps the booking and retries
+        log.warning("creating the intent for %s failed: %s", body.booking_id, e)
+        raise Unavailable("the payment provider did not answer; try again") from e
 
-    intent = await provider.create_intent(
-        booking_id=body.booking_id,
-        amount=body.amount,
-        currency=body.currency,
-        metadata={"requesterId": body.requester_id, "ownerId": body.owner_id},
-    )
     now = _now()
-    row = PaymentRow(
-        booking_id=body.booking_id,
-        intent_id=intent.id,
-        requester_id=body.requester_id,
-        owner_id=body.owner_id,
-        amount=body.amount,
-        owner_net=body.owner_net,
-        currency=body.currency,
-        status="created",
-        created_at=now,
-        updated_at=now,
-    )
-    session.add(row)
-    await session.flush()
-    if provider.authorises_immediately:
-        await _authorised(request, session, row)
+    async with db.transaction() as session:
+        await insert_or_ignore(
+            session,
+            PaymentRow,
+            booking_id=body.booking_id,
+            intent_id=intent.id,
+            requester_id=body.requester_id,
+            owner_id=body.owner_id,
+            amount=body.amount,
+            owner_net=body.owner_net,
+            currency=body.currency,
+            status="created",
+            created_at=now,
+            updated_at=now,
+        )
+        row = await session.get(PaymentRow, body.booking_id, with_for_update=True)
+        if provider.authorises_immediately:
+            await _authorised(request, session, row)
+    request.app.state.relay.wake()
     return IntentOut(client_secret=intent.client_secret, intent_id=intent.id)
 
 
@@ -216,16 +247,18 @@ async def stripe_webhook(request: Request, session: AsyncSession = Tx) -> dict:
     obj = event["data"]["object"]
     kind = event["type"]
     if kind == "payment_intent.amount_capturable_updated":
-        row = (await session.execute(select(PaymentRow).where(PaymentRow.intent_id == obj["id"]))).scalar_one_or_none()
+        q = select(PaymentRow).where(PaymentRow.intent_id == obj["id"]).with_for_update()
+        row = (await session.execute(q)).scalar_one_or_none()
         if row is not None:
             await _authorised(request, session, row)
     elif kind == "account.updated":
-        q = select(ConnectAccountRow).where(ConnectAccountRow.account_id == obj["id"])
+        q = select(ConnectAccountRow).where(ConnectAccountRow.account_id == obj["id"]).with_for_update()
         account = (await session.execute(q)).scalar_one_or_none()
         if account is not None:
-            await _update_account(
-                request, session, account, bool(obj.get("payouts_enabled")), bool(obj.get("details_submitted"))
-            )
+            # Stripe does not deliver webhooks in order: ask for the current
+            # state rather than trusting this event's copy of it.
+            status = await _provider(request).account_status(account.account_id)
+            await _update_account(request, session, account, status.payouts_enabled, status.details_submitted)
     else:
         log.info("ignoring stripe event %s", kind)
     return {"received": True}

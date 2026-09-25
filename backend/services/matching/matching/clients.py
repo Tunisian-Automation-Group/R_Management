@@ -3,6 +3,8 @@ fakes; HTTP implementations for everything else."""
 
 from __future__ import annotations
 
+from urllib.parse import quote
+
 from cappy_common.http import ServiceClient
 from cappy_common.models import Iso, World
 from cappy_common.timeutil import ms_from_iso
@@ -45,7 +47,9 @@ class HttpCatalog(Catalog):
 
     async def listing_context(self, listing_id: str, *, after: Iso, origin: str | None = None) -> World:
         params = {"after": after, **({"origin": origin} if origin else {})}
-        return World.model_validate(await self._c.get(f"/internal/listings/{listing_id}/context", params=params))
+        # Encoded: an id is data, never a path (``../owners/x`` must stay one segment).
+        path = f"/internal/listings/{quote(listing_id, safe='')}/context"
+        return World.model_validate(await self._c.get(path, params=params))
 
     async def aclose(self) -> None:
         await self._c.aclose()

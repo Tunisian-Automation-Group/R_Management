@@ -137,3 +137,13 @@ class Database:
 
     async def dispose(self) -> None:
         await self.engine.dispose()
+
+
+async def insert_or_ignore(session: AsyncSession, model: type, **values: object) -> None:
+    """INSERT ... ON CONFLICT DO NOTHING on the primary key or a unique
+    constraint: the loser of a race simply finds the winner's row."""
+    if session.bind.dialect.name == "postgresql":
+        from sqlalchemy.dialects.postgresql import insert
+    else:
+        from sqlalchemy.dialects.sqlite import insert
+    await session.execute(insert(model).values(**values).on_conflict_do_nothing())

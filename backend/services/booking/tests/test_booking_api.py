@@ -176,14 +176,24 @@ def test_a_retry_with_the_same_key_returns_the_same_booking(client, issuer):
     assert len(client.get("/bookings", headers=issuer.headers(BUYER)).json()["items"]) == 1
 
 
-def test_payments_down_releases_the_window(client, issuer, payments):
+def test_payments_down_keeps_the_booking_for_a_retry(client, issuer, payments):
+    """Payments may have made the intent before failing to answer, so nothing
+    is failed on a 5xx: the same key retried gets the payment, and an unpaid
+    booking lapses by itself."""
     payments.down = True
-    r = client.post("/bookings", json=_body(), headers=issuer.headers(BUYER))
-    assert r.status_code == 503
+    h = {**issuer.headers(BUYER), "Idempotency-Key": "k-down"}
+    assert client.post("/bookings", json=_body(), headers=h).status_code == 503
     [b] = client.get("/bookings", headers=issuer.headers(BUYER)).json()["items"]
-    assert b["status"] == "payment_failed"
+    assert b["status"] == "awaiting_payment"
     payments.down = False
-    _book(client, issuer)  # the window is free again
+    again = client.post("/bookings", json=_body(), headers=h).json()
+    assert again["booking"]["id"] == b["id"] and again["payment"]["clientSecret"]
+
+
+def test_a_buyer_can_come_back_to_pay(client, issuer):
+    bid = _book(client, issuer)["booking"]["id"]
+    assert client.get(f"/bookings/{bid}/payment", headers=issuer.headers(BUYER)).json()["clientSecret"]
+    assert client.get(f"/bookings/{bid}/payment", headers=issuer.headers(HOST)).status_code == 404
 
 
 def test_an_owner_who_cannot_be_paid_cannot_be_booked(client, issuer, payments):
@@ -220,7 +230,7 @@ def test_a_late_authorisation_does_not_revive_a_cancelled_booking(client, app, i
 
 
 def test_full_lifecycle_and_rating(client, app, issuer, broker):
-    bid = _requested(client, app, issuer)
+    bid = _requested(client, app, issuer, start_h=0.25)
     assert _do(client, issuer, BUYER, bid, "accept").status_code == 403
     assert _do(client, issuer, HOST, bid, "accept").json()["status"] == "accepted"
     assert _do(client, issuer, HOST, bid, "start").json()["status"] == "active"
@@ -314,3 +324,39 @@ def test_events_are_idempotent(client, app, issuer):
     )
     assert call(app, app.state.dispatcher.handle, ev) is True
     assert call(app, app.state.dispatcher.handle, ev) is False
+
+
+def test_the_hand_over_cannot_be_marked_days_early(client, app, issuer):
+    bid = _requested(client, app, issuer, start_h=48)
+    _do(client, issuer, HOST, bid, "accept")
+    assert _do(client, issuer, HOST, bid, "start").status_code == 409
+
+
+def test_once_the_time_has_started_the_buyer_disputes_rather_than_cancels(client, app, issuer):
+    bid = _requested(client, app, issuer, start_h=40)
+    _do(client, issuer, HOST, bid, "accept")
+    assert _do(client, issuer, BUYER, bid, "dispute", reason="x").status_code == 409, "nothing to dispute yet"
+    started = datetime.now(UTC) - timedelta(minutes=5)
+    call(app, _age, app, bid, window_start=started, window_end=started + timedelta(hours=2))
+    assert _do(client, issuer, BUYER, bid, "cancel").status_code == 409
+    assert _do(client, issuer, HOST, bid, "cancel").status_code == 409
+    assert _do(client, issuer, HOST, bid, "dispute", reason="x").status_code == 403
+    r = _do(client, issuer, BUYER, bid, "dispute", reason="Nobody was there")
+    assert r.json()["status"] == "disputed"
+    # A disputed booking never completes, and pays nobody, by itself.
+    ended = datetime.now(UTC) - timedelta(hours=72)
+    call(app, _age, app, bid, window_start=ended - timedelta(hours=2), window_end=ended)
+    assert call(app, sweep_once, app) == 0
+    # Support settles it; the owner's payout follows from `completed`.
+    body = {"outcome": "pay_owner", "by": "agent-7"}
+    assert client.post(f"/internal/bookings/{bid}/resolve", json=body).status_code == 403
+    assert client.post(f"/internal/bookings/{bid}/resolve", json=body, headers=INTERNAL).json()["status"] == "completed"
+    assert client.post(f"/internal/bookings/{bid}/resolve", json=body, headers=INTERNAL).status_code == 409
+
+
+def test_a_declined_capture_releases_the_booking(client, app, issuer):
+    bid = _requested(client, app, issuer)
+    _do(client, issuer, HOST, bid, "accept")
+    assert _authorise(app, bid, PAYMENT_FAILED)
+    assert client.get(f"/bookings/{bid}", headers=issuer.headers(BUYER)).json()["status"] == "payment_failed"
+    _book(client, issuer)  # the window is free again

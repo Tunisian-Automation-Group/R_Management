@@ -26,6 +26,9 @@ class CommonSettings(BaseSettings):
     # Services that act on behalf of a person verify their access token, and a
     # deployed one must know whose tokens to trust. Workers set this False.
     verifies_tokens: ClassVar[bool] = True
+    # Services that call or serve /internal/* need the internal token. The
+    # gateway does neither, so it is never given it.
+    uses_internal_token: ClassVar[bool] = True
 
     app_env: AppEnv = "local"
     service_name: str = "cappy"
@@ -104,7 +107,7 @@ class CommonSettings(BaseSettings):
         """Everything that must not reach a deployed environment. Subclasses add
         their own and call ``super()``."""
         problems: list[str] = []
-        if len(self.internal_token.get_secret_value()) < 32:
+        if self.uses_internal_token and len(self.internal_token.get_secret_value()) < 32:
             problems.append("INTERNAL_TOKEN must be set to at least 32 random characters")
         if self.event_bus_url.startswith("memory://"):
             problems.append("EVENT_BUS_URL must be a real bus (sns://...), not memory://")

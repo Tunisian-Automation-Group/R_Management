@@ -34,9 +34,10 @@ resource "aws_sqs_queue" "dlq" {
 }
 
 resource "aws_sqs_queue" "events" {
-  for_each                   = local.consumers
-  name                       = "${var.name}-${each.key}"
-  visibility_timeout_seconds = 60
+  for_each = local.consumers
+  name     = "${var.name}-${each.key}"
+  # Well above the slowest handler (Stripe calls are bounded to ~20 s).
+  visibility_timeout_seconds = 120
   receive_wait_time_seconds  = 20
   sqs_managed_sse_enabled    = true
   redrive_policy = jsonencode({

@@ -114,6 +114,20 @@ Status: `[x]` done (with the commit that did it) · `[~]` in progress ·
 - [x] Docs: root README, runbook, API reference generated from code (`make openapi`)
 - [x] Final review against `GOAL.md`
 
+## Phase 12 — Independent review and fixes
+- [x] Three independent reviews (security, reliability, booking/money flow); findings fixed:
+      OIDC trust narrowed to the deploy workflow on main (no PR role); upload decoding bounded;
+      ids encoded between services; paused listings hidden from matching; gateway holds no
+      internal token; booking time rules, disputes and failed captures (ADR 0011); intents made
+      without holding a DB connection and safe under racing retries; Stripe calls bounded and
+      redrive-safe beyond the 24 h idempotency window; webhook row locks; versioned payout
+      readiness; SQS batches handled concurrently with a 120 s visibility; outbox/processed
+      pruning; consumers scale on backlog; keep-alive above the ALB idle timeout; deploy fails
+      when ECS rolled back; AdminGetUser + adaptive retries for email; web role-aware booking
+      screen, resumable payment, pay-state reset
+- [-] Per-event source verification: a sender sets its own source, so it proves nothing;
+      per-publisher topics if the threat model needs it (runbook, known limits)
+
 ## Definition of done
 
 | Goal criterion | Evidence | Status |
@@ -151,3 +165,5 @@ Status: `[x]` done (with the commit that did it) · `[~]` in progress ·
 - 2026-09-25 — Added `payment.payouts_ready` and `payable_owners` after the frontend work showed
   buyers could pick listings checkout would refuse.
 - 2026-09-25 — Migrate creates a database and role per service; services never use the master user.
+- 2026-09-25 — Independent reviews found real defects in the money flow and CI trust; fixed in
+  phase 12, decisions in ADR 0011. Catalog migration 0002 was edited in place (never deployed).

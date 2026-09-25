@@ -16,7 +16,7 @@ The owner only sees the request once the card is authorised
 from __future__ import annotations
 
 import logging
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 
 from fastapi import Depends, Header, Query, Request, status
 from pydantic import Field
@@ -25,7 +25,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from cappy_common.app import ApiRouter
 from cappy_common.auth import Principal, require_internal, require_principal
-from cappy_common.errors import ApiError, Conflict, Invalid, Unavailable
+from cappy_common.errors import ApiError, Conflict, Invalid, NotFound, Unavailable
 from cappy_common.events import BOOKING_RATED
 from cappy_common.ids import new_id
 from cappy_common.models import Booking, CamelModel, Iso, Outcome, Requirement
@@ -174,88 +174,128 @@ async def create_booking(
     return await _with_payment(request, row, p.sub)
 
 
+async def _payments_start(request: Request, row: BookingRow) -> PaymentStart:
+    return await request.app.state.payments.start(
+        booking_id=row.id,
+        requester_id=row.requester_id,
+        owner_id=row.owner_id,
+        amount=row.amount,
+        owner_net=row.match["quote"]["ownerNet"],
+        currency=row.currency,
+    )
+
+
 async def _with_payment(request: Request, row: BookingRow, viewer: str) -> BookingCreated:
     app = request.app
     if row.status != "awaiting_payment":
         return BookingCreated(booking=to_booking(row, viewer))
     try:
-        payment = await app.state.payments.start(
-            booking_id=row.id,
-            requester_id=row.requester_id,
-            owner_id=row.owner_id,
-            amount=row.amount,
-            owner_net=row.match["quote"]["ownerNet"],
-            currency=row.currency,
-        )
-    except Exception as e:
-        log.warning("could not start payment for %s: %s", row.id, e)
+        payment = await _payments_start(request, row)
+    except ApiError as e:
+        if e.status >= 500:
+            # Payments may have made the intent before failing to answer. Keep
+            # the booking: a retry gets the same intent, and if nobody pays the
+            # expiry sweep releases the window.
+            log.warning("payments unavailable for %s: %s", row.id, e)
+            raise Unavailable("we could not start the payment, and you have not been charged; try again") from e
+        # A definite refusal (the owner cannot be paid yet, say): release the window.
         async with app.state.db.transaction() as s:
             repo = BookingRepository(s, app.state.outbox)
             fresh = await repo.get(row.id, lock=True)
             if fresh.status == "awaiting_payment":
                 await repo.move(fresh, "payment_failed", "system", _now(), expires_at=None)
         app.state.relay.wake()
-        if isinstance(e, ApiError) and e.status < 500:
-            raise  # a refusal worth showing as it is: the owner cannot be paid yet, say
-        raise Unavailable("we could not start the payment, and you have not been charged; try again") from e
+        raise
     return BookingCreated(booking=to_booking(row, viewer), payment=payment)
 
 
 # --- people moving a booking along ---------------------------------------------------------
 
 
-async def _transition(repo: BookingRepository, booking_id: str, action: Action, user: str, **fields: object) -> Booking:
+async def _transition(
+    request: Request, repo: BookingRepository, booking_id: str, action: Action, user: str, **fields: object
+) -> Booking:
     row = await repo.visible(booking_id, user, lock=True)
     now = _now()
     if row.expires_at is not None and row.expires_at <= now:
         # The sweep has not got to it yet, but it has lapsed all the same.
         raise Conflict("this request has lapsed")
     to = next_status(action, row.status, user, row.requester_id, row.owner_id)
+    started = now >= row.window_start
+    if action == "cancel" and started:
+        # Once the window has begun the machine may already be in use: a full
+        # refund is no longer automatic. The buyer reports a problem instead.
+        raise Conflict("the booked time has started; report a problem instead of cancelling")
+    if action == "dispute" and not started:
+        raise Conflict("nothing to report before the booked time; cancel instead")
+    early = timedelta(minutes=request.app.state.settings.start_early_minutes)
+    if action == "start" and now < row.window_start - early:
+        raise Conflict("the hand-over can be marked from 30 minutes before the booked time")
     if to not in ("awaiting_payment", "requested"):
         fields["expires_at"] = None
     await repo.move(row, to, user, now, **fields)
     return to_booking(row, user)
 
 
+class DisputeIn(CamelModel):
+    reason: str = Field(min_length=1, max_length=500)
+
+
+Repo = Depends(get_repo)
+Me = Depends(require_principal)
+
+
 @router.post("/bookings/{booking_id}/accept", response_model=Booking)
-async def accept(
-    booking_id: str, repo: BookingRepository = Depends(get_repo), p: Principal = Depends(require_principal)
-):
-    return await _transition(repo, booking_id, "accept", p.sub)
+async def accept(booking_id: str, request: Request, repo: BookingRepository = Repo, p: Principal = Me):
+    return await _transition(request, repo, booking_id, "accept", p.sub)
 
 
 @router.post("/bookings/{booking_id}/decline", response_model=Booking)
 async def decline(
-    booking_id: str,
-    body: DeclineIn,
-    repo: BookingRepository = Depends(get_repo),
-    p: Principal = Depends(require_principal),
+    booking_id: str, body: DeclineIn, request: Request, repo: BookingRepository = Repo, p: Principal = Me
 ):
     reason = body.reason.strip()
     if not reason:
         raise Invalid("tell the buyer why, rather than just refusing")
-    return await _transition(repo, booking_id, "decline", p.sub, decline_reason=reason)
+    return await _transition(request, repo, booking_id, "decline", p.sub, decline_reason=reason)
 
 
 @router.post("/bookings/{booking_id}/start", response_model=Booking)
-async def start(
-    booking_id: str, repo: BookingRepository = Depends(get_repo), p: Principal = Depends(require_principal)
-):
-    return await _transition(repo, booking_id, "start", p.sub)
+async def start(booking_id: str, request: Request, repo: BookingRepository = Repo, p: Principal = Me):
+    return await _transition(request, repo, booking_id, "start", p.sub)
 
 
 @router.post("/bookings/{booking_id}/complete", response_model=Booking)
-async def complete(
-    booking_id: str, repo: BookingRepository = Depends(get_repo), p: Principal = Depends(require_principal)
-):
-    return await _transition(repo, booking_id, "complete", p.sub)
+async def complete(booking_id: str, request: Request, repo: BookingRepository = Repo, p: Principal = Me):
+    return await _transition(request, repo, booking_id, "complete", p.sub)
 
 
 @router.post("/bookings/{booking_id}/cancel", response_model=Booking)
-async def cancel(
-    booking_id: str, repo: BookingRepository = Depends(get_repo), p: Principal = Depends(require_principal)
+async def cancel(booking_id: str, request: Request, repo: BookingRepository = Repo, p: Principal = Me):
+    return await _transition(request, repo, booking_id, "cancel", p.sub)
+
+
+@router.post("/bookings/{booking_id}/dispute", response_model=Booking)
+async def dispute(
+    booking_id: str, body: DisputeIn, request: Request, repo: BookingRepository = Repo, p: Principal = Me
 ):
-    return await _transition(repo, booking_id, "cancel", p.sub)
+    """Something went wrong once the booked time began. The payout is held
+    and the booking no longer completes by itself; support resolves it."""
+    reason = body.reason.strip()
+    if not reason:
+        raise Invalid("say what went wrong")
+    return await _transition(request, repo, booking_id, "dispute", p.sub, decline_reason=reason)
+
+
+@router.get("/bookings/{booking_id}/payment", response_model=PaymentStart)
+async def payment(booking_id: str, request: Request, p: Principal = Me) -> PaymentStart:
+    """The card step again, for a buyer who left it half way. Payments returns
+    the same intent however often it is asked."""
+    async with request.app.state.db.session() as s:
+        row = await BookingRepository(s, request.app.state.outbox).visible(booking_id, p.sub)
+    if row.requester_id != p.sub or row.status != "awaiting_payment":
+        raise NotFound("there is nothing to pay for this booking")
+    return await _payments_start(request, row)
 
 
 @router.post("/bookings/{booking_id}/rate", response_model=Booking)
@@ -289,6 +329,23 @@ async def rate(
 
 
 # --- internal: matching asks what is already taken -------------------------------------------
+
+
+class ResolveIn(CamelModel):
+    outcome: str = Field(pattern="^(pay_owner|refund_buyer)$")
+    by: str = Field(min_length=1, max_length=64, description="who at support decided")
+
+
+@internal.post("/bookings/{booking_id}/resolve", response_model=Booking)
+async def resolve(booking_id: str, body: ResolveIn, repo: BookingRepository = Depends(get_repo)) -> Booking:
+    """Support settles a dispute (docs/runbook.md). Paying the owner completes
+    the booking (payments transfers); refunding cancels it (payments refunds)."""
+    row = await repo.get(booking_id, lock=True)
+    if row.status != "disputed":
+        raise Conflict(f"only a disputed booking can be resolved; this one is {row.status}")
+    to = "completed" if body.outcome == "pay_owner" else "cancelled"
+    await repo.move(row, to, f"support:{body.by}", _now())
+    return to_booking(row, row.owner_id)
 
 
 @internal.post("/busy", response_model=dict[str, list[tuple[Iso, Iso]]])

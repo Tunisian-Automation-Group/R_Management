@@ -6,12 +6,15 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from cappy_common.events import Event
 from cappy_common.models import Outcome, Review
+from cappy_common.timeutil import dt_from_iso
 
 from .repository import CatalogRepository
 
 
 async def on_payouts_ready(session: AsyncSession, event: Event) -> None:
-    await CatalogRepository(session).set_payable(event.data["ownerId"], bool(event.data["ready"]))
+    d = event.data
+    as_of = dt_from_iso(d.get("asOf") or event.occurred_at)
+    await CatalogRepository(session).set_payable(d["ownerId"], bool(d["ready"]), as_of)
 
 
 async def on_booking_rated(session: AsyncSession, event: Event) -> None:
