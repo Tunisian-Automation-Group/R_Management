@@ -52,19 +52,18 @@ class CognitoDirectory(Directory):
 
 class SesMailer(Mailer):
     def __init__(self, settings) -> None:  # noqa: ANN001
-        self._c = aws_client("sesv2", settings)
+        # SES v1's SendEmail: the same in AWS, and within every LocalStack tier.
+        self._c = aws_client("ses", settings)
         self._from = settings.mail_from
 
     async def send(self, email: Email) -> None:
         await asyncio.to_thread(
             self._c.send_email,
-            FromEmailAddress=self._from,
+            Source=self._from,
             Destination={"ToAddresses": [email.to]},
-            Content={
-                "Simple": {
-                    "Subject": {"Data": email.subject, "Charset": "UTF-8"},
-                    "Body": {"Text": {"Data": email.text, "Charset": "UTF-8"}},
-                }
+            Message={
+                "Subject": {"Data": email.subject, "Charset": "UTF-8"},
+                "Body": {"Text": {"Data": email.text, "Charset": "UTF-8"}},
             },
         )
 

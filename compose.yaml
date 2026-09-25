@@ -1,0 +1,135 @@
+# The whole platform on one machine: `make up`, then `make e2e`.
+#
+# AWS services come from LocalStack (S3, SNS, SQS, SES) and cognito-local
+# (Cognito); see ADR 0009. Only the gateway (8000) and Cognito (9229, which
+# the browser signs in against) are published; the services are reachable
+# only from inside this network, as in AWS.
+
+x-service: &service
+  build: { context: ./backend }
+  restart: unless-stopped
+  volumes:
+    - ./local/run.sh:/usr/local/bin/run.sh:ro
+    - ./.local:/run/cappy:ro
+  depends_on:
+    postgres: { condition: service_healthy }
+    bootstrap: { condition: service_completed_successfully }
+  healthcheck:
+    test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/readyz')"]
+    interval: 5s
+    timeout: 3s
+    retries: 30
+
+x-env: &env
+  APP_ENV: local
+  LOG_JSON: "false"
+  INTERNAL_TOKEN: local-only-internal-token-not-a-secret
+  AWS_REGION: eu-central-1
+  AWS_ENDPOINT_URL: http://localstack:4566
+  AWS_ACCESS_KEY_ID: test
+  AWS_SECRET_ACCESS_KEY: test
+  CATALOG_URL: http://catalog:8000
+  MATCHING_URL: http://matching:8000
+  BOOKING_URL: http://booking:8000
+  PAYMENTS_URL: http://payments:8000
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment: { POSTGRES_USER: cappy, POSTGRES_PASSWORD: cappy, POSTGRES_DB: cappy }
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./local/postgres-init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    ports: ["127.0.0.1:5433:5432"]
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "cappy"]
+      interval: 2s
+      retries: 30
+
+  localstack:
+    image: localstack/localstack-pro
+    environment:
+      LOCALSTACK_AUTH_TOKEN: ${LOCALSTACK_AUTH_TOKEN:?put LOCALSTACK_AUTH_TOKEN in .env (see .env.example)}
+      SERVICES: s3,sns,sqs,ses
+      SQS_ENDPOINT_STRATEGY: path
+    ports: ["127.0.0.1:4566:4566"]
+
+  cognito:
+    image: jagregory/cognito-local
+    # With a TTY it writes each log line at once; `make codes` and the e2e
+    # read sign-up codes from that log.
+    tty: true
+    ports: ["127.0.0.1:9229:9229"]
+    volumes: [cognito:/app/.cognito]
+
+  bootstrap:
+    build: { context: ./backend, args: { SERVICE: catalog } }
+    command: ["python", "/local/bootstrap.py"]
+    environment: { AWS_ENDPOINT_URL: http://localstack:4566, COGNITO_ENDPOINT_URL: http://cognito:9229 }
+    volumes: ["./local:/local:ro", "./.local:/run/cappy"]
+    user: root
+    depends_on: [localstack, cognito]
+
+  catalog:
+    <<: *service
+    build: { context: ./backend, args: { SERVICE: catalog } }
+    command: ["run.sh", "catalog"]
+    environment:
+      <<: *env
+      DATABASE_URL: postgresql+asyncpg://cappy:cappy@postgres:5432/catalog
+      MEDIA_BUCKET: cappy-media
+
+  matching:
+    <<: *service
+    build: { context: ./backend, args: { SERVICE: matching } }
+    command: ["run.sh", "matching"]
+    environment: *env
+
+  booking:
+    <<: *service
+    build: { context: ./backend, args: { SERVICE: booking } }
+    command: ["run.sh", "booking"]
+    environment:
+      <<: *env
+      DATABASE_URL: postgresql+asyncpg://cappy:cappy@postgres:5432/booking
+      SWEEP_SECONDS: "5"
+
+  payments:
+    <<: *service
+    build: { context: ./backend, args: { SERVICE: payments } }
+    command: ["run.sh", "payments"]
+    environment:
+      <<: *env
+      DATABASE_URL: postgresql+asyncpg://cappy:cappy@postgres:5432/payments
+      # "fake" unless Stripe test keys are in .env (then set PAYMENTS_PROVIDER=stripe).
+      PAYMENTS_PROVIDER: ${PAYMENTS_PROVIDER:-fake}
+      STRIPE_SECRET_KEY: ${STRIPE_SECRET_KEY:-}
+      STRIPE_PUBLISHABLE_KEY: ${STRIPE_PUBLISHABLE_KEY:-}
+      STRIPE_WEBHOOK_SECRET: ${STRIPE_WEBHOOK_SECRET:-}
+
+  notifications:
+    <<: *service
+    build: { context: ./backend, args: { SERVICE: notifications } }
+    command: ["run.sh", "notifications"]
+    environment:
+      <<: *env
+      DATABASE_URL: postgresql+asyncpg://cappy:cappy@postgres:5432/notifications
+      MAILER: ses
+      MAIL_FROM: Cappy <no-reply@cappy.local>
+      COGNITO_ENDPOINT_URL: http://cognito:9229
+
+  gateway:
+    <<: *service
+    build: { context: ./backend, args: { SERVICE: gateway } }
+    command: ["run.sh", "gateway"]
+    environment: *env
+    ports: ["127.0.0.1:8000:8000"]
+    depends_on:
+      catalog: { condition: service_healthy }
+      matching: { condition: service_healthy }
+      booking: { condition: service_healthy }
+      payments: { condition: service_healthy }
+
+volumes:
+  pgdata:
+  cognito:

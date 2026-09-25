@@ -15,3 +15,6 @@ __MACOSX/
 *.pem
 terraform.tfstate*
 .terraform/
+
+# What the local bootstrap writes (pool ids, generated per machine)
+.local/
