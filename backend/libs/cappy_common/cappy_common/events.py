@@ -306,12 +306,13 @@ class MemoryBroker(Publisher):
 # --- AWS transport ---------------------------------------------------------------
 
 
-def _aws_client(service: str, settings: Any):
+def aws_client(service: str, settings: Any, endpoint_url: str = ""):
+    """A boto3 client; locally pointed at LocalStack (or ``endpoint_url``)."""
     import boto3
 
     kwargs: dict[str, Any] = {"region_name": settings.aws_region}
-    if settings.aws_endpoint_url:
-        kwargs["endpoint_url"] = settings.aws_endpoint_url
+    if endpoint_url or settings.aws_endpoint_url:
+        kwargs["endpoint_url"] = endpoint_url or settings.aws_endpoint_url
     return boto3.client(service, **kwargs)
 
 
@@ -321,7 +322,7 @@ class SnsPublisher(Publisher):
 
     def __init__(self, topic_arn: str, settings: Any) -> None:
         self.topic_arn = topic_arn
-        self._sns = _aws_client("sns", settings)
+        self._sns = aws_client("sns", settings)
 
     async def publish(self, events: list[Event]) -> None:
         for i in range(0, len(events), 10):
@@ -349,7 +350,7 @@ class SqsConsumer(Consumer):
         self.queue_url = queue_url
         self.dispatcher = dispatcher
         self.wait_seconds = wait_seconds
-        self._sqs = _aws_client("sqs", settings)
+        self._sqs = aws_client("sqs", settings)
 
     async def _poll(self) -> None:
         resp = await asyncio.to_thread(

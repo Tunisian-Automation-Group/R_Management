@@ -10,6 +10,7 @@ members = [
     "cappy-common",
     "cappy-gateway",
     "cappy-matching",
+    "cappy-notifications",
     "cappy-payments",
 ]
 
@@ -293,6 +294,29 @@ dependencies = [
 requires-dist = [
     { name = "cappy-common", editable = "libs/cappy_common" },
     { name = "fastapi", specifier = ">=0.115" },
+    { name = "uvicorn", extras = ["standard"], specifier = ">=0.30" },
+]
+
+[[package]]
+name = "cappy-notifications"
+version = "0.1.0"
+source = { editable = "services/notifications" }
+dependencies = [
+    { name = "aiosqlite" },
+    { name = "asyncpg" },
+    { name = "cappy-common" },
+    { name = "fastapi" },
+    { name = "sqlalchemy", extra = ["asyncio"] },
+    { name = "uvicorn", extra = ["standard"] },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "aiosqlite", specifier = ">=0.20" },
+    { name = "asyncpg", specifier = ">=0.30" },
+    { name = "cappy-common", editable = "libs/cappy_common" },
+    { name = "fastapi", specifier = ">=0.115" },
+    { name = "sqlalchemy", extras = ["asyncio"], specifier = ">=2.0.36" },
     { name = "uvicorn", extras = ["standard"], specifier = ">=0.30" },
 ]
 

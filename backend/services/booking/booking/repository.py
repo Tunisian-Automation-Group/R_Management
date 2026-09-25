@@ -51,6 +51,7 @@ def status_event(row: BookingRow, before: str | None, by: str) -> dict:
         "requesterId": row.requester_id,
         "ownerId": row.owner_id,
         "listingId": row.listing_id,
+        "title": row.listing_snapshot["title"],
         "amount": row.amount,
         "currency": row.currency,
         "windowStart": iso_from_datetime(row.window_start),

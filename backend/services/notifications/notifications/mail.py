@@ -1,0 +1,78 @@
+"""Who someone is (Cognito) and how an email leaves (SES)."""
+
+from __future__ import annotations
+
+import asyncio
+import logging
+from dataclasses import dataclass
+
+from cappy_common.events import aws_client
+
+log = logging.getLogger(__name__)
+
+
+@dataclass
+class Email:
+    to: str
+    subject: str
+    text: str
+
+
+class Directory:
+    """The email address behind a Cognito ``sub``, or None if they are gone."""
+
+    async def email_of(self, sub: str) -> str | None: ...
+
+
+class Mailer:
+    async def send(self, email: Email) -> None: ...
+
+
+class CognitoDirectory(Directory):
+    def __init__(self, settings) -> None:  # noqa: ANN001
+        self._c = aws_client("cognito-idp", settings, settings.cognito_endpoint_url)
+        self._pool = settings.user_pool_id
+
+    def _lookup(self, sub: str) -> str | None:
+        # With email as the sign-in attribute Cognito's username *is* the sub,
+        # but filtering on sub works whichever way the pool was set up.
+        users = self._c.list_users(UserPoolId=self._pool, Filter=f'sub = "{sub}"', Limit=1)["Users"]
+        if not users:
+            return None
+        attrs = {a["Name"]: a["Value"] for a in users[0].get("Attributes", [])}
+        if attrs.get("email_verified") not in ("true", True):
+            return None  # never mail an address nobody proved they own
+        return attrs.get("email")
+
+    async def email_of(self, sub: str) -> str | None:
+        if not sub or '"' in sub:
+            return None
+        return await asyncio.to_thread(self._lookup, sub)
+
+
+class SesMailer(Mailer):
+    def __init__(self, settings) -> None:  # noqa: ANN001
+        self._c = aws_client("sesv2", settings)
+        self._from = settings.mail_from
+
+    async def send(self, email: Email) -> None:
+        await asyncio.to_thread(
+            self._c.send_email,
+            FromEmailAddress=self._from,
+            Destination={"ToAddresses": [email.to]},
+            Content={
+                "Simple": {
+                    "Subject": {"Data": email.subject, "Charset": "UTF-8"},
+                    "Body": {"Text": {"Data": email.text, "Charset": "UTF-8"}},
+                }
+            },
+        )
+
+
+class LogMailer(Mailer):
+    def __init__(self) -> None:
+        self.sent: list[Email] = []
+
+    async def send(self, email: Email) -> None:
+        self.sent.append(email)
+        log.info("email to %s: %s", email.to, email.subject)
