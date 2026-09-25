@@ -32,6 +32,7 @@ x-env: &env
   MATCHING_URL: http://matching:8000
   BOOKING_URL: http://booking:8000
   PAYMENTS_URL: http://payments:8000
+  NOTIFICATIONS_URL: http://notifications:8000
 
 services:
   postgres:

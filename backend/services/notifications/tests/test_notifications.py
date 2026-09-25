@@ -74,3 +74,43 @@ def test_each_email_is_sent_once(app):
 def test_nobody_to_tell(app):
     e = _change("accepted", by="host", requesterId="deleted-user")
     assert _sent(app, e) == []
+
+
+def test_devices_get_pushes_and_gone_ones_are_forgotten():
+    from notifications.push import LogPusher
+
+    from cappy_common.events import PROFILE_DELETED
+    from cappy_common.testing import TestIssuer
+
+    issuer, pusher, mailer = TestIssuer(), LogPusher(), LogMailer()
+    settings = Settings(app_env="test", database_url="sqlite+aiosqlite://", internal_token="i" * 40)
+    app = build_app(settings, directory=People(), mailer=mailer, pusher=pusher, verifier=issuer.verifier())
+    with TestClient(app) as c:
+        assert c.post("/notifications/devices", json={"platform": "ios", "token": "tok-alive-1"}).status_code == 401
+        for token in ("tok-alive-1", "tok-was-gone"):
+            r = c.post(
+                "/notifications/devices", json={"platform": "ios", "token": token}, headers=issuer.headers("host")
+            )
+            assert r.status_code == 204
+
+        # The second endpoint reports itself gone on the first push.
+        async def mark_gone():
+            from notifications.tables import DeviceRow
+            from sqlalchemy import update
+
+            async with app.state.db.transaction() as s:
+                await s.execute(update(DeviceRow).where(DeviceRow.token == "tok-was-gone").values(endpoint="x:gone"))
+
+        c.portal.call(mark_gone)
+        c.portal.call(app.state.dispatcher.handle, _change("requested", by="payments"))
+        assert [t for _, t in pusher.sent] == ["New request: Table saw", "New request: Table saw"]
+        assert [m.subject for m in mailer.sent] == ["New request: Table saw"], "email still goes"
+        c.portal.call(app.state.dispatcher.handle, _change("accepted", by="host"))  # to the buyer, who has no devices
+        pusher.sent.clear()
+        c.portal.call(app.state.dispatcher.handle, _change("requested", by="payments"))
+        assert len(pusher.sent) == 1, "the gone device was forgotten"
+        # Deleting the account removes the rest.
+        c.portal.call(app.state.dispatcher.handle, _event(PROFILE_DELETED, ownerId="host"))
+        pusher.sent.clear()
+        c.portal.call(app.state.dispatcher.handle, _change("requested", by="payments"))
+        assert pusher.sent == []

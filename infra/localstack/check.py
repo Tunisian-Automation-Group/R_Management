@@ -26,7 +26,7 @@ expected = {
     "catalog": {"booking.rated", "payment.payouts_ready"},
     "booking": {"payment.authorised"},
     "payments": {"booking.status_changed", "profile.deleted"},
-    "notifications": {"booking.status_changed", "payment.payout_sent"},
+    "notifications": {"booking.status_changed", "payment.payout_sent", "profile.deleted"},
 }
 for svc, url in out["queue_urls"].items():
     got = set()

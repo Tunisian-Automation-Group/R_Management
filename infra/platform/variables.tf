@@ -104,3 +104,9 @@ variable "cognito_threat_protection" {
   type        = bool
   default     = false
 }
+
+variable "push_app_arns" {
+  description = "SNS platform application ARNs for push (APNs, FCM v1), created once by an operator with the store credentials"
+  type        = object({ ios = string, android = string })
+  default     = { ios = "", android = "" }
+}

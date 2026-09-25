@@ -13,11 +13,13 @@ CATALOG = "catalog"
 MATCHING = "matching"
 BOOKING = "booking"
 PAYMENTS = "payments"
+NOTIFICATIONS = "notifications"
 
 # (regex over the path after the /api prefix, upstream)
 RULES: list[tuple[re.Pattern[str], str]] = [
     (re.compile(r"^/bookings(/|$)"), BOOKING),
     (re.compile(r"^/payments(/|$)"), PAYMENTS),
+    (re.compile(r"^/notifications/devices(/[^/]+)?$"), NOTIFICATIONS),
     (re.compile(r"^/(matches|quote|feasibility|categories|groups|review-tags)$"), MATCHING),
     (re.compile(r"^/browse/[a-z-]+$"), MATCHING),
     (re.compile(r"^/listings/[^/]+/offers$"), MATCHING),

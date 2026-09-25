@@ -5,7 +5,7 @@
 locals {
   services = keys(var.scale)
   # Called by other services, so they get a Service Connect name.
-  servers = ["catalog", "matching", "booking", "payments"]
+  servers = ["catalog", "matching", "booking", "payments", "notifications"]
 
   common_env = {
     APP_ENV            = var.env
@@ -16,12 +16,13 @@ locals {
     AUTH_CLIENT_IDS    = aws_cognito_user_pool_client.web.id
     AUTH_JWKS_FALLBACK = data.http.jwks.response_body
     # Traces go to the ADOT collector next to each task, then X-Ray.
-    OTEL_ENABLED  = "true"
-    OTEL_ENDPOINT = "http://localhost:4318"
-    CATALOG_URL   = "http://catalog:8000"
-    MATCHING_URL  = "http://matching:8000"
-    BOOKING_URL   = "http://booking:8000"
-    PAYMENTS_URL  = "http://payments:8000"
+    OTEL_ENABLED      = "true"
+    OTEL_ENDPOINT     = "http://localhost:4318"
+    CATALOG_URL       = "http://catalog:8000"
+    MATCHING_URL      = "http://matching:8000"
+    BOOKING_URL       = "http://booking:8000"
+    PAYMENTS_URL      = "http://payments:8000"
+    NOTIFICATIONS_URL = "http://notifications:8000"
   }
   service_env = {
     # The App Store and Google Play shells call the API cross-origin (ADR 0012).
@@ -40,10 +41,12 @@ locals {
       STRIPE_PUBLISHABLE_KEY = "" # replaced from the secret below
     }
     notifications = {
-      MAILER       = "ses"
-      MAIL_FROM    = "Cappy <no-reply@${var.domain}>"
-      USER_POOL_ID = aws_cognito_user_pool.main.id
-      WEB_BASE_URL = "https://${var.domain}"
+      MAILER               = "ses"
+      MAIL_FROM            = "Cappy <no-reply@${var.domain}>"
+      USER_POOL_ID         = aws_cognito_user_pool.main.id
+      PUSH_IOS_APP_ARN     = var.push_app_arns.ios
+      PUSH_ANDROID_APP_ARN = var.push_app_arns.android
+      WEB_BASE_URL         = "https://${var.domain}"
     }
   }
   env = {
@@ -196,6 +199,7 @@ locals {
     notifications = [
       { Effect = "Allow", Action = ["ses:SendEmail", "ses:SendRawEmail"], Resource = "*", Condition = { StringEquals = { "ses:FromAddress" = "no-reply@${var.domain}" } } },
       { Effect = "Allow", Action = ["cognito-idp:AdminGetUser", "cognito-idp:ListUsers"], Resource = aws_cognito_user_pool.main.arn },
+      { Effect = "Allow", Action = ["sns:CreatePlatformEndpoint", "sns:Publish", "sns:DeleteEndpoint"], Resource = "*" },
     ]
   }
 }

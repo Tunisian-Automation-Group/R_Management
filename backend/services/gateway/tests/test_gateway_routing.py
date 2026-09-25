@@ -5,7 +5,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from gateway.main import build_app
-from gateway.routing import BOOKING, CATALOG, MATCHING, PAYMENTS, resolve
+from gateway.routing import BOOKING, CATALOG, MATCHING, NOTIFICATIONS, PAYMENTS, resolve
 from gateway.settings import Settings
 
 
@@ -33,6 +33,9 @@ from gateway.settings import Settings
         ("/bookings/bk_1/accept", BOOKING),
         ("/payments/config", PAYMENTS),
         ("/payments/webhooks/stripe", PAYMENTS),
+        ("/notifications/devices", NOTIFICATIONS),
+        ("/notifications/devices/tok-1", NOTIFICATIONS),
+        ("/notifications/anything-else", None),
         # Never reachable from outside, however the path is dressed up.
         ("/internal/candidates", None),
         ("/listings/internal/candidates", None),

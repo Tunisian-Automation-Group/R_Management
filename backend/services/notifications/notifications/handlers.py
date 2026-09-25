@@ -11,9 +11,11 @@ import logging
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from cappy_common.events import BOOKING_STATUS_CHANGED, PAYOUT_SENT, Event, Handler
+from cappy_common.events import BOOKING_STATUS_CHANGED, PAYOUT_SENT, PROFILE_DELETED, Event, Handler
 
 from .mail import Directory, Email, Mailer
+from .push import Pusher
+from .tables import DeviceRow
 
 log = logging.getLogger(__name__)
 
@@ -61,13 +63,33 @@ def messages(event: Event, web: str) -> list[tuple[str, str, str]]:
     return table.get(to, [])
 
 
-def handlers(directory: Directory, mailer: Mailer, web: str) -> dict[str, Handler]:
-    async def notify(_session: AsyncSession, event: Event) -> None:
+def handlers(directory: Directory, mailer: Mailer, web: str, pusher: Pusher | None = None) -> dict[str, Handler]:
+    async def notify(session: AsyncSession, event: Event) -> None:
         for sub, subject, text in messages(event, web.rstrip("/")):
+            if pusher is not None:
+                await _push(session, pusher, sub, subject, text)
             address = await directory.email_of(sub)
             if address is None:
                 log.info("no verified email for %s; skipping %s", sub, subject)
                 continue
             await mailer.send(Email(to=address, subject=subject, text=text))
 
-    return {BOOKING_STATUS_CHANGED: notify, PAYOUT_SENT: notify}
+    async def forget(session: AsyncSession, event: Event) -> None:
+        """Account deleted: no more pushes to their devices."""
+        from sqlalchemy import delete
+
+        await session.execute(delete(DeviceRow).where(DeviceRow.user_id == event.data["ownerId"]))
+
+    return {BOOKING_STATUS_CHANGED: notify, PAYOUT_SENT: notify, PROFILE_DELETED: forget}
+
+
+async def _push(session: AsyncSession, pusher: Pusher, sub: str, title: str, text: str) -> None:
+    """To every device the person is signed in on; forget devices that are gone."""
+    from sqlalchemy import select
+
+    body, _, link = text.partition("\n\n")
+    devices = (await session.execute(select(DeviceRow).where(DeviceRow.user_id == sub))).scalars()
+    for device in list(devices):
+        if device.endpoint and not await pusher.send(device.endpoint, title, body, link):
+            log.info("device of %s is gone; forgetting it", sub)
+            await session.delete(device)

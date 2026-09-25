@@ -26,10 +26,14 @@
    `https://<domain>/api/payments/webhooks/stripe` for the events
    `payment_intent.amount_capturable_updated`, `account.updated` and `charge.dispute.created`. Enable
    Connect with Express accounts.
-5. **SES**: request production access for the region, so mail reaches
+5. **Push notifications** (once, when the store apps are ready): create two SNS
+   platform applications, APNs with the Apple push key (`.p8`, key id, team id)
+   and FCM with the Firebase service-account JSON (FCM HTTP v1). Pass their ARNs
+   as `push_app_arns`. Without them pushes are only logged.
+6. **SES**: request production access for the region, so mail reaches
    addresses that aren't verified. DKIM, SPF and DMARC records are created by
    Terraform.
-6. Run the `deploy` workflow.
+7. Run the `deploy` workflow.
 
 ## A deploy failed
 

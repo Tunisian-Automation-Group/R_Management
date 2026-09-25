@@ -41,6 +41,7 @@ class CommonSettings(BaseSettings):
     matching_url: str = "http://localhost:8002"
     booking_url: str = "http://localhost:8003"
     payments_url: str = "http://localhost:8005"
+    notifications_url: str = "http://localhost:8006"
 
     # Aurora's reader endpoint, for services with heavy public reads. Empty:
     # reads go to the writer.

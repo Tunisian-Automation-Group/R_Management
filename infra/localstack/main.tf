@@ -28,7 +28,7 @@ module "messaging" {
     catalog       = ["booking.rated", "payment.payouts_ready"]
     booking       = ["payment.authorised", "payment.failed"]
     payments      = ["booking.status_changed", "profile.deleted"]
-    notifications = ["booking.status_changed", "payment.payout_sent"]
+    notifications = ["booking.status_changed", "payment.payout_sent", "profile.deleted"]
   }
 }
 

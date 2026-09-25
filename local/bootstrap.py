@@ -32,7 +32,7 @@ CONSUMERS = {
     "catalog": ["booking.rated", "payment.payouts_ready"],
     "booking": ["payment.authorised", "payment.failed"],
     "payments": ["booking.status_changed", "profile.deleted"],
-    "notifications": ["booking.status_changed", "payment.payout_sent"],
+    "notifications": ["booking.status_changed", "payment.payout_sent", "profile.deleted"],
 }
 DEMO_PASSWORD = "Demo-pass-123!"
 DEMO = {"host": ("host@demo.cappy.local", "o1"), "buyer": ("buyer@demo.cappy.local", None)}

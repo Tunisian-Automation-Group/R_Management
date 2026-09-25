@@ -80,7 +80,7 @@ Status: `[ ]` open · `[~]` in progress · `[x]` done (commit) · `[-]` dropped 
 - [x] T-25 Backup-restore drill in the runbook
 - [x] T-26 Region-outage decision recorded (RPO/RTO)
 - [x] T-29 Minimum app version (`/api/app-config`)
-- [ ] T-31 Push notifications (SNS → APNs/FCM) for owners' requests
+- [x] T-31 Push notifications (backend): devices register their APNs/FCM token (`POST/DELETE /api/notifications/devices`); every email is also a push through SNS Mobile Push; dead devices and deleted accounts are forgotten. Store credentials go into SNS platform applications (runbook). App side: with the Capacitor shells
 - [x] T-33 Tracing: OpenTelemetry on in AWS through an ADOT sidecar to X-Ray; trace context travels inside events, so one trace spans the request, the outbox, SNS/SQS and the handler
 - [x] T-34 Synthetic canary every 5 min (web, categories, search, internal routes private, sign-in required) with an alarm
 - [x] T-35 SLOs and error budgets (docs/slo.md)

@@ -21,7 +21,7 @@ from cappy_common.app import create_app
 from cappy_common.errors import error_body
 from cappy_common.observability import request_id
 
-from .routing import BOOKING, CATALOG, MATCHING, PAYMENTS, resolve
+from .routing import BOOKING, CATALOG, MATCHING, NOTIFICATIONS, PAYMENTS, resolve
 from .settings import Settings
 
 log = logging.getLogger(__name__)
@@ -90,6 +90,7 @@ def build_app(settings: Settings, transport: httpx.AsyncBaseTransport | None = N
             MATCHING: settings.matching_url,
             BOOKING: settings.booking_url,
             PAYMENTS: settings.payments_url,
+            NOTIFICATIONS: settings.notifications_url,
         }
         limits = httpx.Limits(max_connections=200, max_keepalive_connections=50)
         app.state.admission = Admission(settings.max_in_flight, settings.browse_share)
