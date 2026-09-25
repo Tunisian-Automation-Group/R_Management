@@ -54,3 +54,8 @@ infra-local: ## Apply the event fabric to LocalStack and prove its routing (need
 	cd infra/localstack && terraform init -input=false >/dev/null && terraform apply -auto-approve -input=false && uv run --project ../../backend python check.py
 
 .PHONY: infra-validate infra-local
+
+openapi: ## Regenerate docs/api/*.json from the services' code
+	$(BACKEND) uv run python openapi.py
+
+.PHONY: openapi

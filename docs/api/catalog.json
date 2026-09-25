@@ -1,0 +1,2274 @@
+{
+ "components": {
+  "schemas": {
+   "BatchListing": {
+    "properties": {
+     "active": {
+      "title": "Active",
+      "type": "boolean"
+     },
+     "blurb": {
+      "title": "Blurb",
+      "type": "string"
+     },
+     "category": {
+      "enum": [
+       "fabrication",
+       "additive",
+       "finishing",
+       "print",
+       "freight",
+       "warehousing",
+       "workshop",
+       "events",
+       "creator"
+      ],
+      "title": "Category",
+      "type": "string"
+     },
+     "district": {
+      "title": "District",
+      "type": "string"
+     },
+     "id": {
+      "title": "Id",
+      "type": "string"
+     },
+     "instructions": {
+      "title": "Instructions",
+      "type": "string"
+     },
+     "machine": {
+      "title": "Machine",
+      "type": "string"
+     },
+     "materials": {
+      "anyOf": [
+       {
+        "items": {
+         "enum": [
+          "PLA",
+          "PETG",
+          "ABS",
+          "ASA",
+          "TPU",
+          "Resin",
+          "Aluminium 6061",
+          "Aluminium 7075",
+          "Stainless 304",
+          "Steel S235",
+          "Brass",
+          "POM",
+          "Acrylic",
+          "Plywood"
+         ],
+         "type": "string"
+        },
+        "type": "array"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Materials"
+     },
+     "maxDims": {
+      "$ref": "#/components/schemas/Dims"
+     },
+     "mode": {
+      "const": "batch",
+      "title": "Mode",
+      "type": "string"
+     },
+     "ownerId": {
+      "title": "Ownerid",
+      "type": "string"
+     },
+     "photos": {
+      "anyOf": [
+       {
+        "items": {
+         "type": "string"
+        },
+        "type": "array"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Photos"
+     },
+     "ratePerHour": {
+      "title": "Rateperhour",
+      "type": "integer"
+     },
+     "rules": {
+      "items": {
+       "type": "string"
+      },
+      "title": "Rules",
+      "type": "array"
+     },
+     "setupFee": {
+      "title": "Setupfee",
+      "type": "integer"
+     },
+     "setupHours": {
+      "title": "Setuphours",
+      "type": "number"
+     },
+     "title": {
+      "title": "Title",
+      "type": "string"
+     },
+     "toleranceMm": {
+      "anyOf": [
+       {
+        "type": "number"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Tolerancemm"
+     },
+     "unitsPerHour": {
+      "title": "Unitsperhour",
+      "type": "number"
+     }
+    },
+    "required": [
+     "id",
+     "ownerId",
+     "category",
+     "title",
+     "blurb",
+     "district",
+     "instructions",
+     "rules",
+     "active",
+     "mode",
+     "machine",
+     "maxDims",
+     "unitsPerHour",
+     "setupHours",
+     "ratePerHour",
+     "setupFee"
+    ],
+    "title": "BatchListing",
+    "type": "object"
+   },
+   "Body_upload_uploads_post": {
+    "properties": {
+     "file": {
+      "contentMediaType": "application/octet-stream",
+      "title": "File",
+      "type": "string"
+     }
+    },
+    "required": [
+     "file"
+    ],
+    "title": "Body_upload_uploads_post",
+    "type": "object"
+   },
+   "CandidatesIn": {
+    "properties": {
+     "cap": {
+      "anyOf": [
+       {
+        "maximum": 1000.0,
+        "minimum": 1.0,
+        "type": "integer"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Cap"
+     },
+     "category": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Category"
+     },
+     "excludeOwner": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Excludeowner"
+     },
+     "maxKm": {
+      "exclusiveMinimum": 0.0,
+      "maximum": 2000.0,
+      "title": "Maxkm",
+      "type": "number"
+     },
+     "origin": {
+      "title": "Origin",
+      "type": "string"
+     },
+     "start": {
+      "title": "Start",
+      "type": "string"
+     },
+     "until": {
+      "title": "Until",
+      "type": "string"
+     }
+    },
+    "required": [
+     "origin",
+     "maxKm",
+     "start",
+     "until"
+    ],
+    "title": "CandidatesIn",
+    "type": "object"
+   },
+   "City": {
+    "properties": {
+     "city": {
+      "title": "City",
+      "type": "string"
+     },
+     "country": {
+      "title": "Country",
+      "type": "string"
+     },
+     "lat": {
+      "title": "Lat",
+      "type": "number"
+     },
+     "listings": {
+      "title": "Listings",
+      "type": "integer"
+     },
+     "lng": {
+      "title": "Lng",
+      "type": "number"
+     }
+    },
+    "required": [
+     "city",
+     "country",
+     "lat",
+     "lng",
+     "listings"
+    ],
+    "title": "City",
+    "type": "object"
+   },
+   "CreatedListing": {
+    "properties": {
+     "listing": {
+      "discriminator": {
+       "mapping": {
+        "batch": "#/components/schemas/BatchListing",
+        "window": "#/components/schemas/WindowListing"
+       },
+       "propertyName": "mode"
+      },
+      "oneOf": [
+       {
+        "$ref": "#/components/schemas/WindowListing"
+       },
+       {
+        "$ref": "#/components/schemas/BatchListing"
+       }
+      ],
+      "title": "Listing"
+     },
+     "slots": {
+      "items": {
+       "$ref": "#/components/schemas/Slot"
+      },
+      "title": "Slots",
+      "type": "array"
+     }
+    },
+    "required": [
+     "listing",
+     "slots"
+    ],
+    "title": "CreatedListing",
+    "type": "object"
+   },
+   "Dims": {
+    "description": "Bounding box in millimetres.",
+    "properties": {
+     "x": {
+      "title": "X",
+      "type": "number"
+     },
+     "y": {
+      "title": "Y",
+      "type": "number"
+     },
+     "z": {
+      "title": "Z",
+      "type": "number"
+     }
+    },
+    "required": [
+     "x",
+     "y",
+     "z"
+    ],
+    "title": "Dims",
+    "type": "object"
+   },
+   "District": {
+    "properties": {
+     "city": {
+      "title": "City",
+      "type": "string"
+     },
+     "country": {
+      "title": "Country",
+      "type": "string"
+     },
+     "lat": {
+      "title": "Lat",
+      "type": "number"
+     },
+     "lng": {
+      "title": "Lng",
+      "type": "number"
+     },
+     "metro": {
+      "title": "Metro",
+      "type": "string"
+     },
+     "name": {
+      "title": "Name",
+      "type": "string"
+     }
+    },
+    "required": [
+     "name",
+     "city",
+     "metro",
+     "country",
+     "lat",
+     "lng"
+    ],
+    "title": "District",
+    "type": "object"
+   },
+   "HTTPValidationError": {
+    "properties": {
+     "detail": {
+      "items": {
+       "$ref": "#/components/schemas/ValidationError"
+      },
+      "title": "Detail",
+      "type": "array"
+     }
+    },
+    "title": "HTTPValidationError",
+    "type": "object"
+   },
+   "ListingDetail": {
+    "properties": {
+     "district": {
+      "$ref": "#/components/schemas/District"
+     },
+     "listing": {
+      "discriminator": {
+       "mapping": {
+        "batch": "#/components/schemas/BatchListing",
+        "window": "#/components/schemas/WindowListing"
+       },
+       "propertyName": "mode"
+      },
+      "oneOf": [
+       {
+        "$ref": "#/components/schemas/WindowListing"
+       },
+       {
+        "$ref": "#/components/schemas/BatchListing"
+       }
+      ],
+      "title": "Listing"
+     },
+     "owner": {
+      "$ref": "#/components/schemas/Owner"
+     },
+     "reviews": {
+      "$ref": "#/components/schemas/ReviewSummary"
+     },
+     "saved": {
+      "anyOf": [
+       {
+        "type": "boolean"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Saved"
+     },
+     "slots": {
+      "items": {
+       "$ref": "#/components/schemas/Slot"
+      },
+      "title": "Slots",
+      "type": "array"
+     }
+    },
+    "required": [
+     "listing",
+     "owner",
+     "district",
+     "slots",
+     "reviews"
+    ],
+    "title": "ListingDetail",
+    "type": "object"
+   },
+   "ListingIn": {
+    "description": "A new or edited listing. Ids and the owner come from the server and the\ncaller's token, never from the body.",
+    "properties": {
+     "listing": {
+      "additionalProperties": true,
+      "title": "Listing",
+      "type": "object"
+     },
+     "slots": {
+      "items": {
+       "$ref": "#/components/schemas/SlotIn"
+      },
+      "maxItems": 200,
+      "title": "Slots",
+      "type": "array"
+     }
+    },
+    "required": [
+     "listing"
+    ],
+    "title": "ListingIn",
+    "type": "object"
+   },
+   "ListingView": {
+    "description": "What a card needs: the listing and who offers it.",
+    "properties": {
+     "listing": {
+      "discriminator": {
+       "mapping": {
+        "batch": "#/components/schemas/BatchListing",
+        "window": "#/components/schemas/WindowListing"
+       },
+       "propertyName": "mode"
+      },
+      "oneOf": [
+       {
+        "$ref": "#/components/schemas/WindowListing"
+       },
+       {
+        "$ref": "#/components/schemas/BatchListing"
+       }
+      ],
+      "title": "Listing"
+     },
+     "owner": {
+      "$ref": "#/components/schemas/Owner"
+     },
+     "saved": {
+      "anyOf": [
+       {
+        "type": "boolean"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Saved"
+     },
+     "slots": {
+      "anyOf": [
+       {
+        "items": {
+         "$ref": "#/components/schemas/Slot"
+        },
+        "type": "array"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Slots"
+     }
+    },
+    "required": [
+     "listing",
+     "owner"
+    ],
+    "title": "ListingView",
+    "type": "object"
+   },
+   "Me": {
+    "properties": {
+     "homeDistrict": {
+      "title": "Homedistrict",
+      "type": "string"
+     },
+     "id": {
+      "title": "Id",
+      "type": "string"
+     },
+     "owner": {
+      "anyOf": [
+       {
+        "$ref": "#/components/schemas/Owner"
+       },
+       {
+        "type": "null"
+       }
+      ]
+     }
+    },
+    "required": [
+     "id",
+     "homeDistrict"
+    ],
+    "title": "Me",
+    "type": "object"
+   },
+   "NearestDistrict": {
+    "properties": {
+     "district": {
+      "$ref": "#/components/schemas/District"
+     },
+     "km": {
+      "title": "Km",
+      "type": "number"
+     }
+    },
+    "required": [
+     "district",
+     "km"
+    ],
+    "title": "NearestDistrict",
+    "type": "object"
+   },
+   "Owner": {
+    "properties": {
+     "district": {
+      "title": "District",
+      "type": "string"
+     },
+     "id": {
+      "title": "Id",
+      "type": "string"
+     },
+     "initials": {
+      "title": "Initials",
+      "type": "string"
+     },
+     "jobsDone": {
+      "title": "Jobsdone",
+      "type": "integer"
+     },
+     "joinedYear": {
+      "title": "Joinedyear",
+      "type": "integer"
+     },
+     "kind": {
+      "enum": [
+       "person",
+       "business"
+      ],
+      "title": "Kind",
+      "type": "string"
+     },
+     "name": {
+      "title": "Name",
+      "type": "string"
+     },
+     "onTimeJobs": {
+      "title": "Ontimejobs",
+      "type": "integer"
+     },
+     "ratingSum": {
+      "title": "Ratingsum",
+      "type": "integer"
+     },
+     "responseMins": {
+      "title": "Responsemins",
+      "type": "integer"
+     },
+     "verified": {
+      "title": "Verified",
+      "type": "boolean"
+     }
+    },
+    "required": [
+     "id",
+     "name",
+     "initials",
+     "kind",
+     "district",
+     "verified",
+     "ratingSum",
+     "jobsDone",
+     "onTimeJobs",
+     "joinedYear",
+     "responseMins"
+    ],
+    "title": "Owner",
+    "type": "object"
+   },
+   "Page_ListingView_": {
+    "properties": {
+     "items": {
+      "items": {
+       "$ref": "#/components/schemas/ListingView"
+      },
+      "title": "Items",
+      "type": "array"
+     },
+     "nextCursor": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Nextcursor"
+     }
+    },
+    "required": [
+     "items"
+    ],
+    "title": "Page[ListingView]",
+    "type": "object"
+   },
+   "Page_Review_": {
+    "properties": {
+     "items": {
+      "items": {
+       "$ref": "#/components/schemas/Review"
+      },
+      "title": "Items",
+      "type": "array"
+     },
+     "nextCursor": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Nextcursor"
+     }
+    },
+    "required": [
+     "items"
+    ],
+    "title": "Page[Review]",
+    "type": "object"
+   },
+   "ProfileIn": {
+    "properties": {
+     "district": {
+      "maxLength": 80,
+      "title": "District",
+      "type": "string"
+     },
+     "kind": {
+      "pattern": "^(person|business)$",
+      "title": "Kind",
+      "type": "string"
+     },
+     "name": {
+      "maxLength": 80,
+      "minLength": 2,
+      "title": "Name",
+      "type": "string"
+     }
+    },
+    "required": [
+     "name",
+     "kind",
+     "district"
+    ],
+    "title": "ProfileIn",
+    "type": "object"
+   },
+   "Review": {
+    "description": "The feedback loop, as the next buyer sees it: an outcome with the reason\nattached, which is the part a stranger deciding whether to trust an owner\nactually reads.",
+    "properties": {
+     "at": {
+      "title": "At",
+      "type": "string"
+     },
+     "author": {
+      "title": "Author",
+      "type": "string"
+     },
+     "authorId": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Authorid"
+     },
+     "id": {
+      "title": "Id",
+      "type": "string"
+     },
+     "initials": {
+      "title": "Initials",
+      "type": "string"
+     },
+     "listingId": {
+      "title": "Listingid",
+      "type": "string"
+     },
+     "onTime": {
+      "title": "Ontime",
+      "type": "boolean"
+     },
+     "ownerId": {
+      "title": "Ownerid",
+      "type": "string"
+     },
+     "rating": {
+      "maximum": 5.0,
+      "minimum": 1.0,
+      "title": "Rating",
+      "type": "integer"
+     },
+     "tags": {
+      "items": {
+       "type": "string"
+      },
+      "title": "Tags",
+      "type": "array"
+     },
+     "text": {
+      "title": "Text",
+      "type": "string"
+     }
+    },
+    "required": [
+     "id",
+     "listingId",
+     "ownerId",
+     "author",
+     "initials",
+     "rating",
+     "onTime",
+     "text",
+     "tags",
+     "at"
+    ],
+    "title": "Review",
+    "type": "object"
+   },
+   "ReviewSummary": {
+    "properties": {
+     "average": {
+      "anyOf": [
+       {
+        "type": "number"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Average"
+     },
+     "count": {
+      "title": "Count",
+      "type": "integer"
+     },
+     "onTimeShare": {
+      "anyOf": [
+       {
+        "type": "number"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Ontimeshare"
+     },
+     "topTags": {
+      "items": {
+       "$ref": "#/components/schemas/TagCount"
+      },
+      "title": "Toptags",
+      "type": "array"
+     }
+    },
+    "required": [
+     "count",
+     "topTags"
+    ],
+    "title": "ReviewSummary",
+    "type": "object"
+   },
+   "Slot": {
+    "description": "An idle window. This is the product.",
+    "properties": {
+     "end": {
+      "title": "End",
+      "type": "string"
+     },
+     "hoursUsable": {
+      "title": "Hoursusable",
+      "type": "number"
+     },
+     "id": {
+      "title": "Id",
+      "type": "string"
+     },
+     "listingId": {
+      "title": "Listingid",
+      "type": "string"
+     },
+     "start": {
+      "title": "Start",
+      "type": "string"
+     }
+    },
+    "required": [
+     "id",
+     "listingId",
+     "start",
+     "end",
+     "hoursUsable"
+    ],
+    "title": "Slot",
+    "type": "object"
+   },
+   "SlotIn": {
+    "properties": {
+     "end": {
+      "title": "End",
+      "type": "string"
+     },
+     "hoursUsable": {
+      "exclusiveMinimum": 0.0,
+      "maximum": 8784.0,
+      "title": "Hoursusable",
+      "type": "number"
+     },
+     "start": {
+      "title": "Start",
+      "type": "string"
+     }
+    },
+    "required": [
+     "start",
+     "end",
+     "hoursUsable"
+    ],
+    "title": "SlotIn",
+    "type": "object"
+   },
+   "TagCount": {
+    "properties": {
+     "n": {
+      "title": "N",
+      "type": "integer"
+     },
+     "tag": {
+      "title": "Tag",
+      "type": "string"
+     }
+    },
+    "required": [
+     "tag",
+     "n"
+    ],
+    "title": "TagCount",
+    "type": "object"
+   },
+   "Uploaded": {
+    "properties": {
+     "bytes": {
+      "title": "Bytes",
+      "type": "integer"
+     },
+     "height": {
+      "title": "Height",
+      "type": "integer"
+     },
+     "url": {
+      "title": "Url",
+      "type": "string"
+     },
+     "width": {
+      "title": "Width",
+      "type": "integer"
+     }
+    },
+    "required": [
+     "url",
+     "width",
+     "height",
+     "bytes"
+    ],
+    "title": "Uploaded",
+    "type": "object"
+   },
+   "ValidationError": {
+    "properties": {
+     "ctx": {
+      "title": "Context",
+      "type": "object"
+     },
+     "input": {
+      "title": "Input"
+     },
+     "loc": {
+      "items": {
+       "anyOf": [
+        {
+         "type": "string"
+        },
+        {
+         "type": "integer"
+        }
+       ]
+      },
+      "title": "Location",
+      "type": "array"
+     },
+     "msg": {
+      "title": "Message",
+      "type": "string"
+     },
+     "type": {
+      "title": "Error Type",
+      "type": "string"
+     }
+    },
+    "required": [
+     "loc",
+     "msg",
+     "type"
+    ],
+    "title": "ValidationError",
+    "type": "object"
+   },
+   "WindowListing": {
+    "properties": {
+     "active": {
+      "title": "Active",
+      "type": "boolean"
+     },
+     "blurb": {
+      "title": "Blurb",
+      "type": "string"
+     },
+     "category": {
+      "enum": [
+       "fabrication",
+       "additive",
+       "finishing",
+       "print",
+       "freight",
+       "warehousing",
+       "workshop",
+       "events",
+       "creator"
+      ],
+      "title": "Category",
+      "type": "string"
+     },
+     "district": {
+      "title": "District",
+      "type": "string"
+     },
+     "extraFee": {
+      "title": "Extrafee",
+      "type": "integer"
+     },
+     "extraLabel": {
+      "title": "Extralabel",
+      "type": "string"
+     },
+     "id": {
+      "title": "Id",
+      "type": "string"
+     },
+     "instructions": {
+      "title": "Instructions",
+      "type": "string"
+     },
+     "maxHours": {
+      "title": "Maxhours",
+      "type": "number"
+     },
+     "minHours": {
+      "title": "Minhours",
+      "type": "number"
+     },
+     "mode": {
+      "const": "window",
+      "title": "Mode",
+      "type": "string"
+     },
+     "ownerId": {
+      "title": "Ownerid",
+      "type": "string"
+     },
+     "photos": {
+      "anyOf": [
+       {
+        "items": {
+         "type": "string"
+        },
+        "type": "array"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Photos"
+     },
+     "ratePerHour": {
+      "title": "Rateperhour",
+      "type": "integer"
+     },
+     "rules": {
+      "items": {
+       "type": "string"
+      },
+      "title": "Rules",
+      "type": "array"
+     },
+     "title": {
+      "title": "Title",
+      "type": "string"
+     }
+    },
+    "required": [
+     "id",
+     "ownerId",
+     "category",
+     "title",
+     "blurb",
+     "district",
+     "instructions",
+     "rules",
+     "active",
+     "mode",
+     "ratePerHour",
+     "minHours",
+     "maxHours",
+     "extraFee",
+     "extraLabel"
+    ],
+    "title": "WindowListing",
+    "type": "object"
+   },
+   "World": {
+    "properties": {
+     "districts": {
+      "additionalProperties": {
+       "$ref": "#/components/schemas/District"
+      },
+      "title": "Districts",
+      "type": "object"
+     },
+     "listings": {
+      "items": {
+       "discriminator": {
+        "mapping": {
+         "batch": "#/components/schemas/BatchListing",
+         "window": "#/components/schemas/WindowListing"
+        },
+        "propertyName": "mode"
+       },
+       "oneOf": [
+        {
+         "$ref": "#/components/schemas/WindowListing"
+        },
+        {
+         "$ref": "#/components/schemas/BatchListing"
+        }
+       ]
+      },
+      "title": "Listings",
+      "type": "array"
+     },
+     "owners": {
+      "items": {
+       "$ref": "#/components/schemas/Owner"
+      },
+      "title": "Owners",
+      "type": "array"
+     },
+     "reviews": {
+      "items": {
+       "$ref": "#/components/schemas/Review"
+      },
+      "title": "Reviews",
+      "type": "array"
+     },
+     "slots": {
+      "items": {
+       "$ref": "#/components/schemas/Slot"
+      },
+      "title": "Slots",
+      "type": "array"
+     }
+    },
+    "required": [
+     "owners",
+     "listings",
+     "slots",
+     "districts"
+    ],
+    "title": "World",
+    "type": "object"
+   }
+  }
+ },
+ "info": {
+  "title": "Cappy catalog",
+  "version": "1.0.0"
+ },
+ "openapi": "3.1.0",
+ "paths": {
+  "/cities": {
+   "get": {
+    "operationId": "cities_cities_get",
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "items": {
+          "$ref": "#/components/schemas/City"
+         },
+         "title": "Response Cities Cities Get",
+         "type": "array"
+        }
+       }
+      },
+      "description": "Successful Response"
+     }
+    },
+    "summary": "Cities"
+   }
+  },
+  "/districts": {
+   "get": {
+    "operationId": "districts_districts_get",
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "additionalProperties": {
+          "$ref": "#/components/schemas/District"
+         },
+         "title": "Response Districts Districts Get",
+         "type": "object"
+        }
+       }
+      },
+      "description": "Successful Response"
+     }
+    },
+    "summary": "Districts"
+   }
+  },
+  "/districts/nearest": {
+   "get": {
+    "operationId": "nearest_districts_nearest_get",
+    "parameters": [
+     {
+      "in": "query",
+      "name": "lat",
+      "required": true,
+      "schema": {
+       "maximum": 90,
+       "minimum": -90,
+       "title": "Lat",
+       "type": "number"
+      }
+     },
+     {
+      "in": "query",
+      "name": "lng",
+      "required": true,
+      "schema": {
+       "maximum": 180,
+       "minimum": -180,
+       "title": "Lng",
+       "type": "number"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/NearestDistrict"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Nearest"
+   }
+  },
+  "/internal/candidates": {
+   "post": {
+    "operationId": "candidates_internal_candidates_post",
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/CandidatesIn"
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/World"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Candidates"
+   }
+  },
+  "/internal/listings/{listing_id}/context": {
+   "get": {
+    "operationId": "listing_context_internal_listings__listing_id__context_get",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "listing_id",
+      "required": true,
+      "schema": {
+       "title": "Listing Id",
+       "type": "string"
+      }
+     },
+     {
+      "in": "query",
+      "name": "after",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "After"
+      }
+     },
+     {
+      "in": "query",
+      "name": "origin",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "Origin"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/World"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Listing Context"
+   }
+  },
+  "/internal/owners/{owner_id}": {
+   "get": {
+    "operationId": "internal_owner_internal_owners__owner_id__get",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "owner_id",
+      "required": true,
+      "schema": {
+       "title": "Owner Id",
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Owner"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Internal Owner"
+   }
+  },
+  "/listings": {
+   "post": {
+    "operationId": "create_listing_listings_post",
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/ListingIn"
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "201": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/CreatedListing"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Create Listing"
+   }
+  },
+  "/listings/{listing_id}": {
+   "delete": {
+    "operationId": "remove_listings__listing_id__delete",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "listing_id",
+      "required": true,
+      "schema": {
+       "title": "Listing Id",
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "204": {
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Remove"
+   },
+   "get": {
+    "operationId": "listing_detail_listings__listing_id__get",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "listing_id",
+      "required": true,
+      "schema": {
+       "title": "Listing Id",
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ListingDetail"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Listing Detail"
+   },
+   "put": {
+    "operationId": "update_listing_listings__listing_id__put",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "listing_id",
+      "required": true,
+      "schema": {
+       "title": "Listing Id",
+       "type": "string"
+      }
+     }
+    ],
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/ListingIn"
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "discriminator": {
+          "mapping": {
+           "batch": "#/components/schemas/BatchListing",
+           "window": "#/components/schemas/WindowListing"
+          },
+          "propertyName": "mode"
+         },
+         "oneOf": [
+          {
+           "$ref": "#/components/schemas/WindowListing"
+          },
+          {
+           "$ref": "#/components/schemas/BatchListing"
+          }
+         ],
+         "title": "Response Update Listing Listings  Listing Id  Put"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Update Listing"
+   }
+  },
+  "/listings/{listing_id}/pause": {
+   "post": {
+    "operationId": "pause_listings__listing_id__pause_post",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "listing_id",
+      "required": true,
+      "schema": {
+       "title": "Listing Id",
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "discriminator": {
+          "mapping": {
+           "batch": "#/components/schemas/BatchListing",
+           "window": "#/components/schemas/WindowListing"
+          },
+          "propertyName": "mode"
+         },
+         "oneOf": [
+          {
+           "$ref": "#/components/schemas/WindowListing"
+          },
+          {
+           "$ref": "#/components/schemas/BatchListing"
+          }
+         ],
+         "title": "Response Pause Listings  Listing Id  Pause Post"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Pause"
+   }
+  },
+  "/listings/{listing_id}/resume": {
+   "post": {
+    "operationId": "resume_listings__listing_id__resume_post",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "listing_id",
+      "required": true,
+      "schema": {
+       "title": "Listing Id",
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "discriminator": {
+          "mapping": {
+           "batch": "#/components/schemas/BatchListing",
+           "window": "#/components/schemas/WindowListing"
+          },
+          "propertyName": "mode"
+         },
+         "oneOf": [
+          {
+           "$ref": "#/components/schemas/WindowListing"
+          },
+          {
+           "$ref": "#/components/schemas/BatchListing"
+          }
+         ],
+         "title": "Response Resume Listings  Listing Id  Resume Post"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Resume"
+   }
+  },
+  "/listings/{listing_id}/reviews": {
+   "get": {
+    "operationId": "listing_reviews_listings__listing_id__reviews_get",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "listing_id",
+      "required": true,
+      "schema": {
+       "title": "Listing Id",
+       "type": "string"
+      }
+     },
+     {
+      "in": "query",
+      "name": "cursor",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "Cursor"
+      }
+     },
+     {
+      "in": "query",
+      "name": "limit",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "type": "integer"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "Limit"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Page_Review_"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Listing Reviews"
+   }
+  },
+  "/listings/{listing_id}/slots": {
+   "post": {
+    "operationId": "add_slots_listings__listing_id__slots_post",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "listing_id",
+      "required": true,
+      "schema": {
+       "title": "Listing Id",
+       "type": "string"
+      }
+     }
+    ],
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "items": {
+         "$ref": "#/components/schemas/SlotIn"
+        },
+        "title": "Body",
+        "type": "array"
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "201": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "items": {
+          "$ref": "#/components/schemas/Slot"
+         },
+         "title": "Response Add Slots Listings  Listing Id  Slots Post",
+         "type": "array"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Add Slots"
+   }
+  },
+  "/listings/{listing_id}/slots/{slot_id}": {
+   "delete": {
+    "operationId": "remove_slot_listings__listing_id__slots__slot_id__delete",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "listing_id",
+      "required": true,
+      "schema": {
+       "title": "Listing Id",
+       "type": "string"
+      }
+     },
+     {
+      "in": "path",
+      "name": "slot_id",
+      "required": true,
+      "schema": {
+       "title": "Slot Id",
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "204": {
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Remove Slot"
+   }
+  },
+  "/me": {
+   "get": {
+    "description": "Who the caller is on Cappy. ``owner`` is absent until they have created\na profile, which the app asks for right after sign-up.",
+    "operationId": "get_me_me_get",
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Me"
+        }
+       }
+      },
+      "description": "Successful Response"
+     }
+    },
+    "summary": "Get Me"
+   },
+   "put": {
+    "description": "Create the caller's profile, or update its name, kind and district.\nIdempotent: calling it twice with the same body is one profile.",
+    "operationId": "put_me_me_put",
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/ProfileIn"
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Owner"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Put Me"
+   }
+  },
+  "/me/listings": {
+   "get": {
+    "operationId": "my_listings_me_listings_get",
+    "parameters": [
+     {
+      "in": "query",
+      "name": "cursor",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "Cursor"
+      }
+     },
+     {
+      "in": "query",
+      "name": "limit",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "type": "integer"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "Limit"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Page_ListingView_"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "My Listings"
+   }
+  },
+  "/owners/{owner_id}": {
+   "get": {
+    "operationId": "owner_owners__owner_id__get",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "owner_id",
+      "required": true,
+      "schema": {
+       "title": "Owner Id",
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Owner"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Owner"
+   }
+  },
+  "/saved": {
+   "get": {
+    "operationId": "saved_saved_get",
+    "parameters": [
+     {
+      "in": "query",
+      "name": "cursor",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "Cursor"
+      }
+     },
+     {
+      "in": "query",
+      "name": "limit",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "type": "integer"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "Limit"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Page_ListingView_"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Saved"
+   }
+  },
+  "/saved/{listing_id}": {
+   "delete": {
+    "operationId": "unsave_saved__listing_id__delete",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "listing_id",
+      "required": true,
+      "schema": {
+       "title": "Listing Id",
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "204": {
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Unsave"
+   },
+   "put": {
+    "operationId": "save_saved__listing_id__put",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "listing_id",
+      "required": true,
+      "schema": {
+       "title": "Listing Id",
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "204": {
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Save"
+   }
+  },
+  "/search": {
+   "get": {
+    "operationId": "search_search_get",
+    "parameters": [
+     {
+      "in": "query",
+      "name": "q",
+      "required": true,
+      "schema": {
+       "maxLength": 80,
+       "minLength": 2,
+       "title": "Q",
+       "type": "string"
+      }
+     },
+     {
+      "in": "query",
+      "name": "metro",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "Metro"
+      }
+     },
+     {
+      "in": "query",
+      "name": "category",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "Category"
+      }
+     },
+     {
+      "in": "query",
+      "name": "cursor",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "Cursor"
+      }
+     },
+     {
+      "in": "query",
+      "name": "limit",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "type": "integer"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "Limit"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Page_ListingView_"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Search"
+   }
+  },
+  "/uploads": {
+   "post": {
+    "description": "One photograph in, its URL out, to go in a listing's ``photos``.",
+    "operationId": "upload_uploads_post",
+    "requestBody": {
+     "content": {
+      "multipart/form-data": {
+       "schema": {
+        "$ref": "#/components/schemas/Body_upload_uploads_post"
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "201": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Uploaded"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Upload"
+   }
+  }
+ }
+}

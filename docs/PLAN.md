@@ -57,16 +57,16 @@ Status: `[x]` done (with the commit that did it) · `[~]` in progress ·
 - [x] Idempotency-Key on create; paginated list; server-minted ids
 - [x] Alembic migrations
 
-## Phase 5 — Payments (new service, ADR 0005)
-- [ ] Provider interface; Stripe implementation; fake implementation
-- [ ] Connect onboarding (account link, status)
-- [ ] Authorise on request, capture on accept, cancel on decline/cancel/expiry, transfer on complete, refund
-- [ ] Webhook endpoint: signature verification, idempotent on event id
-- [ ] Tests against the fake and against stripe-mock
+## Phase 5 — Payments (new service, ADR 0005) — 10be73e
+- [x] Provider interface; Stripe implementation; fake implementation
+- [x] Connect onboarding (account link, status); owners who cannot be paid are not bookable (041dded)
+- [x] Authorise on request, capture on accept, cancel on decline/cancel/expiry, transfer on complete, refund
+- [x] Webhook endpoint: signature verification, idempotent on event id
+- [x] Tests against the fake and against stripe-mock
 
-## Phase 6 — Notifications (new service, ADR 0006)
-- [ ] SQS consumer for booking and payment events; SES sender; templates
-- [ ] Idempotent on event id; tests
+## Phase 6 — Notifications (new service, ADR 0006) — 8261aa1
+- [x] SQS consumer for booking and payment events; SES sender; plain-text emails
+- [x] Idempotent on event id; verified addresses only, looked up in Cognito (no copy kept); tests
 
 ## Phase 7 — Identity and the edge — f4d318b
 - [x] Retire the accounts service
@@ -76,50 +76,56 @@ Status: `[x]` done (with the commit that did it) · `[~]` in progress ·
       per IP at the edge instead, per-user when metrics show abuse
 - [x] Update the routing table for new endpoints; routing tests
 
-## Phase 8 — Local stack
+## Phase 8 — Local stack — a7df6fb
 - [x] One non-root Dockerfile for all services; `python -m cappy_common.migrations <service>` (f4d318b)
-- [ ] Root `compose.yaml`: Postgres, LocalStack (S3, SNS, SQS, SES), cognito-local, stripe-mock, services
-- [ ] Bootstrap script creating the pool, client, topic, queues, bucket (same names as Terraform)
-- [ ] Migrations as a one-off `migrate` service
-- [ ] `make up`, `make test`, `make seed-demo`, `make e2e`; `.env.example` documents the LocalStack token
-- [ ] End-to-end smoke test across the running stack
+- [x] Root `compose.yaml`: Postgres, LocalStack (S3, SNS, SQS, SES), cognito-local, services
+- [x] Bootstrap script creating the pool, client, topic, queues, bucket (same names as Terraform)
+- [x] Services migrate their own database on start locally; a one-off task in AWS
+- [x] `make up`, `make test`, `make test-pg`, `make test-stripe`, `make seed-demo`, `make e2e`, `make codes`
+- [x] End-to-end journey across the running stack, reproducible from `make clean`
 
-## Phase 9 — Frontend
-- [ ] Cognito auth client: sign up, confirm, sign in, refresh, reset, sign out
-- [ ] Data layer on TanStack Query; stop loading `/world`
-- [ ] Every screen reads server queries (browse, search, listing, bookings, earn, saved)
-- [ ] Profile onboarding (`PUT /me`)
-- [ ] Stripe Payment Element for booking; Connect onboarding for owners
-- [ ] Photo upload against the new endpoint
-- [ ] Type-check, build, and the domain check still pass
+## Phase 9 — Frontend — a868b20
+- [x] Cognito auth client: sign up, confirm, sign in, refresh, reset, sign out
+- [x] Data layer on TanStack Query; no `/world`, no client-side matching
+- [x] Every screen reads server queries (browse, search, listing, bookings, earn, saved)
+- [x] Profile onboarding (`PUT /me`)
+- [x] Stripe Payment Element for booking; Connect onboarding for owners
+- [x] Photo upload against the new endpoint
+- [x] Type-check and build pass
+- [ ] Exercise the Stripe card step in a browser with real test keys (only the fake provider was run)
 
-## Phase 10 — Infrastructure and delivery
-- [ ] Terraform modules: network, Aurora, ECS + Service Connect + ALB, CloudFront + WAF + S3,
-      Cognito, SNS/SQS/DLQ, SES, Secrets, ECR, observability; `staging` and `prod` roots
-- [ ] `terraform validate` clean; plan against LocalStack where supported
-- [ ] GitHub Actions CI: lint, type-check, unit tests, Postgres integration tests, image builds, terraform validate
-- [ ] GitHub Actions CD: OIDC, push to ECR, run migrations, deploy ECS, publish web
+## Phase 10 — Infrastructure and delivery — a868b20
+- [x] Terraform: network, Aurora (database + role per service), ECS + Service Connect + ALB,
+      CloudFront + WAF + CSP + S3, Cognito, SNS/SQS/DLQ, SES (DKIM/SPF/DMARC), Secrets, ECR,
+      alarms; `staging` and `prod` roots; `bootstrap` for state and GitHub OIDC
+- [x] `terraform validate` clean on every root; the event fabric applied to LocalStack and its
+      routing proven (`make infra-local`)
+- [x] GitHub Actions CI: lint, unit, Postgres, Stripe contract, web build, images, terraform, e2e
+- [x] GitHub Actions CD: OIDC, ECR by sha, migrations before roll-out, ECS roll with rollback,
+      web to S3 + invalidation, public smoke test
+- [ ] First real `terraform apply` into an AWS account (needs the account, domain and Stripe keys)
 
 ## Phase 11 — Prove it
-- [ ] Full stack up locally; e2e passes: sign up → verify → list with photo → search → book → pay →
-      accept → complete → rate → review visible → notification sent
+- [x] Full stack up locally; e2e passes: sign up → confirm → list with photo → search → book →
+      pay → accept → complete → pay out → rate → review visible → emails sent
 - [x] Concurrency test: twenty simultaneous bookings of one window → exactly one succeeds (f4d318b)
-- [ ] Load sanity: candidate query and search stay flat as listings grow (10× seed)
-- [ ] Docs: root README, runbook, API reference refreshed
-- [ ] Final review against `GOAL.md`; every definition-of-done row has evidence
+- [x] Load sanity (Postgres, 100k listings, all in one city = worst case): search 1–4 ms;
+      candidates SQL 11 ms (36 ms end to end for the capped 300), from 16 ms at 10k
+- [x] Docs: root README, runbook, API reference generated from code (`make openapi`)
+- [x] Final review against `GOAL.md`
 
 ## Definition of done
 
 | Goal criterion | Evidence | Status |
 |---|---|---|
-| Safe | security test suite; no `/admin`, no identity header, prod settings guard test | [ ] |
-| Correct | exclusion-constraint test on Postgres; outbox/idempotency tests; no delete-on-start code | [ ] |
-| Scales | no `/world`; candidate query plan uses indexes; pagination on every list | [ ] |
-| Complete | e2e script passes the full journey | [ ] |
-| Operable | migrations; `/readyz`; JSON logs with request id; alarms in Terraform | [ ] |
-| Deployable | `terraform validate` clean; CI/CD workflows | [ ] |
-| Testable locally | `make up && make e2e`; `make test` with no Docker | [ ] |
-| Documented | README, runbook, ADRs | [ ] |
+| Safe | token verification tests (forged, expired, wrong issuer/client, alg none); no `/admin`; identity header ignored (tests + e2e); `/internal` unreachable (gateway tests + e2e + deploy smoke); prod settings guard tests; CSP/HSTS; least-privilege IAM; secrets only in Secrets Manager | [x] |
+| Correct | exclusion constraint proven with the pre-check disabled; outbox commit-only and idempotent dispatch tests; money follows the booking with idempotency keys; no delete-on-start code | [x] |
+| Scales | no `/world`; bounded candidate query and trigram search measured at 100k; pagination on every list; stateless services with autoscaling; Aurora Serverless v2 | [x] |
+| Complete | `make e2e` passes the full journey | [x] |
+| Operable | migrations with drift tests; `/readyz`; JSON logs with request id; alarms + runbook | [x] |
+| Deployable | `terraform validate` clean; CI/CD workflows; one image recipe | [x] (first apply pending an account) |
+| Testable locally | `make up && make e2e`; `make test` with no Docker | [x] |
+| Documented | README, runbook, ADRs, generated API reference | [x] |
 
 ## Change log
 
@@ -137,3 +143,11 @@ Status: `[x]` done (with the commit that did it) · `[~]` in progress ·
 - 2026-09-25 — The gateway no longer authenticates: every service verifies the token, so there is
   no trusted hop to get wrong. The `/api/health` fan-out and the index page were removed (they
   advertised internal topology); the ALB checks each service's `/readyz`.
+- 2026-09-25 — LocalStack's SQS `path` URLs are rejected by the Terraform provider; the classic
+  `<host>/<account>/<queue>` form (`SQS_ENDPOINT_STRATEGY=off`) works for boto3 and Terraform alike.
+- 2026-09-25 — This LocalStack licence has SES v1 but not v2: notifications use SES v1 SendEmail,
+  identical in AWS. cognito-local does not mark email verified on confirmation (Cognito does);
+  the e2e sets it explicitly with a comment.
+- 2026-09-25 — Added `payment.payouts_ready` and `payable_owners` after the frontend work showed
+  buyers could pick listings checkout would refuse.
+- 2026-09-25 — Migrate creates a database and role per service; services never use the master user.

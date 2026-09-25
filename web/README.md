@@ -236,17 +236,10 @@ Phone-first at 560px max. The dock is a floating glass capsule; from 768px it
 becomes a left rail and content widens to 760px. Safe-area insets are handled on the dock, sticky
 footers and sheets.
 
-## What is not real
+## Demo data
 
-Hosts, machines, prices and availability in `src/data/seed.ts` are realistic examples,
-not real people or businesses; the backend seeds the same world from that file.
-Requests you send are accepted by the server after ~5 s so the whole flow is
-walkable; requests *to* you (the Earn inbox) are answered for real. Sign in as
-the seeded owner with `nadia@cappy.demo` / `cappy-demo` to see an inbox on day
-one, or create your own account. No money moves.
-
-## Before sharing the link
-
-- Fill in the Impressum placeholders in `src/app/screens/Profile.tsx` (§5 DDG).
-- `.env` holds a live `JEV_API_KEY` and is gitignored. Keep it that way, a key
-  committed once stays in history even after the file is deleted.
+`make seed-demo` (run by `make up`) loads a demo world of realistic, invented
+hosts and machines into local and staging only. Sign in as
+`host@demo.cappy.local` or `buyer@demo.cappy.local` (password `Demo-pass-123!`).
+With the fake payments provider no money moves and there is no card step; with
+Stripe test keys (see `.env.example`) the Payment Element appears.

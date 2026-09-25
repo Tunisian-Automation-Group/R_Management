@@ -1,0 +1,1198 @@
+{
+ "components": {
+  "schemas": {
+   "BatchRequest": {
+    "properties": {
+     "category": {
+      "enum": [
+       "fabrication",
+       "additive",
+       "finishing",
+       "print",
+       "freight",
+       "warehousing",
+       "workshop",
+       "events",
+       "creator"
+      ],
+      "title": "Category",
+      "type": "string"
+     },
+     "deadline": {
+      "title": "Deadline",
+      "type": "string"
+     },
+     "dims": {
+      "anyOf": [
+       {
+        "$ref": "#/components/schemas/Dims"
+       },
+       {
+        "type": "null"
+       }
+      ]
+     },
+     "district": {
+      "title": "District",
+      "type": "string"
+     },
+     "material": {
+      "anyOf": [
+       {
+        "enum": [
+         "PLA",
+         "PETG",
+         "ABS",
+         "ASA",
+         "TPU",
+         "Resin",
+         "Aluminium 6061",
+         "Aluminium 7075",
+         "Stainless 304",
+         "Steel S235",
+         "Brass",
+         "POM",
+         "Acrylic",
+         "Plywood"
+        ],
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Material"
+     },
+     "maxDistanceKm": {
+      "title": "Maxdistancekm",
+      "type": "number"
+     },
+     "mode": {
+      "const": "batch",
+      "title": "Mode",
+      "type": "string"
+     },
+     "quantity": {
+      "title": "Quantity",
+      "type": "integer"
+     },
+     "toleranceMm": {
+      "anyOf": [
+       {
+        "type": "number"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Tolerancemm"
+     }
+    },
+    "required": [
+     "mode",
+     "category",
+     "quantity",
+     "deadline",
+     "district",
+     "maxDistanceKm"
+    ],
+    "title": "BatchRequest",
+    "type": "object"
+   },
+   "Booking": {
+    "properties": {
+     "createdAt": {
+      "title": "Createdat",
+      "type": "string"
+     },
+     "declineReason": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Declinereason"
+     },
+     "expiresAt": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Expiresat"
+     },
+     "id": {
+      "title": "Id",
+      "type": "string"
+     },
+     "listing": {
+      "anyOf": [
+       {
+        "$ref": "#/components/schemas/ListingSnapshot"
+       },
+       {
+        "type": "null"
+       }
+      ]
+     },
+     "match": {
+      "$ref": "#/components/schemas/Match"
+     },
+     "outcome": {
+      "anyOf": [
+       {
+        "$ref": "#/components/schemas/Outcome"
+       },
+       {
+        "type": "null"
+       }
+      ]
+     },
+     "requesterId": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Requesterid"
+     },
+     "requirement": {
+      "discriminator": {
+       "mapping": {
+        "batch": "#/components/schemas/BatchRequest",
+        "window": "#/components/schemas/WindowRequest"
+       },
+       "propertyName": "mode"
+      },
+      "oneOf": [
+       {
+        "$ref": "#/components/schemas/WindowRequest"
+       },
+       {
+        "$ref": "#/components/schemas/BatchRequest"
+       }
+      ],
+      "title": "Requirement"
+     },
+     "status": {
+      "enum": [
+       "awaiting_payment",
+       "requested",
+       "accepted",
+       "active",
+       "completed",
+       "declined",
+       "cancelled",
+       "expired",
+       "payment_failed"
+      ],
+      "title": "Status",
+      "type": "string"
+     }
+    },
+    "required": [
+     "id",
+     "match",
+     "requirement",
+     "status",
+     "createdAt"
+    ],
+    "title": "Booking",
+    "type": "object"
+   },
+   "BookingCreated": {
+    "properties": {
+     "booking": {
+      "$ref": "#/components/schemas/Booking"
+     },
+     "payment": {
+      "anyOf": [
+       {
+        "$ref": "#/components/schemas/PaymentStart"
+       },
+       {
+        "type": "null"
+       }
+      ]
+     }
+    },
+    "required": [
+     "booking"
+    ],
+    "title": "BookingCreated",
+    "type": "object"
+   },
+   "BusyIn": {
+    "properties": {
+     "listingIds": {
+      "items": {
+       "type": "string"
+      },
+      "maxItems": 500,
+      "title": "Listingids",
+      "type": "array"
+     },
+     "start": {
+      "title": "Start",
+      "type": "string"
+     },
+     "until": {
+      "title": "Until",
+      "type": "string"
+     }
+    },
+    "required": [
+     "listingIds",
+     "start",
+     "until"
+    ],
+    "title": "BusyIn",
+    "type": "object"
+   },
+   "CreateBookingIn": {
+    "properties": {
+     "end": {
+      "title": "End",
+      "type": "string"
+     },
+     "listingId": {
+      "maxLength": 40,
+      "title": "Listingid",
+      "type": "string"
+     },
+     "requirement": {
+      "discriminator": {
+       "mapping": {
+        "batch": "#/components/schemas/BatchRequest",
+        "window": "#/components/schemas/WindowRequest"
+       },
+       "propertyName": "mode"
+      },
+      "oneOf": [
+       {
+        "$ref": "#/components/schemas/WindowRequest"
+       },
+       {
+        "$ref": "#/components/schemas/BatchRequest"
+       }
+      ],
+      "title": "Requirement"
+     },
+     "slotId": {
+      "maxLength": 40,
+      "title": "Slotid",
+      "type": "string"
+     },
+     "start": {
+      "title": "Start",
+      "type": "string"
+     }
+    },
+    "required": [
+     "requirement",
+     "listingId",
+     "slotId",
+     "start",
+     "end"
+    ],
+    "title": "CreateBookingIn",
+    "type": "object"
+   },
+   "DeclineIn": {
+    "properties": {
+     "reason": {
+      "maxLength": 500,
+      "minLength": 1,
+      "title": "Reason",
+      "type": "string"
+     }
+    },
+    "required": [
+     "reason"
+    ],
+    "title": "DeclineIn",
+    "type": "object"
+   },
+   "Dims": {
+    "description": "Bounding box in millimetres.",
+    "properties": {
+     "x": {
+      "title": "X",
+      "type": "number"
+     },
+     "y": {
+      "title": "Y",
+      "type": "number"
+     },
+     "z": {
+      "title": "Z",
+      "type": "number"
+     }
+    },
+    "required": [
+     "x",
+     "y",
+     "z"
+    ],
+    "title": "Dims",
+    "type": "object"
+   },
+   "HTTPValidationError": {
+    "properties": {
+     "detail": {
+      "items": {
+       "$ref": "#/components/schemas/ValidationError"
+      },
+      "title": "Detail",
+      "type": "array"
+     }
+    },
+    "title": "HTTPValidationError",
+    "type": "object"
+   },
+   "ListingSnapshot": {
+    "description": "What the listing looked like when it was booked: enough to draw a\nbooking card without asking the catalog about every row, and the record of\nwhat was actually agreed even if the listing changes or is removed later.",
+    "properties": {
+     "category": {
+      "enum": [
+       "fabrication",
+       "additive",
+       "finishing",
+       "print",
+       "freight",
+       "warehousing",
+       "workshop",
+       "events",
+       "creator"
+      ],
+      "title": "Category",
+      "type": "string"
+     },
+     "district": {
+      "title": "District",
+      "type": "string"
+     },
+     "ownerName": {
+      "title": "Ownername",
+      "type": "string"
+     },
+     "photo": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Photo"
+     },
+     "title": {
+      "title": "Title",
+      "type": "string"
+     }
+    },
+    "required": [
+     "title",
+     "district",
+     "category",
+     "ownerName"
+    ],
+    "title": "ListingSnapshot",
+    "type": "object"
+   },
+   "Match": {
+    "properties": {
+     "confidence": {
+      "title": "Confidence",
+      "type": "number"
+     },
+     "distanceKm": {
+      "title": "Distancekm",
+      "type": "number"
+     },
+     "end": {
+      "title": "End",
+      "type": "string"
+     },
+     "listingId": {
+      "title": "Listingid",
+      "type": "string"
+     },
+     "ownerId": {
+      "title": "Ownerid",
+      "type": "string"
+     },
+     "quote": {
+      "$ref": "#/components/schemas/Quote"
+     },
+     "reasons": {
+      "items": {
+       "type": "string"
+      },
+      "title": "Reasons",
+      "type": "array"
+     },
+     "score": {
+      "title": "Score",
+      "type": "number"
+     },
+     "slotId": {
+      "title": "Slotid",
+      "type": "string"
+     },
+     "start": {
+      "title": "Start",
+      "type": "string"
+     }
+    },
+    "required": [
+     "listingId",
+     "ownerId",
+     "slotId",
+     "start",
+     "end",
+     "score",
+     "confidence",
+     "reasons",
+     "quote",
+     "distanceKm"
+    ],
+    "title": "Match",
+    "type": "object"
+   },
+   "Outcome": {
+    "properties": {
+     "note": {
+      "anyOf": [
+       {
+        "maxLength": 1000,
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Note"
+     },
+     "onTime": {
+      "title": "Ontime",
+      "type": "boolean"
+     },
+     "quality": {
+      "maximum": 5.0,
+      "minimum": 1.0,
+      "title": "Quality",
+      "type": "integer"
+     },
+     "tags": {
+      "anyOf": [
+       {
+        "items": {
+         "type": "string"
+        },
+        "type": "array"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Tags"
+     }
+    },
+    "required": [
+     "onTime",
+     "quality"
+    ],
+    "title": "Outcome",
+    "type": "object"
+   },
+   "Page_Booking_": {
+    "properties": {
+     "items": {
+      "items": {
+       "$ref": "#/components/schemas/Booking"
+      },
+      "title": "Items",
+      "type": "array"
+     },
+     "nextCursor": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Nextcursor"
+     }
+    },
+    "required": [
+     "items"
+    ],
+    "title": "Page[Booking]",
+    "type": "object"
+   },
+   "PaymentStart": {
+    "description": "What the app needs to collect the card: Stripe's client secret for the\nPaymentIntent that holds (authorises, not captures) the booking's price.",
+    "properties": {
+     "clientSecret": {
+      "title": "Clientsecret",
+      "type": "string"
+     },
+     "intentId": {
+      "title": "Intentid",
+      "type": "string"
+     }
+    },
+    "required": [
+     "clientSecret",
+     "intentId"
+    ],
+    "title": "PaymentStart",
+    "type": "object"
+   },
+   "Quote": {
+    "properties": {
+     "base": {
+      "title": "Base",
+      "type": "integer"
+     },
+     "extra": {
+      "title": "Extra",
+      "type": "integer"
+     },
+     "extraLabel": {
+      "title": "Extralabel",
+      "type": "string"
+     },
+     "hours": {
+      "title": "Hours",
+      "type": "number"
+     },
+     "ownerNet": {
+      "title": "Ownernet",
+      "type": "integer"
+     },
+     "platformFee": {
+      "title": "Platformfee",
+      "type": "integer"
+     },
+     "total": {
+      "title": "Total",
+      "type": "integer"
+     }
+    },
+    "required": [
+     "hours",
+     "base",
+     "extra",
+     "extraLabel",
+     "total",
+     "platformFee",
+     "ownerNet"
+    ],
+    "title": "Quote",
+    "type": "object"
+   },
+   "ValidationError": {
+    "properties": {
+     "ctx": {
+      "title": "Context",
+      "type": "object"
+     },
+     "input": {
+      "title": "Input"
+     },
+     "loc": {
+      "items": {
+       "anyOf": [
+        {
+         "type": "string"
+        },
+        {
+         "type": "integer"
+        }
+       ]
+      },
+      "title": "Location",
+      "type": "array"
+     },
+     "msg": {
+      "title": "Message",
+      "type": "string"
+     },
+     "type": {
+      "title": "Error Type",
+      "type": "string"
+     }
+    },
+    "required": [
+     "loc",
+     "msg",
+     "type"
+    ],
+    "title": "ValidationError",
+    "type": "object"
+   },
+   "WindowRequest": {
+    "properties": {
+     "category": {
+      "enum": [
+       "fabrication",
+       "additive",
+       "finishing",
+       "print",
+       "freight",
+       "warehousing",
+       "workshop",
+       "events",
+       "creator"
+      ],
+      "title": "Category",
+      "type": "string"
+     },
+     "district": {
+      "title": "District",
+      "type": "string"
+     },
+     "earliest": {
+      "title": "Earliest",
+      "type": "string"
+     },
+     "hours": {
+      "title": "Hours",
+      "type": "number"
+     },
+     "latest": {
+      "title": "Latest",
+      "type": "string"
+     },
+     "maxDistanceKm": {
+      "title": "Maxdistancekm",
+      "type": "number"
+     },
+     "mode": {
+      "const": "window",
+      "title": "Mode",
+      "type": "string"
+     }
+    },
+    "required": [
+     "mode",
+     "category",
+     "hours",
+     "earliest",
+     "latest",
+     "district",
+     "maxDistanceKm"
+    ],
+    "title": "WindowRequest",
+    "type": "object"
+   }
+  }
+ },
+ "info": {
+  "title": "Cappy booking",
+  "version": "1.0.0"
+ },
+ "openapi": "3.1.0",
+ "paths": {
+  "/bookings": {
+   "get": {
+    "description": "What the caller asked for (``role=requester``), is being asked for\n(``role=owner``), or both, newest first.",
+    "operationId": "list_bookings_bookings_get",
+    "parameters": [
+     {
+      "in": "query",
+      "name": "role",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "pattern": "^(requester|owner)$",
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "Role"
+      }
+     },
+     {
+      "in": "query",
+      "name": "cursor",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "Cursor"
+      }
+     },
+     {
+      "in": "query",
+      "name": "limit",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "minimum": 1,
+         "type": "integer"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "Limit"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Page_Booking_"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "List Bookings"
+   },
+   "post": {
+    "description": "Send the same ``Idempotency-Key`` when retrying: a retry returns the\nbooking the first attempt made, rather than a second booking.",
+    "operationId": "create_booking_bookings_post",
+    "parameters": [
+     {
+      "in": "header",
+      "name": "idempotency-key",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "maxLength": 80,
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "Idempotency-Key"
+      }
+     }
+    ],
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/CreateBookingIn"
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "201": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/BookingCreated"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Create Booking"
+   }
+  },
+  "/bookings/{booking_id}": {
+   "get": {
+    "operationId": "get_booking_bookings__booking_id__get",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "booking_id",
+      "required": true,
+      "schema": {
+       "title": "Booking Id",
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Booking"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Get Booking"
+   }
+  },
+  "/bookings/{booking_id}/accept": {
+   "post": {
+    "operationId": "accept_bookings__booking_id__accept_post",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "booking_id",
+      "required": true,
+      "schema": {
+       "title": "Booking Id",
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Booking"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Accept"
+   }
+  },
+  "/bookings/{booking_id}/cancel": {
+   "post": {
+    "operationId": "cancel_bookings__booking_id__cancel_post",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "booking_id",
+      "required": true,
+      "schema": {
+       "title": "Booking Id",
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Booking"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Cancel"
+   }
+  },
+  "/bookings/{booking_id}/complete": {
+   "post": {
+    "operationId": "complete_bookings__booking_id__complete_post",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "booking_id",
+      "required": true,
+      "schema": {
+       "title": "Booking Id",
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Booking"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Complete"
+   }
+  },
+  "/bookings/{booking_id}/decline": {
+   "post": {
+    "operationId": "decline_bookings__booking_id__decline_post",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "booking_id",
+      "required": true,
+      "schema": {
+       "title": "Booking Id",
+       "type": "string"
+      }
+     }
+    ],
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/DeclineIn"
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Booking"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Decline"
+   }
+  },
+  "/bookings/{booking_id}/rate": {
+   "post": {
+    "description": "``booking.rated`` feeds the owner's record and becomes a review. It is\ndated at the end of the booked window, not when the buyer got round to it.",
+    "operationId": "rate_bookings__booking_id__rate_post",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "booking_id",
+      "required": true,
+      "schema": {
+       "title": "Booking Id",
+       "type": "string"
+      }
+     }
+    ],
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/Outcome"
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Booking"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Rate"
+   }
+  },
+  "/bookings/{booking_id}/start": {
+   "post": {
+    "operationId": "start_bookings__booking_id__start_post",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "booking_id",
+      "required": true,
+      "schema": {
+       "title": "Booking Id",
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Booking"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Start"
+   }
+  },
+  "/internal/busy": {
+   "post": {
+    "operationId": "busy_internal_busy_post",
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/BusyIn"
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "additionalProperties": {
+          "items": {
+           "maxItems": 2,
+           "minItems": 2,
+           "prefixItems": [
+            {
+             "type": "string"
+            },
+            {
+             "type": "string"
+            }
+           ],
+           "type": "array"
+          },
+          "type": "array"
+         },
+         "title": "Response Busy Internal Busy Post",
+         "type": "object"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Busy"
+   }
+  }
+ }
+}
