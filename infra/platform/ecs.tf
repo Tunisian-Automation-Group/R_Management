@@ -317,6 +317,14 @@ resource "aws_ecs_service" "service" {
     rollback = true
   }
 
+  # A release that makes users' errors rise is rolled back even if its tasks
+  # look healthy (the circuit breaker only sees health checks).
+  alarms {
+    alarm_names = [aws_cloudwatch_metric_alarm.api_5xx_rate.alarm_name, aws_cloudwatch_metric_alarm.burn["page_short"].alarm_name]
+    enable      = true
+    rollback    = true
+  }
+
   service_connect_configuration {
     enabled = true
     dynamic "service" {

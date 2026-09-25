@@ -82,10 +82,11 @@ Status: `[ ]` open · `[~]` in progress · `[x]` done (commit) · `[-]` dropped 
 - [x] T-29 Minimum app version (`/api/app-config`)
 - [ ] T-31 Push notifications (SNS → APNs/FCM) for owners' requests
 - [x] T-33 Tracing: OpenTelemetry on in AWS through an ADOT sidecar to X-Ray; trace context travels inside events, so one trace spans the request, the outbox, SNS/SQS and the handler
-- [ ] T-34 Synthetic canaries
+- [x] T-34 Synthetic canary every 5 min (web, categories, search, internal routes private, sign-in required) with an alarm
 - [x] T-35 SLOs and error budgets (docs/slo.md)
-- [ ] T-35b Burn-rate alarms per SLO in Terraform
-- [ ] T-02, T-06, T-36 decided from the research (Bot Control, Cognito threat protection, canary deploys)
+- [x] T-35b Burn-rate alarms (14.4x over 1 h and 5 min pages; 6x over 6 h and 30 min tickets)
+- [~] T-36 Deploys roll back on the 5xx and fast-burn alarms (done); native ECS canary with an alternate target group once there is real AWS to verify it on
+- [ ] T-02, T-06 decided from the research (Bot Control, Cognito threat protection)
 
 ## Found while doing these
 

@@ -155,3 +155,68 @@ resource "aws_cloudwatch_metric_alarm" "chargebacks" {
   treat_missing_data  = "notBreaching"
   alarm_actions       = local.alarm_actions
 }
+
+# --- error-budget burn (docs/slo.md) --------------------------------------------------
+# Availability SLO 99.5% on the API: the budget is 0.5% errors. Page when it
+# burns 14.4x too fast over both 1 h and 5 min (2% of the month's budget in an
+# hour); open a ticket at 6x over both 6 h and 30 min (Google SRE workbook).
+
+locals {
+  slo_budget = 0.005
+  burn_windows = {
+    page_long    = { seconds = 3600, factor = 14.4 }
+    page_short   = { seconds = 300, factor = 14.4 }
+    ticket_long  = { seconds = 21600, factor = 6 }
+    ticket_short = { seconds = 1800, factor = 6 }
+  }
+}
+
+resource "aws_cloudwatch_metric_alarm" "burn" {
+  for_each            = local.burn_windows
+  alarm_name          = "${local.name}-slo-burn-${each.key}"
+  comparison_operator = "GreaterThanThreshold"
+  threshold           = 100 * local.slo_budget * each.value.factor
+  evaluation_periods  = 1
+  treat_missing_data  = "notBreaching"
+
+  metric_query {
+    id          = "rate"
+    expression  = "100 * errors / MAX([errors, requests])"
+    return_data = true
+  }
+  metric_query {
+    id = "errors"
+    metric {
+      namespace   = "AWS/ApplicationELB"
+      metric_name = "HTTPCode_Target_5XX_Count"
+      dimensions  = { LoadBalancer = aws_lb.main.arn_suffix }
+      period      = each.value.seconds
+      stat        = "Sum"
+    }
+  }
+  metric_query {
+    id = "requests"
+    metric {
+      namespace   = "AWS/ApplicationELB"
+      metric_name = "RequestCount"
+      dimensions  = { LoadBalancer = aws_lb.main.arn_suffix }
+      period      = each.value.seconds
+      stat        = "Sum"
+    }
+  }
+}
+
+resource "aws_cloudwatch_composite_alarm" "burn_page" {
+  alarm_name        = "${local.name}-slo-burning-fast"
+  alarm_description = "The API is spending its monthly error budget 14x too fast. Page."
+  alarm_rule        = "ALARM(${aws_cloudwatch_metric_alarm.burn["page_long"].alarm_name}) AND ALARM(${aws_cloudwatch_metric_alarm.burn["page_short"].alarm_name})"
+  alarm_actions     = local.alarm_actions
+  ok_actions        = local.alarm_actions
+}
+
+resource "aws_cloudwatch_composite_alarm" "burn_ticket" {
+  alarm_name        = "${local.name}-slo-burning"
+  alarm_description = "The API is spending its monthly error budget 6x too fast. Look today."
+  alarm_rule        = "ALARM(${aws_cloudwatch_metric_alarm.burn["ticket_long"].alarm_name}) AND ALARM(${aws_cloudwatch_metric_alarm.burn["ticket_short"].alarm_name})"
+  alarm_actions     = local.alarm_actions
+}
