@@ -157,6 +157,42 @@ class CatalogRepository:
             return []
         return [ListingRow.owner_id.in_(select(PayableOwnerRow.owner_id).where(PayableOwnerRow.ready))]
 
+    async def forget(self, owner_id: str) -> None:
+        """An account deletion: their listings come down, their shortlist goes,
+        and their profile keeps only an anonymous shell, so bookings and
+        reviews that point at it still make sense to the other side."""
+        now = _now()
+        await self.s.execute(
+            update(ListingRow)
+            .where(ListingRow.owner_id == owner_id, ListingRow.deleted_at.is_(None))
+            .values(deleted_at=now, active=False, updated_at=now)
+        )
+        await self.s.execute(delete(SavedRow).where(SavedRow.user_id == owner_id))
+        await self.s.execute(delete(PayableOwnerRow).where(PayableOwnerRow.owner_id == owner_id))
+        await self.s.execute(
+            update(OwnerRow).where(OwnerRow.id == owner_id).values(name="Former member", initials="—", updated_at=now)
+        )
+        await self.s.execute(
+            update(ReviewRow).where(ReviewRow.author_id == owner_id).values(author="Former member", initials="—")
+        )
+
+    async def export(self, owner_id: str) -> dict:
+        """Everything the catalog holds about them (GDPR art. 15/20)."""
+        owner = await self.find_owner(owner_id)
+        listings = (await self.s.execute(select(ListingRow).where(ListingRow.owner_id == owner_id))).scalars()
+        saved = (await self.s.execute(select(SavedRow).where(SavedRow.user_id == owner_id))).scalars()
+        reviews = (await self.s.execute(select(ReviewRow).where(ReviewRow.author_id == owner_id))).scalars()
+        media = (await self.s.execute(select(MediaRow).where(MediaRow.owner_id == owner_id))).scalars()
+        return {
+            "profile": owner.model_dump(mode="json", by_alias=True) if owner else None,
+            "listings": [to_listing(r).model_dump(mode="json", by_alias=True) for r in listings],
+            "saved": [{"listingId": r.listing_id, "savedAt": r.saved_at.isoformat()} for r in saved],
+            "reviewsWritten": [
+                {"listingId": r.listing_id, "rating": r.rating, "text": r.text, "at": r.at.isoformat()} for r in reviews
+            ],
+            "photos": [{"name": r.name, "createdAt": r.created_at.isoformat()} for r in media],
+        }
+
     async def set_payable(self, owner_id: str, ready: bool, as_of: datetime) -> None:
         row = await self.s.get(PayableOwnerRow, owner_id, with_for_update=True)
         if row is None:

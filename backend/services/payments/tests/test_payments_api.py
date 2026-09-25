@@ -317,3 +317,15 @@ def test_accounts_the_fake_provider_made_do_not_count_with_stripe(stripe_app):
 
     call(app, leftover)
     assert _intent(c).status_code == 409
+
+
+def test_a_deleted_profile_loses_its_payout_link(client, app, issuer):
+    from cappy_common.events import PROFILE_DELETED
+
+    client.post("/payments/connect/onboarding", headers=issuer.headers("leaver"))
+    assert client.get("/payments/connect/status", headers=issuer.headers("leaver")).json()["connected"]
+    ev = Event(
+        id=new_id("ev"), type=PROFILE_DELETED, source="catalog", occurred_at=now_iso(), data={"ownerId": "leaver"}
+    )
+    assert call(app, app.state.dispatcher.handle, ev)
+    assert client.get("/payments/connect/status", headers=issuer.headers("leaver")).json()["connected"] is False

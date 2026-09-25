@@ -16,6 +16,7 @@ types = [
     "booking.status_changed",
     "payment.payout_sent",
     "payment.payouts_ready",
+    "profile.deleted",
     "listing.changed",
 ]
 for t in types:
@@ -24,7 +25,7 @@ time.sleep(2)
 expected = {
     "catalog": {"booking.rated", "payment.payouts_ready"},
     "booking": {"payment.authorised"},
-    "payments": {"booking.status_changed"},
+    "payments": {"booking.status_changed", "profile.deleted"},
     "notifications": {"booking.status_changed", "payment.payout_sent"},
 }
 for svc, url in out["queue_urls"].items():

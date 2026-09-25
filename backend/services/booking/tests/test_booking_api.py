@@ -360,3 +360,14 @@ def test_a_declined_capture_releases_the_booking(client, app, issuer):
     assert _authorise(app, bid, PAYMENT_FAILED)
     assert client.get(f"/bookings/{bid}", headers=issuer.headers(BUYER)).json()["status"] == "payment_failed"
     _book(client, issuer)  # the window is free again
+
+
+def test_what_is_open_and_everything_for_one_person(client, app, issuer):
+    bid = _requested(client, app, issuer)
+    assert client.get(f"/internal/people/{BUYER}/open").status_code == 403
+    assert client.get(f"/internal/people/{BUYER}/open", headers=INTERNAL).json() == {"open": 1}
+    assert client.get(f"/internal/people/{HOST}/open", headers=INTERNAL).json() == {"open": 1}
+    _do(client, issuer, BUYER, bid, "cancel")
+    assert client.get(f"/internal/people/{BUYER}/open", headers=INTERNAL).json() == {"open": 0}
+    [b] = client.get(f"/internal/people/{BUYER}/bookings", headers=INTERNAL).json()
+    assert b["id"] == bid and b["status"] == "cancelled"

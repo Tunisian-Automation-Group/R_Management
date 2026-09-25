@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import re
 from datetime import UTC, datetime
 
@@ -10,8 +11,8 @@ from pydantic import Field, TypeAdapter, ValidationError
 from cappy_common.app import ApiRouter
 from cappy_common.auth import Principal, optional_principal, require_internal, require_principal
 from cappy_common.categories import mode_of
-from cappy_common.errors import Forbidden, Invalid, NotFound
-from cappy_common.events import LISTING_CHANGED, PROFILE_CREATED
+from cappy_common.errors import Conflict, Forbidden, Invalid, NotFound
+from cappy_common.events import LISTING_CHANGED, PROFILE_CREATED, PROFILE_DELETED
 from cappy_common.models import CamelModel, District, Iso, Listing, Owner, Review, Slot, World
 from cappy_common.pagination import Page, clamp_limit
 from cappy_common.runtime import Tx
@@ -238,6 +239,32 @@ async def put_me(
 
 
 # --- places ------------------------------------------------------------------------
+
+
+@router.delete("/me", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_me(request: Request, repo=Depends(get_repo), p: Principal = Depends(require_principal)) -> Response:
+    """Delete my account's data (App Store and GDPR). Refused while a booking is
+    still open on either side: those have to finish or be cancelled first. The
+    app then deletes the sign-in itself (Cognito DeleteUser). Bookings and
+    payments are kept as the law requires; they hold no personal data."""
+    if await request.app.state.bookings.open_for(p.sub):
+        raise Conflict("finish or cancel your open bookings before deleting your account")
+    await repo.forget(p.sub)
+    await _outbox(request).add(repo.s, PROFILE_DELETED, {"ownerId": p.sub})
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+@router.get("/me/export")
+async def export_me(request: Request, repo=Depends(get_repo), p: Principal = Depends(require_principal)) -> Response:
+    """A copy of everything held about me, as one JSON file."""
+    data = await repo.export(p.sub)
+    data["bookings"] = await request.app.state.bookings.all_for(p.sub)
+    data["exportedAt"] = now_iso()
+    return Response(
+        content=json.dumps(data, indent=1, ensure_ascii=False),
+        media_type="application/json",
+        headers={"Content-Disposition": 'attachment; filename="cappy-my-data.json"'},
+    )
 
 
 @router.get("/districts", response_model=dict[str, District])

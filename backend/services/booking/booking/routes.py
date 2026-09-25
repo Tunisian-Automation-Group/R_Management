@@ -348,6 +348,22 @@ async def resolve(booking_id: str, body: ResolveIn, repo: BookingRepository = De
     return to_booking(row, row.owner_id)
 
 
+class OpenBookings(CamelModel):
+    open: int
+
+
+@internal.get("/people/{person}/open", response_model=OpenBookings)
+async def open_bookings(person: str, repo: BookingRepository = Depends(get_repo)) -> OpenBookings:
+    """Before an account is deleted: is anything still in flight for them?"""
+    return OpenBookings(open=await repo.open_for(person))
+
+
+@internal.get("/people/{person}/bookings", response_model=list[Booking])
+async def bookings_of(person: str, repo: BookingRepository = Depends(get_repo)) -> list[Booking]:
+    """Every booking they were part of, for their data export."""
+    return [to_booking(r, person) for r in await repo.all_for(person)]
+
+
 @internal.post("/busy", response_model=dict[str, list[tuple[Iso, Iso]]])
 async def busy(body: BusyIn, repo: BookingRepository = Depends(get_repo)) -> dict[str, list[tuple[str, str]]]:
     if not body.listing_ids:

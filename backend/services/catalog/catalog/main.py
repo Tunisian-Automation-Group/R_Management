@@ -7,6 +7,7 @@ from cappy_common.auth import TokenVerifier
 from cappy_common.events import BOOKING_RATED, PAYOUTS_READY
 from cappy_common.runtime import Runtime
 
+from .clients import Bookings, HttpBookings
 from .handlers import on_booking_rated, on_payouts_ready
 from .media import MediaStore, make_store
 from .routes import internal, router
@@ -18,10 +19,17 @@ def build_app(
     settings: Settings,
     *,
     media_store: MediaStore | None = None,
+    bookings: Bookings | None = None,
     verifier: TokenVerifier | None = None,
 ) -> FastAPI:
+    async def close(app: FastAPI) -> None:
+        await app.state.bookings.aclose()
+
     runtime = Runtime(
-        settings, metadata=Base.metadata, handlers={BOOKING_RATED: on_booking_rated, PAYOUTS_READY: on_payouts_ready}
+        settings,
+        metadata=Base.metadata,
+        handlers={BOOKING_RATED: on_booking_rated, PAYOUTS_READY: on_payouts_ready},
+        on_stop=close,
     )
     app = create_app(
         settings,
@@ -32,6 +40,7 @@ def build_app(
     )
     app.state.verifier = verifier
     app.state.media = media_store or make_store(settings)
+    app.state.bookings = bookings or HttpBookings(settings.booking_url, settings.internal_token.get_secret_value())
     app.include_router(router)
     app.include_router(internal)
     return app

@@ -58,6 +58,8 @@ PAYOUT_SENT = "payment.payout_sent"
 # An owner can (ready=true) or can no longer (false) be paid, so be booked.
 PAYOUTS_READY = "payment.payouts_ready"
 PROFILE_CREATED = "profile.created"
+# Someone deleted their account: forget what is theirs to forget.
+PROFILE_DELETED = "profile.deleted"
 LISTING_CHANGED = "listing.changed"
 
 ALL_TYPES = frozenset(
@@ -72,6 +74,7 @@ ALL_TYPES = frozenset(
         PAYMENT_REFUNDED,
         PAYOUT_SENT,
         PROFILE_CREATED,
+        PROFILE_DELETED,
         LISTING_CHANGED,
         PAYOUTS_READY,
     }

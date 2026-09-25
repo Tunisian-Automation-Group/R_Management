@@ -20,7 +20,8 @@ locals {
     PAYMENTS_URL    = "http://payments:8000"
   }
   service_env = {
-    gateway  = {}
+    # The App Store and Google Play shells call the API cross-origin (ADR 0012).
+    gateway  = { CORS_ORIGINS = "capacitor://localhost,https://localhost" }
     catalog  = { MEDIA_BUCKET = aws_s3_bucket.media.bucket, REQUIRE_PAYABLE_OWNERS = "true" }
     matching = {}
     booking  = {}

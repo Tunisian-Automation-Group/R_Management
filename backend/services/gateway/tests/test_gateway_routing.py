@@ -133,3 +133,16 @@ def test_serves_the_web_app_from_the_same_origin(tmp_path):
         assert "Cappy" in c.get("/listing/l9").text, "client-side routes fall back to the app"
         assert "Cappy" in c.get("/../../etc/passwd").text
         assert c.get("/api/whatever").status_code == 404
+
+
+def test_the_native_apps_may_call_the_api_cross_origin():
+    settings = _settings(cors_origins="capacitor://localhost,https://localhost")
+    with TestClient(build_app(settings, transport=_upstreams([]))) as c:
+        pre = {
+            "Access-Control-Request-Method": "POST",
+            "Access-Control-Request-Headers": "authorization,idempotency-key",
+        }
+        ok = c.options("/api/bookings", headers={"Origin": "capacitor://localhost", **pre})
+        assert ok.status_code == 200 and ok.headers["access-control-allow-origin"] == "capacitor://localhost"
+        evil = c.options("/api/bookings", headers={"Origin": "https://evil.example", **pre})
+        assert "access-control-allow-origin" not in evil.headers

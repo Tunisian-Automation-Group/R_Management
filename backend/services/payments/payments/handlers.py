@@ -25,6 +25,7 @@ from cappy_common.events import (
     PAYMENT_FAILED,
     PAYMENT_REFUNDED,
     PAYOUT_SENT,
+    PROFILE_DELETED,
     Event,
     Handler,
     Outbox,
@@ -97,4 +98,11 @@ def handlers(provider: Provider, service_name: str) -> dict[str, Handler]:
             return
         row.updated_at = now
 
-    return {BOOKING_STATUS_CHANGED: on_status_changed}
+    async def on_profile_deleted(session: AsyncSession, event: Event) -> None:
+        """Their payout link goes; the Stripe account itself stays with Stripe,
+        which keeps what financial regulation requires."""
+        account = await session.get(ConnectAccountRow, event.data["ownerId"])
+        if account is not None:
+            await session.delete(account)
+
+    return {BOOKING_STATUS_CHANGED: on_status_changed, PROFILE_DELETED: on_profile_deleted}

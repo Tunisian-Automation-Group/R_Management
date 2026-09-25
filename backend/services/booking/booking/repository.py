@@ -10,7 +10,7 @@ from __future__ import annotations
 from datetime import datetime, timedelta
 
 from pydantic import TypeAdapter
-from sqlalchemy import and_, or_, select
+from sqlalchemy import and_, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from cappy_common.errors import NotFound
@@ -149,6 +149,24 @@ class BookingRepository:
         rows = rows[:limit]
         nxt = encode_cursor({"at": rows[-1].created_at.isoformat(), "id": rows[-1].id}) if more else None
         return rows, nxt
+
+    async def open_for(self, person: str) -> int:
+        """Bookings of this person, on either side, that are not settled yet."""
+        q = select(func.count()).where(
+            or_(BookingRow.requester_id == person, BookingRow.owner_id == person),
+            BookingRow.status.in_(HOLDING | {"disputed"}),
+        )
+        return (await self.s.execute(q)).scalar_one()
+
+    async def all_for(self, person: str, limit: int = 10_000) -> list[BookingRow]:
+        """Everything, for a data export. ponytail: capped at 10k; stream it if anyone gets near."""
+        q = (
+            select(BookingRow)
+            .where(or_(BookingRow.requester_id == person, BookingRow.owner_id == person))
+            .order_by(BookingRow.created_at.desc())
+            .limit(limit)
+        )
+        return list((await self.s.execute(q)).scalars())
 
     # --- the sweeps. SKIP LOCKED: replicas share the work instead of repeating it.
 

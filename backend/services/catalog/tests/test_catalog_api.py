@@ -38,15 +38,36 @@ def broker():
     return reset_memory_broker()
 
 
+class FakeBookings:
+    def __init__(self) -> None:
+        self.open: dict[str, int] = {}
+
+    async def open_for(self, person):  # noqa: ANN001
+        return self.open.get(person, 0)
+
+    async def all_for(self, person):  # noqa: ANN001
+        return [{"id": "bk_1", "status": "completed"}]
+
+    async def aclose(self) -> None:
+        pass
+
+
 @pytest.fixture()
-def app(issuer, broker, tmp_path):
+def bookings():
+    return FakeBookings()
+
+
+@pytest.fixture()
+def app(issuer, broker, tmp_path, bookings):
     settings = Settings(
         app_env="test",
         database_url="sqlite+aiosqlite://",
         internal_token="i" * 40,
         media_dir=str(tmp_path / "media"),
     )
-    return build_app(settings, media_store=DirectoryStore(str(tmp_path / "media")), verifier=issuer.verifier())
+    return build_app(
+        settings, media_store=DirectoryStore(str(tmp_path / "media")), bookings=bookings, verifier=issuer.verifier()
+    )
 
 
 def _run(app, coro_fn):
@@ -477,3 +498,31 @@ def test_only_owners_who_can_be_paid_are_offered(issuer, broker, tmp_path):
         # A stale "ready" that arrives late changes nothing.
         ready("o1", True, as_of="2020-01-01T00:00:00+00:00")
         assert offered() == set()
+
+
+def test_deleting_an_account_forgets_what_is_theirs(client, app, issuer, bookings, broker):
+    from cappy_common.events import PROFILE_DELETED
+
+    _profile(client, issuer)
+    h = issuer.headers("user-a")
+    lid = client.post(
+        "/listings", json={"listing": _window_listing(title="Unique lathe"), "slots": [_slot()]}, headers=h
+    ).json()["listing"]["id"]
+    client.put("/saved/l9", headers=h)
+    export = client.get("/me/export", headers=h)
+    assert export.status_code == 200 and "attachment" in export.headers["content-disposition"]
+    data = export.json()
+    assert data["profile"]["name"] == "Ada Lovelace" and [l["id"] for l in data["listings"]] == [lid]
+    assert data["saved"][0]["listingId"] == "l9" and data["bookings"]
+
+    bookings.open["user-a"] = 1
+    assert client.delete("/me", headers=h).status_code == 409, "not while a booking is open"
+    bookings.open["user-a"] = 0
+    assert client.delete("/me", headers=h).status_code == 204
+    assert client.get(f"/listings/{lid}").status_code == 404
+    assert client.get("/search", params={"q": "unique lathe"}).json()["items"] == []
+    assert client.get("/owners/user-a").json()["name"] == "Former member"
+    assert client.get("/saved", headers=h).json()["items"] == []
+    flush(app)
+    assert [e.data["ownerId"] for e in broker.of_type(PROFILE_DELETED)] == ["user-a"]
+    assert client.delete("/me").status_code == 401
