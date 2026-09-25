@@ -1,18 +1,20 @@
 import { useState, type ReactNode } from 'react'
 import { Navigate, useNavigate, useParams } from 'react-router-dom'
-import type { Booking, BookingStatus, Listing, Owner, Slot } from '../../domain/types.ts'
-import { isWindow, rating } from '../../domain/types.ts'
+import { useQueryClient } from '@tanstack/react-query'
+import type { Booking, BookingStatus, Listing, Outcome, Owner } from '../../domain/types.ts'
+import { rating } from '../../domain/types.ts'
 import { durationLabel } from '../../domain/categories.ts'
 import { trackRecord } from '../../domain/match.ts'
 import { formatEurExact } from '../../domain/money.ts'
 import { PLATFORM_FEE_BPS } from '../../domain/pricing.ts'
-import { useCappy, useLookups, type Event } from '../store.tsx'
+import { actOnBooking, rateBooking, useBooking, useListing, useOwner, type BookingAction } from '../../data/repo.ts'
+import { messageOf, useToast } from '../store.tsx'
 import { Screen } from '../components/AppShell.tsx'
 import { Photo } from '../components/Photo.tsx'
 import { Icon } from '../components/Icon.tsx'
 import { Avatar, Banner, Button, Card, Chip, Field, Row, Sheet, Stars, Textarea } from '../components/ui.tsx'
 import { REVIEW_TAGS } from '../../domain/reviews.ts'
-import { distance, range, responseTime } from '../format.ts'
+import { distance, range, relative, responseTime } from '../format.ts'
 
 const STEPS: { id: BookingStatus; label: string; note: string }[] = [
   { id: 'requested', label: 'Requested', note: 'Waiting for the owner to accept' },
@@ -21,46 +23,27 @@ const STEPS: { id: BookingStatus; label: string; note: string }[] = [
   { id: 'completed', label: 'Finished', note: 'Handed back' },
 ]
 
+const DEAD: BookingStatus[] = ['declined', 'cancelled', 'expired', 'payment_failed']
+
 export function BookingDetail() {
   const { id } = useParams()
-  const { state } = useCappy()
-  const { listing: findListing, owner: findOwner, slotsFor } = useLookups()
+  const booking = useBooking(id)
+  // The live listing, for the handover notes. It may have changed or gone since;
+  // the booking's own snapshot covers the rest.
+  const listing = useListing(booking.data?.match.listingId)
+  const owner = useOwner(booking.data?.match.ownerId)
 
-  // A booking is only missing once the store has loaded.
-  if (!state.ready) return <Screen back="/bookings">{null}</Screen>
-
-  const booking = state.bookings.find((b) => b.id === id)
-  if (!booking) return <Navigate to="/bookings" replace />
-
-  const listing = findListing(booking.match.listingId)
-  const owner = findOwner(booking.match.ownerId)
-  if (!listing || !owner) return <Navigate to="/bookings" replace />
+  if (booking.isPending) return <Screen back="/bookings">{null}</Screen>
+  if (!booking.data) return <Navigate to="/bookings" replace />
 
   // Remount when the booking changes so the rating form never carries over.
-  return (
-    <Detail
-      key={booking.id}
-      booking={booking}
-      listing={listing}
-      owner={owner}
-      slots={slotsFor(listing.id)}
-    />
-  )
+  return <Detail key={booking.data.id} booking={booking.data} listing={listing.data?.listing} owner={owner.data} />
 }
 
-function Detail({
-  booking,
-  listing,
-  owner,
-  slots,
-}: {
-  booking: Booking
-  listing: Listing
-  owner: Owner
-  slots: Slot[]
-}) {
+function Detail({ booking, listing, owner }: { booking: Booking; listing?: Listing; owner?: Owner }) {
   const nav = useNavigate()
-  const { send } = useCappy()
+  const qc = useQueryClient()
+  const toast = useToast()
 
   const [cancelling, setCancelling] = useState(false)
   const [rateOpen, setRateOpen] = useState(false)
@@ -68,22 +51,46 @@ function Detail({
   const [onTime, setOnTime] = useState<boolean | null>(null)
   const [tags, setTags] = useState<string[]>([])
   const [note, setNote] = useState('')
+  const [busy, setBusy] = useState(false)
 
   const { quote } = booking.match
-  const first = owner.name.split(' ')[0]
+  const title = booking.listing?.title ?? listing?.title ?? 'Booked listing'
+  const ownerName = owner?.name ?? booking.listing?.ownerName ?? 'The owner'
+  const district = booking.listing?.district ?? listing?.district ?? ''
+  const first = ownerName.split(' ')[0]
   const stepIndex = STEPS.findIndex((s) => s.id === booking.status)
-  const dead = booking.status === 'declined' || booking.status === 'cancelled'
+  const dead = DEAD.includes(booking.status)
 
-  const act = (e: Event, toast?: string) => {
-    send(e)
-    if (toast) send({ type: 'TOAST', message: toast })
+  const done = async (write: () => Promise<unknown>, message?: string) => {
+    setBusy(true)
+    try {
+      await write()
+      if (message) toast(message)
+    } catch (err) {
+      toast(messageOf(err))
+    } finally {
+      setBusy(false)
+      await Promise.all([
+        qc.invalidateQueries({ queryKey: ['booking', booking.id] }),
+        qc.invalidateQueries({ queryKey: ['bookings'] }),
+      ])
+    }
   }
+  const act = (action: BookingAction, message?: string) => done(() => actOnBooking(booking.id, action), message)
+  const rate = (outcome: Outcome) =>
+    done(async () => {
+      await rateBooking(booking.id, outcome)
+      // The owner's record and the listing's reviews change a moment later.
+      void qc.invalidateQueries({ queryKey: ['listing', booking.match.listingId] })
+      void qc.invalidateQueries({ queryKey: ['reviews', booking.match.listingId] })
+    }, `Review posted on ${title}`)
 
   let footer: ReactNode
   switch (booking.status) {
+    case 'awaiting_payment':
     case 'requested':
       footer = (
-        <Button block size="lg" variant="danger" onClick={() => setCancelling(true)}>
+        <Button block size="lg" variant="danger" disabled={busy} onClick={() => setCancelling(true)}>
           Cancel request
         </Button>
       )
@@ -93,7 +100,8 @@ function Detail({
         <Button
           block
           size="lg"
-          onClick={() => act({ type: 'BOOKING_STARTED', id: booking.id }, 'Enjoy it')}
+          disabled={busy}
+          onClick={() => void act('start', 'Enjoy it')}
         >
           I have collected it
         </Button>
@@ -104,8 +112,9 @@ function Detail({
         <Button
           block
           size="lg"
+          disabled={busy}
           onClick={() => {
-            send({ type: 'BOOKING_COMPLETED', id: booking.id })
+            void act('complete')
             setRateOpen(true)
           }}
         >
@@ -146,9 +155,8 @@ function Detail({
       back="/bookings"
       hero={
         <Photo
-          src={listing?.photos?.[0]}
-          alt={listing?.title ?? 'Booked listing'}
-          slots={slots}
+          alt={title}
+          src={booking.listing?.photo ?? listing?.photos?.[0]}
           categoryId={booking.requirement.category}
           aspect={2.2}
           priority
@@ -159,9 +167,10 @@ function Detail({
       footer={footer}
     >
       <header className="-mt-1 mb-6">
-        <h1 className="t-h1 text-balance">{listing.title}</h1>
+        <h1 className="t-h1 text-balance">{title}</h1>
         <p className="t-lede mt-2 text-[var(--ink-3)]">
-          {owner.name} · {listing.district}
+          {ownerName}
+          {district && ` · ${district}`}
         </p>
       </header>
 
@@ -177,12 +186,31 @@ function Detail({
           }
         />
       ) : booking.status === 'cancelled' ? (
-        <Banner tone="warn" title="You cancelled this request" body="Nothing was charged." />
+        <Banner tone="warn" title="This booking was cancelled" body="Any hold on your card is released, and anything already paid is refunded." />
+      ) : booking.status === 'expired' ? (
+        <Banner tone="warn" title="This request lapsed" body="It was not paid for or answered in time. Nothing was charged." />
+      ) : booking.status === 'payment_failed' ? (
+        <Banner
+          tone="danger"
+          title="The payment did not go through"
+          body="Nothing was charged and the window is free again. Try booking it once more."
+          action={
+            <Button size="sm" variant="secondary" onClick={() => nav(`/listing/${booking.match.listingId}`)}>
+              Try again
+            </Button>
+          }
+        />
+      ) : booking.status === 'awaiting_payment' ? (
+        <Banner
+          tone="warn"
+          title="Authorising your card"
+          body={`${first} is asked as soon as the card is authorised.${booking.expiresAt ? ` It lapses ${relative(booking.expiresAt)} if not.` : ''}`}
+        />
       ) : booking.status === 'requested' ? (
         <Banner
           tone="warn"
           title={`Waiting for ${first}`}
-          body={`${responseTime(owner.responseMins)}. Nothing is charged until they accept.`}
+          body={`${owner ? `${responseTime(owner.responseMins)}. ` : ''}Your card is held, and charged only if they accept.`}
         />
       ) : booking.status === 'accepted' ? (
         <Banner
@@ -230,7 +258,7 @@ function Detail({
       )}
 
       {/* Handover detail only appears once there is something to hand over. */}
-      {(booking.status === 'accepted' || booking.status === 'active') && (
+      {(booking.status === 'accepted' || booking.status === 'active') && listing && (
         <Card className="p-5">
           <h2 className="t-label mb-2.5">Getting in</h2>
           <p className="t-body text-[var(--ink-2)]">{listing.instructions}</p>
@@ -241,22 +269,24 @@ function Detail({
         </Card>
       )}
 
-      <Card className="mt-3 p-5">
-        <div className="flex items-center gap-3.5">
-          <Avatar initials={owner.initials} size={44} business={owner.kind === 'business'} />
-          <div className="min-w-0 flex-1">
-            <p className="truncate text-[15.5px] font-semibold">{owner.name}</p>
-            <p className="t-sm text-[var(--ink-3)]">{trackRecord(owner)}</p>
+      {owner && (
+        <Card className="mt-3 p-5">
+          <div className="flex items-center gap-3.5">
+            <Avatar initials={owner.initials} size={44} business={owner.kind === 'business'} />
+            <div className="min-w-0 flex-1">
+              <p className="truncate text-[15.5px] font-semibold">{owner.name}</p>
+              <p className="t-sm text-[var(--ink-3)]">{trackRecord(owner)}</p>
+            </div>
+            <Stars value={rating(owner)} count={owner.jobsDone} />
           </div>
-          <Stars value={rating(owner)} count={owner.jobsDone} />
-        </div>
-      </Card>
+        </Card>
+      )}
 
       <Card className="mt-3 p-5">
         <h2 className="t-label mb-2">What you agreed</h2>
         <Row label="When" value={range(booking.match.start, booking.match.end)} />
         <Row
-          label={isWindow(listing) ? 'Duration' : 'Batch'}
+          label={booking.requirement.mode === 'window' ? 'Duration' : 'Batch'}
           value={
             booking.requirement.mode === 'batch'
               ? `${booking.requirement.quantity} parts · ${durationLabel(quote.hours)}`
@@ -295,8 +325,7 @@ function Detail({
             </span>
           </div>
           <p className="t-sm mt-4 border-t border-[var(--line)] pt-4 text-[var(--ink-3)]">
-            {first}'s record is now {trackRecord(owner)}, and that is what decides where
-            they rank for the next person searching.
+            Ratings decide where {first} ranks for the next person searching.
           </p>
         </Card>
       )}
@@ -311,8 +340,9 @@ function Detail({
               block
               size="lg"
               variant="danger"
+              disabled={busy}
               onClick={() => {
-                act({ type: 'BOOKING_CANCELLED', id: booking.id }, 'Request cancelled')
+                void act('cancel', 'Request cancelled')
                 setCancelling(false)
               }}
             >
@@ -325,8 +355,8 @@ function Detail({
         }
       >
         <p className="t-body pb-3 text-[var(--ink-2)]">
-          {first} will be told the window is free again. Nothing has been charged, so there
-          is nothing to refund.
+          {first} will be told the window is free again. The hold on your card is released;
+          nothing is charged.
         </p>
       </Sheet>
 
@@ -338,19 +368,10 @@ function Detail({
           <Button
             block
             size="lg"
-            disabled={onTime === null || stars === 0}
+            disabled={onTime === null || stars === 0 || busy}
             onClick={() => {
               if (onTime === null || stars === 0) return
-              act(
-                {
-                  type: 'BOOKING_RATED',
-                  id: booking.id,
-                  outcome: { onTime, quality: stars, tags, note: note.trim() || undefined },
-                },
-                // Say where it went. "Thanks" alone leaves you wondering whether
-                // anybody will ever see it.
-                `Review posted on ${listing?.title ?? 'the listing'}`,
-              )
+              void rate({ onTime, quality: stars, tags, note: note.trim() || undefined })
               setRateOpen(false)
             }}
           >

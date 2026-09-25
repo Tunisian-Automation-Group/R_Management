@@ -46,3 +46,11 @@ web: ## Type-check and build the web app
 	cd web && npm ci && npm run build
 
 .PHONY: help up down clean logs seed-demo codes test test-pg test-stripe e2e web
+
+infra-validate: ## terraform fmt/validate every root
+	cd infra && terraform fmt -check -recursive . && for d in bootstrap envs/staging envs/prod localstack; do (cd $$d && terraform init -backend=false -input=false >/dev/null && terraform validate) || exit 1; done
+
+infra-local: ## Apply the event fabric to LocalStack and prove its routing (needs `make up`)
+	cd infra/localstack && terraform init -input=false >/dev/null && terraform apply -auto-approve -input=false && uv run --project ../../backend python check.py
+
+.PHONY: infra-validate infra-local

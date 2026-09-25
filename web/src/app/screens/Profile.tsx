@@ -1,23 +1,29 @@
-import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
+import { useQueryClient } from '@tanstack/react-query'
 import { formatEur } from '../../domain/money.ts'
 import { PLATFORM_FEE_BPS } from '../../domain/pricing.ts'
-import { useCappy, useLookups, useMe } from '../store.tsx'
+import { useBookings, useMeQuery, useMyListings, useSaved } from '../../data/repo.ts'
+import { signOut, useAuthReady, useSession } from '../../data/auth.ts'
 import { SignedOut } from '../components/SignedOut.tsx'
-import * as repo from '../../data/repo.ts'
 import { Screen, SectionHead } from '../components/AppShell.tsx'
 import { Icon } from '../components/Icon.tsx'
 import { Photo, SaveButton } from '../components/Photo.tsx'
-import { Avatar, Banner, Button, Card, Row, Sheet, Skeleton } from '../components/ui.tsx'
+import { Avatar, Button, Card, Row, Skeleton } from '../components/ui.tsx'
+
+const TAKEN = ['accepted', 'active', 'completed']
 
 export function Profile() {
   const nav = useNavigate()
-  const { state, auth } = useCappy()
-  const ME = useMe()
-  const { me, myListings, listing, owner, slotsFor } = useLookups()
-  const [resetting, setResetting] = useState(false)
+  const qc = useQueryClient()
+  const session = useSession()
+  const authReady = useAuthReady()
+  const me = useMeQuery()
+  const saved = useSaved()
+  const listings = useMyListings()
+  const asGuest = useBookings('requester')
+  const asHost = useBookings('owner')
 
-  if (!state.ready) {
+  if (!authReady || (session && me.isPending)) {
     return (
       <Screen title="You">
         <Skeleton className="h-[136px] rounded-[var(--radius-card)]" />
@@ -26,7 +32,7 @@ export function Profile() {
     )
   }
 
-  if (!state.session) {
+  if (!session || !me.data?.owner) {
     return (
       <Screen title="You">
         <SignedOut what="see your profile, saved listings and record" next="/profile" />
@@ -34,15 +40,14 @@ export function Profile() {
     )
   }
 
-  const you = me()
-  const asGuest = state.bookings.filter((b) => b.match.ownerId !== ME)
-  const asHost = state.bookings.filter((b) => b.match.ownerId === ME)
-  const spent = asGuest
-    .filter((b) => ['accepted', 'active', 'completed'].includes(b.status))
+  const you = me.data.owner
+  const spent = (asGuest.data?.items ?? [])
+    .filter((b) => TAKEN.includes(b.status))
     .reduce((n, b) => n + b.match.quote.total, 0)
-  const earned = asHost
-    .filter((b) => ['accepted', 'active', 'completed'].includes(b.status))
+  const earned = (asHost.data?.items ?? [])
+    .filter((b) => TAKEN.includes(b.status))
     .reduce((n, b) => n + b.match.quote.ownerNet, 0)
+  const shortlist = saved.data?.items ?? []
 
   return (
     <Screen title="You">
@@ -54,11 +59,11 @@ export function Profile() {
             <p className="t-sm tnum text-[var(--ink-3)]">
               {you.district} · member since {you.joinedYear}
             </p>
-            <p className="t-sm truncate text-[var(--ink-3)]">{state.session.email}</p>
+            <p className="t-sm truncate text-[var(--ink-3)]">{session.email}</p>
           </div>
         </div>
         <div className="mt-5 grid grid-cols-3 gap-3 border-t border-[var(--line)] pt-5">
-          <Stat label="Listed" value={String(myListings().length)} />
+          <Stat label="Listed" value={String(listings.data?.items.length ?? 0)} />
           <Stat label="Earned" value={formatEur(earned)} accent />
           <Stat label="Spent" value={formatEur(spent)} />
         </div>
@@ -69,10 +74,10 @@ export function Profile() {
       <section>
         <SectionHead
           title="Saved"
-          aside={state.saved.length ? String(state.saved.length) : undefined}
+          aside={shortlist.length ? String(shortlist.length) : undefined}
           className="mt-7"
         />
-        {state.saved.length === 0 ? (
+        {shortlist.length === 0 ? (
           <Card className="p-5">
             <p className="t-body text-[var(--ink-3)]">
               Tap the heart on anything you are comparing and it waits for you here.
@@ -80,10 +85,8 @@ export function Profile() {
           </Card>
         ) : (
           <ul className="ruled">
-            {state.saved.map((id) => {
-              const l = listing(id)
-              if (!l) return null
-              const o = owner(l.ownerId)
+            {shortlist.map(({ listing: l, owner: o }) => {
+              const id = l.id
               return (
                 <li key={id}>
                   <button
@@ -93,7 +96,6 @@ export function Profile() {
                     <Photo
                       src={l.photos?.[0]}
                       alt={l.title}
-                      slots={slotsFor(id)}
                       categoryId={l.category}
                       aspect={1}
                       className="w-[56px] shrink-0 rounded-[var(--radius-plate)]"
@@ -117,10 +119,15 @@ export function Profile() {
         <SectionHead title="Account" className="mt-7" />
         <Card className="p-5">
           <p className="t-sm text-[var(--ink-2)]">
-            Signed in as <span className="font-semibold text-[var(--ink)]">{state.session.email}</span> on this
+            Signed in as <span className="font-semibold text-[var(--ink)]">{session.email}</span> on this
             device. Signing out keeps everything you listed and booked.
           </p>
-          <Button className="mt-4" variant="secondary" onClick={() => void auth.signOut().then(() => nav('/'))}>
+          <Button className="mt-4" variant="secondary" onClick={() =>
+              void signOut().then(() => {
+                qc.clear()
+                nav('/')
+              })
+            }>
             Sign out
           </Button>
         </Card>
@@ -138,18 +145,9 @@ export function Profile() {
           <div className="mt-4 border-t border-[var(--line)] pt-4">
             <Row label="Cappy fee" value={`${PLATFORM_FEE_BPS / 100}% of the booking`} />
             <Row label="Paid by" value="Taken from the total, not added on top" />
-            <Row label="Settlement" value="Directly between you and the host" />
+            <Row label="Payment" value="By card, held until the host accepts" />
           </div>
         </Card>
-      </section>
-
-      <section>
-        <SectionHead title="This build" className="mt-7" />
-        <Banner
-          tone="warn"
-          title="This build is a prototype"
-          body="Hosts, machines and availability here are realistic examples, not real people or real businesses. Requests you send are auto-accepted after a few seconds so you can see the whole flow. Nothing is charged and no money moves."
-        />
       </section>
 
       <section>
@@ -174,47 +172,12 @@ export function Profile() {
             Privacy
           </h3>
           <p className="t-sm leading-[20px] text-[var(--ink-3)]">
-            Your account holds your name, email, a hash of your password, and what you
-            list, book and rate. Nothing else is collected and nothing is shared. Reset
-            below wipes the demo server, every account included.
+            Your sign-in (email and password) is held by Amazon Cognito; card and bank
+            details by Stripe. Cappy keeps your name, district, and what you list, book
+            and rate. Nothing is sold or shared.
           </p>
         </Card>
       </section>
-
-      <section className="mt-8">
-        <Button block variant="danger" onClick={() => setResetting(true)}>
-          Reset all data
-        </Button>
-      </section>
-
-      <Sheet
-        open={resetting}
-        onClose={() => setResetting(false)}
-        title="Reset everything?"
-        footer={
-          <div className="space-y-2">
-            <Button
-              block
-              size="lg"
-              variant="danger"
-              onClick={async () => {
-                await repo.reset()
-                location.href = '/'
-              }}
-            >
-              Delete and start over
-            </Button>
-            <Button block variant="quiet" onClick={() => setResetting(false)}>
-              Keep my data
-            </Button>
-          </div>
-        }
-      >
-        <p className="t-body pb-4 text-[var(--ink-2)]">
-          Your bookings, your listings and every rating you have given will be deleted and the app
-          goes back to how it started. This cannot be undone.
-        </p>
-      </Sheet>
 
       <button
         onClick={() => nav('/earn/new')}

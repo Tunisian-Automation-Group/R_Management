@@ -78,9 +78,38 @@ def run_env(metadata: MetaData) -> None:
     asyncio.run(online())
 
 
+async def ensure_database(admin_url: str, url: str) -> None:
+    """Create the service's role and database if they are missing, as the
+    cluster's admin. Services then connect as their own role, which owns its
+    database and nothing else. Idempotent; the password is (re)set each time,
+    so rotating the service's secret and re-running the task rotates it here."""
+    from sqlalchemy import text
+    from sqlalchemy.engine import make_url
+
+    target = make_url(url)
+    role, password, database = target.username, target.password, target.database
+    if not (role and password and database) or not all(c.isalnum() or c == "_" for c in role + database):
+        raise SystemExit("DATABASE_URL must name a plain role, its password and a database")
+    engine = create_async_engine(make_url(admin_url).set(database="postgres"), isolation_level="AUTOCOMMIT")
+    try:
+        async with engine.connect() as conn:
+            exists = await conn.scalar(text("SELECT 1 FROM pg_roles WHERE rolname = :r"), {"r": role})
+            verb = "ALTER" if exists else "CREATE"
+            # Identifiers were checked above; the password goes through quote_literal.
+            quoted = await conn.scalar(text("SELECT quote_literal(:p)"), {"p": password})
+            await conn.execute(text(f"{verb} ROLE {role} WITH LOGIN PASSWORD {quoted}"))
+            if not await conn.scalar(text("SELECT 1 FROM pg_database WHERE datname = :d"), {"d": database}):
+                await conn.execute(text(f"CREATE DATABASE {database} OWNER {role}"))
+            await conn.execute(text(f"REVOKE ALL ON DATABASE {database} FROM PUBLIC"))
+    finally:
+        await engine.dispose()
+
+
 def main() -> None:
     """``python -m cappy_common.migrations <service>``: upgrade that service's
-    database (``DATABASE_URL``) to head. The ``migrate`` task runs this."""
+    database (``DATABASE_URL``) to head. The ``migrate`` task runs this before
+    every deploy; with ``ADMIN_DATABASE_URL`` it first creates the service's
+    role and database."""
     import importlib.util
     import sys
 
@@ -88,7 +117,10 @@ def main() -> None:
     spec = importlib.util.find_spec(service)
     if spec is None or spec.origin is None:
         raise SystemExit(f"no such service package: {service}")
-    upgrade(Path(spec.origin).parent / "migrations", os.environ["DATABASE_URL"])
+    url = os.environ["DATABASE_URL"]
+    if os.environ.get("ADMIN_DATABASE_URL"):
+        asyncio.run(ensure_database(os.environ["ADMIN_DATABASE_URL"], url))
+    upgrade(Path(spec.origin).parent / "migrations", url)
 
 
 if __name__ == "__main__":

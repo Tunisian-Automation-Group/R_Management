@@ -1,10 +1,21 @@
 import { useState, type FormEvent } from 'react'
 import { Navigate, useNavigate, useSearchParams } from 'react-router-dom'
-import { useCappy } from '../store.tsx'
+import * as auth from '../../data/auth.ts'
+import { AuthError, useSession } from '../../data/auth.ts'
+import { useToast } from '../store.tsx'
 import { Screen } from '../components/AppShell.tsx'
-import { Button, Field, Input, Segmented, Select } from '../components/ui.tsx'
+import { Button, Field, Input, Segmented } from '../components/ui.tsx'
 
-type Mode = 'in' | 'up'
+/** in: sign in · up: create · confirm: the emailed code · forgot / reset: a new password */
+type Mode = 'in' | 'up' | 'confirm' | 'forgot' | 'reset'
+
+const COPY: Record<Mode, { title: string; sub: string; submit: string }> = {
+  in: { title: 'Welcome back', sub: 'Sign in to book, to list, and to see what is waiting on you.', submit: 'Sign in' },
+  up: { title: 'Join Cappy', sub: 'One account to buy hours and to sell them. It takes a minute.', submit: 'Create account' },
+  confirm: { title: 'Check your email', sub: 'We sent you a six-digit code. It proves the address is yours.', submit: 'Confirm' },
+  forgot: { title: 'Forgot your password?', sub: 'We will email you a code to set a new one.', submit: 'Send code' },
+  reset: { title: 'Set a new password', sub: 'Enter the code from the email and your new password.', submit: 'Save password' },
+}
 
 /**
  * Sign in, or create an account. One screen, because the person arriving here
@@ -14,33 +25,69 @@ type Mode = 'in' | 'up'
 export function Login() {
   const nav = useNavigate()
   const [params] = useSearchParams()
-  const { state, auth } = useCappy()
+  const session = useSession()
+  const toast = useToast()
   const next = params.get('next') || '/'
 
   const [mode, setMode] = useState<Mode>(params.get('mode') === 'up' ? 'up' : 'in')
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
-  const [name, setName] = useState('')
-  const [kind, setKind] = useState<'person' | 'business'>('person')
-  const [district, setDistrict] = useState('')
+  const [code, setCode] = useState('')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
-  if (state.session) return <Navigate to={next} replace />
+  if (session) return <Navigate to={next} replace />
 
-  const districts = Object.keys(state.world.districts)
-  const where = district || state.search.district || districts[0] || ''
+  const go = (m: Mode) => {
+    setMode(m)
+    setError(null)
+    setCode('')
+  }
+
+  const run = async () => {
+    const who = email.trim().toLowerCase()
+    switch (mode) {
+      case 'in':
+        try {
+          await auth.signIn(who, password)
+          nav(next, { replace: true })
+        } catch (err) {
+          if (err instanceof AuthError && err.code === 'UserNotConfirmedException') {
+            await auth.resendCode(who)
+            go('confirm')
+            return
+          }
+          throw err
+        }
+        return
+      case 'up':
+        await auth.signUp(who, password)
+        go('confirm')
+        return
+      case 'confirm':
+        await auth.confirmSignUp(who, code.trim())
+        await auth.signIn(who, password)
+        nav(next, { replace: true })
+        return
+      case 'forgot':
+        await auth.forgotPassword(who)
+        go('reset')
+        return
+      case 'reset':
+        await auth.confirmForgotPassword(who, code.trim(), password)
+        await auth.signIn(who, password)
+        toast('Password changed')
+        nav(next, { replace: true })
+    }
+  }
 
   const submit = async (e: FormEvent) => {
     e.preventDefault()
     setError(null)
-    if (mode === 'up' && name.trim().length < 2) return setError('Tell people what to call you.')
-    if (password.length < 8) return setError('Use at least eight characters.')
+    if ((mode === 'up' || mode === 'reset') && password.length < 8) return setError('Use at least eight characters.')
     setBusy(true)
     try {
-      if (mode === 'in') await auth.signIn(email.trim(), password)
-      else await auth.register({ email: email.trim(), password, name: name.trim(), kind, district: where })
-      nav(next, { replace: true })
+      await run()
     } catch (err) {
       setError(err instanceof Error ? err.message : 'That did not work. Try again.')
     } finally {
@@ -48,45 +95,27 @@ export function Login() {
     }
   }
 
+  const needsPassword = mode === 'in' || mode === 'up' || mode === 'reset'
+  const needsCode = mode === 'confirm' || mode === 'reset'
+  const copy = COPY[mode]
+
   return (
-    <Screen
-      eyebrow="Your account"
-      title={mode === 'in' ? 'Welcome back' : 'Join Cappy'}
-      sub={
-        mode === 'in'
-          ? 'Sign in to book, to list, and to see what is waiting on you.'
-          : 'One account to buy hours and to sell them. It takes a minute.'
-      }
-      back="/"
-    >
-      <div className="mb-6">
-        <Segmented<Mode>
-          label="Sign in or create an account"
-          value={mode}
-          onChange={(m) => {
-            setMode(m)
-            setError(null)
-          }}
-          options={[
-            { value: 'in', label: 'Sign in' },
-            { value: 'up', label: 'Create account' },
-          ]}
-        />
-      </div>
+    <Screen eyebrow="Your account" title={copy.title} sub={copy.sub} back="/">
+      {(mode === 'in' || mode === 'up') && (
+        <div className="mb-6">
+          <Segmented<Mode>
+            label="Sign in or create an account"
+            value={mode}
+            onChange={go}
+            options={[
+              { value: 'in', label: 'Sign in' },
+              { value: 'up', label: 'Create account' },
+            ]}
+          />
+        </div>
+      )}
 
       <form onSubmit={submit} className="space-y-5" noValidate>
-        {mode === 'up' && (
-          <Field label="Your name" hint="Shown on your listings and reviews." htmlFor="f-name">
-            <Input
-              id="f-name"
-              autoComplete="name"
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              placeholder="Mara Lindqvist"
-            />
-          </Field>
-        )}
-
         <Field label="Email" htmlFor="f-email">
           <Input
             id="f-email"
@@ -95,48 +124,39 @@ export function Login() {
             autoComplete="email"
             autoCapitalize="none"
             value={email}
+            disabled={mode === 'confirm' || mode === 'reset'}
             onChange={(e) => setEmail(e.target.value)}
             placeholder="you@example.com"
           />
         </Field>
 
-        <Field
-          label="Password"
-          hint={mode === 'up' ? 'At least eight characters.' : undefined}
-          htmlFor="f-password"
-        >
-          <Input
-            id="f-password"
-            type="password"
-            autoComplete={mode === 'in' ? 'current-password' : 'new-password'}
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-          />
-        </Field>
+        {needsCode && (
+          <Field label="Code" htmlFor="f-code">
+            <Input
+              id="f-code"
+              inputMode="numeric"
+              autoComplete="one-time-code"
+              value={code}
+              onChange={(e) => setCode(e.target.value)}
+              placeholder="123456"
+            />
+          </Field>
+        )}
 
-        {mode === 'up' && (
-          <>
-            <Field label="You are">
-              <Segmented<'person' | 'business'>
-                label="Person or business"
-                value={kind}
-                onChange={setKind}
-                options={[
-                  { value: 'person', label: 'A person' },
-                  { value: 'business', label: 'A business' },
-                ]}
-              />
-            </Field>
-            <Field label="Where are you?" hint="Where your listings live and your searches start." htmlFor="f-where">
-              <Select id="f-where" value={where} onChange={(e) => setDistrict(e.target.value)}>
-                {districts.map((d) => (
-                  <option key={d} value={d}>
-                    {d}
-                  </option>
-                ))}
-              </Select>
-            </Field>
-          </>
+        {needsPassword && (
+          <Field
+            label={mode === 'reset' ? 'New password' : 'Password'}
+            hint={mode === 'in' ? undefined : 'At least eight characters, with a number, a capital and a symbol.'}
+            htmlFor="f-password"
+          >
+            <Input
+              id="f-password"
+              type="password"
+              autoComplete={mode === 'in' ? 'current-password' : 'new-password'}
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+            />
+          </Field>
         )}
 
         {error && (
@@ -145,26 +165,40 @@ export function Login() {
           </p>
         )}
 
-        <Button type="submit" block size="lg" disabled={busy || !email || !password}>
-          {busy ? 'One moment…' : mode === 'in' ? 'Sign in' : 'Create account'}
+        <Button
+          type="submit"
+          block
+          size="lg"
+          disabled={busy || !email || (needsPassword && !password) || (needsCode && !code)}
+        >
+          {busy ? 'One moment…' : copy.submit}
         </Button>
       </form>
 
       <p className="mt-6 text-center text-[13.5px] text-[var(--ink-3)]">
-        {mode === 'in' ? (
-          <>
-            New here?{' '}
-            <button type="button" className="font-semibold text-[var(--ink)] underline" onClick={() => setMode('up')}>
-              Create an account
-            </button>
-          </>
-        ) : (
-          <>
-            Already have one?{' '}
-            <button type="button" className="font-semibold text-[var(--ink)] underline" onClick={() => setMode('in')}>
-              Sign in
-            </button>
-          </>
+        {mode === 'in' && (
+          <button type="button" className="font-semibold text-[var(--ink)] underline" onClick={() => go('forgot')}>
+            Forgot your password?
+          </button>
+        )}
+        {mode === 'confirm' && (
+          <button
+            type="button"
+            className="font-semibold text-[var(--ink)] underline"
+            onClick={() =>
+              void auth
+                .resendCode(email.trim().toLowerCase())
+                .then(() => toast('A new code is on its way'))
+                .catch((err: unknown) => setError(err instanceof Error ? err.message : 'Could not send a code.'))
+            }
+          >
+            Send a new code
+          </button>
+        )}
+        {(mode === 'forgot' || mode === 'reset') && (
+          <button type="button" className="font-semibold text-[var(--ink)] underline" onClick={() => go('in')}>
+            Back to sign in
+          </button>
         )}
       </p>
     </Screen>

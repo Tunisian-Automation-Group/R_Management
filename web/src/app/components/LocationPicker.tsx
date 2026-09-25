@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import type { CityStat } from '../../domain/browse.ts'
+import type { City as CityStat } from '../../data/repo.ts'
 import { Icon } from './Icon.tsx'
 import { Sheet } from './ui.tsx'
 

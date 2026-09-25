@@ -3,7 +3,9 @@ import type { CategoryId, Iso, Slot } from '../../domain/types.ts'
 import { Plate } from './Cover.tsx'
 import { time } from '../format.ts'
 import { useNavigate } from 'react-router-dom'
-import { useCappy } from '../store.tsx'
+import { useSession } from '../../data/auth.ts'
+import { useSaveToggle, useSaved } from '../../data/repo.ts'
+import { useToast } from '../store.tsx'
 import { Icon } from './Icon.tsx'
 
 /**
@@ -21,7 +23,7 @@ import { Icon } from './Icon.tsx'
 export function Photo({
   src,
   alt,
-  slots,
+  slots = [],
   categoryId,
   aspect = 4 / 3,
   className = '',
@@ -32,7 +34,7 @@ export function Photo({
   src?: string
   alt: string
   /** Drawn when there is no photograph yet. */
-  slots: Slot[]
+  slots?: Slot[]
   categoryId: CategoryId
   aspect?: number
   className?: string
@@ -138,16 +140,28 @@ export function SaveButton({
   title: string
   className?: string
 }) {
-  const { state, send } = useCappy()
+  const session = useSession()
+  const saved = useSaved()
+  const flip = useSaveToggle()
+  const toast = useToast()
   const nav = useNavigate()
-  const on = state.saved.includes(id)
+  // While a tap is in flight, show what it asked for; then what the server holds.
+  const on =
+    flip.isPending && flip.variables.id === id
+      ? flip.variables.on
+      : Boolean(saved.data?.items.some((v) => v.listing.id === id))
   const toggle = () => {
-    if (!state.session) {
+    if (!session) {
       nav(`/login?next=${encodeURIComponent(location.pathname)}`)
       return
     }
-    send({ type: on ? 'LISTING_UNSAVED' : 'LISTING_SAVED', id })
-    send({ type: 'TOAST', message: on ? 'Removed from saved' : 'Saved. Find it under You' })
+    flip.mutate(
+      { id, on: !on },
+      {
+        onSuccess: () => toast(on ? 'Removed from saved' : 'Saved. Find it under You'),
+        onError: (err) => toast(err.message),
+      },
+    )
   }
   return (
     <span

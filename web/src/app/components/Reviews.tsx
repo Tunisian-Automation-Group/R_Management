@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import type { Review } from '../../domain/types.ts'
-import { summarise } from '../../domain/reviews.ts'
+import { summarise, type ReviewSummary } from '../../domain/reviews.ts'
 import { Avatar, Button } from './ui.tsx'
 import { Icon } from './Icon.tsx'
 import { ago } from '../format.ts'
@@ -32,13 +32,16 @@ export function StarRow({ value, size = 13 }: { value: number; size?: number }) 
  */
 export function Reviews({
   reviews,
+  summary,
   ownerFirstName,
 }: {
   reviews: Review[]
+  /** The server's summary over every review, when the list is only a page. */
+  summary?: ReviewSummary
   ownerFirstName: string
 }) {
   const [all, setAll] = useState(false)
-  const s = summarise(reviews)
+  const s = summary ?? summarise(reviews)
 
   if (s.count === 0) {
     return (

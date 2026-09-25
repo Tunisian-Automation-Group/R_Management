@@ -24,7 +24,7 @@ export function ListingCard({
   listing: Listing
   owner: Owner
   match: Match
-  slots: Slot[]
+  slots?: Slot[]
   onOpen: () => void
   rank?: number
 }) {

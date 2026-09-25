@@ -1,7 +1,6 @@
 import type { KeyboardEvent } from "react";
 import type { District } from "../../domain/types.ts";
-import type { CityStat } from "../../domain/browse.ts";
-import { formatEur } from "../../domain/money.ts";
+import type { City as CityStat } from "../../data/repo.ts";
 
 export type MapPin = {
   id: string;
@@ -543,8 +542,7 @@ export function CapacityMap({
       </div>
       {level === "europe" && (
         <p className="t-sm mt-3 px-1 text-[var(--ink-4)]">
-          Each market is drawn by its idle hours this week; the figure is what
-          they are worth.
+          Each market is drawn by how much is listed there.
         </p>
       )}
     </div>
@@ -834,15 +832,14 @@ function EuropeView({
       };
     });
 
-  // Area is hours, so Berlin's volume shows; the label is money, so a small
-  // machining valley with a big number is not lost next to it.
-  const peak = Math.max(1, ...cityStats.map((c) => c.idle.hours));
+  // Area is how much is listed there, so the big markets read as big.
+  const peak = Math.max(1, ...cityStats.map((c) => c.listings));
   const radiusFor = (hours: number) => 5 + Math.sqrt(hours / peak) * 15;
   // Labels keep clear of every bubble and of each other; busiest cities label first.
   const sized = cityStats.map((c) => ({
     c,
     at: project(c.lat, c.lng),
-    r: radiusFor(c.idle.hours),
+    r: radiusFor(c.listings),
   }));
   const taken: Rect[] = sized.map(({ at, r }) => ({
     x: at.x - r,
@@ -851,7 +848,7 @@ function EuropeView({
     h: 2 * r,
   }));
   const bubbles = sized.map(({ c, at, r }) => {
-    const money = formatEur(Math.round(c.idle.value / 100) * 100);
+    const money = `${c.listings} listed`;
     const w = Math.max(c.city.length * 6, money.length * 5.4);
     const label = placeLabel(at, r, w, 22, taken);
     if (label) taken.push(label);
@@ -935,7 +932,7 @@ function EuropeView({
             key={c.city}
             role="button"
             tabIndex={0}
-            aria-label={`${c.city}: ${Math.round(c.idle.hours)} idle hours worth ${money} this week, ${c.idle.freeNowCount} free now`}
+            aria-label={`${c.city}: ${c.listings} ${c.listings === 1 ? 'listing' : 'listings'}`}
             onClick={() => onPick(c.city)}
             onKeyDown={keyOpen(() => onPick(c.city))}
             className="group cursor-pointer outline-none"

@@ -51,7 +51,7 @@ services:
     environment:
       LOCALSTACK_AUTH_TOKEN: ${LOCALSTACK_AUTH_TOKEN:?put LOCALSTACK_AUTH_TOKEN in .env (see .env.example)}
       SERVICES: s3,sns,sqs,ses
-      SQS_ENDPOINT_STRATEGY: path
+      SQS_ENDPOINT_STRATEGY: "off" # the classic <host>/<account>/<queue> URLs, which boto3 and Terraform both accept
     ports: ["127.0.0.1:4566:4566"]
 
   cognito:

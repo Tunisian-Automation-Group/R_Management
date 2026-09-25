@@ -117,7 +117,8 @@ class S3Store(MediaStore):
         self._s3 = boto3.client("s3", **kwargs)
 
     def _key(self, name: str) -> str:
-        return f"listings/{name}"
+        # The same path CloudFront serves it at: /media/<name> -> s3://bucket/media/<name>.
+        return f"media/{name}"
 
     async def put(self, name: str, data: bytes) -> None:
         await asyncio.to_thread(

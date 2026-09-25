@@ -1,21 +1,24 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import type { Booking, BookingStatus, Slot } from '../../domain/types.ts'
+import type { Booking, BookingStatus } from '../../domain/types.ts'
 import { formatEur } from '../../domain/money.ts'
-import { useCappy, useLookups, useMe } from '../store.tsx'
+import { useBookings } from '../../data/repo.ts'
+import { useAuthReady, useSession } from '../../data/auth.ts'
 import { SignedOut } from '../components/SignedOut.tsx'
 import { Screen } from '../components/AppShell.tsx'
 import { Photo } from '../components/Photo.tsx'
 import { Button, EmptyState, Pill, Segmented, Skeleton } from '../components/ui.tsx'
 import { range } from '../format.ts'
 
-const LIVE: BookingStatus[] = ['requested', 'accepted', 'active']
+const LIVE: BookingStatus[] = ['awaiting_payment', 'requested', 'accepted', 'active']
 
 const statusPill = (
   status: BookingStatus,
   rated: boolean,
 ): { label: string; tone: 'neutral' | 'accent' | 'success' | 'warn' | 'danger' } => {
   switch (status) {
+    case 'awaiting_payment':
+      return { label: 'Authorising payment', tone: 'warn' }
     case 'requested':
       return { label: 'Waiting for reply', tone: 'warn' }
     case 'accepted':
@@ -28,17 +31,21 @@ const statusPill = (
       return { label: 'Declined', tone: 'danger' }
     case 'cancelled':
       return { label: 'Cancelled', tone: 'neutral' }
+    case 'expired':
+      return { label: 'Expired', tone: 'neutral' }
+    case 'payment_failed':
+      return { label: 'Payment failed', tone: 'danger' }
   }
 }
 
 export function Bookings() {
   const nav = useNavigate()
-  const { state } = useCappy()
-  const ME = useMe()
-  const { listing, owner, slotsFor } = useLookups()
+  const session = useSession()
+  const authReady = useAuthReady()
+  const bookings = useBookings('requester')
   const [tab, setTab] = useState<'live' | 'past'>('live')
 
-  if (!state.ready) {
+  if (!authReady || (session && bookings.isPending)) {
     return (
       <Screen title="Bookings">
         <div className="space-y-3 pt-2">
@@ -50,7 +57,7 @@ export function Bookings() {
     )
   }
 
-  if (!state.session) {
+  if (!session) {
     return (
       <Screen title="Bookings" sub="Capacity you have taken from other people.">
         <SignedOut what="see your bookings" next="/bookings" />
@@ -59,7 +66,7 @@ export function Bookings() {
   }
 
   // Things you booked from other people. What you host lives under Earn.
-  const mine = state.bookings.filter((b) => b.match.ownerId !== ME)
+  const mine = bookings.data?.items ?? []
   const live = mine.filter((b) => LIVE.includes(b.status))
   const past = mine.filter((b) => !LIVE.includes(b.status))
   const shown = tab === 'live' ? live : past
@@ -105,14 +112,7 @@ export function Bookings() {
         <ul className="ruled border-t border-[var(--line)]">
           {shown.map((b) => (
             <li key={b.id}>
-              <BookingRow
-                booking={b}
-                title={listing(b.match.listingId)?.title ?? 'Listing removed'}
-                photo={listing(b.match.listingId)?.photos?.[0]}
-                ownerName={owner(b.match.ownerId)?.name ?? 'Unknown'}
-                slots={slotsFor(b.match.listingId)}
-                onOpen={() => nav(`/bookings/${b.id}`)}
-              />
+              <BookingRow booking={b} onOpen={() => nav(`/bookings/${b.id}`)} />
             </li>
           ))}
         </ul>
@@ -121,23 +121,13 @@ export function Bookings() {
   )
 }
 
-function BookingRow({
-  booking,
-  title,
-  photo,
-  ownerName,
-  slots,
-  onOpen,
-}: {
-  booking: Booking
-  title: string
-  photo?: string
-  ownerName: string
-  slots: Slot[]
-  onOpen: () => void
-}) {
+function BookingRow({ booking, onOpen }: { booking: Booking; onOpen: () => void }) {
   const pill = statusPill(booking.status, Boolean(booking.outcome))
-  const dim = booking.status === 'declined' || booking.status === 'cancelled'
+  const dim = !LIVE.includes(booking.status) && booking.status !== 'completed'
+  // What it looked like when it was booked, even if the listing has changed since.
+  const title = booking.listing?.title ?? 'Listing removed'
+  const photo = booking.listing?.photo
+  const ownerName = booking.listing?.ownerName ?? ''
 
   return (
     <button
@@ -149,7 +139,6 @@ function BookingRow({
       <Photo
         src={photo}
         alt={title}
-        slots={slots}
         categoryId={booking.requirement.category}
         aspect={1}
         className={`w-[58px] shrink-0 rounded-[var(--radius-plate)] ${dim ? 'opacity-40 grayscale' : ''}`}

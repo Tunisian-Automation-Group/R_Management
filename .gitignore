@@ -18,3 +18,7 @@ terraform.tfstate*
 
 # What the local bootstrap writes (pool ids, generated per machine)
 .local/
+
+# Terraform local state from the LocalStack proof
+infra/localstack/terraform.tfstate*
+infra/**/.terraform.lock.hcl.bak

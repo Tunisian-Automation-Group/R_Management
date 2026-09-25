@@ -1,9 +1,11 @@
 import { useRef, useState } from 'react'
 import { Navigate, useNavigate } from 'react-router-dom'
-import type { CategoryId, Listing, Material, Slot } from '../../domain/types.ts'
+import type { CategoryId, Material, Slot } from '../../domain/types.ts'
 import { CATEGORIES, category } from '../../domain/categories.ts'
 import { formatEur } from '../../domain/money.ts'
-import { useCappy, useMe } from '../store.tsx'
+import { messageOf, useCappy, useToast } from '../store.tsx'
+import { useSession } from '../../data/auth.ts'
+import { useQueryClient } from '@tanstack/react-query'
 import * as repo from '../../data/repo.ts'
 import { MAX_PHOTOS, shrink } from '../photos.ts'
 import { Screen } from '../components/AppShell.tsx'
@@ -128,8 +130,12 @@ type PhotoDraft = { key: string; preview: string; url?: string; error?: string }
 
 export function AddListing() {
   const nav = useNavigate()
-  const { state, send } = useCappy()
-  const ME = useMe()
+  const { state } = useCappy()
+  const session = useSession()
+  const toast = useToast()
+  const qc = useQueryClient()
+  const districts = repo.useDistricts()
+  const [saving, setSaving] = useState(false)
 
   const [categoryId, setCategoryId] = useState<CategoryId | null>(null)
   const [title, setTitle] = useState('')
@@ -153,7 +159,7 @@ export function AddListing() {
   const [errors, setErrors] = useState<Errors>({})
   const [touched, setTouched] = useState<Record<string, boolean>>({})
 
-  if (state.ready && !state.session) return <Navigate to="/login?next=%2Fearn%2Fnew" replace />
+  if (!session) return <Navigate to="/login?next=%2Fearn%2Fnew" replace />
 
   const meta = categoryId ? category(categoryId) : null
   const isBatch = meta?.mode === 'batch'
@@ -223,8 +229,8 @@ export function AddListing() {
       return pick ? [pick, ...prev.filter((d) => d.key !== key)] : prev
     })
 
-  const buildSlots = (listingId: string): Slot[] => {
-    const out: Slot[] = []
+  const buildSlots = (): Omit<Slot, 'id' | 'listingId'>[] => {
+    const out: Omit<Slot, 'id' | 'listingId'>[] = []
 
     if (availability === 'custom') {
       // One idle window per day in the range, at the hours they gave. A day
@@ -243,8 +249,6 @@ export function AddListing() {
         const first = Math.max(opens, now)
         if (closes - first < 30 * 60_000) continue
         out.push({
-          id: `${listingId}_w${d}`,
-          listingId,
           start: new Date(first).toISOString(),
           end: new Date(closes).toISOString(),
           // Floored to the quarter hour: usable hours may never exceed the
@@ -263,9 +267,9 @@ export function AddListing() {
       if (!preset.days.includes(d % 7)) continue
       const from = new Date(base.getTime() + d * 86_400_000 + preset.from * 3_600_000)
       const to = new Date(base.getTime() + d * 86_400_000 + preset.to * 3_600_000)
+      // Today's window may already be over; the catalog only takes future ones.
+      if (to.getTime() <= Date.now()) continue
       out.push({
-        id: `${listingId}_w${d}`,
-        listingId,
         start: from.toISOString(),
         end: to.toISOString(),
         hoursUsable: preset.to - preset.from,
@@ -274,7 +278,7 @@ export function AddListing() {
     return out
   }
 
-  const submit = () => {
+  const submit = async () => {
     const e = validate()
     setErrors(e)
     setTouched({
@@ -291,10 +295,7 @@ export function AddListing() {
       return
     }
 
-    const id = `own_${Date.now().toString(36)}`
     const shared = {
-      id,
-      ownerId: ME,
       category: categoryId,
       title: title.trim(),
       blurb: blurb.trim(),
@@ -305,7 +306,8 @@ export function AddListing() {
       ...(photos.some((p) => p.url) ? { photos: photos.flatMap((p) => (p.url ? [p.url] : [])) } : {}),
     }
 
-    const listing: Listing = isBatch
+    // Ids and the owner come from the server and the caller's token.
+    const listing: repo.ListingDraft = isBatch
       ? {
           ...shared,
           mode: 'batch',
@@ -328,9 +330,17 @@ export function AddListing() {
           extraLabel: extraFee > 0 ? extraLabel.trim() || 'Consumables' : 'No extras',
         }
 
-    send({ type: 'LISTING_ADDED', listing, slots: buildSlots(id) })
-    send({ type: 'TOAST', message: `${listing.title} is live` })
-    nav('/earn', { replace: true })
+    setSaving(true)
+    try {
+      await repo.addListing(listing, buildSlots())
+      await qc.invalidateQueries({ queryKey: ['myListings'] })
+      toast(`${listing.title} is live`)
+      nav('/earn', { replace: true })
+    } catch (err) {
+      toast(messageOf(err))
+    } finally {
+      setSaving(false)
+    }
   }
 
   /* --------------------------------------------- step 1: pick a category */
@@ -384,7 +394,7 @@ export function AddListing() {
       title={`List your ${meta!.label.toLowerCase()}`}
       sub="Four minutes now, and the idle hours start paying."
       footer={
-        <Button block size="lg" onClick={submit}>
+        <Button block size="lg" disabled={saving} onClick={() => void submit()}>
           Publish listing
         </Button>
       }
@@ -557,7 +567,7 @@ export function AddListing() {
 
         <Field label="Where is it?" htmlFor="f-district">
           <Select id="f-district" value={district} onChange={(e) => setDistrict(e.target.value)}>
-            {Object.keys(state.world.districts).map((d) => (
+            {Object.keys(districts.data ?? {}).sort().map((d) => (
               <option key={d} value={d}>
                 {d}
               </option>
@@ -774,8 +784,8 @@ export function AddListing() {
 
         <Banner
           tone="warn"
-          title="You settle payment directly"
-          body="Cappy does not hold money yet. Agree cash or transfer with the person when you hand it over."
+          title="Paid through Cappy"
+          body="Buyers pay by card when you accept. Your share goes to your bank once the booking is done; set up payouts under Earn."
         />
       </div>
     </Screen>

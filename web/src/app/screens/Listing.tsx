@@ -1,18 +1,30 @@
 import { useMemo, useState, useEffect } from 'react'
 import { Navigate, useNavigate, useParams, useSearchParams } from 'react-router-dom'
-import type { Booking, Requirement } from '../../domain/types.ts'
+import { useQueryClient } from '@tanstack/react-query'
+import type { Offer, Requirement } from '../../domain/types.ts'
 import { isWindow, rating } from '../../domain/types.ts'
 import { category, durationLabel } from '../../domain/categories.ts'
-import { offersFor, type Offer } from '../../domain/availability.ts'
-import { distanceKm, matchForOffer, trackRecord } from '../../domain/match.ts'
-import { hoursFor, quoteFor, PLATFORM_FEE_BPS } from '../../domain/pricing.ts'
+import { distanceKm, trackRecord } from '../../domain/match.ts'
+import { PLATFORM_FEE_BPS } from '../../domain/pricing.ts'
 import { formatEur, formatEurExact } from '../../domain/money.ts'
-import { useCappy, useLookups, useMe } from '../store.tsx'
+import {
+  ApiError,
+  requestBooking,
+  useDistricts,
+  useListing,
+  useOffers,
+  usePaymentsConfig,
+  useQuote,
+  useReviews,
+  type BookingCreated,
+} from '../../data/repo.ts'
+import { messageOf, useCappy, useMe, useToast } from '../store.tsx'
 import { Screen, SectionHead } from '../components/AppShell.tsx'
 import { CapacityBar } from '../components/CapacityBar.tsx'
 import { Plate, WhenBadge } from '../components/Cover.tsx'
 import { Photo, SaveButton } from '../components/Photo.tsx'
 import { Reviews } from '../components/Reviews.tsx'
+import { PayStep } from '../components/PayStep.tsx'
 import { Icon } from '../components/Icon.tsx'
 import {
   Avatar,
@@ -33,35 +45,42 @@ export function Listing() {
   const { id } = useParams()
   const [params] = useSearchParams()
   const nav = useNavigate()
-  const { state, send } = useCappy()
+  const qc = useQueryClient()
+  const { state } = useCappy()
+  const toast = useToast()
   const ME = useMe()
-  const { listing: findListing, owner: findOwner, slotsFor, reviewsFor } = useLookups()
+  const detail = useListing(id)
+  const districts = useDistricts()
+  const reviews = useReviews(id)
+  const payments = usePaymentsConfig()
 
-  const listing = id ? findListing(id) : undefined
-  const owner = listing ? findOwner(listing.ownerId) : undefined
+  const listing = detail.data?.listing
+  const owner = detail.data?.owner
 
-  const [hours, setHours] = useState(() =>
-    listing && isWindow(listing) ? Math.max(listing.minHours, state.search.hours) : 0,
-  )
+  const [hours, setHours] = useState(0)
   const [quantity, setQuantity] = useState(state.search.quantity)
-  // On a deep link the world arrives after the first render, so the initial
-  // value above saw no listing. Adopt a sensible duration once it is there.
+  // The listing arrives after the first render. Adopt a sensible duration once it is there.
   useEffect(() => {
     if (listing && isWindow(listing) && hours === 0) {
-      setHours(Math.max(listing.minHours, state.search.hours))
+      setHours(Math.min(listing.maxHours, Math.max(listing.minHours, state.search.hours)))
     }
   }, [listing, hours, state.search.hours])
   const [picked, setPicked] = useState<Offer | null>(null)
   const [dayPick, setDayPick] = useState<string | null>(null)
   const [confirming, setConfirming] = useState(false)
+  const [sending, setSending] = useState(false)
+  // One key per attempt: a retried tap is the same booking, a new attempt is a new one.
+  const [attempt, setAttempt] = useState(() => crypto.randomUUID())
+  const [paying, setPaying] = useState<BookingCreated | null>(null)
 
-  const now = useMemo(() => new Date(), [])
-  const slots = listing ? slotsFor(listing.id) : []
+  // To the minute, so the quote's query key does not change every render.
+  const now = useMemo(() => new Date(Math.floor(Date.now() / 60_000) * 60_000), [])
+  const slots = detail.data?.slots ?? []
 
-  // Distances and offers are measured from wherever this person searches from.
+  // Distances are measured from wherever this person searches from.
   const origin = state.search.district
   const requirement: Requirement | null = useMemo(() => {
-    if (!listing) return null
+    if (!listing || (isWindow(listing) && hours === 0)) return null
     const until = new Date(now.getTime() + 28 * 86_400_000).toISOString()
     return isWindow(listing)
       ? {
@@ -83,40 +102,32 @@ export function Listing() {
         }
   }, [listing, hours, quantity, now, origin])
 
-  const needed = listing && requirement ? hoursFor(requirement, listing) : null
-
-  const offers = useMemo(() => {
-    if (!listing || needed === null) return []
-    return offersFor(
-      slots,
-      needed,
-      now.toISOString(),
-      new Date(now.getTime() + 28 * 86_400_000).toISOString(),
-      60,
-    )
-  }, [slots, needed, now, listing])
+  // The server prices it and says how many hours it takes; offers are the starts
+  // that fit that many hours around what is already booked.
+  const quoted = useQuote(listing?.id, requirement)
+  const quote = quoted.data?.quote ?? null
+  const needed = quote?.hours ?? null
+  const offersQ = useOffers(listing?.id, needed)
+  const offers = needed === null ? [] : (offersQ.data ?? [])
 
   // Pre-select whatever brought them here: the slot from the results list, else
   // the soonest. Nobody should land on this screen with nothing chosen.
   const selected = useMemo(() => {
-    if (picked) return picked
+    if (picked && offers.some((o) => o.start === picked.start)) return picked
     const fromResults = params.get('slot')
     return offers.find((o) => o.slotId === fromResults) ?? offers[0] ?? null
   }, [picked, offers, params])
 
-  // A listing is only missing once the store has loaded. Before that the lookup
-  // is empty for every id, including real ones.
-  if (!state.ready) return <Screen back="/">{null}</Screen>
-  if (!listing || !owner) return <Navigate to="/" replace />
+  if (detail.isPending) return <Screen back="/">{null}</Screen>
+  if (!detail.data || !listing || !owner) return <Navigate to="/" replace />
+  const info = detail.data
 
   const meta = category(listing.category)
-  const quote = requirement ? quoteFor(requirement, listing) : null
-  const km = distanceKm(
-    state.world.districts[origin],
-    state.world.districts[listing.district],
-  )
+  const from = districts.data?.[origin]
+  const km = from ? distanceKm(from, info.district) : null
   const stars = rating(owner)
   const mine = owner.id === ME
+  const first = owner.name.split(' ')[0]
 
   const byDay = offers.reduce<Record<string, Offer[]>>((acc, o) => {
     const k = day(o.start)
@@ -133,21 +144,32 @@ export function Listing() {
     setConfirming(true)
   }
 
-  const book = () => {
-    if (!requirement || !selected) return
-    const match = matchForOffer(requirement, listing, owner, selected, km)
-    if (!match) return
-    const booking: Booking = {
-      id: `bk_${Date.now().toString(36)}`,
-      match,
-      requirement,
-      status: 'requested',
-      createdAt: new Date().toISOString(),
-    }
-    send({ type: 'BOOKING_REQUESTED', booking })
-    send({ type: 'TOAST', message: `Request sent to ${owner.name.split(' ')[0]}` })
+  const sent = (bookingId: string) => {
+    toast(`Request sent to ${first}`)
+    void qc.invalidateQueries({ queryKey: ['bookings'] })
     setConfirming(false)
-    nav(`/bookings/${booking.id}`, { replace: true })
+    nav(`/bookings/${bookingId}`, { replace: true })
+  }
+
+  const book = async () => {
+    if (!requirement || !selected) return
+    setSending(true)
+    try {
+      const made = await requestBooking(
+        { requirement, listingId: listing.id, slotId: selected.slotId, start: selected.start, end: selected.end },
+        attempt,
+      )
+      // With Stripe, the card is authorised here before the owner is asked.
+      if (made.payment && payments.data?.provider === 'stripe') setPaying(made)
+      else sent(made.booking.id)
+    } catch (err) {
+      toast(messageOf(err))
+      // Taken by someone else a moment ago: show what is still free.
+      if (err instanceof ApiError && err.status === 409) void offersQ.refetch()
+      setAttempt(crypto.randomUUID())
+    } finally {
+      setSending(false)
+    }
   }
 
   return (
@@ -212,7 +234,7 @@ export function Listing() {
             {/* The worry in front of any red button is "am I paying now". Nothing
                 is charged here, so the box says so, and says who answers and when. */}
             <p className="t-sm mt-3 hidden text-center text-[var(--ink-4)] md:block">
-              Nothing is charged here. {owner.name.split(' ')[0]} confirms first ·{' '}
+              Your card is only held. Nothing is charged until {first} accepts ·{' '}
               {responseTime(owner.responseMins).replace('Replies', 'replies')}
             </p>
           </div>
@@ -226,7 +248,7 @@ export function Listing() {
         <div className="mt-4 flex flex-wrap items-center gap-x-4 gap-y-2 text-[14px] text-[var(--ink-3)]">
           <span className="tnum inline-flex items-center gap-1.5">
             <Icon name="pin" size={15} className="text-[var(--ink-4)]" />
-            {listing.district} · {distance(km)}
+            {listing.district}{km !== null ? ` · ${distance(km)}` : ''}
           </span>
           <span className="tnum">{formatEur(listing.ratePerHour)} / hour</span>
           {/* The stars are the summary; the reviews are the evidence. One tap apart. */}
@@ -406,8 +428,8 @@ export function Listing() {
             <p className="t-sm mt-3 border-t border-[var(--line)] pt-3 text-[var(--ink-4)]">
               Includes the {PLATFORM_FEE_BPS / 100}% Cappy fee of{' '}
               {formatEurExact(quote.platformFee)}. {owner.name.split(' ')[0]} receives{' '}
-              {formatEurExact(quote.ownerNet)}. You settle directly. Cappy does not take card
-              details yet.
+              {formatEurExact(quote.ownerNet)}. Paid by card when {first} accepts; if they
+              decline, the hold is released.
             </p>
           </Card>
         </>
@@ -417,7 +439,7 @@ export function Listing() {
       {/* ---------------------------------------------------------- reviews */}
       <section id="reviews">
         <SectionHead title="What people say" className="mt-7" />
-        <Reviews reviews={reviewsFor(listing.id)} ownerFirstName={owner.name.split(' ')[0]} />
+        <Reviews reviews={reviews.data?.items ?? []} summary={info.reviews} ownerFirstName={first} />
       </section>
 
       <SectionHead title="House rules" className="mt-7" />
@@ -440,19 +462,28 @@ export function Listing() {
       <Sheet
         open={confirming}
         onClose={() => setConfirming(false)}
-        title="Confirm request"
+        title={paying ? 'Pay to send your request' : 'Confirm request'}
         footer={
-          <div className="space-y-2">
-            <Button block size="lg" onClick={book}>
-              Send request to {owner.name.split(' ')[0]}
-            </Button>
-            <Button block variant="quiet" onClick={() => setConfirming(false)}>
-              Not yet
-            </Button>
-          </div>
+          paying ? undefined : (
+            <div className="space-y-2">
+              <Button block size="lg" disabled={sending} onClick={() => void book()}>
+                {sending ? 'Sending…' : `Send request to ${first}`}
+              </Button>
+              <Button block variant="quiet" onClick={() => setConfirming(false)}>
+                Not yet
+              </Button>
+            </div>
+          )
         }
       >
-        {selected && quote && (
+        {paying?.payment && payments.data?.publishableKey ? (
+          <PayStep
+            publishableKey={payments.data.publishableKey}
+            clientSecret={paying.payment.clientSecret}
+            bookingId={paying.booking.id}
+            onPaid={() => sent(paying.booking.id)}
+          />
+        ) : selected && quote && (
           <div className="space-y-4 pb-2">
             <div className="flex items-center gap-3.5">
               <Plate
@@ -478,7 +509,7 @@ export function Listing() {
                     : `${quantity} ${meta.unitNoun}`
                 }
               />
-              <Row label="Where" value={`${listing.district} · ${distance(km)}`} />
+              <Row label="Where" value={`${listing.district}${km !== null ? ` · ${distance(km)}` : ''}`} />
               <div className="my-2 border-t border-[var(--line)]" />
               <Row label="You pay" value={formatEurExact(quote.total)} strong />
               <Row
@@ -491,7 +522,7 @@ export function Listing() {
             <Banner
               tone="warn"
               title="Nothing is charged yet"
-              body={`${owner.name.split(' ')[0]} has to accept first, usually within ${owner.responseMins} minutes. You settle payment directly with them.`}
+              body={`Your card is held for the total. ${first} has to accept first, usually within ${owner.responseMins} minutes; if they decline or do not answer, the hold is released.`}
             />
           </div>
         )}

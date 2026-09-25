@@ -1,10 +1,13 @@
-import { useMemo, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
-import type { Booking } from '../../domain/types.ts'
+import { useState } from 'react'
+import { useNavigate, useSearchParams } from 'react-router-dom'
+import { useQueries, useQueryClient } from '@tanstack/react-query'
+import type { Booking, Owner, Slot } from '../../domain/types.ts'
 import { durationLabel } from '../../domain/categories.ts'
 import { idleHours } from '../../domain/availability.ts'
 import { formatEur } from '../../domain/money.ts'
-import { useCappy, useLookups, useMe } from '../store.tsx'
+import * as repo from '../../data/repo.ts'
+import { useAuthReady, useSession } from '../../data/auth.ts'
+import { messageOf, useToast } from '../store.tsx'
 import { SignedOut } from '../components/SignedOut.tsx'
 import { Screen, SectionHead } from '../components/AppShell.tsx'
 import { CapacityBar } from '../components/CapacityBar.tsx'
@@ -20,45 +23,90 @@ const DECLINE_REASONS = [
   'Too short notice for me',
 ]
 
+const WEEK = 7 * 86_400_000
+const thisWeek = (slots: Slot[]) => slots.filter((s) => Date.parse(s.start) < Date.now() + WEEK)
+
 export function Earn() {
   const nav = useNavigate()
-  const { state, send } = useCappy()
-  const ME = useMe()
-  const { owner, slotsFor, myListings, me } = useLookups()
+  const [params] = useSearchParams()
+  const qc = useQueryClient()
+  const toast = useToast()
+  const session = useSession()
+  const authReady = useAuthReady()
+  const me = repo.useMeQuery()
+  const listingsQ = repo.useMyListings()
+  const inboundQ = repo.useBookings('owner')
+  const connect = repo.useConnectStatus()
   const [declining, setDeclining] = useState<Booking | null>(null)
   const [reason, setReason] = useState(DECLINE_REASONS[0])
+  const [busy, setBusy] = useState(false)
 
-  const mine = state.ready ? myListings() : []
+  const mine = listingsQ.data?.items.map((v) => v.listing) ?? []
   const active = mine.filter((l) => l.active)
+  // Each listing's windows, for the idle-hours figures. ponytail: one request per
+  // listing; a /me/slots endpoint if owners start listing dozens of things.
+  const details = useQueries({
+    queries: mine.map((l) => ({ queryKey: ['listing', l.id], queryFn: () => repo.getListing(l.id) })),
+  })
+  const slotsById = new Map(details.flatMap((d) => (d.data ? [[d.data.listing.id, d.data.slots] as const] : [])))
+  const slotsFor = (id: string): Slot[] => slotsById.get(id) ?? []
 
-  const inbound = state.bookings.filter((b) => b.match.ownerId === ME)
+  const inbound = inboundQ.data?.items ?? []
   const requests = inbound.filter((b) => b.status === 'requested')
   const confirmed = inbound.filter((b) => ['accepted', 'active', 'completed'].includes(b.status))
+  // Who is asking: their public profile, for the name and initials.
+  const askers = useQueries({
+    queries: requests.map((b) => ({
+      queryKey: ['owner', b.requesterId],
+      queryFn: () => repo.getOwner(b.requesterId!),
+      enabled: Boolean(b.requesterId),
+    })),
+  })
+  const askerOf = (b: Booking): Owner | undefined => askers.find((q) => q.data?.id === b.requesterId)?.data
 
-  const { hoursIdle, unsold, sold } = useMemo(() => {
-    const soldHours = confirmed.reduce((n, b) => n + b.match.quote.hours, 0)
-    let total = 0
-    let money = 0
-    for (const l of active) {
-      // Only this week's windows. Nobody acts on "idle last year".
-      const week = slotsFor(l.id).filter(
-        (s) => Date.parse(s.start) < Date.now() + 7 * 86_400_000,
-      )
-      const h = idleHours(week)
-      total += h
-      money += h * l.ratePerHour
-    }
-    const remaining = Math.max(0, total - soldHours)
-    return {
-      hoursIdle: remaining,
-      unsold: total > 0 ? Math.round((remaining / total) * money) : 0,
-      sold: soldHours,
-    }
-  }, [active, confirmed, slotsFor])
-
+  const soldHours = confirmed.reduce((n, b) => n + b.match.quote.hours, 0)
+  let total = 0
+  let money = 0
+  for (const l of active) {
+    // Only this week's windows. Nobody acts on "idle last year".
+    const h = idleHours(thisWeek(slotsFor(l.id)))
+    total += h
+    money += h * l.ratePerHour
+  }
+  const hoursIdle = Math.max(0, total - soldHours)
+  const unsold = total > 0 ? Math.round((hoursIdle / total) * money) : 0
+  const sold = soldHours
   const earned = confirmed.reduce((n, b) => n + b.match.quote.ownerNet, 0)
 
-  if (!state.ready) {
+  const write = async (fn: () => Promise<unknown>, message: string) => {
+    setBusy(true)
+    try {
+      await fn()
+      toast(message)
+    } catch (err) {
+      toast(messageOf(err))
+    } finally {
+      setBusy(false)
+      await Promise.all(
+        [['bookings'], ['myListings'], ['listing']].map((queryKey) => qc.invalidateQueries({ queryKey })),
+      )
+    }
+  }
+
+  const payouts = async () => {
+    setBusy(true)
+    try {
+      // Stripe's own onboarding page; it sends them back to /earn.
+      location.href = (await repo.startPayouts()).url
+    } catch (err) {
+      toast(messageOf(err))
+      setBusy(false)
+    }
+  }
+
+  const you = me.data?.owner
+
+  if (!authReady || (session && (listingsQ.isPending || inboundQ.isPending))) {
     return (
       <Screen title="Earn">
         <Skeleton className="h-[16px] w-[46%]" />
@@ -69,7 +117,7 @@ export function Earn() {
     )
   }
 
-  if (!state.session) {
+  if (!session) {
     return (
       <Screen title="Earn" sub="Everything you own has hours you never use.">
         <SignedOut what="list something and answer requests" next="/earn" />
@@ -106,6 +154,23 @@ export function Earn() {
         </Button>
       }
     >
+      {connect.data && !connect.data.payoutsEnabled && (
+        <div className="mb-6">
+          <Banner
+            tone="warn"
+            title={
+              params.get('payments') === 'done' ? 'Stripe is checking your details' : 'Set up payouts to take bookings'
+            }
+            body="Buyers can only book you once Stripe knows where to send your money. It takes a few minutes, and Cappy never sees your bank details."
+            action={
+              <Button size="sm" disabled={busy} onClick={() => void payouts()}>
+                {connect.data.connected ? 'Continue setup' : 'Set up payouts'}
+              </Button>
+            }
+          />
+        </div>
+      )}
+
       {/* ------------------------------------------- the number that matters */}
       <section className="-mt-1">
         <p className="t-label">Still idle this week</p>
@@ -155,8 +220,7 @@ export function Earn() {
         ) : (
           <ul className="space-y-3">
             {requests.map((b) => {
-              const who = b.requesterId ? owner(b.requesterId) : undefined
-              const listing = state.world.listings.find((l) => l.id === b.match.listingId)
+              const who = askerOf(b)
               return (
                 <li key={b.id}>
                   <Card className="anim-rise p-5">
@@ -167,7 +231,7 @@ export function Earn() {
                           {who?.name ?? 'Someone nearby'}
                         </p>
                         <p className="t-sm text-[var(--ink-3)]">
-                          wants {listing?.title ?? 'your listing'} ·{' '}
+                          wants {b.listing?.title ?? 'your listing'} ·{' '}
                           {durationLabel(b.match.quote.hours)}
                         </p>
                       </div>
@@ -191,10 +255,10 @@ export function Earn() {
                     <div className="mt-4 flex gap-2">
                       <Button
                         className="flex-1 md:flex-none md:px-7"
-                        onClick={() => {
-                          send({ type: 'BOOKING_ACCEPTED', id: b.id })
-                          send({ type: 'TOAST', message: 'Accepted. They have the details now' })
-                        }}
+                        disabled={busy}
+                        onClick={() =>
+                          void write(() => repo.actOnBooking(b.id, 'accept'), 'Accepted. They have the details now')
+                        }
                       >
                         Accept
                       </Button>
@@ -221,9 +285,7 @@ export function Earn() {
         <SectionHead title="Your listings" aside={`${mine.length}`} className="mt-7" />
         <ul className="space-y-3">
           {mine.map((l) => {
-            const week = slotsFor(l.id).filter(
-              (s) => Date.parse(s.start) < Date.now() + 7 * 86_400_000,
-            )
+            const week = thisWeek(slotsFor(l.id))
             const h = idleHours(week)
             return (
               <li key={l.id}>
@@ -261,11 +323,12 @@ export function Earn() {
                       size="sm"
                       variant="secondary"
                       icon={l.active ? 'pause' : 'check'}
+                      disabled={busy}
                       onClick={() =>
-                        send({
-                          type: l.active ? 'LISTING_PAUSED' : 'LISTING_RESUMED',
-                          id: l.id,
-                        })
+                        void write(
+                          () => (l.active ? repo.pauseListing(l.id) : repo.resumeListing(l.id)),
+                          l.active ? `${l.title} paused` : `${l.title} is live again`,
+                        )
                       }
                     >
                       {l.active ? 'Pause' : 'Resume'}
@@ -273,10 +336,8 @@ export function Earn() {
                     <Button
                       size="sm"
                       variant="danger"
-                      onClick={() => {
-                        send({ type: 'LISTING_REMOVED', id: l.id })
-                        send({ type: 'TOAST', message: `${l.title} removed` })
-                      }}
+                      disabled={busy}
+                      onClick={() => void write(() => repo.removeListing(l.id), `${l.title} removed`)}
                     >
                       Remove
                     </Button>
@@ -289,24 +350,26 @@ export function Earn() {
       </section>
 
       {/* ----------------------------------------------------- your record */}
-      <section>
-        <SectionHead title="Your record as a host" className="mt-7" />
-        <Card className="p-5">
-          <div className="flex items-center gap-3.5">
-            <Avatar initials={me().initials} size={44} />
-            <div className="min-w-0 flex-1">
-              <p className="text-[15.5px] font-semibold">{me().name}</p>
-              <p className="t-sm tnum text-[var(--ink-3)]">
-                {me().jobsDone} booking{me().jobsDone === 1 ? '' : 's'} ·{' '}
-                {Math.round((me().onTimeJobs / Math.max(1, me().jobsDone)) * 100)}% on time
-              </p>
+      {you && (
+        <section>
+          <SectionHead title="Your record as a host" className="mt-7" />
+          <Card className="p-5">
+            <div className="flex items-center gap-3.5">
+              <Avatar initials={you.initials} size={44} />
+              <div className="min-w-0 flex-1">
+                <p className="text-[15.5px] font-semibold">{you.name}</p>
+                <p className="t-sm tnum text-[var(--ink-3)]">
+                  {you.jobsDone} booking{you.jobsDone === 1 ? '' : 's'} ·{' '}
+                  {Math.round((you.onTimeJobs / Math.max(1, you.jobsDone)) * 100)}% on time
+                </p>
+              </div>
+              <span className="tnum text-[19px] font-bold">
+                {you.jobsDone ? `${(you.ratingSum / you.jobsDone).toFixed(1)}★` : 'New'}
+              </span>
             </div>
-            <span className="tnum text-[19px] font-bold">
-              {(me().ratingSum / Math.max(1, me().jobsDone)).toFixed(1)}★
-            </span>
-          </div>
-        </Card>
-      </section>
+          </Card>
+        </section>
+      )}
 
       <Sheet
         open={Boolean(declining)}
@@ -317,11 +380,12 @@ export function Earn() {
             block
             size="lg"
             variant="danger"
+            disabled={busy}
             onClick={() => {
               if (!declining) return
-              send({ type: 'BOOKING_DECLINED', id: declining.id, reason })
-              send({ type: 'TOAST', message: 'Declined. They have been told' })
+              const id = declining.id
               setDeclining(null)
+              void write(() => repo.declineBooking(id, reason), 'Declined. They have been told')
             }}
           >
             Send decline
@@ -343,7 +407,7 @@ export function Earn() {
             <Banner
               tone="warn"
               title="The window goes back on the market"
-              body="Your listing stays live and the hours are offered to the next person searching."
+              body="Your listing stays live and the hours are offered to the next person searching. Their card hold is released."
             />
           </div>
         </div>

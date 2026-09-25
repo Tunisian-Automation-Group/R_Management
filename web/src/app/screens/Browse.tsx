@@ -1,24 +1,18 @@
 import { useMemo, useState, type ReactNode } from 'react'
 import { useNavigate } from 'react-router-dom'
-import type { Slot } from '../../domain/types.ts'
 import { rating } from '../../domain/types.ts'
 import { CATEGORIES, GROUPS, categoriesIn, category, durationLabel } from '../../domain/categories.ts'
-import { findMatches, sortMatches, type SortKey } from '../../domain/match.ts'
-import {
-  availableSoon,
-  cities,
-  searchListings,
-  type Spotlight,
-} from '../../domain/browse.ts'
+import type { SortKey } from '../../domain/match.ts'
 import { formatEur } from '../../domain/money.ts'
-import { buildRequirement, useCappy, useLookups, useMe } from '../store.tsx'
+import { useCities, useDistricts, useMatches, useSearch, useSpotlight, type Spotlight } from '../../data/repo.ts'
+import { buildRequirement, useCappy, useMe } from '../store.tsx'
 import { Screen, SectionHead } from '../components/AppShell.tsx'
 import { Icon, categoryIcon } from '../components/Icon.tsx'
 import { ListingCard } from '../components/ListingCard.tsx'
 import { Photo, SaveButton, WhenChip } from '../components/Photo.tsx'
 import { LocationPicker } from '../components/LocationPicker.tsx'
 import { CapacityMap, type MapLevel } from '../components/CapacityMap.tsx'
-import { Button, Chip, EmptyState, Sheet, Skeleton } from '../components/ui.tsx'
+import { Banner, Button, Chip, EmptyState, Sheet, Skeleton } from '../components/ui.tsx'
 import { distance, relative, when } from '../format.ts'
 
 // The default has to be one of these or the filter opens with nothing selected.
@@ -32,7 +26,6 @@ export function Browse() {
   const nav = useNavigate()
   const { state, send } = useCappy()
   const ME = useMe()
-  const { owner, slotsFor } = useLookups()
   const [filtersOpen, setFiltersOpen] = useState(false)
   const [showMap, setShowMap] = useState(false)
   const [sort, setSort] = useState<SortKey>('best')
@@ -40,59 +33,59 @@ export function Browse() {
   // Twenty-nine equal tiles is a wall, not a shortlist. Eight, then ask.
   const [allSpots, setAllSpots] = useState(false)
 
-  const { search, world, ready } = state
-  const now = useMemo(() => new Date(), [state.search, state.world])
+  const { search } = state
+  // To the minute, so the query key (and so the request) is stable between renders.
+  const now = useMemo(() => new Date(Math.floor(Date.now() / 60_000) * 60_000), [search])
+  const districtsQ = useDistricts()
+  const citiesQ = useCities()
+  const districts = districtsQ.data ?? {}
+  const cityStats = citiesQ.data ?? []
   // Where the user is. Switching city is one field on the search, so the hero,
   // the map and the results all move together.
   const home = search.district
-  const here = world.districts[home]
+  const here = districts[home]
   const pickCity = (metro: string) => {
-    const first = Object.values(world.districts).find((d) => d.metro === metro)
-    if (first) send({ type: 'SEARCH_CHANGED', patch: { district: first.name } })
+    const first = Object.values(districts).find((d) => d.metro === metro)
+    if (first) send({ type: 'SEARCH_CHANGED', patch: { district: first.name, districtChosen: true } })
   }
 
   const meta = search.categoryId ? category(search.categoryId) : null
-
-  const matches = useMemo(() => {
-    const req = buildRequirement(search, now)
-    if (!req) return null
-    // You cannot book your own machine, so it does not belong in your results.
-    const found = findMatches(req, world, now.toISOString()).filter((m) => m.ownerId !== ME)
-    return sortMatches(found, sort)
-  }, [search, world, now, sort])
+  const requirement = useMemo(() => buildRequirement(search, now), [search, now])
+  const matchesQ = useMatches(requirement, sort)
+  const matches = requirement ? (matchesQ.data ?? null) : null
 
   // What is free within reach in the next day, the rail and the map share it.
-  const spotlight = useMemo(
-    () =>
-      // Your own things are not capacity you can buy.
-      availableSoon(world, home, search.maxDistanceKm, now.toISOString(), 24, 99).filter(
-        (s) => s.owner.id !== ME,
-      ),
-    [world, home, search.maxDistanceKm, now],
-  )
+  // Your own things are not capacity you can buy.
+  const spotQ = useSpotlight(home, search.maxDistanceKm)
+  const spotlight = (spotQ.data ?? []).filter((s) => s.owner.id !== ME)
 
-  // Per-city totals, for the location picker and the Europe map.
-  const cityStats = useMemo(() => cities(world, now.toISOString()), [world, now])
+  // Scoped to the city you are standing in: "prusa" in Paris should not find Berlin.
+  const searchQ = useSearch(search.query, here?.metro)
+  const queryHits = search.query.trim()
+    ? (searchQ.data?.items ?? []).filter((v) => v.listing.active && v.listing.ownerId !== ME)
+    : []
 
-  const queryHits = useMemo(
-    () =>
-      search.query.trim()
-        ? searchListings(
-            world.listings.filter(
-              (l) =>
-                l.active &&
-                l.ownerId !== ME &&
-                // Scope to the city you are standing in. Searching "prusa" in
-                // Paris used to return a Berlin printer 1,000 km away.
-                world.districts[l.district]?.metro === here?.metro,
-            ),
-            search.query,
-          )
-        : [],
-    [world.listings, world.districts, search.query, here],
-  )
+  const failed = districtsQ.error ?? spotQ.error ?? matchesQ.error
+  if (failed && !here) {
+    return (
+      <Screen wide>
+        <div className="pt-8">
+          <Banner
+            tone="danger"
+            title="Cappy is not reachable right now"
+            body={failed.message}
+            action={
+              <Button size="sm" onClick={() => void Promise.all([districtsQ.refetch(), spotQ.refetch()])}>
+                Try again
+              </Button>
+            }
+          />
+        </div>
+      </Screen>
+    )
+  }
 
-  if (!ready || !here) return <BrowseSkeleton />
+  if (!here) return <BrowseSkeleton />
 
   return (
     <Screen wide>
@@ -165,8 +158,7 @@ export function Browse() {
                 aside={`${queryHits.length} ${queryHits.length === 1 ? 'match' : 'matches'}`}
               />
               <ul className="ruled">
-                {queryHits.map((l) => {
-                  const o = owner(l.ownerId)!
+                {queryHits.map(({ listing: l, owner: o }) => {
                   return (
                     <li key={l.id}>
                       <button
@@ -176,7 +168,6 @@ export function Browse() {
                         <Photo
                           src={l.photos?.[0]}
                           alt={l.title}
-                          slots={slotsFor(l.id)}
                           categoryId={l.category}
                           aspect={1}
                           className="w-[52px] shrink-0 rounded-[var(--radius-plate)]"
@@ -246,7 +237,6 @@ export function Browse() {
                     boxes gives a screen nothing to look at first. */}
                 <FeatureCard
                   spot={spotlight[0]}
-                  slots={slotsFor(spotlight[0].listing.id)}
                   onOpen={() => nav(`/listing/${spotlight[0].listing.id}`)}
                 />
                 {spotlight.length > 1 && (
@@ -255,7 +245,6 @@ export function Browse() {
                       <li key={s.listing.id} className="md:w-auto">
                         <SpotCard
                           spot={s}
-                          slots={slotsFor(s.listing.id)}
                           onOpen={() => nav(`/listing/${s.listing.id}`)}
                         />
                       </li>
@@ -412,7 +401,7 @@ export function Browse() {
                 <CapacityMap
                   level={mapLevel}
                   onLevel={setMapLevel}
-                  districts={world.districts}
+                  districts={districts}
                   home={home}
                   radiusKm={search.maxDistanceKm}
                   cityStats={cityStats}
@@ -428,13 +417,12 @@ export function Browse() {
               </div>
             ) : (
               <ul className="ruled border-t border-[var(--line)]">
-                {matches.map((m, i) => (
+                {matches.map(({ match: m, listing, owner }, i) => (
                   <li key={m.listingId}>
                     <ListingCard
-                      listing={state.world.listings.find((l) => l.id === m.listingId)!}
-                      owner={owner(m.ownerId)!}
+                      listing={listing}
+                      owner={owner}
                       match={m}
-                      slots={slotsFor(m.listingId)}
                       rank={sort === 'best' ? i : undefined}
                       onOpen={() => nav(`/listing/${m.listingId}?slot=${m.slotId}`)}
                     />
@@ -508,7 +496,7 @@ export function Browse() {
           </FilterGroup>
 
           {matches && matches.length > 0 && (
-            <p className="t-sm text-[var(--ink-4)]">Soonest right now is {when(matches[0].start)}.</p>
+            <p className="t-sm text-[var(--ink-4)]">Soonest right now is {when(matches[0].match.start)}.</p>
           )}
         </div>
       </Sheet>
@@ -532,15 +520,7 @@ function FilterGroup({ label, children }: { label: string; children: ReactNode }
  * The lead item. A tall plate at full width with the opening time set across
  * it, and the details below in a single line of small type.
  */
-function FeatureCard({
-  spot,
-  slots,
-  onOpen,
-}: {
-  spot: Spotlight
-  slots: Slot[]
-  onOpen: () => void
-}) {
+function FeatureCard({ spot, onOpen }: { spot: Spotlight; onOpen: () => void }) {
   return (
     <button
       onClick={onOpen}
@@ -550,7 +530,6 @@ function FeatureCard({
       <Photo
         src={spot.listing.photos?.[0]}
         alt={spot.listing.title}
-        slots={slots}
         categoryId={spot.listing.category}
         aspect={16 / 10}
         priority
@@ -584,15 +563,7 @@ function FeatureCard({
 }
 
 /** One thing that is free soon: what it is, when, and what it costs. */
-function SpotCard({
-  spot,
-  slots,
-  onOpen,
-}: {
-  spot: Spotlight
-  slots: Slot[]
-  onOpen: () => void
-}) {
+function SpotCard({ spot, onOpen }: { spot: Spotlight; onOpen: () => void }) {
   return (
     <button
       onClick={onOpen}
@@ -601,7 +572,6 @@ function SpotCard({
       <Photo
         src={spot.listing.photos?.[0]}
         alt={spot.listing.title}
-        slots={slots}
         categoryId={spot.listing.category}
         aspect={4 / 3}
         className="rounded-[var(--radius-plate)]"

@@ -1,0 +1,120 @@
+name: deploy
+
+# main -> staging automatically; prod by hand (and the prod GitHub
+# environment requires a reviewer). The same image sha goes to both.
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      env:
+        description: Environment
+        type: choice
+        options: [staging, prod]
+        default: staging
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: deploy-${{ inputs.env || 'staging' }}
+  cancel-in-progress: false
+
+env:
+  AWS_REGION: eu-central-1
+  ENV: ${{ inputs.env || 'staging' }}
+  TAG: ${{ github.sha }}
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment: ${{ inputs.env || 'staging' }}
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: aws-actions/configure-aws-credentials@v5
+        with:
+          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - uses: aws-actions/amazon-ecr-login@v2
+        id: ecr
+
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Build and push every service image (immutable tag = commit sha)
+        run: |
+          for s in gateway catalog matching booking payments notifications; do
+            repo="${{ steps.ecr.outputs.registry }}/cappy/$s"
+            if ! aws ecr describe-images --repository-name "cappy/$s" --image-ids imageTag="$TAG" >/dev/null 2>&1; then
+              docker buildx build --push --build-arg SERVICE=$s -t "$repo:$TAG" \
+                --cache-from type=gha,scope=$s --cache-to type=gha,mode=max,scope=$s backend
+            fi
+          done
+
+      - uses: hashicorp/setup-terraform@v3
+        with: { terraform_version: 1.12.2, terraform_wrapper: false }
+
+      - name: terraform init
+        working-directory: infra/envs/${{ env.ENV }}
+        run: terraform init -input=false
+
+      - name: Register the new migrate tasks
+        working-directory: infra/envs/${{ env.ENV }}
+        run: |
+          terraform apply -input=false -auto-approve -var image_tag=$TAG \
+            -var zone_id=${{ vars.ZONE_ID }} -var alarm_email=${{ vars.ALARM_EMAIL }} \
+            -target=module.platform.aws_ecs_task_definition.migrate
+
+      - name: Migrate every database, before any service rolls
+        working-directory: infra/envs/${{ env.ENV }}
+        run: |
+          out=$(terraform output -json platform)
+          cluster=$(echo "$out" | jq -r .cluster)
+          net=$(echo "$out" | jq -c '{awsvpcConfiguration:{subnets:.private_subnets,securityGroups:[.task_security_group],assignPublicIp:"DISABLED"}}')
+          arns=()
+          for td in $(echo "$out" | jq -r '.migrate_task_definitions[]'); do
+            arns+=($(aws ecs run-task --cluster "$cluster" --launch-type FARGATE --task-definition "$td" \
+              --network-configuration "$net" --query 'tasks[0].taskArn' --output text))
+          done
+          aws ecs wait tasks-stopped --cluster "$cluster" --tasks "${arns[@]}"
+          codes=$(aws ecs describe-tasks --cluster "$cluster" --tasks "${arns[@]}" --query 'tasks[].containers[0].exitCode' --output text)
+          echo "migrate exit codes: $codes"
+          for c in $codes; do [ "$c" = "0" ] || { echo "a migration failed; nothing was rolled out"; exit 1; }; done
+
+      - name: Roll out (ECS rolls back by itself if the new tasks do not get healthy)
+        working-directory: infra/envs/${{ env.ENV }}
+        run: |
+          terraform apply -input=false -auto-approve -var image_tag=$TAG \
+            -var zone_id=${{ vars.ZONE_ID }} -var alarm_email=${{ vars.ALARM_EMAIL }}
+          cluster=$(terraform output -json platform | jq -r .cluster)
+          aws ecs wait services-stable --cluster "$cluster" \
+            --services gateway catalog matching booking payments notifications
+
+      - uses: actions/setup-node@v5
+        with: { node-version: 22, cache: npm, cache-dependency-path: web/package-lock.json }
+
+      - name: Build and publish the web app
+        working-directory: infra/envs/${{ env.ENV }}
+        run: |
+          out=$(terraform output -json platform)
+          export $(echo "$out" | jq -r '.web_config | to_entries[] | "\(.key)=\(.value)"')
+          (cd ../../../web && npm ci && npm run build)
+          bucket=$(echo "$out" | jq -r .web_bucket)
+          # Hashed assets forever; the entry points never, or clients miss releases.
+          aws s3 sync ../../../web/dist "s3://$bucket" --delete --cache-control "public,max-age=31536000,immutable" \
+            --exclude index.html --exclude sw.js --exclude registerSW.js --exclude manifest.webmanifest
+          for f in index.html sw.js registerSW.js manifest.webmanifest; do
+            [ -f "../../../web/dist/$f" ] && aws s3 cp "../../../web/dist/$f" "s3://$bucket/$f" --cache-control "no-cache"
+          done
+          aws cloudfront create-invalidation --distribution-id "$(echo "$out" | jq -r .cloudfront_id)" \
+            --paths /index.html /sw.js /registerSW.js /manifest.webmanifest
+
+      - name: Smoke test the public address
+        run: |
+          url=$(cd infra/envs/$ENV && terraform output -json platform | jq -r .url)
+          curl -fsS "$url/" >/dev/null
+          test "$(curl -s -o /dev/null -w '%{http_code}' "$url/api/categories")" = 200
+          test "$(curl -s -o /dev/null -w '%{http_code}' "$url/api/internal/busy")" = 404
+          test "$(curl -s -o /dev/null -w '%{http_code}' "$url/api/bookings")" = 401

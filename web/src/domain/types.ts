@@ -219,12 +219,17 @@ export type Match = {
 }
 
 export type BookingStatus =
+  /** Made, and the card is being authorised. The owner does not see it yet. */
+  | 'awaiting_payment'
   | 'requested'
   | 'accepted'
   | 'declined'
   | 'active'
   | 'completed'
   | 'cancelled'
+  /** Nobody paid, or nobody answered, in time. Nothing was charged. */
+  | 'expired'
+  | 'payment_failed'
 
 export type Outcome = {
   onTime: boolean
@@ -267,15 +272,23 @@ export type Booking = {
   /** Set when the owner declines, so the buyer is told why rather than just refused. */
   declineReason?: string
   outcome?: Outcome
+  /** What the listing looked like when it was booked: enough to draw the card
+   *  even if the listing has since changed or gone. */
+  listing?: ListingSnapshot
+  /** While it waits for payment or for the owner: when it lapses. */
+  expiresAt?: Iso
 }
 
-export type World = {
-  owners: Owner[]
-  listings: Listing[]
-  slots: Slot[]
-  districts: Record<string, District>
-  reviews: Review[]
+export type ListingSnapshot = {
+  title: string
+  district: string
+  category: CategoryId
+  ownerName: string
+  photo?: string
 }
+
+/** A concrete bookable window: not the whole idle gap, the bit you would take. */
+export type Offer = { slotId: string; start: Iso; end: Iso }
 
 /** Null until they have been rated at all, "new" is not the same as "bad". */
 export const rating = (o: Owner): number | null =>
@@ -284,15 +297,6 @@ export const rating = (o: Owner): number | null =>
 /** Unrated owners sit mid-scale rather than at zero. */
 export const reliability = (o: Owner): number =>
   o.jobsDone > 0 ? o.onTimeJobs / o.jobsDone : 0.5
-
-/** Fold a finished booking into the owner's record. Pure, returns a new owner.
- *  This is the write half of the loop: outcomes change where people rank next time. */
-export const applyOutcome = (o: Owner, outcome: Outcome): Owner => ({
-  ...o,
-  ratingSum: o.ratingSum + outcome.quality,
-  jobsDone: o.jobsDone + 1,
-  onTimeJobs: o.onTimeJobs + (outcome.onTime ? 1 : 0),
-})
 
 export const isWindow = (l: Listing): l is WindowListing => l.mode === 'window'
 export const isBatch = (l: Listing): l is BatchListing => l.mode === 'batch'
