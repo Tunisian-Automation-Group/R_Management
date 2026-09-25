@@ -12,7 +12,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 
 from pydantic import TypeAdapter
-from sqlalchemy import Integer, and_, cast, delete, exists, func, insert, or_, select, update
+from sqlalchemy import Integer, and_, cast, delete, exists, func, insert, or_, select, true, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from cappy_common.errors import NotFound
@@ -143,6 +143,9 @@ class CityRow:
     lat: float
     lng: float
     listings: int
+
+
+NEAREST_DISTRICTS = 200
 
 
 class CatalogRepository:
@@ -468,33 +471,66 @@ class CatalogRepository:
         """
         dlat = max_km / KM_PER_DEG_LAT
         dlng = max_km / max(1e-6, 111.320 * math.cos(math.radians(origin.lat)))
-        open_window = exists().where(SlotRow.listing_id == ListingRow.id, SlotRow.end > start, SlotRow.start < until)
+        coslat = math.cos(math.radians(origin.lat))
+        # Squared degree distance is monotone in real distance at these scales:
+        # good enough to pick the nearest `cap`; the domain computes km exactly.
+        nearness = (DistrictRow.lat - origin.lat) * (DistrictRow.lat - origin.lat) + (
+            (DistrictRow.lng - origin.lng) * coslat
+        ) * ((DistrictRow.lng - origin.lng) * coslat)
+        # Districts nearest first (a small table), and for each only as many
+        # listings as are still needed: the scan stops once `cap` are found, so
+        # an EU-wide search costs what a local one does (resilience F10),
+        # instead of sorting every match in the box.
+        near = (
+            select(DistrictRow.name.label("district"), nearness.label("nearness"))
+            .where(
+                DistrictRow.lat.between(origin.lat - dlat, origin.lat + dlat),
+                DistrictRow.lng.between(origin.lng - dlng, origin.lng + dlng),
+            )
+            # The nearest districts are plenty to find `cap` listings; this bounds
+            # the work however wide the radius or however many districts exist.
+            .order_by(nearness)
+            .limit(NEAREST_DISTRICTS)
+            .subquery("near")
+        )
         conds = [
+            ListingRow.district == near.c.district,
             self._live(),
             ListingRow.active.is_(True),
-            DistrictRow.lat.between(origin.lat - dlat, origin.lat + dlat),
-            DistrictRow.lng.between(origin.lng - dlng, origin.lng + dlng),
-            open_window,
+            exists().where(SlotRow.listing_id == ListingRow.id, SlotRow.end > start, SlotRow.start < until),
             *self._bookable(),
         ]
         if category:
             conds.append(ListingRow.category == category)
         if exclude_owner:
             conds.append(ListingRow.owner_id != exclude_owner)
-        # Squared degree distance is monotone in real distance at these scales:
-        # good enough to pick the nearest `cap`; the domain computes km exactly.
-        coslat = math.cos(math.radians(origin.lat))
-        nearness = (DistrictRow.lat - origin.lat) * (DistrictRow.lat - origin.lat) + (
-            (DistrictRow.lng - origin.lng) * coslat
-        ) * ((DistrictRow.lng - origin.lng) * coslat)
+        if self.s.bind.dialect.name == "postgresql":
+            # No ORDER BY inside: any `cap` listings of one district are equally
+            # near, and without one the (category, district) index answers it.
+            per_district = select(ListingRow.id).where(*conds).limit(cap).lateral("pick")
+            ids_q = (
+                select(per_district.c.id)
+                .select_from(near.join(per_district, true()))
+                .order_by(near.c.nearness, per_district.c.id)
+                .limit(cap)
+            )
+        else:
+            # SQLite (tests) has no LATERAL; its data is small enough to sort.
+            ids_q = (
+                select(ListingRow.id)
+                .select_from(near)
+                .where(*conds)
+                .order_by(near.c.nearness, ListingRow.id)
+                .limit(cap)
+            )
+        ids = list((await self.s.execute(ids_q)).scalars())
+        order = {lid: i for i, lid in enumerate(ids)}
         q = (
             select(ListingRow, DistrictRow)
             .join(DistrictRow, DistrictRow.name == ListingRow.district)
-            .where(*conds)
-            .order_by(nearness, ListingRow.id)
-            .limit(cap)
+            .where(ListingRow.id.in_(ids))
         )
-        pairs = (await self.s.execute(q)).all()
+        pairs = sorted((await self.s.execute(q)).all(), key=lambda p: order[p[0].id])
         listings = [to_listing(l) for l, _ in pairs]
         districts = {origin.name: origin, **{d.name: to_district(d) for _, d in pairs}}
         owners = await self.owners({l.owner_id for l in listings})

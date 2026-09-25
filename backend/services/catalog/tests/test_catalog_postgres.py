@@ -104,3 +104,34 @@ def test_public_reads_run_read_only_on_the_reader(postgres_url):
         body = {"origin": "Kreuzberg", "maxKm": 50, "start": now_iso(), "until": now_iso()[:4] + "-12-31T00:00:00Z"}
         r = c.post("/internal/candidates", json=body, headers={"X-Internal-Token": "i" * 40})
         assert r.status_code == 200, r.text
+
+
+async def test_candidates_come_nearest_first_and_stop_at_the_cap(postgres_url):
+    from datetime import UTC, datetime, timedelta
+
+    await asyncio.to_thread(upgrade, MIGRATIONS, postgres_url)
+    db = Database(postgres_url)
+    try:
+        async with db.transaction() as s:
+            await CatalogRepository(s).load_seed(build_world())
+        async with db.session() as s:
+            repo = CatalogRepository(s)
+            origin = await repo.district("Kreuzberg")
+            now = datetime.now(UTC)
+            world = await repo.candidates(
+                origin=origin, max_km=2000, start=now, until=now + timedelta(days=30), category=None, cap=5
+            )
+            everything = await repo.candidates(
+                origin=origin, max_km=2000, start=now, until=now + timedelta(days=30), category=None, cap=500
+            )
+        assert len(world.listings) == 5
+
+        # The five are the nearest five of all candidates, in order.
+        def far(l):
+            d = everything.districts[l.district]
+            return (d.lat - origin.lat) ** 2 + ((d.lng - origin.lng) * 0.61) ** 2
+
+        ranked = sorted(everything.listings, key=lambda l: (far(l), l.id))
+        assert [far(l) for l in world.listings] == [far(l) for l in ranked[:5]]
+    finally:
+        await db.dispose()

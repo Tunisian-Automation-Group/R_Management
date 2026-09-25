@@ -99,6 +99,12 @@ Index(
 # allows exactly these and nothing else.
 MIGRATION_ONLY_INDEXES = frozenset({"ix_listings_title_trgm", "ix_listings_blurb_trgm"})
 Index("ix_listings_owner_created", ListingRow.owner_id, ListingRow.created_at)
+# Candidates in any category, district by district (the nearest-first walk).
+Index(
+    "ix_listings_live_district",
+    ListingRow.district,
+    postgresql_where=ListingRow.deleted_at.is_(None) & ListingRow.active,
+)
 Index("ix_districts_lat_lng", DistrictRow.lat, DistrictRow.lng)
 
 
