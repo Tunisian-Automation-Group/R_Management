@@ -17,6 +17,7 @@ import { Profile } from './screens/Profile.tsx'
 import { Login } from './screens/Login.tsx'
 import { Onboarding } from './screens/Onboarding.tsx'
 import { Legal } from './screens/Legal.tsx'
+import { Admin } from './screens/Admin.tsx'
 import { NotFound } from './screens/NotFound.tsx'
 import { Screen } from './components/AppShell.tsx'
 
@@ -82,6 +83,7 @@ function Shell() {
           <Route path="/profile" element={<Profile />} />
           <Route path="/login" element={<Login />} />
           <Route path="/legal/:page" element={<Legal />} />
+          <Route path="/admin" element={<Admin />} />
           <Route path="*" element={<NotFound />} />
         </Routes>
       )}

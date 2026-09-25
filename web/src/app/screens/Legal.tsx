@@ -23,6 +23,8 @@ const PAGES: Record<string, { title: string; body: ReactNode }> = {
   impressum: { title: 'Impressum', body: <Impressum /> },
   privacy: { title: 'Privacy Policy', body: <Privacy /> },
   terms: { title: 'Terms of Use', body: <Terms /> },
+  ranking: { title: 'How ranking works', body: <Ranking /> },
+  report: { title: 'Reporting content', body: <Reporting /> },
 }
 
 export function Legal() {
@@ -181,6 +183,25 @@ function Terms() {
         Once it has started, the buyer can report a problem instead: the owner's payout is held while
         Cappy looks into it and decides on a refund or a payout. Statutory rights are not affected.
       </p>
+      <H>Right of withdrawal</H>
+      <p>
+        If you book as a consumer from an owner who is a business, you may withdraw from the booking
+        without giving a reason until the booked time starts: open the booking and press
+        “Withdraw from this booking”. You get back everything you paid, in full, within 14 days, to
+        the card you paid with. Where you asked for the service to start within the withdrawal
+        period and it has started, you pay only for the part already provided. You can also withdraw
+        by telling {operator} at {contact}, for example with this sentence: “I hereby withdraw from
+        the contract for the following booking: [booking reference], booked on [date], [name,
+        address].” Bookings from private owners have no statutory right of withdrawal; you can
+        still cancel before the start for a full refund under these terms.
+      </p>
+      <H>Reviews, ranking and reporting</H>
+      <p>
+        Reviews come only from completed bookings, written by the buyer. How results are ordered is
+        explained under “How ranking works”; nobody can pay to rank higher. Anyone can report a
+        listing, profile, message or review with “Report”; we tell the reporter what we decide and
+        give reasons to anyone whose content we remove or whose account we restrict.
+      </p>
       <H>Liability</H>
       <p>
         Owners are responsible for what they rent out and buyers for how they use it. Cappy is liable
@@ -192,6 +213,46 @@ function Terms() {
       <p>
         We tell you about changes to these terms in advance by email. German law applies, without
         taking away protection the law of your country of residence gives you as a consumer.
+      </p>
+    </>
+  )
+}
+
+function Ranking() {
+  return (
+    <>
+      <p>
+        When you search, Cappy orders results by how well each listing fits what you asked for. The main
+        parameters, in rough order of weight, are:
+      </p>
+      <ul className="list-disc space-y-2 pl-5">
+        <li><strong>Time fit</strong>: whether the listing is free when you need it, and how soon.</li>
+        <li><strong>Distance</strong> from where you search.</li>
+        <li><strong>Price</strong> for the job you described, fee included.</li>
+        <li><strong>Rating</strong> from completed bookings.</li>
+        <li><strong>Reliability</strong>: finishing on time, answering quickly, not cancelling.</li>
+      </ul>
+      <p>
+        You can re-sort by price, distance or soonest. Nobody can pay for a better position: Cappy has no
+        paid ranking and no advertising in results. Listings of owners who cannot receive payouts yet, and
+        listings removed under our terms, do not appear.
+      </p>
+    </>
+  )
+}
+
+function Reporting() {
+  return (
+    <>
+      <p>
+        See something illegal, unsafe or against our terms? Use “Report” on the listing, profile, message or
+        review. You do not need an account; without one, leave an email so we can reply. We acknowledge
+        every report, look at it, and tell you what we decided. When we remove content or restrict an account
+        we tell the person affected why, and how to disagree.
+      </p>
+      <p>
+        Authorities and anyone else can reach us at {contact}. If someone is in immediate danger, call 112
+        first.
       </p>
     </>
   )

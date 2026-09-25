@@ -12,7 +12,9 @@ import { formatEurExact } from '../../domain/money.ts'
 import { PLATFORM_FEE_BPS } from '../../domain/pricing.ts'
 import {
   actOnBooking,
+  blockPerson,
   declineBooking,
+  type EvidenceStage,
   disputeBooking,
   getBookingPayment,
   rateBooking,
@@ -23,6 +25,9 @@ import {
   type BookingAction,
 } from '../../data/repo.ts'
 import { PayStep } from '../components/PayStep.tsx'
+import { Conversation } from '../components/Conversation.tsx'
+import { EvidencePanel } from '../components/Evidence.tsx'
+import { ReportButton } from '../components/Report.tsx'
 import { DECLINE_REASONS } from './Earn.tsx'
 import { messageOf, useToast } from '../store.tsx'
 import { Screen } from '../components/AppShell.tsx'
@@ -103,6 +108,8 @@ function Detail({
   const [tags, setTags] = useState<string[]>([])
   const [note, setNote] = useState('')
   const [busy, setBusy] = useState(false)
+  const [evidencePrompt, setEvidencePrompt] = useState<EvidenceStage | null>(null)
+  const [blocking, setBlocking] = useState(false)
 
   const { quote } = booking.match
   const title = booking.listing?.title ?? listing?.title ?? 'Booked listing'
@@ -154,9 +161,11 @@ function Detail({
       void qc.invalidateQueries({ queryKey: ['reviews', booking.match.listingId] })
     }, `Review posted on ${title}`)
 
+  // For the buyer, cancelling before the start is also their right of
+  // withdrawal (EU consumer law), so the button says so.
   const cancelButton = (
     <Button block variant="danger" disabled={busy} onClick={() => setCancelling(true)}>
-      {booking.status === 'accepted' ? 'Cancel booking' : 'Cancel request'}
+      {asOwner ? 'Cancel booking' : 'Withdraw from this booking'}
     </Button>
   )
   const disputeButton = (
@@ -166,7 +175,17 @@ function Detail({
   )
   const startButton = (
     <div>
-      <Button block size="lg" disabled={busy || !canStart} onClick={() => void act('start', asOwner ? 'Marked as handed over' : 'Enjoy it')}>
+      <Button
+        block
+        size="lg"
+        disabled={busy || !canStart}
+        onClick={() =>
+          void done(async () => {
+            await actOnBooking(booking.id, 'start')
+            setEvidencePrompt('check_in')
+          }, asOwner ? 'Marked as handed over' : 'Enjoy it')
+        }
+      >
         {canStart
           ? asOwner
             ? 'I have handed it over'
@@ -438,8 +457,30 @@ function Detail({
             </div>
             {!asOwner && <Stars value={rating(other)} count={other.jobsDone} />}
           </div>
+          <div className="mt-3 flex flex-wrap gap-1 border-t border-[var(--line)] pt-3">
+            <ReportButton targetType="owner" targetId={other.id} />
+            <Button variant="quiet" icon="close" onClick={() => setBlocking(true)}>
+              Block
+            </Button>
+          </div>
         </Card>
       )}
+
+      {booking.status !== 'awaiting_payment' && (
+        <Conversation
+          bookingId={booking.id}
+          otherName={asOwner ? buyer : first}
+          accepted={['accepted', 'active', 'completed', 'disputed'].includes(booking.status)}
+        />
+      )}
+
+      <EvidencePanel
+        bookingId={booking.id}
+        status={booking.status}
+        otherName={asOwner ? buyer : first}
+        prompt={evidencePrompt}
+        onPromptClosed={() => setEvidencePrompt(null)}
+      />
 
       <Card className="mt-3 p-5">
         <h2 className="t-label mb-2">What you agreed</h2>
@@ -517,6 +558,17 @@ function Detail({
             >
               Yes, it is done
             </Button>
+            <Button
+              block
+              variant="secondary"
+              icon="camera"
+              onClick={() => {
+                setFinishing(false)
+                setEvidencePrompt('check_out')
+              }}
+            >
+              Add check-out photos first
+            </Button>
             <Button block variant="quiet" onClick={() => setFinishing(false)}>
               Not yet
             </Button>
@@ -532,7 +584,7 @@ function Detail({
       <Sheet
         open={cancelling}
         onClose={() => setCancelling(false)}
-        title={booking.status === 'accepted' ? 'Cancel this booking?' : 'Cancel this request?'}
+        title={asOwner ? 'Cancel this booking?' : 'Withdraw from this booking?'}
         footer={
           <div className="space-y-2">
             <Button
@@ -545,7 +597,7 @@ function Detail({
                 setCancelling(false)
               }}
             >
-              Yes, cancel it
+              {asOwner ? 'Yes, cancel it' : 'Yes, withdraw'}
             </Button>
             <Button block variant="quiet" onClick={() => setCancelling(false)}>
               Keep it
@@ -557,8 +609,34 @@ function Detail({
           {asOwner
             ? `${buyer} will be told, and gets back everything they paid.`
             : booking.status === 'accepted'
-              ? `${first} will be told the window is free again, and you get back everything you paid.`
-              : `${first} will be told the window is free again. The hold on your card is released; nothing is charged.`}
+              ? `This is your withdrawal from the booking. ${first} will be told the window is free again, and you get back everything you paid, in full.`
+              : `This is your withdrawal from the booking. ${first} will be told the window is free again. The hold on your card is released; nothing is charged.`}
+        </p>
+      </Sheet>
+
+      <Sheet
+        open={blocking}
+        onClose={() => setBlocking(false)}
+        title={`Block ${asOwner ? buyer : first}?`}
+        footer={
+          <Button
+            block
+            size="lg"
+            variant="danger"
+            disabled={busy || !other}
+            onClick={() => {
+              if (other) void done(() => blockPerson(other.id), `${other.name.split(' ')[0]} is blocked`)
+              setBlocking(false)
+            }}
+          >
+            Block
+          </Button>
+        }
+      >
+        <p className="t-body pb-3 text-[var(--ink-2)]">
+          Neither of you can message the other or make new bookings with each other. This booking itself stays
+          as it is; cancel it if you need to. You can unblock them from your profile. To tell Cappy about
+          something wrong, report them as well.
         </p>
       </Sheet>
 

@@ -25,6 +25,7 @@ import { CapacityBar } from '../components/CapacityBar.tsx'
 import { WhenBadge } from '../components/Cover.tsx'
 import { Photo, SaveButton } from '../components/Photo.tsx'
 import { Reviews } from '../components/Reviews.tsx'
+import { BlockButton, ReportButton } from '../components/Report.tsx'
 import { PayStep } from '../components/PayStep.tsx'
 import { Icon } from '../components/Icon.tsx'
 import {
@@ -324,6 +325,17 @@ export function Listing() {
           <Icon name="clock" size={14} className="text-[var(--ink-4)]" />
           {responseTime(owner.responseMins)}
         </p>
+        {/* EU consumer law: say whether you are dealing with a business. */}
+        <p className="t-sm mt-2 flex items-start gap-1.5 text-[var(--ink-3)]">
+          <Icon name="info" size={14} className="mt-[3px] shrink-0 text-[var(--ink-4)]" />
+          {owner.kind === 'business'
+            ? 'Business. EU consumer rights apply to your booking.'
+            : 'Private person, not a business. EU consumer rights toward businesses do not apply; Cappy’s terms and payment protection do.'}
+        </p>
+        <div className="mt-3 flex flex-wrap gap-1 border-t border-[var(--line)] pt-3">
+          <ReportButton targetType="owner" targetId={owner.id} />
+          {ME && ME !== owner.id && <BlockButton sub={owner.id} name={first} />}
+        </div>
       </Card>
 
       {/* ------------------------------------------------------- capacity */}
@@ -491,6 +503,10 @@ export function Listing() {
         </ul>
       </Card>
 
+      <div className="mt-4 flex justify-end">
+        <ReportButton targetType="listing" targetId={listing.id} />
+      </div>
+
       <Sheet
         open={confirming}
         onClose={() => {
@@ -503,7 +519,8 @@ export function Listing() {
           paying ? undefined : (
             <div className="space-y-2">
               <Button block size="lg" disabled={sending} onClick={() => void book()}>
-                {sending ? 'Sending…' : `Send request to ${first}`}
+                {/* The final button must say it commits to paying (§312j BGB). */}
+                {sending ? 'Sending…' : 'Book and pay'}
               </Button>
               <Button block variant="quiet" onClick={() => setConfirming(false)}>
                 Not yet

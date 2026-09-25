@@ -153,17 +153,16 @@ export type Profile = { name: string; kind: 'person' | 'business'; district: str
 
 // --- the cache ----------------------------------------------------------------------
 
+// A 4xx will not change on a retry; only the network or a 5xx might.
+const transient = (n: number, err: unknown) => n < 2 && !(err instanceof ApiError && err.status >= 400 && err.status < 500)
+// Back off, and never sooner than the server asked: a busy service that
+// says "come back in 5 s" must not get every client back in 1.
+const backoff = (n: number, err: unknown) =>
+  Math.max(Math.min(1000 * 2 ** n, 30_000), err instanceof ApiError && err.retryAfter ? err.retryAfter * 1000 : 0)
+
 export const queryClient = new QueryClient({
   defaultOptions: {
-    queries: {
-      staleTime: 30_000,
-      // A 4xx will not change on a retry; only the network or a 5xx might.
-      retry: (n, err) => n < 2 && !(err instanceof ApiError && err.status >= 400 && err.status < 500),
-      // Back off, and never sooner than the server asked: a busy service that
-      // says "come back in 5 s" must not get every client back in 1.
-      retryDelay: (n, err) =>
-        Math.max(Math.min(1000 * 2 ** n, 30_000), err instanceof ApiError && err.retryAfter ? err.retryAfter * 1000 : 0),
-    },
+    queries: { staleTime: 30_000, retry: transient, retryDelay: backoff },
   },
 })
 
@@ -411,7 +410,92 @@ export function useSaveToggle() {
   const qc = useQueryClient()
   return useMutation({
     mutationFn: ({ id, on }: { id: string; on: boolean }) => (on ? put(`/saved/${id}`) : del(`/saved/${id}`)),
+    // Idempotent, so a blip (a 503 while a service restarts) is retried; a
+    // real failure still reaches the caller, which says so and rolls back.
+    retry: transient,
+    retryDelay: backoff,
     onSettled: () => qc.invalidateQueries({ queryKey: ['saved'] }),
   })
 }
+
+// --- messages, evidence, reports, blocks ------------------------------------------------------
+
+export type Message = { id: string; senderId: string; body: string; at: string; mine: boolean }
+/** What the server puts where contact details were, before a booking is accepted. */
+export const HIDDEN_CONTACT = '[shared once the booking is accepted]'
+
+/** The conversation on a booking, oldest first, polled while it is on screen. */
+export const useMessages = (bookingId: string) =>
+  useQuery({
+    queryKey: ['messages', bookingId],
+    // ponytail: the newest 100 only; page with nextCursor when conversations get longer.
+    queryFn: () => get<Page<Message>>(`/bookings/${bookingId}/messages${qs({ limit: 100 })}`),
+    refetchInterval: 5000,
+    refetchOnWindowFocus: true,
+  })
+export const sendMessage = (bookingId: string, body: string) =>
+  post<Message>(`/bookings/${bookingId}/messages`, { body })
+
+export type EvidenceStage = 'check_in' | 'check_out'
+export type Evidence = { id: string; by: string; stage: EvidenceStage; photos: string[]; note?: string; at: string }
+export const useEvidence = (bookingId: string) =>
+  useQuery({ queryKey: ['evidence', bookingId], queryFn: () => get<Evidence[]>(`/bookings/${bookingId}/evidence`) })
+export const addEvidence = (bookingId: string, stage: EvidenceStage, photos: string[], note?: string) =>
+  post<Evidence>(`/bookings/${bookingId}/evidence`, { stage, photos, note: note || undefined })
+
+export type ReportTarget = 'listing' | 'owner' | 'message' | 'review'
+export const REPORT_REASONS = [
+  ['illegal', 'Illegal content or activity'],
+  ['fraud', 'Fraud or a scam'],
+  ['unsafe', 'Unsafe'],
+  ['counterfeit', 'Counterfeit or stolen'],
+  ['spam', 'Spam'],
+  ['offensive', 'Offensive or abusive'],
+  ['privacy', 'Shares someone’s private information'],
+  ['other', 'Something else'],
+] as const
+export type ReportReason = (typeof REPORT_REASONS)[number][0]
+export type Report = {
+  id: string
+  targetType: ReportTarget
+  targetId: string
+  reason: ReportReason
+  details: string
+  status: 'open' | 'actioned' | 'dismissed'
+  createdAt: string
+  decision?: string
+  statement?: string
+}
+export const sendReport = (r: { targetType: ReportTarget; targetId: string; reason: ReportReason; details: string; email?: string }) =>
+  post<Report>('/reports', r)
+
+export const useBlocks = () => {
+  const session = useSession()
+  return useQuery({ queryKey: ['blocks', session?.sub], queryFn: () => get<string[]>('/me/blocks'), enabled: Boolean(session) })
+}
+export const blockPerson = (sub: string) => put<void>(`/me/blocks/${encodeURIComponent(sub)}`)
+export const unblockPerson = (sub: string) => del<void>(`/me/blocks/${encodeURIComponent(sub)}`)
+
+// --- staff (the server checks the admin group; this only shapes the UI) ------------------------
+
+export type AuditEntry = {
+  id: string
+  actorId: string
+  action: string
+  targetType: string
+  targetId: string
+  reportId?: string
+  statement: string
+  at: string
+}
+export const getAdminReports = (status: Report['status'], cursor?: string) =>
+  get<Page<Report>>(`/admin/reports${qs({ status, cursor })}`)
+export const decideReport = (id: string, action: 'dismiss' | 'take_down' | 'suspend', statement: string) =>
+  post<Report>(`/admin/reports/${id}/decide`, { action, statement })
+export const takeDownListing = (id: string, statement: string) => post<void>(`/admin/listings/${id}/take-down`, { statement })
+export const suspendOwner = (id: string, statement: string) => post<void>(`/admin/owners/${id}/suspend`, { statement })
+export const reinstateOwner = (id: string, statement: string) => post<void>(`/admin/owners/${id}/reinstate`, { statement })
+export const resolveDispute = (id: string, outcome: 'pay_owner' | 'refund_buyer') =>
+  post<Booking>(`/admin/bookings/${id}/resolve`, { outcome, by: 'console' })
+export const useAudit = () => useQuery({ queryKey: ['audit'], queryFn: () => get<AuditEntry[]>(`/admin/audit${qs({ limit: 100 })}`) })
 

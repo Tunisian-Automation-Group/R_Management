@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import type { Review } from '../../domain/types.ts'
 import { summarise, type ReviewSummary } from '../../domain/reviews.ts'
+import { ReportButton } from './Report.tsx'
 import { Avatar, Button } from './ui.tsx'
 import { Icon } from './Icon.tsx'
 import { ago } from '../format.ts'
@@ -103,6 +104,7 @@ export function Reviews({
                 <StarRow value={r.rating} />
                 <span className="sr-only">{r.rating} out of 5</span>
               </span>
+              <ReportButton targetType="review" targetId={r.id} compact />
             </div>
             {r.text && <p className="t-body mt-3 max-w-[64ch] text-[var(--ink-2)]">{r.text}</p>}
             {(r.tags.length > 0 || !r.onTime) && (
@@ -119,6 +121,11 @@ export function Reviews({
           Show all {reviews.length} reviews
         </Button>
       )}
+      {/* EU consumer law (Omnibus): say how reviews are checked. */}
+      <p className="t-sm mt-4 text-[var(--ink-4)]">
+        Reviews come only from completed bookings on Cappy, written by the person who booked. We do not edit
+        them or pay for them.
+      </p>
     </div>
   )
 }

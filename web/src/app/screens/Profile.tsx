@@ -7,10 +7,13 @@ import {
   deleteMe,
   exportMyData,
   saveProfile,
+  unblockPerson,
+  useBlocks,
   useBookings,
   useDistricts,
   useMeQuery,
   useMyListings,
+  useOwner,
   useSaved,
 } from '../../data/repo.ts'
 import type { Owner } from '../../domain/types.ts'
@@ -163,6 +166,19 @@ export function Profile() {
         </Card>
       </section>
 
+      <Blocked />
+
+      {session?.staff && (
+        <section>
+          <SectionHead title="Staff" className="mt-7" />
+          <Card className="p-5">
+            <Link to="/admin" className="text-[14.5px] font-semibold underline underline-offset-4">
+              Open the staff console
+            </Link>
+          </Card>
+        </section>
+      )}
+
       <section>
         <SectionHead title="Your data" className="mt-7" />
         <Card className="p-5">
@@ -213,6 +229,8 @@ export function Profile() {
             <Link to="/legal/impressum">Impressum</Link>
             <Link to="/legal/privacy">Privacy Policy</Link>
             <Link to="/legal/terms">Terms of Use</Link>
+            <Link to="/legal/ranking">How ranking works</Link>
+            <Link to="/legal/report">Reporting content</Link>
           </nav>
         </Card>
       </section>
@@ -361,5 +379,54 @@ function Stat({ label, value, accent }: { label: string; value: string; accent?:
         {value}
       </p>
     </div>
+  )
+}
+
+/** People the person blocked, with a way back. */
+function Blocked() {
+  const blocks = useBlocks()
+  const qc = useQueryClient()
+  const toast = useToast()
+  const ids = blocks.data ?? []
+  if (ids.length === 0) return null
+  return (
+    <section>
+      <SectionHead title="Blocked people" className="mt-7" />
+      <Card className="p-5">
+        <p className="t-sm mb-3 text-[var(--ink-3)]">
+          They cannot message you or book with you, and you cannot with them.
+        </p>
+        <ul className="space-y-2">
+          {ids.map((sub) => (
+            <BlockedRow
+              key={sub}
+              sub={sub}
+              onUnblock={async () => {
+                try {
+                  await unblockPerson(sub)
+                  toast('Unblocked')
+                } catch (err) {
+                  toast(messageOf(err))
+                } finally {
+                  await qc.invalidateQueries({ queryKey: ['blocks'] })
+                }
+              }}
+            />
+          ))}
+        </ul>
+      </Card>
+    </section>
+  )
+}
+
+function BlockedRow({ sub, onUnblock }: { sub: string; onUnblock: () => void }) {
+  const person = useOwner(sub)
+  return (
+    <li className="flex items-center justify-between gap-3">
+      <span className="truncate text-[15px] font-semibold">{person.data?.name ?? 'Someone'}</span>
+      <Button variant="secondary" size="sm" onClick={onUnblock}>
+        Unblock
+      </Button>
+    </li>
   )
 }

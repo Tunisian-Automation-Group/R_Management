@@ -64,7 +64,8 @@ async function cognito<T>(action: string, body: Record<string, unknown>): Promis
 
 // --- session state ----------------------------------------------------------------
 
-export type Session = { sub: string; email: string }
+/** `staff` only shapes the UI (the admin menu); every staff call is checked by the server. */
+export type Session = { sub: string; email: string; staff: boolean }
 
 type Tokens = { access: string; id: string; expiresAt: number }
 let tokens: Tokens | null = null
@@ -103,7 +104,8 @@ function adopt(r: AuthResult): void {
   tokens = { access: r.AccessToken, id: r.IdToken, expiresAt: Date.now() + r.ExpiresIn * 1000 }
   if (r.RefreshToken) writeRefresh(r.RefreshToken)
   const c = claims(r.IdToken)
-  session = { sub: String(c.sub), email: String(c.email ?? '') }
+  const groups = claims(r.AccessToken)['cognito:groups']
+  session = { sub: String(c.sub), email: String(c.email ?? ''), staff: Array.isArray(groups) && groups.includes('admin') }
   emit()
 }
 

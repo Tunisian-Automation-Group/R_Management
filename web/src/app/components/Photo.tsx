@@ -5,7 +5,7 @@ import { day, time } from '../format.ts'
 import { useNavigate } from 'react-router-dom'
 import { useSession } from '../../data/auth.ts'
 import { mediaUrl, useSaveToggle, useSaved } from '../../data/repo.ts'
-import { useToast } from '../store.tsx'
+import { messageOf, useToast } from '../store.tsx'
 import { Icon } from './Icon.tsx'
 
 /**
@@ -164,7 +164,7 @@ export function SaveButton({
       { id, on: !on },
       {
         onSuccess: () => toast(on ? 'Removed from saved' : 'Saved. Find it under You'),
-        onError: (err) => toast(err.message),
+        onError: (err) => toast(messageOf(err)),
       },
     )
   }

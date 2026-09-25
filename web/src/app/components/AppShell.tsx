@@ -1,5 +1,6 @@
 import { useEffect, type ReactNode } from 'react'
 import { NavLink } from 'react-router-dom'
+import { useSession } from '../../data/auth.ts'
 import { Icon, type IconName } from './Icon.tsx'
 import { useBack } from '../nav.ts'
 
@@ -288,6 +289,7 @@ export function Screen({
  * without one reads as an app someone stretched, which is the whole complaint.
  */
 function SiteFooter() {
+  const staff = useSession()?.staff ?? false
   const groups: { title: string; links: { label: string; to: string }[] }[] = [
     {
       title: 'Buy capacity',
@@ -344,6 +346,9 @@ function SiteFooter() {
         <NavLink to="/legal/impressum" className="hover:text-[var(--ink-2)]">Impressum</NavLink>
         <NavLink to="/legal/privacy" className="hover:text-[var(--ink-2)]">Privacy</NavLink>
         <NavLink to="/legal/terms" className="hover:text-[var(--ink-2)]">Terms</NavLink>
+        <NavLink to="/legal/ranking" className="hover:text-[var(--ink-2)]">Ranking</NavLink>
+        <NavLink to="/legal/report" className="hover:text-[var(--ink-2)]">Report content</NavLink>
+        {staff && <NavLink to="/admin" className="hover:text-[var(--ink-2)]">Staff</NavLink>}
       </nav>
     </footer>
   )
