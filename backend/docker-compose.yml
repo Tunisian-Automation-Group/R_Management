@@ -129,10 +129,10 @@ services:
     environment:
       <<: *service-env
       # Serve the built web app from the gateway's origin. Run `npm run build`
-      # in ../cappy/cappy first; with no build there the gateway is API-only.
+      # in ../web first; with no build there the gateway is API-only.
       STATIC_DIR: /app/static
     volumes:
-      - ${STATIC_DIR:-../cappy/cappy/dist}:/app/static:ro
+      - ${STATIC_DIR:-../web/dist}:/app/static:ro
     depends_on:
       catalog: { condition: service_healthy }
       matching: { condition: service_healthy }

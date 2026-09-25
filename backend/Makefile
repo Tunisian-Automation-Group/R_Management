@@ -21,7 +21,7 @@ logs:
 	docker compose logs -f --tail=100
 
 seed:            ## regenerate the demo world from the frontend's seed.ts
-	node scripts/export-seed.mjs ../cappy/cappy > libs/cappy_common/cappy_common/fixtures/seed.json
+	node scripts/export-seed.mjs ../web > libs/cappy_common/cappy_common/fixtures/seed.json
 
 # Run one service on its own without Docker (sqlite + in-memory events).
 dev-catalog:

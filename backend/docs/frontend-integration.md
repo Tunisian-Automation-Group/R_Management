@@ -114,13 +114,13 @@ immutable; `index.html`, the service worker and the manifest are `no-store`,
 so an installed app picks up a new build on next launch.
 
 ```bash
-cd cappy/cappy && npm run build          # -> dist/
+cd web && npm run build          # -> dist/
 cd ../../backend && docker compose up --build
 # http://localhost:8000        the app
 # http://localhost:8000/api    the API
 ```
 
-Compose mounts `../cappy/cappy/dist` into the gateway; without a build there
+Compose mounts `../web/dist` into the gateway; without a build there
 the gateway is API-only and `/` returns a JSON index. Outside compose, set
 `STATIC_DIR=/path/to/dist` on the gateway.
 
@@ -146,7 +146,7 @@ allows in development.
 cd backend && cp .env.example .env && docker compose up --build
 
 # frontend, against the running backend (proxied, no env needed)
-cd cappy/cappy && npm install && npm run dev
+cd web && npm install && npm run dev
 ```
 
 To answer your own request from the host's side, sign in as the host in a

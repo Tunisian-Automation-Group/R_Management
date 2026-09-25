@@ -1,6 +1,6 @@
 # Cappy backend
 
-The server side of [Cappy](../cappy/cappy) ("rent the hour, not the thing"):
+The server side of [Cappy](../web) ("rent the hour, not the thing"):
 four Python microservices behind one gateway, sharing a small common library.
 One API serves the website and the same app installed on a phone.
 
@@ -25,7 +25,7 @@ Needs Docker. Build the app first if you want the gateway to serve it; skip
 that and the gateway is API-only.
 
 ```bash
-(cd ../cappy/cappy && npm install && npm run build)   # optional: dist/ for the gateway to serve
+(cd ../web && npm install && npm run build)   # optional: dist/ for the gateway to serve
 cp .env.example .env
 docker compose up --build
 # http://localhost:8000          the web app (when built)
@@ -78,7 +78,7 @@ environment is absent, so a single service can be poked at on its own:
 make dev-catalog     # http://localhost:8001/docs
 make dev-matching    # needs catalog on :8001
 make dev-booking     # needs matching on :8002
-make dev-gateway     # STATIC_DIR=../cappy/cappy/dist to serve the app too
+make dev-gateway     # STATIC_DIR=../web/dist to serve the app too
 ```
 
 ## Keep the seed in step with the app
@@ -86,7 +86,7 @@ make dev-gateway     # STATIC_DIR=../cappy/cappy/dist to serve the app too
 The demo world is exported from the frontend, not written twice:
 
 ```bash
-make seed    # node scripts/export-seed.mjs ../cappy/cappy > libs/cappy_common/cappy_common/fixtures/seed.json
+make seed    # node scripts/export-seed.mjs ../web > libs/cappy_common/cappy_common/fixtures/seed.json
 ```
 
 Run it whenever `src/data/seed.ts` changes, then `uv run pytest -q`. Needs
@@ -107,7 +107,7 @@ services/catalog/        system of record for the world: listings, windows, revi
 services/matching/       pure domain + thin routes; reads the world from catalog
 services/booking/        booking state machine + demo hosts
 services/gateway/        reverse proxy with a routing table; serves the built app
-scripts/export-seed.mjs  regenerates fixtures/seed.json from ../cappy/cappy/src/data/seed.ts
+scripts/export-seed.mjs  regenerates fixtures/seed.json from ../web/src/data/seed.ts
 docs/                    architecture, API, frontend integration
 ```
 

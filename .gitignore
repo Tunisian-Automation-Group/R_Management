@@ -8,3 +8,10 @@ __MACOSX/
 # Secrets live next to their .env.example, never in git
 .env
 .env.local
+
+# Local-only credentials (LocalStack auth token, Stripe test keys). Never committed.
+.env.*
+!.env.example
+*.pem
+terraform.tfstate*
+.terraform/

@@ -7,13 +7,13 @@
 // That keeps the demo world fresh forever, which is the same trick the frontend
 // plays with `at(day, hour)`.
 //
-//   node scripts/export-seed.mjs ../cappy/cappy > libs/cappy_common/cappy_common/fixtures/seed.json
+//   node scripts/export-seed.mjs ../web > libs/cappy_common/cappy_common/fixtures/seed.json
 //
 // Needs Node 22.18+ (type stripping), which is what the frontend needs anyway.
 import { pathToFileURL } from 'node:url'
 import { resolve } from 'node:path'
 
-const root = process.argv[2] ?? '../cappy/cappy'
+const root = process.argv[2] ?? '../web'
 const seed = await import(pathToFileURL(resolve(root, 'src/data/seed.ts')).href)
 
 const base = new Date()
