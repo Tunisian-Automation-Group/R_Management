@@ -160,3 +160,20 @@ def test_reports_are_acknowledged_and_decisions_explained(app):
         ("host@example.com", "We removed your listing"),
         ("n@example.com", "Your report: our decision"),
     ]
+
+
+def test_a_german_speaker_is_written_to_in_german():
+    class Germans(People):
+        async def person_of(self, sub):
+            return self.book.get(sub), "de-DE"
+
+    mailer = LogMailer()
+    settings = Settings(app_env="test", database_url="sqlite+aiosqlite://", internal_token="i" * 40)
+    app = build_app(settings, directory=Germans(), mailer=mailer)
+    with TestClient(app) as c:
+        c.portal.call(app.state.dispatcher.handle, _change("requested", by="payments"))
+        c.portal.call(
+            app.state.dispatcher.handle,
+            _event(PAYOUT_SENT, bookingId="bk_1", ownerId="host", requesterId="buyer", amount=123456, currency="eur"),
+        )
+    assert [m.subject for m in mailer.sent] == ["Neue Anfrage: Table saw", "Du hast 1.234,56 € erhalten"]

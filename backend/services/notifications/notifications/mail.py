@@ -23,6 +23,10 @@ class Directory:
 
     async def email_of(self, sub: str) -> str | None: ...
 
+    async def person_of(self, sub: str) -> tuple[str | None, str | None]:
+        """(verified email, locale). Locale is Cognito's standard attribute."""
+        return await self.email_of(sub), None
+
 
 class Mailer:
     async def send(self, email: Email) -> None: ...
@@ -33,7 +37,7 @@ class CognitoDirectory(Directory):
         self._c = aws_client("cognito-idp", settings, settings.cognito_endpoint_url)
         self._pool = settings.user_pool_id
 
-    def _lookup(self, sub: str) -> str | None:
+    def _lookup(self, sub: str) -> tuple[str | None, str | None]:
         # With email as the sign-in attribute (our pools) Cognito's username is
         # the sub, so AdminGetUser, which has far more quota than ListUsers,
         # finds them directly. ListUsers is the fallback for other pools.
@@ -43,16 +47,19 @@ class CognitoDirectory(Directory):
         except self._c.exceptions.UserNotFoundException:
             users = self._c.list_users(UserPoolId=self._pool, Filter=f'sub = "{sub}"', Limit=1)["Users"]
             if not users:
-                return None
+                return None, None
             raw = users[0].get("Attributes", [])
         attrs = {a["Name"]: a["Value"] for a in raw}
         if attrs.get("email_verified") not in ("true", True):
-            return None  # never mail an address nobody proved they own
-        return attrs.get("email")
+            return None, attrs.get("locale")  # never mail an address nobody proved they own
+        return attrs.get("email"), attrs.get("locale")
 
     async def email_of(self, sub: str) -> str | None:
+        return (await self.person_of(sub))[0]
+
+    async def person_of(self, sub: str) -> tuple[str | None, str | None]:
         if not sub or '"' in sub:
-            return None
+            return None, None
         return await asyncio.to_thread(self._lookup, sub)
 
 

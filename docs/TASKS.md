@@ -152,7 +152,7 @@ Engineering, before launch:
 - [x] G-4 In-app messaging per booking (`/api/bookings/{id}/messages`); phone numbers, emails, links and messenger handles masked until accepted; pushed to the other side (never emailed)
 - [x] G-5 (API) Check-in and check-out photos on a booking (`/api/bookings/{id}/evidence`), the parties' own uploads, never swept
 - [ ] G-6 Checkout compliance: total price including the fee; "zahlungspflichtig buchen"; trader/private owner label; withdrawal information and the withdrawal button; review-verification statement; ranking parameters page
-- [ ] G-7 German localisation (UI, emails, legal pages), English kept
+- [~] G-7 German localisation: every email and push in English and German, by the recipient's Cognito `locale` (done); the web UI and legal pages next (the app sets `locale` when the language changes)
 - [x] G-8 (API) Renter identity verification with Stripe Identity (document + live selfie) for bookings above 300 € (and configurable categories); only the outcome is stored. Needs a DPIA before launch (G-B3)
 - [x] G-9 Fraud rules: 10 booking requests and 20 new listings per person per day; a new owner's listing above 100 €/h waits for a staff check (`/api/admin/listings/held`, approve)
 - [~] G-10 DAC7: every category tagged with its activity (`dac7` on /api/categories; counsel confirms). Left for the business: switch on Stripe Connect platform tax reporting in the dashboard (it collects TIN and date of birth in onboarding, and Stripe withholds payouts while they are missing) and register with the BZSt (G-B4)
