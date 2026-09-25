@@ -91,6 +91,7 @@ Status: `[ ]` open · `[~]` in progress · `[x]` done (commit) · `[-]` dropped 
 
 - [x] B-1 Two people uploading the same picture: only the first could use it (media is now owned per person)
 - [x] B-3 Editing a seeded listing failed: photos it already shows were checked as new uploads
+- [x] B-4 Racing buyers for one window got 500s (deadlocks and timeouts inside the exclusion constraint): per-listing advisory lock, contention mapped to 409
 - [x] B-2 Local bootstrap failed once queue settings changed (it now updates existing queues)
 
 ## From the research (R)

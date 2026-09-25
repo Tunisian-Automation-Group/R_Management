@@ -42,7 +42,7 @@ Status: ✅ handled · 🟡 partly · ❌ open (has a task)
 
 | # | Scenario | Today | Status |
 |---|---|---|---|
-| F12 | Everyone wants the same window | The exclusion constraint lets exactly one win; the rest get 409. | ✅ |
+| F12 | Everyone wants the same window | The exclusion constraint lets exactly one win. **Found under test:** the losers waited on each other inside the constraint, then deadlocked or timed out (500s). Now bookings of one listing queue behind a per-listing transaction lock and each loser gets a 409. 50 simultaneous buyers × 3 rounds, run 6 times: one winner each, no 5xx. | ✅ |
 | F13 | Payments slow while a booking is made | 503, booking kept; a retry with the same key gets the same intent. | ✅ |
 | F14 | Sweeps fall behind after an outage | Batches of 100 until done, SKIP LOCKED across replicas. | ✅ |
 | F15 | Clock skew between tasks | Fargate uses Amazon Time Sync; deadlines are minutes, not milliseconds. | ✅ |

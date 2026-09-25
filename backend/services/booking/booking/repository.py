@@ -10,7 +10,7 @@ from __future__ import annotations
 from datetime import datetime, timedelta
 
 from pydantic import TypeAdapter
-from sqlalchemy import and_, func, or_, select
+from sqlalchemy import and_, func, or_, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from cappy_common.errors import NotFound
@@ -89,6 +89,15 @@ class BookingRepository:
     async def unpaid_count(self, requester_id: str) -> int:
         q = select(func.count()).where(BookingRow.requester_id == requester_id, BookingRow.status == "awaiting_payment")
         return (await self.s.execute(q)).scalar_one()
+
+    async def lock_listing(self, listing_id: str) -> None:
+        """Queue bookings of one listing behind each other for the rest of this
+        transaction. Without it, many buyers racing for one window each wait
+        on the others inside the exclusion constraint, and after the first
+        commits the rest deadlock or time out (500s instead of a clean
+        "taken"). Other listings are not affected."""
+        if self.s.bind.dialect.name == "postgresql":
+            await self.s.execute(text("SELECT pg_advisory_xact_lock(hashtextextended(:k, 0))"), {"k": listing_id})
 
     async def window_taken(self, listing_id: str, start: datetime, end: datetime) -> bool:
         """The friendly check. The exclusion constraint is the one that holds

@@ -21,7 +21,7 @@ from datetime import UTC, datetime, timedelta
 
 from fastapi import Depends, Header, Query, Request, status
 from pydantic import Field
-from sqlalchemy.exc import IntegrityError
+from sqlalchemy.exc import DBAPIError, IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from cappy_common.app import ApiRouter
@@ -175,10 +175,13 @@ async def create_booking(
     try:
         async with db.transaction() as s:
             repo = BookingRepository(s, outbox)
+            await repo.lock_listing(row.listing_id)
             if await repo.window_taken(row.listing_id, row.window_start, row.window_end):
                 raise Conflict("that window was just taken; pick another")
             await repo.insert(row)
-    except IntegrityError:
+    except DBAPIError as e:
+        if not isinstance(e, IntegrityError) and not _contention(e):
+            raise
         # Either the same key raced itself (return what it made) or the
         # exclusion constraint caught a concurrent booking of the window.
         if idempotency_key:
@@ -189,6 +192,14 @@ async def create_booking(
         raise Conflict("that window was just taken; pick another") from None
     app.state.relay.wake()
     return await _with_payment(request, row, p.sub)
+
+
+def _contention(e: DBAPIError) -> bool:
+    """A deadlock or lock timeout between racing bookings: the window was
+    contested, so the answer is "taken", never a 500."""
+    code = getattr(getattr(e, "orig", None), "sqlstate", None) or getattr(getattr(e, "orig", None), "pgcode", None)
+    name = type(getattr(e, "orig", e)).__name__
+    return code in ("40P01", "55P03", "57014") or "Deadlock" in name or "QueryCanceled" in name
 
 
 async def _replay(request: Request, row: BookingRow, fingerprint: str, viewer: str) -> BookingCreated:

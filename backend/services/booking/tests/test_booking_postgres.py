@@ -35,26 +35,31 @@ async def test_migrations_build_exactly_the_models(postgres_url):
 
 
 def test_simultaneous_bookings_of_one_window_yield_exactly_one(postgres_url):
+    """Fifty buyers at once, three rounds: one wins each window, every other
+    buyer is told it was taken (409), and nobody sees a server error. Without
+    the per-listing lock the losers deadlock or time out inside the
+    exclusion constraint."""
     upgrade(MIGRATIONS, postgres_url)
     issuer = TestIssuer()
-    settings = Settings(app_env="test", database_url=postgres_url, internal_token="i" * 40)
+    settings = Settings(app_env="test", database_url=postgres_url, internal_token="i" * 40, max_unpaid=100)
     app = build_app(
         settings, matching=FakeMatching(), payments=FakePayments(), catalog=FakeCatalog(), verifier=issuer.verifier()
     )
-    body = _body()
 
     with TestClient(app) as client:
+        for round_, start_h in enumerate((24, 30, 36)):
+            body = _body(start_h=start_h)
 
-        async def one(n: int) -> int:
-            # Straight at the ASGI app, concurrently on one loop, so the
-            # friendly pre-check races and only the constraint can decide.
-            import httpx
+            async def one(n: int, body=body, round_=round_) -> int:
+                # Straight at the ASGI app, concurrently on one loop, so the
+                # friendly pre-check races and only the database can decide.
+                import httpx
 
-            transport = httpx.ASGITransport(app=app)
-            async with httpx.AsyncClient(transport=transport, base_url="http://t") as c:
-                r = await c.post("/bookings", json=body, headers=issuer.headers(f"buyer-{n}"))
-                return r.status_code
+                transport = httpx.ASGITransport(app=app)
+                async with httpx.AsyncClient(transport=transport, base_url="http://t") as c:
+                    r = await c.post("/bookings", json=body, headers=issuer.headers(f"buyer-{round_}-{n}"))
+                    return r.status_code
 
-        codes = client.portal.call(lambda: asyncio.gather(*(one(n) for n in range(20))))
-    assert sorted(codes).count(201) == 1, codes
-    assert set(codes) == {201, 409}, codes
+            codes = client.portal.call(lambda: asyncio.gather(*(one(n) for n in range(50))))
+            assert codes.count(201) == 1, codes
+            assert set(codes) == {201, 409}, codes
