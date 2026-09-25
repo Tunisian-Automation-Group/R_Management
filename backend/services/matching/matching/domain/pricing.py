@@ -26,22 +26,39 @@ def hours_for(req: AnyRequirement, listing: AnyListing) -> float | None:
     return None
 
 
+DAY_HOURS, WEEK_HOURS = 8, 40
+
+
+def duration_discount(hours: float, base: Cents, listing: AnyListing) -> tuple[Cents, str]:
+    """The owner's discount for longer bookings: the week rate from 40 hours,
+    the day rate from 8. Taken off the hourly base, never the extras."""
+    week, day = getattr(listing, "week_discount_pct", 0), getattr(listing, "day_discount_pct", 0)
+    if hours >= WEEK_HOURS and week:
+        return js_round(base * week / 100), f"Week rate −{week}%"
+    if hours >= DAY_HOURS and day:
+        return js_round(base * day / 100), f"Day rate −{day}%"
+    return 0, ""
+
+
 def quote_for(req: AnyRequirement, listing: AnyListing) -> Quote | None:
     hours = hours_for(req, listing)
     if hours is None:
         return None
 
     base: Cents = js_round(hours * listing.rate_per_hour)
+    discount, discount_label = duration_discount(hours, base, listing)
     if listing.mode == "window":
         extra, extra_label = listing.extra_fee, listing.extra_label
     else:
         extra, extra_label = listing.setup_fee, "Setup and programming"
-    total: Cents = base + extra
+    total: Cents = base - discount + extra
     platform_fee = bps(total, PLATFORM_FEE_BPS)
 
     return Quote(
         hours=hours,
         base=base,
+        discount=discount,
+        discount_label=discount_label,
         extra=extra,
         extra_label=extra_label,
         total=total,

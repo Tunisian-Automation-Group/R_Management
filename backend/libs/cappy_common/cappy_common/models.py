@@ -150,6 +150,10 @@ class _ListingBase(CamelModel):
     # booking/cancellation.py). Only "flexible" is offered until counsel
     # confirms the others against the EU withdrawal right.
     cancellation_policy: Literal["flexible", "moderate", "strict"] = "flexible"
+    # Longer bookings cost less per hour: percent off the hourly base from a
+    # day (8 h) and from a week (40 h) of use. 0 to 50.
+    day_discount_pct: int = Field(default=0, ge=0, le=50)
+    week_discount_pct: int = Field(default=0, ge=0, le=50)
 
 
 class WindowListing(_ListingBase):
@@ -219,6 +223,9 @@ AnyRequirement = WindowRequest | BatchRequest
 class Quote(CamelModel):
     hours: float
     base: Cents
+    # What a duration discount took off the base (already out of `total`).
+    discount: Cents = 0
+    discount_label: str = ""
     extra: Cents
     extra_label: str
     total: Cents

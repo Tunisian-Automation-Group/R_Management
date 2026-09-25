@@ -336,3 +336,30 @@ def test_reviews_match_the_record(world):
             assert set(r.tags) <= vocab, f"unknown tag on {r.id}"
     empty = summarise([])
     assert (empty.count, empty.average, empty.on_time_share, empty.top_tags) == (0, None, None, [])
+
+
+def test_longer_bookings_get_the_owner_s_duration_discount():
+    from cappy_common.fixtures import build_world
+    from cappy_common.models import WindowRequest
+    from matching.domain.pricing import quote_for
+
+    listing = next(l for l in build_world().listings if l.mode == "window")
+    listing = listing.model_copy(update={"day_discount_pct": 10, "week_discount_pct": 25, "extra_fee": 500})
+
+    def req(h):
+        return WindowRequest(
+            mode="window",
+            category=listing.category,
+            hours=h,
+            earliest="2026-01-01T00:00:00Z",
+            latest="2026-02-01T00:00:00Z",
+            district=listing.district,
+            max_distance_km=50,
+        )
+
+    short, day, week = quote_for(req(4), listing), quote_for(req(8), listing), quote_for(req(40), listing)
+    assert short.discount == 0
+    assert day.discount == round(day.base * 0.10) and day.discount_label == "Day rate −10%"
+    assert week.discount == round(week.base * 0.25)
+    assert week.total == week.base - week.discount + 500, "extras are never discounted"
+    assert week.platform_fee + week.owner_net == week.total
