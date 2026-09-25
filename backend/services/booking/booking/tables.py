@@ -5,7 +5,10 @@ constraint that makes double booking impossible (ADR 0004) is a range
 exclusion over them. It is created in the migration:
 
     EXCLUDE USING gist (listing_id WITH =, tstzrange(window_start, window_end) WITH &&)
-      WHERE (status IN ('awaiting_payment','requested','accepted','active'))
+      WHERE (status IN ('awaiting_payment','requested','accepted','active','completed','disputed'))
+
+(migration 0003; it began without the last two, and a job finished early
+had its window sold again)
 """
 
 from __future__ import annotations

@@ -64,6 +64,7 @@ def test_payment_and_sweeps():
     assert system_status("auto_complete", "active") == "completed"
 
 
-def test_only_holding_states_hold_the_window():
-    assert HOLDING.isdisjoint(FINAL)
-    assert {"awaiting_payment", "requested", "accepted", "active"} == HOLDING
+def test_only_bookings_that_never_happened_release_their_window():
+    # Used time stays sold (a job finished early); unused time is freed.
+    assert {"completed", "disputed"} <= HOLDING
+    assert HOLDING.isdisjoint({"declined", "cancelled", "expired", "payment_failed"})

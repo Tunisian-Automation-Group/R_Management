@@ -19,7 +19,7 @@ from cappy_common.models import Booking, Handover, ListingSnapshot, Match, Outco
 from cappy_common.pagination import decode_cursor, encode_cursor
 from cappy_common.timeutil import dt_from_iso, iso_from_datetime
 
-from .state import HOLDING
+from .state import HOLDING, OPEN
 from .tables import BookingRow, TransitionRow
 
 _requirement = TypeAdapter(Requirement)
@@ -172,7 +172,7 @@ class BookingRepository:
         """Bookings of this person, on either side, that are not settled yet."""
         q = select(func.count()).where(
             or_(BookingRow.requester_id == person, BookingRow.owner_id == person),
-            BookingRow.status.in_(HOLDING | {"disputed"}),
+            BookingRow.status.in_(OPEN),
         )
         return (await self.s.execute(q)).scalar_one()
 

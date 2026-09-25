@@ -419,3 +419,15 @@ def test_the_bookings_kill_switch(issuer, broker, payments):
     with TestClient(app) as c:
         r = c.post("/bookings", json=_body(), headers=issuer.headers(BUYER))
         assert r.status_code == 503 and r.headers["retry-after"] and "paused" in r.json()["error"]["message"]
+
+
+def test_a_job_finished_early_keeps_its_window_sold(client, app, issuer):
+    bid = _requested(client, app, issuer, start_h=0.25)
+    b = client.get(f"/bookings/{bid}", headers=issuer.headers(BUYER)).json()
+    for who, action in ((HOST, "accept"), (HOST, "start"), (BUYER, "complete")):
+        assert _do(client, issuer, who, bid, action).status_code == 200
+    body = {"listingIds": ["l9"], "start": now_iso(), "until": iso_from_ms(now_ms() + 72 * HOUR_MS)}
+    held = client.post("/internal/busy", json=body, headers=INTERNAL).json()
+    assert held == {"l9": [[b["match"]["start"], b["match"]["end"]]]}
+    r = client.post("/bookings", json=_body(start_h=0.25), headers=issuer.headers("someone-else"))
+    assert r.status_code == 409

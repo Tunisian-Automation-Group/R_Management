@@ -38,7 +38,13 @@ Status = Literal[
     "payment_failed",
     "disputed",
 ]
-HOLDING: frozenset[str] = frozenset({"awaiting_payment", "requested", "accepted", "active"})
+HOLDING: frozenset[str] = frozenset(
+    # A completed or disputed booking used its window (a job can be finished
+    # early): the time stays sold. Only bookings that never happened release it.
+    {"awaiting_payment", "requested", "accepted", "active", "completed", "disputed"}
+)
+# Bookings still in flight: what must finish before an account can go.
+OPEN: frozenset[str] = frozenset({"awaiting_payment", "requested", "accepted", "active", "disputed"})
 FINAL: frozenset[str] = frozenset({"completed", "declined", "cancelled", "expired", "payment_failed"})
 
 Action = Literal["accept", "decline", "start", "complete", "cancel", "dispute"]
