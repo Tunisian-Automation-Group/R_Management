@@ -393,3 +393,22 @@ async def test_a_task_started_during_an_identity_outage_uses_the_deploy_time_key
         http=httpx.AsyncClient(transport=httpx.MockTransport(down)),
     )
     assert (await v.verify(issuer.token("someone"))).sub == "someone"
+
+
+async def test_an_event_carries_the_trace_of_the_request_that_caused_it(stores):
+    from opentelemetry.sdk.trace import TracerProvider
+
+    from cappy_common.events import Event
+
+    db, _, outbox_t, _ = stores
+    tracer = TracerProvider().get_tracer("test")
+    with tracer.start_as_current_span("POST /bookings") as span:
+        async with db.transaction() as s:
+            event = await Outbox(outbox_t, "test").add(s, BOOKING_RATED, {"n": 1})
+    trace_id = format(span.get_span_context().trace_id, "032x")
+    assert event.trace and trace_id in event.trace["traceparent"]
+    assert Event.from_json(event.to_json()).trace == event.trace
+
+    async with db.transaction() as s:
+        untraced = await Outbox(outbox_t, "test").add(s, BOOKING_RATED, {"n": 2})
+    assert untraced.trace is None and "trace" not in untraced.to_json()

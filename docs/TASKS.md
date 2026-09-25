@@ -81,7 +81,7 @@ Status: `[ ]` open · `[~]` in progress · `[x]` done (commit) · `[-]` dropped 
 - [x] T-26 Region-outage decision recorded (RPO/RTO)
 - [x] T-29 Minimum app version (`/api/app-config`)
 - [ ] T-31 Push notifications (SNS → APNs/FCM) for owners' requests
-- [ ] T-33 Tracing (ADOT → X-Ray)
+- [x] T-33 Tracing: OpenTelemetry on in AWS through an ADOT sidecar to X-Ray; trace context travels inside events, so one trace spans the request, the outbox, SNS/SQS and the handler
 - [ ] T-34 Synthetic canaries
 - [x] T-35 SLOs and error budgets (docs/slo.md)
 - [ ] T-35b Burn-rate alarms per SLO in Terraform

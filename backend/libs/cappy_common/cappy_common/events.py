@@ -34,6 +34,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
+from opentelemetry import propagate, trace
 from sqlalchemy import Column, Index, Integer, MetaData, String, Table, delete, insert, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -43,6 +44,7 @@ from .ids import new_id
 from .timeutil import iso_from_datetime
 
 log = logging.getLogger(__name__)
+_tracer = trace.get_tracer(__name__)
 
 # --- the catalogue of event types --------------------------------------------
 # One place, so a producer and a consumer cannot disagree on a name. Adding a
@@ -89,16 +91,33 @@ class Event:
     source: str
     occurred_at: str
     data: dict
+    # W3C trace context of the request that caused it, so a trace follows the
+    # event through the outbox, SNS and SQS into whoever handles it.
+    trace: dict | None = None
 
     def to_json(self) -> str:
-        return json.dumps(
-            {"id": self.id, "type": self.type, "source": self.source, "occurredAt": self.occurred_at, "data": self.data}
-        )
+        body = {
+            "id": self.id,
+            "type": self.type,
+            "source": self.source,
+            "occurredAt": self.occurred_at,
+            "data": self.data,
+        }
+        if self.trace:
+            body["trace"] = self.trace
+        return json.dumps(body)
 
     @classmethod
     def from_json(cls, raw: str) -> Event:
         d = json.loads(raw)
-        return cls(id=d["id"], type=d["type"], source=d["source"], occurred_at=d["occurredAt"], data=d["data"])
+        return cls(
+            id=d["id"],
+            type=d["type"],
+            source=d["source"],
+            occurred_at=d["occurredAt"],
+            data=d["data"],
+            trace=d.get("trace"),
+        )
 
 
 def event_tables(metadata: MetaData) -> tuple[Table, Table]:
@@ -140,7 +159,16 @@ class Outbox:
         if type_ not in ALL_TYPES:
             raise ValueError(f"unknown event type {type_}")
         now = datetime.now(UTC)
-        event = Event(id=new_id("ev"), type=type_, source=self.source, occurred_at=iso_from_datetime(now), data=data)
+        carrier: dict = {}
+        propagate.inject(carrier)  # empty unless tracing is on
+        event = Event(
+            id=new_id("ev"),
+            type=type_,
+            source=self.source,
+            occurred_at=iso_from_datetime(now),
+            data=data,
+            trace=carrier or None,
+        )
         await session.execute(
             insert(self.table).values(
                 id=event.id, type=event.type, body=json.loads(event.to_json()), created_at=now, attempts=0
@@ -302,6 +330,12 @@ class Dispatcher:
         handler = self.handlers.get(event.type)
         if handler is None:
             return False
+        with _tracer.start_as_current_span(
+            f"handle {event.type}", context=propagate.extract(event.trace or {}), kind=trace.SpanKind.CONSUMER
+        ):
+            return await self._handle(handler, event)
+
+    async def _handle(self, handler: Handler, event: Event) -> bool:
         async with self.db.session() as s:
             try:
                 await s.execute(

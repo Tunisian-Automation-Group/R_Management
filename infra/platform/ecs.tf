@@ -15,10 +15,13 @@ locals {
     AUTH_ISSUER        = local.auth_issuer
     AUTH_CLIENT_IDS    = aws_cognito_user_pool_client.web.id
     AUTH_JWKS_FALLBACK = data.http.jwks.response_body
-    CATALOG_URL        = "http://catalog:8000"
-    MATCHING_URL       = "http://matching:8000"
-    BOOKING_URL        = "http://booking:8000"
-    PAYMENTS_URL       = "http://payments:8000"
+    # Traces go to the ADOT collector next to each task, then X-Ray.
+    OTEL_ENABLED  = "true"
+    OTEL_ENDPOINT = "http://localhost:4318"
+    CATALOG_URL   = "http://catalog:8000"
+    MATCHING_URL  = "http://matching:8000"
+    BOOKING_URL   = "http://booking:8000"
+    PAYMENTS_URL  = "http://payments:8000"
   }
   service_env = {
     # The App Store and Google Play shells call the API cross-origin (ADR 0012).
@@ -203,6 +206,12 @@ resource "aws_iam_role" "task" {
   assume_role_policy = data.aws_iam_policy_document.ecs_assume.json
 }
 
+resource "aws_iam_role_policy_attachment" "xray" {
+  for_each   = aws_iam_role.task
+  role       = each.value.name
+  policy_arn = "arn:aws:iam::aws:policy/AWSXRayDaemonWriteAccess"
+}
+
 resource "aws_iam_role_policy" "task" {
   for_each = aws_iam_role.task
   role     = each.value.name
@@ -264,6 +273,23 @@ resource "aws_ecs_task_definition" "service" {
         awslogs-group         = aws_cloudwatch_log_group.service[each.key].name
         awslogs-region        = var.region
         awslogs-stream-prefix = each.key
+      }
+    }
+    }, {
+    # The AWS Distro for OpenTelemetry collector: receives the service's OTLP
+    # traces on localhost and sends them to X-Ray. Not essential: the service
+    # keeps serving if its collector dies.
+    name              = "otel"
+    image             = "public.ecr.aws/aws-observability/aws-otel-collector:v0.43.3"
+    essential         = false
+    command           = ["--config=/etc/ecs/ecs-default-config.yaml"]
+    memoryReservation = 64
+    logConfiguration = {
+      logDriver = "awslogs"
+      options = {
+        awslogs-group         = aws_cloudwatch_log_group.service[each.key].name
+        awslogs-region        = var.region
+        awslogs-stream-prefix = "otel"
       }
     }
   }])
