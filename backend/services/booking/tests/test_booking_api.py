@@ -570,3 +570,17 @@ def test_expensive_bookings_need_a_verified_renter(issuer, broker, payments):
         )
         c.portal.call(app.state.dispatcher.handle, ev)
         assert c.post("/bookings", json=_body(), headers=issuer.headers(BUYER)).status_code == 201
+
+
+def test_export_includes_messages_and_evidence_and_deletion_clears_blocks(client, app, issuer):
+    from cappy_common.events import PROFILE_DELETED
+
+    bid = _requested(client, app, issuer)
+    client.post(f"/bookings/{bid}/messages", json={"body": "Is the rail included?"}, headers=issuer.headers(BUYER))
+    client.put(f"/me/blocks/{HOST}", headers=issuer.headers(BUYER))
+    out = client.get(f"/internal/people/{BUYER}/export", headers=INTERNAL).json()
+    assert [b["id"] for b in out["bookings"]] == [bid]
+    assert out["messagesSent"][0]["body"] == "Is the rail included?"
+    ev = Event(id=new_id("ev"), type=PROFILE_DELETED, source="catalog", occurred_at=now_iso(), data={"ownerId": BUYER})
+    assert call(app, app.state.dispatcher.handle, ev)
+    assert client.get("/me/blocks", headers=issuer.headers(BUYER)).json() == []

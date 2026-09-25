@@ -35,6 +35,7 @@ CONSUMERS = {
         "listing.changed",
         "moderation.owner_suspended",
         "payment.identity_verified",
+        "profile.deleted",
     ],
     "payments": ["booking.status_changed", "profile.deleted"],
     "notifications": [

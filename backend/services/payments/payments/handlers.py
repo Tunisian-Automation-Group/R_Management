@@ -32,7 +32,7 @@ from cappy_common.events import (
 )
 
 from .provider import Declined, Provider
-from .tables import OUTBOX, ConnectAccountRow, PaymentRow
+from .tables import OUTBOX, ConnectAccountRow, IdentityRow, PaymentRow
 
 log = logging.getLogger(__name__)
 
@@ -109,5 +109,8 @@ def handlers(provider: Provider, service_name: str, payouts_on: bool = True) -> 
         account = await session.get(ConnectAccountRow, event.data["ownerId"])
         if account is not None:
             await session.delete(account)
+        identity = await session.get(IdentityRow, event.data["ownerId"])
+        if identity is not None:
+            await session.delete(identity)
 
     return {BOOKING_STATUS_CHANGED: on_status_changed, PROFILE_DELETED: on_profile_deleted}

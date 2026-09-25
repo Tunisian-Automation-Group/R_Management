@@ -418,10 +418,39 @@ async def open_bookings(person: str, repo: BookingRepository = Depends(get_repo)
     return OpenBookings(open=await repo.open_for(person))
 
 
+class PersonExport(CamelModel):
+    bookings: list[Booking]
+    messages_sent: list[dict]
+    evidence: list[dict]
+
+
 @internal.get("/people/{person}/bookings", response_model=list[Booking])
 async def bookings_of(person: str, repo: BookingRepository = Depends(get_repo)) -> list[Booking]:
     """Every booking they were part of, for their data export."""
     return [to_booking(r, person) for r in await repo.all_for(person)]
+
+
+@internal.get("/people/{person}/export", response_model=PersonExport)
+async def export_person(person: str, repo: BookingRepository = Depends(get_repo)) -> PersonExport:
+    """Everything booking holds about them (GDPR art. 15/20)."""
+    from sqlalchemy import select
+
+    from .tables import EvidenceRow, MessageRow
+
+    s = repo.s
+    msgs = (
+        await s.execute(select(MessageRow).where(MessageRow.sender_id == person).order_by(MessageRow.at).limit(10_000))
+    ).scalars()
+    ev = (
+        await s.execute(select(EvidenceRow).where(EvidenceRow.by == person).order_by(EvidenceRow.at).limit(10_000))
+    ).scalars()
+    return PersonExport(
+        bookings=[to_booking(r, person) for r in await repo.all_for(person)],
+        messages_sent=[{"bookingId": m.booking_id, "body": m.body, "at": iso_from_datetime(m.at)} for m in msgs],
+        evidence=[
+            {"bookingId": e.booking_id, "stage": e.stage, "photos": e.photos, "at": iso_from_datetime(e.at)} for e in ev
+        ],
+    )
 
 
 @internal.post("/busy", response_model=dict[str, list[tuple[Iso, Iso]]])

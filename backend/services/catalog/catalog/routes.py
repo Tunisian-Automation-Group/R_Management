@@ -277,7 +277,7 @@ async def delete_me(request: Request, repo=Depends(get_repo), p: Principal = Dep
 async def export_me(request: Request, repo=Depends(get_repo), p: Principal = Depends(require_principal)) -> Response:
     """A copy of everything held about me, as one JSON file."""
     data = await repo.export(p.sub)
-    data["bookings"] = await request.app.state.bookings.all_for(p.sub)
+    data.update(await request.app.state.bookings.all_for(p.sub))
     data["exportedAt"] = now_iso()
     return Response(
         content=json.dumps(data, indent=1, ensure_ascii=False),

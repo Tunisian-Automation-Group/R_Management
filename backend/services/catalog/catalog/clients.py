@@ -25,8 +25,9 @@ class HttpBookings(Bookings):
     async def open_for(self, person: str) -> int:
         return (await self._c.get(f"/internal/people/{quote(person, safe='')}/open"))["open"]
 
-    async def all_for(self, person: str) -> list[dict]:
-        return await self._c.get(f"/internal/people/{quote(person, safe='')}/bookings")
+    async def all_for(self, person: str) -> dict:
+        """Bookings, messages sent and hand-over photos, for an export."""
+        return await self._c.get(f"/internal/people/{quote(person, safe='')}/export")
 
     async def aclose(self) -> None:
         await self._c.aclose()

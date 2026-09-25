@@ -46,7 +46,7 @@ class FakeBookings:
         return self.open.get(person, 0)
 
     async def all_for(self, person):  # noqa: ANN001
-        return [{"id": "bk_1", "status": "completed"}]
+        return {"bookings": [{"id": "bk_1", "status": "completed"}], "messagesSent": [], "evidence": []}
 
     async def aclose(self) -> None:
         pass
