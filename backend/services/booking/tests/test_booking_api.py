@@ -32,6 +32,8 @@ BUYER, HOST = "buyer-sub", "o1"
 
 
 class FakeMatching(Matching):
+    instant = False
+
     def __init__(self) -> None:
         w = build_world()
         self.listing = next(l for l in w.listings if l.id == "l9")
@@ -51,7 +53,9 @@ class FakeMatching(Matching):
             quote=q,
             distance_km=1.0,
         )
-        return MatchView(match=m, listing=self.listing, owner=self.owner)
+        return MatchView(
+            match=m, listing=self.listing.model_copy(update={"instant_book": self.instant}), owner=self.owner
+        )
 
 
 class FakePayments(Payments):
@@ -584,3 +588,16 @@ def test_export_includes_messages_and_evidence_and_deletion_clears_blocks(client
     ev = Event(id=new_id("ev"), type=PROFILE_DELETED, source="catalog", occurred_at=now_iso(), data={"ownerId": BUYER})
     assert call(app, app.state.dispatcher.handle, ev)
     assert client.get("/me/blocks", headers=issuer.headers(BUYER)).json() == []
+
+
+def test_instant_book_confirms_once_the_card_is_held(issuer, broker, payments):
+    matching = FakeMatching()
+    matching.instant = True
+    settings = Settings(app_env="test", database_url="sqlite+aiosqlite://", internal_token="i" * 40)
+    app = build_app(settings, matching=matching, payments=payments, catalog=FakeCatalog(), verifier=issuer.verifier())
+    with TestClient(app) as c:
+        app.state._portal = c.portal
+        bid = c.post("/bookings", json=_body(), headers=issuer.headers(BUYER)).json()["booking"]["id"]
+        assert _authorise(app, bid)
+        b = c.get(f"/bookings/{bid}", headers=issuer.headers(BUYER)).json()
+        assert b["status"] == "accepted" and b["listing"]["instantBook"] is True

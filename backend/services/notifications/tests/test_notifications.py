@@ -177,3 +177,8 @@ def test_a_german_speaker_is_written_to_in_german():
             _event(PAYOUT_SENT, bookingId="bk_1", ownerId="host", requesterId="buyer", amount=123456, currency="eur"),
         )
     assert [m.subject for m in mailer.sent] == ["Neue Anfrage: Table saw", "Du hast 1.234,56 € erhalten"]
+
+
+def test_an_instant_booking_tells_both_sides(app):
+    sent = _sent(app, _change("accepted", by="payments", frm="awaiting_payment"))
+    assert sent == [("buyer@example.com", "Confirmed: Table saw"), ("host@example.com", "New booking: Table saw")]

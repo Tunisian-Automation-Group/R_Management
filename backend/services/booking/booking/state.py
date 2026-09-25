@@ -48,7 +48,9 @@ OPEN: frozenset[str] = frozenset({"awaiting_payment", "requested", "accepted", "
 FINAL: frozenset[str] = frozenset({"completed", "declined", "cancelled", "expired", "payment_failed"})
 
 Action = Literal["accept", "decline", "start", "complete", "cancel", "dispute"]
-SystemAction = Literal["authorised", "payment_failed", "expire", "auto_complete", "listing_removed"]
+SystemAction = Literal[
+    "authorised", "authorised_instant", "payment_failed", "expire", "auto_complete", "listing_removed"
+]
 Role = Literal["requester", "owner", "either"]
 
 
@@ -72,6 +74,8 @@ TRANSITIONS: dict[Action, Transition] = {
 
 SYSTEM: dict[SystemAction, tuple[frozenset[str], Status]] = {
     "authorised": (frozenset({"awaiting_payment"}), "requested"),
+    # Instant book: the owner said yes in advance, so a held card confirms it.
+    "authorised_instant": (frozenset({"awaiting_payment"}), "accepted"),
     # Also after accept: the capture can be declined (the hold was reversed).
     "payment_failed": (frozenset({"awaiting_payment", "accepted"}), "payment_failed"),
     "expire": (frozenset({"awaiting_payment", "requested"}), "expired"),

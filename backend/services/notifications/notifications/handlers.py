@@ -59,7 +59,11 @@ def messages(event: Event, web: str) -> list[Message]:
         "expired": requester if d.get("from") == "requested" else None,
         "completed": requester,
     }.get(to)
-    return [(who, None, to, params)] if who else []
+    out: list[Message] = [(who, None, to, params)] if who else []
+    if to == "accepted" and d.get("from") == "awaiting_payment":
+        # Instant book: the owner never saw a request, so they hear of the booking.
+        out.append((owner, None, "instant_booked", params))
+    return out
 
 
 def chat_push(event: Event, web: str) -> Message | None:

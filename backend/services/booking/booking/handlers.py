@@ -51,7 +51,9 @@ def handlers(settings: Settings) -> dict[str, Handler]:
         await repo.move(row, to, "payments", now, expires_at=expires)
 
     async def on_authorised(session: AsyncSession, event: Event) -> None:
-        await apply(session, event, "authorised")
+        row = await session.get(BookingRow, event.data["bookingId"])
+        instant = bool(row and (row.listing_snapshot or {}).get("instantBook"))
+        await apply(session, event, "authorised_instant" if instant else "authorised")
 
     async def on_failed(session: AsyncSession, event: Event) -> None:
         await apply(session, event, "payment_failed")

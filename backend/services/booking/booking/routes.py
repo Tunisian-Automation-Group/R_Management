@@ -181,6 +181,7 @@ async def create_booking(
             "district": view.listing.district,
             "category": view.listing.category,
             "ownerName": view.owner.name,
+            "instantBook": view.listing.instant_book,
             **({"photo": view.listing.photos[0]} if view.listing.photos else {}),
         },
         idempotency_key=idempotency_key,

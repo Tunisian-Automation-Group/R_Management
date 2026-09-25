@@ -141,6 +141,8 @@ class _ListingBase(CamelModel):
     instructions: str
     rules: list[str]
     active: bool
+    # Booked without the owner answering: confirmed once the card is held.
+    instant_book: bool = False
 
 
 class WindowListing(_ListingBase):
@@ -280,6 +282,7 @@ class ListingSnapshot(CamelModel):
     category: CategoryId
     owner_name: str
     photo: str | None = None
+    instant_book: bool = False
 
 
 class MatchView(CamelModel):
