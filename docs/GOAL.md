@@ -94,3 +94,30 @@ What this adds:
       version (the phone layout and the store shells).
 
     It repeats until a round finds nothing.
+
+## The brief, extended (2026-09-26, verbatim)
+
+> Also to keep in mind this is targeted to all europe, the us and canada so add that so the agents know this
+
+What this adds:
+
+16. **Markets: all of Europe, the United States and Canada.** Germany is
+    the first market, not the only one. Every design and every task
+    assumes more than one market:
+    - **Money:** several currencies (EUR, GBP, CHF, the Nordic and
+      Eastern European currencies, USD, CAD), with prices stored in minor
+      units per currency and never converted silently.
+    - **Tax:** VAT per EU country, UK VAT, Swiss VAT, US sales tax (by
+      state) and Canadian GST/HST/PST/QST, plus the matching platform
+      reporting (DAC7 in the EU, 1099-K in the US, Canada's platform rules).
+    - **Law:** GDPR and UK GDPR, the DSA, consumer law per country, CCPA/CPRA
+      and the other US state privacy laws, PIPEDA and Québec Law 25,
+      accessibility (EAA/BFSG in the EU, ADA in the US, AODA and the ACA in
+      Canada).
+    - **Language and format:** English, German, French (France and
+      Québec) and the other main European languages over time; locale
+      dates, numbers, addresses, phone numbers, and km or miles.
+    - **Data and payments:** where each market's data lives (EU data in
+      the EU), and which Stripe platform entity serves which market.
+    - **Places:** time zones and addresses everywhere; no assumption that
+      a city is Berlin or that a place is a Berlin district.
