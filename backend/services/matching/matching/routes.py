@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import asyncio
 
-from fastapi import Depends, Query, Request
+from fastapi import Depends, Query, Request, Response
 from pydantic import Field
 
 from cappy_common.app import ApiRouter
@@ -29,6 +29,8 @@ from .domain.pricing import hours_for, quote_for
 from .domain.reviews import REVIEW_TAGS
 
 router = ApiRouter()
+# The same for everyone and rarely changing: CloudFront answers these for five minutes.
+PUBLIC_CACHE = "public, max-age=300"
 internal = ApiRouter(prefix="/internal", dependencies=[Depends(require_internal)])
 
 MAX_RESULTS = 100
@@ -114,12 +116,16 @@ class QuoteOut(CamelModel):
 
 
 @router.get("/groups", response_model=list[GroupMeta])
-async def list_groups() -> list[GroupMeta]:
+async def list_groups(
+    response: Response,
+) -> list[GroupMeta]:
+    response.headers["Cache-Control"] = PUBLIC_CACHE
     return GROUPS
 
 
 @router.get("/categories", response_model=list[CategoryMeta])
-async def list_categories(group: str | None = None) -> list[CategoryMeta]:
+async def list_categories(response: Response, group: str | None = None) -> list[CategoryMeta]:
+    response.headers["Cache-Control"] = PUBLIC_CACHE
     if group is None:
         return CATEGORIES
     if group not in GROUP_IDS:
@@ -128,7 +134,10 @@ async def list_categories(group: str | None = None) -> list[CategoryMeta]:
 
 
 @router.get("/review-tags", response_model=list[str])
-async def list_review_tags() -> list[str]:
+async def list_review_tags(
+    response: Response,
+) -> list[str]:
+    response.headers["Cache-Control"] = PUBLIC_CACHE
     return list(REVIEW_TAGS)
 
 

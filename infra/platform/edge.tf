@@ -278,6 +278,29 @@ resource "aws_cloudfront_function" "spa" {
   JS
 }
 
+# Public API answers: keyed on the query string (?group=move is its own
+# answer), never on who is asking, and cached only as long as the origin's
+# Cache-Control says.
+resource "aws_cloudfront_cache_policy" "api_public" {
+  name        = "${local.name}-api-public"
+  min_ttl     = 0
+  default_ttl = 0
+  max_ttl     = 3600
+  parameters_in_cache_key_and_forwarded_to_origin {
+    enable_accept_encoding_gzip   = true
+    enable_accept_encoding_brotli = true
+    query_strings_config {
+      query_string_behavior = "all"
+    }
+    headers_config {
+      header_behavior = "none"
+    }
+    cookies_config {
+      cookie_behavior = "none"
+    }
+  }
+}
+
 data "aws_cloudfront_cache_policy" "disabled" {
   name = "Managed-CachingDisabled"
 }
@@ -381,6 +404,61 @@ resource "aws_cloudfront_distribution" "main" {
       event_type   = "viewer-request"
       function_arn = aws_cloudfront_function.spa.arn
     }
+  }
+
+  # Shared vocabulary: cached for what the origin says (5 minutes).
+  ordered_cache_behavior {
+    path_pattern           = "/api/categories"
+    target_origin_id       = "api"
+    viewer_protocol_policy = "https-only"
+    allowed_methods        = ["GET", "HEAD", "OPTIONS"]
+    cached_methods         = ["GET", "HEAD"]
+    compress               = true
+    cache_policy_id        = aws_cloudfront_cache_policy.api_public.id
+  }
+
+  # Shared vocabulary: cached for what the origin says (5 minutes).
+  ordered_cache_behavior {
+    path_pattern           = "/api/groups"
+    target_origin_id       = "api"
+    viewer_protocol_policy = "https-only"
+    allowed_methods        = ["GET", "HEAD", "OPTIONS"]
+    cached_methods         = ["GET", "HEAD"]
+    compress               = true
+    cache_policy_id        = aws_cloudfront_cache_policy.api_public.id
+  }
+
+  # Shared vocabulary: cached for what the origin says (5 minutes).
+  ordered_cache_behavior {
+    path_pattern           = "/api/review-tags"
+    target_origin_id       = "api"
+    viewer_protocol_policy = "https-only"
+    allowed_methods        = ["GET", "HEAD", "OPTIONS"]
+    cached_methods         = ["GET", "HEAD"]
+    compress               = true
+    cache_policy_id        = aws_cloudfront_cache_policy.api_public.id
+  }
+
+  # Shared vocabulary: cached for what the origin says (5 minutes).
+  ordered_cache_behavior {
+    path_pattern           = "/api/districts"
+    target_origin_id       = "api"
+    viewer_protocol_policy = "https-only"
+    allowed_methods        = ["GET", "HEAD", "OPTIONS"]
+    cached_methods         = ["GET", "HEAD"]
+    compress               = true
+    cache_policy_id        = aws_cloudfront_cache_policy.api_public.id
+  }
+
+  # Shared vocabulary: cached for what the origin says (5 minutes).
+  ordered_cache_behavior {
+    path_pattern           = "/api/cities"
+    target_origin_id       = "api"
+    viewer_protocol_policy = "https-only"
+    allowed_methods        = ["GET", "HEAD", "OPTIONS"]
+    cached_methods         = ["GET", "HEAD"]
+    compress               = true
+    cache_policy_id        = aws_cloudfront_cache_policy.api_public.id
   }
 
   ordered_cache_behavior {

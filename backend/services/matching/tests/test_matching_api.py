@@ -185,3 +185,8 @@ def test_nothing_starts_too_soon_for_the_owner_to_answer(client):
     early = {"slotId": offers[0]["slotId"], "start": now_iso(), "end": iso_from_ms(now_ms() + 2 * HOUR_MS)}
     body = {"requirement": _saw_requirement(), "listingId": "l9", **early}
     assert client.post("/internal/match-for-offer", json=body, headers=INTERNAL).status_code == 422
+
+
+def test_shared_vocabulary_is_cacheable_at_the_edge(client):
+    for path in ("/groups", "/categories", "/review-tags"):
+        assert client.get(path).headers["cache-control"] == "public, max-age=300"

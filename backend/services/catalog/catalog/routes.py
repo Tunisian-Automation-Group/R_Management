@@ -22,6 +22,8 @@ from . import media
 from .repository import CatalogRepository
 
 router = ApiRouter()
+# The same for everyone and rarely changing: CloudFront answers these for five minutes.
+PUBLIC_CACHE = "public, max-age=300"
 internal = ApiRouter(prefix="/internal", dependencies=[Depends(require_internal)])
 
 _listing = TypeAdapter(Listing)
@@ -273,12 +275,14 @@ async def export_me(request: Request, repo=Depends(get_repo), p: Principal = Dep
 
 
 @router.get("/districts", response_model=dict[str, District])
-async def districts(repo=Depends(get_read_repo)) -> dict[str, District]:
+async def districts(response: Response, repo=Depends(get_read_repo)) -> dict[str, District]:
+    response.headers["Cache-Control"] = PUBLIC_CACHE
     return await repo.districts()
 
 
 @router.get("/cities", response_model=list[City])
-async def cities(repo=Depends(get_read_repo)) -> list[City]:
+async def cities(response: Response, repo=Depends(get_read_repo)) -> list[City]:
+    response.headers["Cache-Control"] = PUBLIC_CACHE
     return [
         City(city=c.metro, country=c.country, lat=c.lat, lng=c.lng, listings=c.listings) for c in await repo.cities()
     ]
