@@ -27,7 +27,7 @@ Status: ✅ handled · 🟡 partly · ❌ open (has a task)
 
 | # | Scenario | Today | Status |
 |---|---|---|---|
-| F7 | **A hot listing** (shared widely): thousands of reads a second on one row | Anonymous listing, search, review, owner, offer and spotlight reads are cached at CloudFront for 30 s, `stale-while-revalidate` coalesces refreshes and `stale-if-error` serves 10 min through an origin failure. Everything else is served from the Aurora reader (T-07, R-4). | ✅ |
+| F7 | **A hot listing** (shared widely): thousands of reads a second on one row | Since signed-in only (GOAL 13) product reads carry a token and are `private, no-store`: no edge cache. They are served from the Aurora reader, which scales with replicas; CloudFront caches only the public vocabulary and app-config. A per-listing in-process cache is the next step if one row ever dominates (T-07, R-4). | 🟡 |
 | F8 | **Two-letter searches** (`q=ab`): trigram indexes need three characters, so this is a full scan at a million listings | Three characters minimum, which the trigram index needs (T-08). | ✅ |
 | F9 | **Upload abuse**: a free account fills S3 | 100 photos per person a day; unused uploads swept after a day (T-09). | ✅ |
 | F10 | **EU-wide candidate search** (`maxKm=2000`) at a million listings: the bounding box matches most rows and then sorts them all | Districts are walked nearest first (at most 200), each from its own index, stopping at the cap. 100k listings: 17 ms local, 21 ms EU-wide (T-10). | ✅ |
