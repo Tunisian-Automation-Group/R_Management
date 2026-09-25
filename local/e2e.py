@@ -88,29 +88,10 @@ def confirm_with_test_card(intent_id: str) -> None:
     assert pi.status == "requires_capture", pi.status
 
 
-def photo() -> bytes:
-    buf = io.BytesIO()
-    Image.new("RGB", (1600, 1200), (30, 120, 200)).save(buf, format="JPEG")
-    return buf.getvalue()
-
-
-def main() -> None:
-    run = uuid.uuid4().hex[:8]
-    print(f"e2e run {run}")
-
-    step("the edge refuses what it must")
-    assert http.post("/internal/busy", json={}).status_code == 404
-    assert http.get("/bookings").status_code == 401
-    assert http.get("/bookings", headers={"X-Cappy-User": "o1"}).status_code == 401
-    assert http.get("/bookings", headers={"Authorization": "Bearer forged.token.here"}).status_code == 401
-
-    step("a new buyer signs up and confirms")
-    email = f"buyer-{run}@example.com"
+def sign_up(email: str) -> dict:
+    """Sign up, confirm with the emailed code, sign in: as the app does."""
     idp.sign_up(
-        ClientId=ENV["AUTH_CLIENT_IDS"],
-        Username=email,
-        Password=PASSWORD,
-        UserAttributes=[{"Name": "email", "Value": email}],
+        ClientId=ENV["AUTH_CLIENT_IDS"], Username=email, Password=PASSWORD, UserAttributes=[{"Name": "email", "Value": email}]
     )
     deadline = time.time() + 20
     while (code := emailed_code(email)) is None and time.time() < deadline:
@@ -127,12 +108,43 @@ def main() -> None:
         Username=email,
         UserAttributes=[{"Name": "email", "Value": email}, {"Name": "email_verified", "Value": "true"}],
     )
-    buyer = sign_in(email)
-    assert ok(http.get("/me", headers=buyer)).get("profile") is None
-    ok(http.put("/me", json={"name": "Erin Buyer", "kind": "person", "district": "Kreuzberg"}, headers=buyer))
+    headers = sign_in(email)
+    assert ok(http.get("/me", headers=headers)).get("owner") is None
+    return headers
 
-    step("the demo host lists a machine with a photo")
-    host = sign_in("host@demo.cappy.local")
+
+def photo() -> bytes:
+    buf = io.BytesIO()
+    Image.new("RGB", (1600, 1200), (30, 120, 200)).save(buf, format="JPEG")
+    return buf.getvalue()
+
+
+def main() -> None:
+    run = uuid.uuid4().hex[:8]
+    print(f"e2e run {run}")
+
+    step("the edge refuses what it must")
+    assert http.post("/internal/busy", json={}).status_code == 404
+    assert http.get("/bookings").status_code == 401
+    assert http.get("/bookings", headers={"X-Cappy-User": "o1"}).status_code == 401
+    assert http.get("/bookings", headers={"Authorization": "Bearer forged.token.here"}).status_code == 401
+
+    step("a new buyer and a new host sign up and confirm")
+    email = f"buyer-{run}@example.com"
+    host_email = f"host-{run}@example.com"
+    buyer = sign_up(email)
+    ok(http.put("/me", json={"name": "Erin Buyer", "kind": "person", "district": "Kreuzberg"}, headers=buyer))
+    host = sign_up(host_email)
+    ok(http.put("/me", json={"name": "Hana Host", "kind": "person", "district": "Kreuzberg"}, headers=host))
+    host_sub = ok(http.get("/me", headers=host))["id"]
+    if ok(http.get("/payments/config"))["provider"] == "stripe":
+        # A verified Stripe test account, as Connect onboarding would give them.
+        subprocess.run(
+            ["docker", "compose", "exec", "-T", "payments", "python", "-m", "payments.cli", "demo-payouts", host_sub],
+            check=True, capture_output=True, cwd=Path(__file__).parents[1],
+        )
+
+    step("the host lists a machine with a photo and a private hand-over address")
     up = ok(http.post("/uploads", files={"file": ("p.jpg", photo(), "image/jpeg")}, headers=host), 201)
     assert http.get(up["url"].replace("/api", "") if up["url"].startswith("/api") else up["url"].replace(API, "")).status_code in (200, 404)
     start = datetime.now(UTC).replace(minute=0, second=0, microsecond=0) + timedelta(days=2)
@@ -161,6 +173,7 @@ def main() -> None:
                 "slots": [
                     {"start": start.isoformat(), "end": (start + timedelta(hours=8)).isoformat(), "hoursUsable": 8}
                 ],
+                "address": f"Oranienstraße {run}, 10999 Berlin",
             },
         ),
         201,
@@ -204,6 +217,8 @@ def main() -> None:
 
     step("accept captures; hand-over; completion pays the owner")
     assert ok(http.post(f"/bookings/{booking_id}/accept", headers=host))["status"] == "accepted"
+    handover = ok(http.get(f"/bookings/{booking_id}", headers=buyer))["handover"]
+    assert handover["address"] == f"Oranienstraße {run}, 10999 Berlin", "the buyer now knows where to go"
     until("captured", lambda: ok(http.get(f"/payments/bookings/{booking_id}", headers=buyer))["status"] == "captured")
     ok(http.post(f"/bookings/{booking_id}/start", headers=host))
     assert ok(http.post(f"/bookings/{booking_id}/complete", headers=buyer))["status"] == "completed"
@@ -225,7 +240,17 @@ def main() -> None:
         return [m["Subject"] for m in sent if address in m["Destination"]["ToAddresses"]]
 
     until("buyer's confirmation", lambda: any(title in s and "Confirmed" in s for s in mails_to(email)))
-    until("host's request email", lambda: any(title in s for s in mails_to("host@demo.cappy.local")))
+    until("host's request email", lambda: any(title in s for s in mails_to(host_email)))
+
+    step("both can take their data and delete their accounts")
+    export = http.get("/me/export", headers=buyer)
+    assert export.status_code == 200 and any(b["id"] == booking_id for b in export.json()["bookings"])
+    for who in (buyer, host):
+        assert http.delete("/me", headers=who).status_code == 204
+    assert http.get(f"/listings/{listing_id}").status_code == 404, "the host's listing is gone"
+    assert ok(http.get(f"/owners/{host_sub}"))["name"] == "Former member"
+    for address in (email, host_email):
+        idp.admin_delete_user(UserPoolId=ENV["USER_POOL_ID"], Username=address)
     print("e2e passed")
 
 

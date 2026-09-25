@@ -162,11 +162,13 @@ class PayableOwnerRow(Base):
 
 class MediaRow(Base):
     """A photograph someone uploaded. Tracks who owns which object, so a
-    listing can only show its owner's own uploads and orphans can be swept."""
+    listing can only show its owner's own uploads and orphans can be swept.
+    Names are content hashes, so two people uploading the same picture share
+    one object and each own it: one row per (name, owner)."""
 
     __tablename__ = "media"
     name: Mapped[str] = mapped_column(String(80), primary_key=True)
-    owner_id: Mapped[str] = mapped_column(String(64), index=True)
+    owner_id: Mapped[str] = mapped_column(String(64), primary_key=True, index=True)
     bytes: Mapped[int] = mapped_column(Integer)
     width: Mapped[int] = mapped_column(Integer)
     height: Mapped[int] = mapped_column(Integer)

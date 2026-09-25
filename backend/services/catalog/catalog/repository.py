@@ -664,7 +664,7 @@ class CatalogRepository:
     # --- media ------------------------------------------------------------------------------
 
     async def record_media(self, name: str, owner_id: str, size: int, width: int, height: int) -> None:
-        if await self.s.get(MediaRow, name) is None:
+        if await self.s.get(MediaRow, (name, owner_id)) is None:
             self.s.add(
                 MediaRow(name=name, owner_id=owner_id, bytes=size, width=width, height=height, created_at=_now())
             )

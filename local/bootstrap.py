@@ -59,13 +59,16 @@ def messaging() -> dict[str, str]:
     for service, types in CONSUMERS.items():
         dlq = sqs.create_queue(QueueName=f"cappy-{service}-dlq", Attributes={"MessageRetentionPeriod": "1209600"})
         dlq_arn = sqs.get_queue_attributes(QueueUrl=dlq["QueueUrl"], AttributeNames=["QueueArn"])["Attributes"]["QueueArn"]
-        q = sqs.create_queue(
-            QueueName=f"cappy-{service}",
-            Attributes={
-                "VisibilityTimeout": "120",
-                "RedrivePolicy": json.dumps({"deadLetterTargetArn": dlq_arn, "maxReceiveCount": "12"}),
-            },
-        )
+        attributes = {
+            "VisibilityTimeout": "120",
+            "RedrivePolicy": json.dumps({"deadLetterTargetArn": dlq_arn, "maxReceiveCount": "12"}),
+        }
+        try:
+            q = sqs.create_queue(QueueName=f"cappy-{service}", Attributes=attributes)
+        except sqs.exceptions.QueueNameExists:
+            # Made by an earlier run with other settings: bring it up to date.
+            q = sqs.get_queue_url(QueueName=f"cappy-{service}")
+            sqs.set_queue_attributes(QueueUrl=q["QueueUrl"], Attributes=attributes)
         arn = sqs.get_queue_attributes(QueueUrl=q["QueueUrl"], AttributeNames=["QueueArn"])["Attributes"]["QueueArn"]
         existing = {s["Endpoint"] for s in sns.list_subscriptions_by_topic(TopicArn=topic)["Subscriptions"]}
         if arn not in existing:

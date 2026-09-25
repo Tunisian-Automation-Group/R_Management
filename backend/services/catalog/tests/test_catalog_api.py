@@ -566,3 +566,13 @@ def test_public_reads_are_cacheable_at_the_edge_and_personal_ones_never(client, 
     assert mine.headers["cache-control"] == "private, no-store"
     assert "cache-control" not in client.get("/listings/nope").headers, "errors are not cached"
     assert client.get("/saved", headers=issuer.headers("user-a")).headers["cache-control"] == "private, no-store"
+
+
+def test_two_people_can_upload_the_same_picture(client, issuer):
+    same = _jpeg_with_gps()
+    for who, name in (("user-a", "Ada Lovelace"), ("user-b", "Bo Builder")):
+        _profile(client, issuer, sub=who, name=name)
+        h = issuer.headers(who)
+        url = client.post("/uploads", files={"file": ("p.jpg", same, "image/jpeg")}, headers=h).json()["url"]
+        body = {"listing": _window_listing(photos=[url]), "slots": [_slot()]}
+        assert client.post("/listings", json=body, headers=h).status_code == 201, who

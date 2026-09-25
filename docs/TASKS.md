@@ -57,50 +57,55 @@ Status: `[ ]` open · `[~]` in progress · `[x]` done (commit) · `[-]` dropped 
 
 ## Verification round 1 — backend and data (V1)
 
-- [ ] V1-8b Handover address: stored on the listing (owner only), returned on the booking once accepted
-- [ ] V1-12 The e2e uses its own owner and removes what it creates; demo data stays clean
+- [x] V1-8b Handover address: stored on the listing (owner only), returned on the booking once accepted
+- [x] V1-12 The e2e uses its own owner and removes what it creates; demo data stays clean
 - [ ] V1-28 Refresh token: kept in the native shells' secure storage (Capacitor Preferences/Keychain); on the web it stays in storage under the CSP (accepted risk, ADR 0012)
 - [ ] V1-34 Seed photos that match their listings (cosmetic; demo only)
 - [-] V1-3 real legal text: needs the company's details from the owner of the business (asked)
 
 ## Resilience (F)
 
-- [ ] T-01 Load shedding at the gateway: bounded in-flight requests per task, fast `503` + `Retry-After`
-- [ ] T-03 Per-upstream bulkheads and per-route timeouts in the gateway
-- [ ] T-05 Last-known-good JWKS so new tasks verify tokens during a Cognito outage
-- [ ] T-08 Search needs 3+ characters (trigram index), checked with a plan at scale
+- [x] T-01 Load shedding at the gateway: bounded in-flight requests per task, fast `503` + `Retry-After`
+- [x] T-03 Per-upstream bulkheads and per-route timeouts in the gateway
+- [x] T-05 Last-known-good JWKS so new tasks verify tokens during a Cognito outage
+- [x] T-08 Search needs 3+ characters (trigram index), checked with a plan at scale
 - [ ] T-09 Per-user daily upload quota; sweep orphaned photos
 - [ ] T-10 Nearest-first candidates with a KNN GiST index; a sane maximum radius
-- [ ] T-11 Matching degrades without busy windows when booking is down
-- [ ] T-16 Exponential backoff per SQS message before the DLQ (hours, not minutes)
-- [ ] T-19 Chargebacks: record `charge.dispute.*`, hold the payout, alarm
-- [ ] T-20 Cap open unpaid bookings per person (card testing)
-- [ ] T-22 SES suppression list and bounce/complaint alarms
+- [x] T-11 Matching degrades without busy windows when booking is down
+- [x] T-16 Exponential backoff per SQS message before the DLQ (hours, not minutes)
+- [x] T-19 Chargebacks: record `charge.dispute.*`, hold the payout, alarm
+- [x] T-20 Cap open unpaid bookings per person (card testing)
+- [x] T-22 SES suppression list and bounce/complaint alarms
 - [ ] T-24 RDS Proxy (decide from the research; wire in Terraform)
 - [ ] T-25 Backup-restore drill in the runbook
 - [ ] T-26 Region-outage decision recorded (RPO/RTO)
-- [ ] T-29 Minimum app version (`/api/app-config`)
+- [x] T-29 Minimum app version (`/api/app-config`)
 - [ ] T-31 Push notifications (SNS → APNs/FCM) for owners' requests
 - [ ] T-33 Tracing (ADOT → X-Ray)
 - [ ] T-34 Synthetic canaries
 - [ ] T-35 SLOs and error budgets
 - [ ] T-02, T-06, T-36 decided from the research (Bot Control, Cognito threat protection, canary deploys)
 
+## Found while doing these
+
+- [x] B-1 Two people uploading the same picture: only the first could use it (media is now owned per person)
+- [x] B-2 Local bootstrap failed once queue settings changed (it now updates existing queues)
+
 ## From the research (R)
 
 - [x] R-0 Card authorisations expire after 7 days: already safe (capture at accept, at most 24 h after the request)
 - [ ] R-1 Payments reconciliation sweep: intents stuck in an intermediate state converge with Stripe
-- [ ] R-2 Reject an idempotency key reused with a different request body
-- [ ] R-3 Full jitter in the relay poll, the sweeps and client retry backoff
-- [ ] R-4 Public GETs: `s-maxage` plus `stale-while-revalidate` and `stale-if-error` at the edge (with T-07)
-- [ ] R-5 Connection budget written down and asserted; replica-lag alarm; reader in promotion tier 1
+- [x] R-2 Reject an idempotency key reused with a different request body
+- [x] R-3 Full jitter in the relay poll, the sweeps and client retry backoff
+- [x] R-4 Public GETs: `s-maxage` plus `stale-while-revalidate` and `stale-if-error` at the edge (with T-07)
+- [x] R-5 Connection budget written down and asserted; replica-lag alarm; reader in promotion tier 1
 - [ ] R-10 Kill switches (settings): stop new bookings, stop payouts, stop new listings, without a deploy
 - [ ] R-11 Game-day runbook (Aurora failover, stop half the tasks) with AWS FIS
 - [ ] R-13 Web deletion page for Google Play (`/account/delete`)
 
 ## Load
 
-- [ ] L-1 `make load`: 50 concurrent browsers for 60 s plus contested bookings, with no errors and no double booking
+- [x] L-1 `make load`: 50 concurrent browsers for 60 s plus contested bookings. Result: 20,580 requests, 0 failures; 5 contested windows, exactly 1 winner each; p50 about 100 ms, p95 about 430 ms (single-process containers on a laptop)
 - [ ] L-2 Spike: 10× the baseline arrival rate for 60 s; shedding keeps accepted requests fast
 - [ ] L-3 Soak: an hour at normal load; connections, memory and queue ages stay flat
 - [ ] L-4 Mixed journeys with an open arrival model (90% browse, 8% book, 2% accept/complete)
