@@ -6,7 +6,7 @@ Capacitor shells for the App Store and Google Play (ADR 0012). Where the two
 behave differently, the flow says so.
 
 This file describes the **committed code**. It was written against commit
-`ac716b5` on `prod-readiness`. Numbers come from the code, and each has its
+`ac716b5` on `prod-readiness` and last synced with `f22f143`. Numbers come from the code, and each has its
 source file next to it. If the code and this file disagree, the code wins, and
 this file needs fixing (see the last section).
 
@@ -74,17 +74,23 @@ The booking lifecycle diagram is in [section 7](#the-booking-lifecycle).
 | Unpaid bookings one person may have at once | 3 | `booking/settings.py` `max_unpaid` |
 | Booking requests per person per 24 h | 10 | `booking/settings.py` `max_requests_per_day` |
 | ID check needed | booking total above 30 000 cents (EUR 300); no categories | `booking/settings.py` `verify_above_cents`, `verify_categories` |
-| Paid cancellation policies | **off**: every cancellation refunds in full | `booking/settings.py` `paid_cancellation_policies` |
+| Paid cancellation policies | **off**: every cancellation refunds in full, unless the feature flag `paidCancellationPolicies` is at 100 | `booking/settings.py` `paid_cancellation_policies`, `FEATURE_FLAGS` |
 | Platform fee | 15 %, inside the total | `matching/domain/pricing.py`, `web/src/domain/pricing.ts` |
 | New listings per owner per 24 h | 20 | `catalog/settings.py` `max_listings_per_day` |
 | Listing held for a staff check | owner with 0 completed jobs and a rate above 10 000 cents/h (EUR 100) | `catalog/settings.py` `review_above_cents` |
-| Photos | 12 per listing, 12 MB each, 100 uploads per person per day | `catalog/routes.py`, `catalog/settings.py` |
+| Photos | 12 per listing, 12 MB each, 100 uploads per person per day; shrunk on the device to 2048 px | `catalog/routes.py`, `catalog/settings.py`, `web/src/app/photos.ts` |
+| Hand-over photo links | valid 15 min; the app re-reads the list every 10 min | `booking/messages.py` `LINK_TTL`, `web/src/data/repo.ts` `useEvidence` |
 | Owner reliability | cancels and no-shows over 12 months, shown after 5 accepted bookings; 3 in 30 days flags the owner to staff | `booking/repository.py` |
-| Access and id token | 60 min; the app refreshes 60 s before expiry | `infra/platform/identity.tf`, `web/src/data/auth.ts` |
+| Access and id token | 15 min; the app refreshes 60 s before expiry | `infra/platform/identity.tf`, `web/src/data/auth.ts` |
+| A session ended elsewhere stops working | at once in catalog; in booking, payments and notifications when the event arrives (seconds), then within 30 s on every replica; matching at token expiry | `cappy_common/guard.py` `Revocations` |
+| Staff MFA check | cached 5 min per staff account | `cappy_common/auth.py` `StaffMfa` |
 | Refresh token | 30 days, revocable | `infra/platform/identity.tf` |
 | Password | at least 12 characters, nothing else required | `infra/platform/identity.tf`, `Login.tsx` |
 | Resend a code | every 30 s | `Login.tsx` |
-| Anonymous reports | 3 per email per 24 h; 20 reports per target per 24 h | `catalog/moderation.py` |
+| Reports | 3 per anonymous email per 24 h; per target per 24 h, 5 anonymous and 20 signed-in, counted apart | `catalog/moderation.py` |
+| Messages | 30 per sender per booking in 10 min | `booking/messages.py` `MESSAGES_PER_WINDOW` |
+| Data exports | 5 per person per 24 h | `catalog/routes.py` `export_me` |
+| Sign out everywhere | 5 per person per hour | `catalog/routes.py` `sign_out_everywhere` |
 | Push devices per person | 10 (newest kept) | `notifications/routes.py` `MAX_DEVICES` |
 | Client polling | booking page 2.5 s while `awaiting_payment` or `requested`; booking lists 4 s while one is; messages 5 s; bell 60 s | `web/src/data/repo.ts` |
 | App config (forced update) | cached 5 min at the CDN, 10 min in the app | `gateway/main.py`, `repo.ts` |
@@ -104,7 +110,8 @@ The booking lifecycle diagram is in [section 7](#the-booking-lifecycle).
    `signedInBefore`, and the app was opened at `/`) it redirects to
    `/welcome`.
 3. `/welcome` (`Welcome.tsx`) shows what Cappy is, three value points, a
-   language switch, and two buttons: **Create an account**
+   language switch (English, Deutsch, Français; the first language follows
+   the device, else English), and two buttons: **Create an account**
    (`/login?mode=up`) and **I have an account** (`/login`). There are links to
    Impressum, privacy, terms and help. No listings, prices or people are shown
    (GOAL 13). Opening the page sets `welcomeSeen`.
@@ -185,10 +192,18 @@ Cognito directly over its JSON API (`web/src/data/auth.ts`).
    attribute, so emails and pushes arrive in that language.
 5. The person goes to `next`.
 
-A wrong password shows "That email and password do not match." A Cognito
-challenge (for example MFA) shows "This account needs a step this app does not
-support yet." The pool has `mfa_configuration = "OPTIONAL"`, but the app gives
-no way to turn MFA on.
+A wrong password shows "That email and password do not match." The sign-in
+screen has the language switch too.
+
+**Two-step sign-in.** An account with an authenticator app (TOTP) gets
+`SOFTWARE_TOKEN_MFA` from Cognito. The screen switches to **Two-step
+sign-in** ("Enter the six-digit code your authenticator app shows for
+Cappy"); six digits submit by themselves (`RespondToAuthChallenge`). A wrong
+code says "Use the newest code your authenticator app shows"; a timed-out step
+says "Sign in again". Any other challenge still shows "This account needs a
+step this app does not support yet." Only staff can turn MFA on, from the
+console ([section 13](#13-dispute-and-staff-resolution)); members have no
+setting for it.
 
 ### Staying signed in
 
@@ -196,14 +211,18 @@ no way to turn MFA on.
   before the first screen renders.
 - **Before every API call** (`repo.ts` `send`), `accessToken()` refreshes if
   the token has less than 60 s left. Concurrent refreshes share one request.
-- **A 401 from the API** (a token revoked early) triggers one refresh and one
-  retry.
+- **A 401 from the API** triggers one refresh and one retry. If the fresh
+  token is refused too with `token_expired` (this session was ended by
+  sign-out-everywhere or a deleted account), the app ends the session in
+  every tab and shows sign-in (`repo.ts` `send`, `auth.ts` `endSession`).
 - **The refresh fails for good** (revoked, expired after 30 days, the user
   deleted). The app forgets the session. `Member` gives way to `Gate`, which
   sends the person to `/login?next=<where they were>`. Drafts survive this
   (see below).
 - **The refresh fails because the device is offline.** The refresh token is
-  kept, and the person is not signed out.
+  kept, and the person is not signed out. At a cold start offline the app
+  opens as the last signed-in person (kept under `cappy.session.v1`) with the
+  offline bar, and refreshes when the network comes back.
 
 **Drafts that outlive an expired session.** Message drafts and the add or edit
 listing form are saved under `cappy.draft.*` in localStorage (`device.ts`
@@ -239,14 +258,20 @@ On the Profile screen, **Sign out** (also on the onboarding screen):
 
 On the Profile screen, **Sign out everywhere**, then confirm:
 
-1. `POST /me/sign-out-everywhere` (notifications service) calls Cognito
-   `AdminUserGlobalSignOut` and deletes **every** push device of the account.
-   If this call fails, the device stays signed in and the person sees "Your
-   other devices could not be signed out…", so they can try again.
+1. `POST /me/sign-out-everywhere` (catalog service; at most 5 an hour, else
+   429 with the reason) records that every token issued until now is void,
+   and publishes `person.signed_out`. Catalog refuses those tokens at once;
+   booking, payments and notifications as soon as the event reaches them.
+   Notifications then calls Cognito `AdminUserGlobalSignOut` and deletes
+   **every** push device of the account. If the call fails, the device stays
+   signed in and the person sees "Your other devices could not be signed
+   out…", so they can try again.
 2. Then the same steps as a normal sign-out, with Cognito `GlobalSignOut` in
    place of `RevokeToken`.
-3. Other devices stop getting pushes at once. Their access tokens keep working
-   for up to 60 min, and the next refresh fails and signs them out.
+3. Other devices stop getting pushes within seconds. Their next API call gets
+   401 `token_expired`, the refresh fails too, and they are signed out. Only
+   matching (browse and search results) still accepts their access token
+   until it expires, at most 15 min.
 
 ```mermaid
 sequenceDiagram
@@ -254,15 +279,15 @@ sequenceDiagram
   participant C as Cognito
   participant API as Cappy API
   A->>C: InitiateAuth USER_PASSWORD_AUTH
-  C-->>A: access + id (60 min), refresh (30 days)
+  C-->>A: access + id (15 min), refresh (30 days)
   A->>API: request with Bearer access
   Note over A: under 60 s left
   A->>C: InitiateAuth REFRESH_TOKEN_AUTH
   C-->>A: new access + id
-  API-->>A: 401 (revoked early)
+  API-->>A: 401 (revoked early, or token_expired)
   A->>C: refresh once, retry once
   C-->>A: NotAuthorized
-  Note over A: forget session, go to /login?next=...
+  Note over A: forget session in every tab, go to /login?next=...
 ```
 
 ---
@@ -336,8 +361,13 @@ the same. The phone layout has a bottom dock; the desktop has a header.
 
 **Edge cases**
 
-- *Nothing fits.* "No idle capacity fits that", with **Widen to 90 km** and
-  **Allow 3 weeks**.
+- *Nothing fits.* "No idle capacity fits that", with **Widen to 90 km** (or
+  "56 mi" in a miles locale) and **Allow 3 weeks**.
+- *Distances* read in km (and m under 1 km), or in miles where the formatting
+  locale's region is the US or the UK; under 300 m it says "Nearby"
+  (`format.ts` `formatDistance`, `formatRadius`). An English reader outside
+  the US and Canada is formatted as `en-GB`, so they get miles too; see
+  [gaps](#23-known-gaps-between-code-ui-and-docs).
 - *Service down.* "Cappy is not reachable right now", with a retry button.
 - *Overload.* The gateway sheds reads first: browsing gets 80 % of in-flight
   capacity and writes keep the rest (`gateway/main.py` `Admission`). A shed
@@ -364,8 +394,11 @@ What the page shows, and the calls behind it:
   then `GET /listings/{id}/offers?hours` lists the starts that fit around what
   is already booked. The day comes first, then the time. The page
   pre-selects the slot from the results, else the soonest.
-- **Price**: the base, extras, any discount and the total. The 15 % fee is
-  inside the total, and the owner's share is shown.
+- **Price**: the base, extras, any discount and the total, under which the
+  bar says "Total, incl. {fee} service fee". The 15 % fee is inside the total,
+  and the owner's share is shown. Amounts are formatted for the reader's
+  locale in the booking's currency, which is EUR until the API sends one
+  (`domain/money.ts` `formatMoney`).
 - **The host**: name, verified shield, track record, cancellation rate (if
   there is one), response time, and whether they are a business or a private
   person (consumer rights differ). A business shows its legal identity
@@ -401,7 +434,10 @@ same.
    accept first." For instant book it says "Confirmed as soon as your card is
    held." The final button always reads **Book and pay** (§ 312j BGB).
 2. `POST /bookings {requirement, listingId, slotId, start, end}` with an
-   `Idempotency-Key` made once per attempt (`Listing.tsx` `attempt`).
+   `Idempotency-Key` per attempt (`Listing.tsx` `attempt`,
+   `domain/attempt.ts`): a retry of the same request after a 5xx, a timeout
+   or a lost connection sends the same key; a success, a 4xx or another slot
+   makes a new one.
 3. **Booking** (`booking/routes.py` `create_booking`):
    - refuses if bookings are paused (kill switch `ACCEPTING_BOOKINGS`, 503);
    - replays the first booking if the same key comes again (and refuses the
@@ -457,10 +493,10 @@ until it is `requested`.
   renter's list as "Payment failed".
 - *Payments down or slow* (5xx or timeout). The booking **stays**
   `awaiting_payment` and the app says "we could not start the payment, and
-  you have not been charged; try again". The expiry sweep releases the window
-  after 30 min if nobody pays. See
-  [gaps](#23-known-gaps-between-code-ui-and-docs): the app makes a new key
-  after this error, so the retry cannot reach the first booking.
+  you have not been charged; try again". A retry sends the same key, so it
+  gets the booking already made and a new try at its PaymentIntent (fixed in
+  `f42a4ef`). The expiry sweep releases the window after 30 min if nobody
+  pays.
 - *Closing the sheet half way.* The booking stays `awaiting_payment` and can
   be paid from its own page. **Bookings** shows it under "Next up: Finish
   paying so the owner is asked".
@@ -557,10 +593,15 @@ sequenceDiagram
    `automatic_payment_methods`, `transfer_group` = the booking and
    idempotency key `intent-{bookingId}`, so a retried booking gets the same
    intent. No database connection is held while Stripe answers.
-3. The renter enters the card. `confirmPayment` runs with
+3. The renter enters the card, under "Cappy holds your payment and pays the
+   owner only once the booking has happened…". `confirmPayment` runs with
    `redirect: 'if_required'`. A bank check (SCA/3DS) appears inside Stripe's
-   element. Only methods that leave the page return to
-   `/bookings/{id}`.
+   element. Only methods that leave the page come back, to
+   `/pay/return?booking={id}` on Cappy's own domain, which forwards to
+   `/bookings/{id}` and says "The payment did not go through" if Stripe's
+   `redirect_status` is `failed`. In the store apps `/pay/*` is an app link,
+   so the bank hands back to the app. The card form (and Stripe.js) is a
+   separate chunk, fetched only here.
 4. The card is **authorised, not charged**. Stripe sends
    `payment_intent.amount_capturable_updated`. The webhook is
    signature-checked and handled once per Stripe event id. Payments marks the
@@ -604,7 +645,8 @@ sequenceDiagram
   card was being entered). `system_status` ignores it, and payments voids the
   authorisation when it sees the cancel.
 - *Just paid, and the page still shows `awaiting_payment`.* The booking page
-  polls every 2.5 s until the webhook lands.
+  says "Confirming your payment…", hides the card form, and re-reads the
+  booking every 2 s for up to a minute until the webhook lands.
 
 ---
 
@@ -676,18 +718,31 @@ the sweep has run.
    {when}".
 2. `POST /bookings/{id}/start`. The booking becomes `active`. No
    notification goes out; the other side sees it on the page.
-3. The app offers **check-in photos** at once.
+3. The app offers **check-in photos** at once. Before that, while the
+   booking is `accepted`, both sides see a safety card: meet at the address in
+   the booking, take check-in photos together, keep messages and payments on
+   Cappy, and call the local emergency number first if unsafe, with a link to
+   **How we keep you safe**.
 
 ### Hand-over photos (evidence)
 
 - Check-in photos can be added while the booking is `accepted` or `active`.
   Check-out photos can be added while it is `active`, `completed` or
   `disputed` (`booking/messages.py`, mirrored in `Evidence.tsx`).
-- Each photo is uploaded (`POST /uploads`), then
+- Each photo is shrunk on the device and uploaded privately
+  (`POST /uploads?purpose=evidence`, which answers a reference, not a URL),
+  with "Uploading {n} of {total} · {pct} %" on the button; then
   `POST /bookings/{id}/evidence {stage, photos (1 to 12), note (up to 1000)}`.
-  The catalog confirms the photos are the sender's own uploads and marks them
-  kept, so the unused-upload sweep never deletes them.
-- Both sides see all evidence. Staff look at it first in a dispute.
+  A retried save does not upload the photos again and sends the same key. The
+  catalog confirms the photos are the sender's own private uploads and marks
+  them kept, so the unused-upload sweep never deletes them.
+- Both sides, and staff with MFA, see all evidence. Each photo is a link
+  signed for 15 minutes and served by booking, never a public CDN address;
+  the app re-reads the list every 10 minutes, and when a link has lapsed.
+  Staff look at it first in a dispute.
+- The panel shows when each photo was uploaded, and says: "Found damage or a
+  problem? Report it before the booking is marked complete, at the latest 48
+  hours after it ends." 
 
 ### Complete
 
@@ -759,7 +814,8 @@ reads **Cancel booking**.
   booked time has started; report a problem instead of cancelling", and the
   renter sees **Report a problem** in place of the button.
 - **How much comes back.** Paid policies are off
-  (`PAID_CANCELLATION_POLICIES=false`), so every cancellation is treated as
+  (the feature flag `paidCancellationPolicies` is not at 100 in
+  `FEATURE_FLAGS`), so every cancellation is treated as
   *flexible*: a full refund. The code for the others is in place for when
   counsel confirms them (G-B2):
 
@@ -803,7 +859,14 @@ reads **Cancel booking**.
 **Who and where.** The renter, on `/bookings/{id}`, once the booked time has
 started, from `accepted` or `active`: **Report a problem**. The owner cannot
 open a dispute. Staff resolve in the console at `/admin`, which only accounts
-in the Cognito `admin` group can use; the server checks every call.
+in the Cognito `admin` group can use; the server checks every call, and
+wherever it is deployed also that the staff account has an authenticator app
+(TOTP MFA). Without one every staff call answers 403 `mfa_required`, and the
+console shows **Set up two-step sign-in** instead of the queue: **Start**
+gives an `otpauth://` link ("Open in your authenticator app") and the key to
+type; the first six-digit code turns MFA on, and from then on every sign-in
+asks for a code ([section 3](#3-sign-in-session-refresh-and-sign-out)).
+Locally MFA is not required (cognito-local has none).
 
 1. The renter says what went wrong (1 to 500 characters).
    `POST /bookings/{id}/dispute {reason}`. The server refuses before the
@@ -826,7 +889,8 @@ in the Cognito `admin` group can use; the server checks every call.
      owner gets no email.
 5. The transition is recorded as `by = support:{staff sub}`.
 
-Evidence photos and the message thread are what staff look at. Card
+Evidence photos (`GET /bookings/{id}/evidence` works for staff with MFA,
+not only the two sides) and the message thread are what staff look at. Card
 chargebacks are a separate path ([section 8](#8-payment)).
 
 ```mermaid
@@ -888,7 +952,9 @@ are over. A redelivered `booking.rated` is counted once (review id
 and read-only once it is declined, cancelled, expired or `payment_failed`.
 
 1. `POST /bookings/{id}/messages {body}` (1 to 2000 characters) with an
-   `Idempotency-Key` per message. `GET` returns the conversation oldest first;
+   `Idempotency-Key` per attempt (kept while the outcome is unknown). At most
+   30 messages per sender per booking in 10 minutes; the 31st gets 429 "that
+   is a lot of messages in a few minutes; wait a little". `GET` returns the conversation oldest first;
    the app polls every 5 s and on focus.
 2. **Masking** (`booking/messages.py`). Until the booking is `accepted`,
    emails (including "bob at gmail dot com"), links and bare domains, phone
@@ -904,8 +970,9 @@ and read-only once it is declined, cancelled, expired or `payment_failed`.
    with the advice to report it.
 4. The recipient gets a **push** ("New message: {title}") and a bell item.
    Messages are **never emailed**.
-5. **Report** is on every message from the other side. **Block** (on the
-   booking page or the listing) stops messages and new bookings both ways
+5. **Report** is on every message from the other side; once it is sent, the
+   sheet offers **Block {name} too**. **Block** (on the booking page or the
+   listing) stops messages and new bookings both ways
    (`PUT /me/blocks/{person}`). The booking itself stands. Unblocking is on
    the Profile screen.
 6. Drafts are saved per booking and survive an expired session.
@@ -923,12 +990,15 @@ per person.
    and a selfie, checked by Stripe on Cappy's behalf, about two minutes. An
    explicit consent tick is required before it can start (biometric data,
    P-18).
-2. `POST /payments/identity/session` starts or continues a Stripe Identity
-   VerificationSession. The app opens Stripe's modal
+2. `POST /payments/identity/session {consent: true}` starts or continues a
+   Stripe Identity VerificationSession. The server refuses without the
+   consent (422 `consent_required`) and records when it was given and which
+   wording (`identity-2026-09`). The app opens Stripe's modal
    (`stripe.verifyIdentity(clientSecret)`).
 3. The result comes by webhook: `identity.verification_session.verified`, or
-   `.requires_input`. On `verified`, payments publishes
-   `payment.identity_verified` and booking records the person as verified.
+   `.requires_input`, and counts only for the person's current session. On
+   `verified`, payments publishes `payment.identity_verified` and booking
+   records the person as verified.
 4. The app polls `GET /payments/identity` every 2 s for up to 60 s, then
    retries the **same booking attempt, with the same key**.
 5. If Stripe is still processing: "Your ID check is still being processed.
@@ -950,22 +1020,28 @@ in is the **Earn** tab (`/earn`; "List your first thing" when empty) or
    `batch` (a quantity, priced by throughput).
 2. **The details** (`AddListing.tsx`): title (up to 120 characters), blurb (up
    to 500), district, the **hand-over address** (private until a booking is
-   accepted), rate, minimum and maximum hours or throughput and setup, extras,
-   up to 12 photos (each shrunk on the device, then `POST /uploads`, which
-   re-encodes to WebP), house rules (up to 12), instructions (up to 2000), the
+   accepted), rate, minimum and maximum hours or throughput and setup, extras
+   (money inputs show the currency's own symbol), up to 12 photos (each shrunk
+   on the device to 2048 px, then `POST /uploads`, which re-encodes to WebP;
+   each tile shows its progress, and a failed one keeps its reason and a
+   **Retry**; a HEIC photo the browser cannot read is refused with "Take a
+   screenshot of it, or on the iPhone set Camera → Formats → Most
+   Compatible"), house rules (up to 12), instructions (up to 2000), the
    free windows, **Instant book** and the **cancellation policy**. A
    non-flexible policy is marked as not in force yet.
 3. The form is saved as a draft as it is typed, and offers "Your unsaved
    changes are back" with **Discard**.
 4. **Publish**: `POST /listings {listing, slots, address}` with an
-   `Idempotency-Key` made once per form. The catalog checks: the listings
+   `Idempotency-Key` per attempt (the slots start at the next quarter hour, so
+   a retry sends the same body). The catalog checks: the listings
    kill switch (503), that a profile exists (403), that the account is not
    suspended (403), 20 listings a day (429), every field and number within
    bounds, category and mode matching, a known district, and that every photo
    is the owner's own upload. It then publishes `listing.changed`
    (`created`).
-5. The app says "{title} is live", goes to `/earn`, and offers push the first
-   time.
+5. The app says "{title} is live" (or, when the server held it, "{title} is
+   saved and waiting for a quick check before people can book it"), goes to
+   `/earn`, and offers push the first time.
 
 ### Held listings
 
@@ -974,9 +1050,9 @@ the listing is **held**: it exists, but nobody else can see or book it until
 staff approve it (`POST /admin/listings/{id}/approve`, which publishes
 `listing.changed` `approved`). Raising the price of a listing past that line
 before the first completed job holds it again. The owner's Earn card shows
-"Waiting for a quick check". Staff see the queue at `GET /admin/listings/held`.
-See [gaps](#23-known-gaps-between-code-ui-and-docs): the app still says "is
-live", and the console has no approve button.
+"Waiting for a quick check". An edit that holds it says so too. Staff see the
+held listings in the console (`GET /admin/listings/held`) and approve them
+there.
 
 ### Managing listings (Earn)
 
@@ -1073,7 +1149,9 @@ Nothing goes out for `active`, `disputed`, `payment_failed` or an expiry from
 `awaiting_payment`.
 
 - **Language**: each person's Cognito `locale` (English, or German for any
-  `de…`). The bell re-renders each item in the language it is read in.
+  `de…`; French readers get English, since emails, pushes and the bell have
+  no French yet). The bell re-renders each item in the language it is read
+  in, with the same two languages.
 - **Times** in emails are told in Europe/Berlin (`texts.py`
   `DEFAULT_TIME_ZONE`), because listings carry no time zone yet.
 - **Emails** only go to a verified address.
@@ -1114,8 +1192,10 @@ there is **Turn on notifications**. The timing of the first ask is in
 
 **Who and where.** Any member can report a **listing** (on its page), a
 **person** (the owner card, or the other party on a booking), a **message**
-(on each message) or a **review**. The server also takes anonymous reports,
-with an email so the reporter can hear back (DSA Art. 16).
+(on each message) or a **review**. Anyone signed out can report from
+`/legal/report` ("Report content"): they pick what they are reporting and
+paste its link or reference, and leave an email so they can hear back (DSA
+Art. 16).
 
 ### Reporting
 
@@ -1123,12 +1203,15 @@ with an email so the reporter can hear back (DSA Art. 16).
    spam, offensive, privacy, other), details of at least 10 characters, an
    email when signed out, and the **good-faith statement**, which is required
    (Art. 16(2)(d)).
-2. `POST /reports`. Signed in, the reporter hears back at their own verified
-   address, never one they type. Limits: 3 reports a day per anonymous email,
-   20 a day about any one target.
+2. `POST /reports`, with an `Idempotency-Key` per attempt. Signed in, the
+   reporter hears back at their own verified address, never one they type.
+   Limits: 3 reports a day per anonymous email; about any one target, 5
+   anonymous and 20 signed-in reports a day, counted apart so strangers cannot
+   use up the members' share.
 3. The report is stored as `open`, and `moderation.report_received` goes out.
    The reporter gets "We received your report", with the reference (email,
-   plus the bell if signed in). The sheet shows the reference too.
+   plus the bell if signed in). The sheet shows the reference too, and after a
+   message report offers **Block {name} too**.
 
 ### Staff decide (`/admin`)
 
@@ -1146,6 +1229,9 @@ with an email so the reporter can hear back (DSA Art. 16).
      taken down, and `moderation.owner_suspended` goes out. Booking then
      refuses their new bookings and declines their own pending requests; the
      catalog refuses their new listings.
+   - For a message or review report the console offers **Remove the message
+     / review** and **Suspend the author**; the server refuses both (422), see
+     [gaps](#23-known-gaps-between-code-ui-and-docs).
 3. **The statement of reasons** (Art. 17): the person affected gets "We
    removed your listing" or "We suspended your account", with the facts, the
    ground, whether it was automated, and how to contest it (reply within
@@ -1160,8 +1246,8 @@ with an email so the reporter can hear back (DSA Art. 16).
 **While suspended**: accepted bookings stand on both sides (the owner still
 owes them), sign-in still works, and messages still work.
 
-**Signed out**: `/legal/report` explains reporting, but no report form is
-reachable without signing in; see [gaps](#23-known-gaps-between-code-ui-and-docs).
+**Signed out**: `/legal/report` explains reporting and carries the form
+(since `f22f143`).
 
 ---
 
@@ -1173,12 +1259,14 @@ people who cannot sign in.
 
 ### Download my data (GDPR Art. 15/20)
 
-1. `GET /me/export`. The catalog gathers its own data (profile, listings,
+1. `GET /me/export`, at most 5 a day (429 after that: "you have downloaded
+   your data several times today; try again tomorrow"). The catalog gathers its own data (profile, listings,
    saved listings, reviews written, uploads), then asks booking (bookings,
    messages sent with the original unmasked text, evidence), payments (payout
    link, ID-check status, invoices, payments; never card details) and
    notifications (bell items and settings). It returns one JSON file,
-   `cappy-my-data.json`.
+   `cappy-my-data.json`. Hand-over photos appear as `evidence:…` references,
+   not pictures.
 2. The web downloads the file (or uses the share sheet on phones that cannot
    save a download). The store apps write it to the cache and open the share
    sheet.
@@ -1196,24 +1284,31 @@ people who cannot sign in.
 3. Otherwise the catalog **forgets** the person: listings are soft-deleted and
    their addresses wiped, saved listings and the payable flag removed, the
    profile becomes an anonymous "Former member", and reviews they wrote are
-   re-signed "Former member". It then publishes `profile.deleted`, which
-   leads to:
+   re-signed "Former member". Their tokens stop working in catalog at once.
+   It then publishes `profile.deleted`, which leads to (each service also
+   stops accepting their tokens):
    - booking: blocks and the verified flag deleted, and their messages
      replaced with "[removed: the account was deleted]". Bookings stay as
      financial records;
    - payments: the payout link and the ID-check record deleted. The Stripe
      account itself stays with Stripe;
-   - notifications: devices, bell items and settings deleted.
-4. The app then calls Cognito `DeleteUser` with the access token, which
-   deletes the sign-in, clears the cache and shows "Your account is deleted".
+   - notifications: the Cognito user deleted (`AdminDeleteUser`: the sign-in
+     and the email go), then devices, bell items and settings.
+4. The app also calls Cognito `DeleteUser` itself (twice at most, the quick
+   path; failures are ignored because the server finishes it), then signs out
+   in every tab, clears the cache and shows "Your account is deleted".
 
 **Edge cases**
 
 - *Open bookings, on either side, including `disputed`.* Refused, as in
   step 2. The person has to finish, cancel or wait.
-- *Cognito deletion fails after step 3.* "Your sign-in could not be deleted.
-  Try again." The platform data is already gone. See
-  [gaps](#23-known-gaps-between-code-ui-and-docs).
+- *The app's `DeleteUser` fails after step 3* (offline, or the server was
+  first). The person is signed out anyway and never lands in onboarding; the
+  server deletes the sign-in when `profile.deleted` reaches notifications.
+- *What the sheet promises.* "Your sign-in, profile and saved listings are
+  deleted", listings taken down and names removed from reviews; bookings,
+  payments and invoices kept without the name for up to ten years. Photos are
+  no longer promised (fixed in `f22f143`).
 - *Session expired.* "Sign in again to delete your account."
 
 ---
@@ -1240,9 +1335,15 @@ platform's app storage), because iOS can purge a web view's localStorage.
   it matters"), then **Turn on notifications** or **Not now**. It is asked
   once per device (`pushAsked`), and only if the OS would still ask.
 - Once granted, `PushNotifications.register()` returns the APNs or FCM token,
-  and the app sends `POST /notifications/devices {platform, token}`. The
-  server creates an SNS platform endpoint. A token moves to whoever signed in
-  on that device last, and at most 10 devices are kept per person.
+  and the app sends `POST /notifications/devices {platform, token, installId}`
+  (`installId` is a random id the app makes once per install). The server
+  creates an SNS platform endpoint. A token moves to whoever signs in on that
+  device next only with the same `installId`: the old endpoint is deleted
+  first, so none of the previous person's pushes reach it. A different
+  install gets 409 `device_taken`, and the app leaves push off there. At most
+  10 devices are kept per person.
+- After any sign-out, or a session ended elsewhere, the next account to sign
+  in on the device registers afresh (FL-13).
 - Sign-out removes this device's token (`DELETE /notifications/devices/{token}`).
   Sign out everywhere removes all of them.
 - The Profile screen shows the permission state and a way to turn it on
@@ -1251,11 +1352,12 @@ platform's app storage), because iOS can purge a web view's localStorage.
 ### Deep links
 
 - **Universal Links (iOS) and App Links (Android)** for `/listing/*`,
-  `/bookings/*` and `/earn*`. The web build writes
+  `/bookings/*`, `/earn*` and `/pay/*`. The web build writes
   `/.well-known/apple-app-site-association` and `/.well-known/assetlinks.json`
   from `VITE_APPLE_TEAM_ID` and `VITE_ANDROID_SHA256`. Unset, they carry
   placeholders and verify nothing. The Android intent filter uses
-  `${appLinkHost}`; the iOS entitlement still says `applinks:cappy.example`.
+  `${appLinkHost}`; the iOS entitlements say `applinks:$(CAPPY_DOMAIN)`
+  (`cappy.app` in the Xcode build settings).
 - An opened link (`appUrlOpen`) or a tapped push (`data.link`) is turned into
   an in-app path and routed like a tap.
 - Signed out, a deep link goes to `/login?next=<path>` and returns there
@@ -1279,9 +1381,8 @@ kill it), as native apps do.
 - API calls that fail on the network say "Cannot reach Cappy. Check your
   connection and try again." Reads retry twice with backoff; 4xx answers are
   never retried.
-- A cold start offline keeps the stored refresh token, but the app shows the
-  sign-in screen until it can reach Cognito; see
-  [gaps](#23-known-gaps-between-code-ui-and-docs).
+- A cold start offline opens the app as the last signed-in person, with the
+  offline bar, and signs in for real once the network is back.
 
 ### Forced update
 
@@ -1299,11 +1400,16 @@ available" today.
 - **Data export and invoices** go to the share sheet: there are no downloads
   or tabs in a shell.
 - **Stripe payouts onboarding** leaves the app for Stripe, and comes back
-  through the `/earn` App Link.
+  through the `/earn` App Link. A bank's card check comes back through the
+  `/pay/*` App Link ([section 8](#8-payment)).
+- **Text size**: on iOS the app follows the reader's Dynamic Type setting,
+  also when it changes while the app is in the background; Android's WebView
+  scales text by itself.
 - **Camera and photos**: the iOS usage strings cover listing and hand-over
   photos.
 - **Crash reports** from both go to `POST /client-errors`: the message, stack,
-  route, version and platform, and nothing that identifies the person.
+  route, version and platform, and nothing that identifies the person. The
+  gateway replaces emails and phone numbers before logging.
 
 ---
 
@@ -1313,104 +1419,103 @@ Found while writing this file. Each is a place where the code, the UI and the
 docs say different things. They are listed so they are not mistaken for
 intended behaviour.
 
-1. **A retry after a payments outage makes a second booking.**
-   `Listing.tsx:209` makes a new `Idempotency-Key` after *any* error,
-   including the 503 that `booking/routes.py` `_with_payment` returns while
-   keeping the booking `awaiting_payment`. ADR 0011 relies on "a retry with the
-   same key gets the same intent". The new attempt instead meets the
-   person's own held window and gets 409 "that window was just taken" until
-   the first booking lapses 30 min later.
+Items marked **fixed** are kept, struck through, with the commit that fixed
+them, until the next pass removes them.
+
+1. ~~**A retry after a payments outage makes a second booking.**~~ **Fixed in
+   `f42a4ef`** (FL-1): the key follows the attempt, so the retry reaches the
+   first booking and its PaymentIntent ([section 7](#7-book-request-and-instant-book)).
 2. **Nobody is told about `payment_failed`, `disputed` or `active`.**
-   `notifications/handlers.py:61` (`messages`) has no entry for them. The
+   `notifications/handlers.py:62` (`messages`) has no entry for them. The
    capture-declined comment in `payments/handlers.py` and ADR 0011 say both
    sides are told of a failed capture; neither is. An owner whose booking is
    disputed learns of it only by opening the app.
 3. **The Messages email toggle does nothing.** Messages are never emailed
-   (`notifications/handlers.py:76` `chat_push`, delivered with
+   (`notifications/handlers.py:77` `chat_push`, delivered with
    `email=False`), but Profile offers an email checkbox for them
-   (`Profile.tsx:569`). Its fallback text says "Everything also arrives by
-   email" (`Profile.tsx:583`).
-4. **A held listing is announced as live.** `AddListing.tsx:453` toasts
-   "{title} is live" whatever the server's `held` says, and an edit that
-   holds the listing (`catalog/routes.py` `update_listing`) is not mentioned
-   at all.
-5. **Held listings cannot be approved from the console.** The endpoint exists
-   (`POST /admin/listings/{id}/approve`, `catalog/moderation.py`), but neither
-   `repo.ts` nor `Admin.tsx` calls it or lists `/admin/listings/held`.
-6. **The owner of a held listing gets 404 on its page.** `catalog/routes.py:410`
+   (`Profile.tsx:623`, `Channels`). Its fallback text says "Everything also
+   arrives by email" (`Profile.tsx:596`).
+4. ~~**A held listing is announced as live.**~~ **Fixed in `f22f143`** (FL-4):
+   a new or edited listing that is held says it is waiting for a check.
+5. ~~**Held listings cannot be approved from the console.**~~ **Fixed in
+   `f22f143`** (FL-5): the console lists and approves them.
+6. **The owner of a held listing gets 404 on its page.** `catalog/routes.py:448`
    `listing_detail` reads the row without `include_held`, so **View as a
    guest** on Earn shows "not found".
-7. **Suspending from a message or review report fails.** `Admin.tsx:224`
-   offers **Suspend the owner** for every non-listing report, but
-   `_affected_owner` (`catalog/moderation.py:315`) returns `None` for
-   messages and reviews, so the server answers 422 "this report does not
-   point at an owner". There is also no action that removes a reported
-   message or review.
+7. **Removing or suspending from a message or review report fails.** Since
+   `f22f143` the console offers **Remove the message / review**
+   (`remove_content`) and **Suspend the author** for them (`Admin.tsx:334`),
+   but the server accepts only `dismiss`, `take_down` and `suspend`
+   (`catalog/moderation.py:101`) and `_affected_owner`
+   (`catalog/moderation.py:328-335`) returns `None` for messages and reviews,
+   so both answer 422.
 8. **"Refunded" shown when nothing was charged.** `cancellation.py`
    `refund_amount` returns the full amount when `charged` is false, so a
    request cancelled before acceptance shows "{amount} is refunded to the
-   card" (`BookingDetail.tsx:392`), when in fact only a hold was released.
+   card" (`BookingDetail.tsx:420`), when in fact only a hold was released.
+   `f22f143` (FL-8) changed the wording only for cancellations with no
+   `refundAmount` (a staff `refund_buyer`), where it now wrongly says nothing
+   was charged.
 9. **The removal reason blames the owner when moderation did it.**
    `booking/handlers.py:92` declines pending requests with "The listing was
    removed by its owner", including listings taken down by staff.
-10. **No report form for signed-out people.** GOAL 13 lists "the report form
-    (DSA Art. 16)" as public, and `/legal/report` (`Legal.tsx:381`) says "You
-    do not need an account". The server accepts anonymous reports, but the
-    only Report buttons are on screens that require sign-in.
-11. **Deleting the account can loop into onboarding.** If Cognito `DeleteUser`
-    fails after `DELETE /me` (`Profile.tsx`, `DeleteAccount`), the next
-    sign-in finds no profile. Onboarding's `PUT /me` updates the anonymised
-    row but never clears `deleted_at` (`catalog/repository.py`
-    `upsert_profile`), so `find_owner` keeps returning nothing and onboarding
-    shows again.
-12. **Photos of a deleted account are not deleted.** The delete sheet says
-    "Your sign-in, profile, saved listings and photos are deleted"
-    (`Profile.tsx:397`). `CatalogRepository.forget` deletes no media, and the
-    orphan sweep (`catalog/jobs.py`) only removes uploads never used on a
-    listing.
-13. **Push is not re-registered for the next account on the same device.**
-    `native.ts:91` returns early once `registered` is set. After a sign-out
-    (which deletes the token server side) and a sign-in as someone else
-    without restarting the app, the new account's device is never
-    registered.
-14. **Offline at cold start shows the sign-in screen.** `auth.ts` keeps the
-    refresh token when offline, but `session` stays null, so the person sees
-    `/login` until they reload online. Nothing retries when the network comes
-    back.
+10. ~~**No report form for signed-out people.**~~ **Fixed in `f22f143`**
+    (FL-10): `/legal/report` carries the form.
+11. ~~**Deleting the account can loop into onboarding.**~~ **Fixed in
+    `f303350` and `f22f143`** (P-23, FL-11): the server deletes the sign-in,
+    and the app signs out after `DELETE /me` whatever `DeleteUser` answers.
+12. ~~**Photos of a deleted account are not deleted.**~~ The sheet no longer
+    promises it (**`f22f143`**, FL-12). They are still kept
+    (`CatalogRepository.forget` deletes no media).
+13. ~~**Push is not re-registered for the next account on the same
+    device.**~~ **Fixed in `f22f143`** (FL-13).
+14. ~~**Offline at cold start shows the sign-in screen.**~~ **Fixed in
+    `f22f143`** (FL-14).
 15. **The owner sees unpaid bookings.** `booking/routes.py` says "The owner
     only sees the request once the card is authorised", but
     `GET /bookings?role=owner` returns `awaiting_payment` (and later
     `payment_failed`) bookings, and **I'm hosting** lists them.
-16. **The pay form can show again right after paying.** Between Stripe
-    confirming and the webhook landing, `BookingDetail.tsx:151` (`payNow`)
-    still sees `awaiting_payment` and renders the Payment Element for an
-    intent that is already authorised.
-17. **"24 hours to answer" is not always true.** The deadline is capped at the
-    window's start (`booking/handlers.py` `answer_deadline`), but
-    `PushPrime.tsx:61-62` promises 24 hours.
+16. ~~**The pay form can show again right after paying.**~~ **Fixed in
+    `f22f143`** (FL-16): "Confirming your payment…" until the webhook lands.
+17. ~~**"24 hours to answer" is not always true.**~~ **Fixed in `f42a4ef`**:
+    `PushPrime.tsx:61-62` now says requests lapse within 24 hours or before
+    the start.
 18. **Server and client disagree on closed conversations.** The app hides the
     composer for declined, cancelled, expired and `payment_failed` bookings,
     and hides the whole thread while `awaiting_payment`
-    (`Conversation.tsx:129`, `BookingDetail.tsx`). The server's
-    `POST /bookings/{id}/messages` (`booking/messages.py:122`) accepts a
-    message in any status.
+    (`Conversation.tsx:136`, `BookingDetail.tsx`). The server's
+    `POST /bookings/{id}/messages` (`booking/messages.py:126`) accepts a
+    message in any status (with a per-booking rate limit since `f303350`).
 19. **One market in the code.** Bookings are always `currency="eur"`
-    (`booking/routes.py:180`), the app formats everything as euros
-    (`formatEur`), email times are Berlin time, the business VAT check only
-    knows EU formats, and the report sheet says "call 112"
-    (`Report.tsx:144`). GOAL 16 names the US and Canada, where 112 is not the
-    emergency number.
-20. **Redirect payment methods in the shells may not come back.**
-    `PayStep.tsx` sets `return_url` to `location.origin`, which is
-    `capacitor://localhost` or `https://localhost` inside a shell. This is
-    unverified. It matters only for payment methods that leave the page,
-    which `automatic_payment_methods` can enable.
+    (`booking/routes.py:180`), email times are Berlin time, the business VAT
+    check only knows EU formats, and the report sheet says "call 112"
+    (`Report.tsx:224`). GOAL 16 names the US and Canada, where 112 is not the
+    emergency number. The app itself formats money per currency and locale
+    since `f42a4ef` (`formatMoney`), but gets no currency from the API.
+20. ~~**Redirect payment methods in the shells may not come back.**~~ **Fixed
+    in `f22f143`** (FL-19, U-7): `return_url` is `/pay/return` on Cappy's
+    domain, an app link.
 21. **ADR 0012 is out of date on two points.** It says the refresh token lives
     in the shell's web storage (the code uses Capacitor Preferences) and that
     notifications are email only (push is built).
-22. **Placeholders that block a store release.** The iOS entitlement is
-    `applinks:cappy.example` with `aps-environment` `development`
-    (`web/ios/App/App/App.entitlements`).
+22. ~~**Placeholders that block a store release.**~~ **Fixed in `f22f143`**
+    (FL-21): release builds sign with `App.release.entitlements`
+    (`aps-environment` `production`, `applinks:$(CAPPY_DOMAIN)`); debug builds
+    keep `development`.
+23. **Miles for English readers in Europe.** `locale()` (`web/src/i18n.ts:51-58`)
+    formats English as `en-GB` unless the device region is the US or Canada,
+    and `formatDistance` reads miles for `GB`, so an English reader in
+    Germany or France sees miles, not km (GOAL 16 asks for km outside the US
+    and the UK).
+24. **A partial rollout of `paidCancellationPolicies` splits the app from the
+    server.** Booking treats anything under 100 % as off
+    (`booking/settings.py:38-45`), but the app shows the stricter terms to the
+    renters inside the rollout (`Listing.tsx:70`).
+25. **Stale docstring on account deletion.** `delete_me`
+    (`catalog/routes.py:340-343`) still says the app deletes the sign-in and
+    that bookings and payments "hold no personal data"; the server deletes the
+    sign-in since `f303350`, and bookings keep names and business details
+    ([`DATA.md`](DATA.md) §5.4).
 
 ---
 
