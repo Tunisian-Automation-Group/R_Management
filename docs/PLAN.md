@@ -45,6 +45,19 @@ of Europe, the US and Canada (GOAL 16, ADR 0013).
    - the country at payout onboarding;
    - `identityProvider` driving the ID-check UI;
    - booking currency lowercase vs quote currency uppercase.
+   Also from the last docs sync:
+   - "Everything also arrives by email" is no longer true for messages;
+   - after a staff refund the booking says "nothing was charged";
+   - the `delete_me` docstring is stale;
+   - export still lacks the ID-check consent and gives hand-over photos
+     as `evidence:` references;
+   - CloudFront copies of a deleted person's photos aren't purged, and a
+     listing's `spec` survives deletion;
+   - the inbox has no retention;
+   - the ID-check and held-listing thresholds are one number for every
+     currency (M-2);
+   - the gateway forwards only `stripe-signature`, which another ID
+     vendor's webhook would need changed.
 4. **The next build tasks, in order:**
    - M-2: the market configuration, which the thresholds and ranking marked
      `ponytail` still need;

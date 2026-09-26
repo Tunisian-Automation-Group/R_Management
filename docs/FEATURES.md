@@ -5,8 +5,9 @@ provider with another third party takes. It describes the **committed code**,
 not the plan: planned work appears only as task ids from
 [`TASKS.md`](TASKS.md). Markets are all of Europe, the US and Canada
 ([GOAL 16](GOAL.md), [ADR 0013](adr/0013-markets.md)). Where the code
-assumes one market (EUR, German texts, Berlin time), this file says so.
-Last synced with the code at `f22f143`.
+assumes one market (German tax, Berlin time, EU-shaped rules), this file
+says so. Last synced at `c454c92` (the code as of `7ef9b2c`, covering
+`44a5520` and `235eeaa`).
 
 Paths are relative to the repository root. `path:line` points at the
 definition. "Seam" means the interface or module boundary a replacement
@@ -51,11 +52,11 @@ changes to several services.
 | Sign-up, sign-in (with a TOTP code step), password reset | Amazon Cognito (the web app calls it directly) | Yes. Backend: any OIDC issuer/JWKS. Web: `AuthProvider` (`web/src/data/cognito.ts`, since `f22f143`) | L (the data and the users move; the code seam is S) |
 | Token verification in services | Cognito JWKS, RS256, plus an in-house not-before check per person (`revoked_sessions`) | Yes (`TokenVerifier`; the revocation check is provider-neutral) | S |
 | Sign out everywhere | In-house revocation (`person.signed_out`) plus Cognito `AdminUserGlobalSignOut` | Yes (`Directory.sign_out_everywhere`) | S |
-| Staff role and staff MFA | Cognito group `admin` (`cognito:groups` claim); TOTP MFA checked with Cognito `AdminGetUser` | No (`require_admin` reads the claim; `StaffMfa` calls Cognito) | S |
+| Staff role and staff MFA | Cognito group `admin` (`cognito:groups` claim) by default; TOTP MFA checked with Cognito `AdminGetUser` | Role: yes since `235eeaa` (`STAFF_CLAIM`, `STAFF_VALUE`, F-3). MFA: no (`StaffMfa` calls Cognito) | S |
 | Profiles, business identity, VAT ID check | In-house (regex, no VIES) | n/a (no provider) | S to add VIES |
 | Listings, windows, saved | In-house (Postgres) | n/a | n/a |
 | Photo storage | S3 + CloudFront (listing photos), S3 private prefix (hand-over evidence); Pillow re-encode | Yes (`MediaStore`, public and private instances) | S |
-| CDN purge on take-down | CloudFront `CreateInvalidation` | No (direct boto3 call) | S |
+| CDN purge on take-down | CloudFront `CreateInvalidation` | Yes (`Cdn`, `catalog/cdn.py`, since `235eeaa`, F-4) | S |
 | Places, distance, map | Own `districts` table, haversine, own SVG map | No geocoder at all | M (M-5, M-7) |
 | Free-text search | Postgres `LIKE` + trigram index | No (in `CatalogRepository.search`) | M |
 | Matching, ranking, pricing | In-house (`matching/domain`) | n/a | n/a |
@@ -67,7 +68,7 @@ changes to several services.
 | Reconciliation sweep | Stripe intent status | Partial (`Provider.intent_status` returns Stripe's words) | S |
 | Fee invoices | In-house HTML, German § 14 UStG template | Partial (`Issuer`: zone, rate, label) | M |
 | VAT / sales tax, platform tax reporting | None (fixed rate from settings; DAC7 tags only) | No | L (M-11..M-14, M-24..M-27) |
-| Identity verification | Stripe Identity (document + selfie) | Partial (`Provider.verification_session` + Stripe webhook + Stripe.js modal) | M |
+| Identity verification | Stripe Identity (document + selfie) | Backend: yes (`IdentityProvider`, `payments/identity.py`, its own webhook route, since `235eeaa`, F-1). Web: no (the Stripe.js modal, whatever `identityProvider` says) | M |
 | Messaging, contact masking, pay-outside flag | In-house regex | Module boundary (`mask`, `flagged`) | S |
 | Blocks | In-house | n/a | n/a |
 | Hand-over evidence photos | In-house: catalog's private media store, booking's signed links | Yes (via `MediaStore`) | S |
@@ -76,13 +77,13 @@ changes to several services.
 | Recipient email and locale | Cognito `AdminGetUser` | Yes (`Directory`) | S |
 | Push | SNS Mobile Push → APNs / FCM v1 | Yes (`Pusher`), but tokens are APNs/FCM-native | M |
 | Inbox (bell), notification settings | In-house | n/a | n/a |
-| Email/push texts, languages | In-house (`texts.py`, EN/DE) | n/a | M to a TMS |
+| Email/push texts, languages | In-house (`texts.py`, EN/DE/FR since `235eeaa`) | n/a | M to a TMS |
 | App texts, money and distance formats | In-house (`web/src/i18n.ts`, EN/DE/FR catalogues; `Intl` for money, units and plurals) | n/a | M to a TMS |
 | Reports, moderation, DSA statements, stats | In-house | n/a | n/a |
 | Fraud signals: card fingerprint | Stripe card fingerprint | Yes (`Provider.card_fingerprint`) | S |
 | Fraud rules: velocity, held listings | In-house (settings) | n/a | n/a |
 | Edge protection | AWS WAF (+ Bot Control in prod) | Infra only | M |
-| Data export, account deletion | In-house fan-out over `/internal`; deletion also removes the Cognito user (`AdminDeleteUser`) | n/a | n/a |
+| Data export, account deletion | In-house fan-out over `/internal`; deletion also removes the Cognito user (`AdminDeleteUser`), the Stripe Identity session (redact) and SNS endpoints; a register of personal data with a test (`cappy_common/privacy.py`) | n/a | n/a |
 | Web app shell, offline cache | vite-plugin-pwa (Workbox) | n/a | S |
 | Store shells, push registration, deep links | Capacitor 8 plugins | `web/src/native.ts` | M |
 | Feature flags, rollouts | In-house (`FEATURE_FLAGS` env) | Yes (`cappy_common/flags.py` + `web/src/domain/flags.ts`) | S |
@@ -100,15 +101,15 @@ These apply to several features below.
 - **Provider selection is settings.** Every service reads its settings from the
   environment (`backend/libs/cappy_common/cappy_common/settings.py:23`). In
   `staging` and `prod` a service refuses to start when a setting is unsafe
-  (`unsafe_reasons`, `settings.py:143`). Payments demands `PAYMENTS_PROVIDER=stripe`
-  and notifications demands `MAILER=ses`. **A new provider must add its own
+  (`unsafe_reasons`, `settings.py:148`). Payments demands `PAYMENTS_PROVIDER=stripe`
+  and refuses `IDENTITY_PROVIDER=fake`, and notifications demands `MAILER=ses`. **A new provider must add its own
   `unsafe_reasons` checks**, or a fake can reach production.
 - **Terraform wires the providers.** Environment per service is set in
   `infra/platform/ecs.tf:13-76`, secrets in `ecs.tf:77-88` (Stripe keys from
   the operator-filled secret `infra/platform/data.tf:169`), and IAM per task in
   `ecs.tf:206-228`.
 - **Events decouple services.** The catalogue of event types is
-  `backend/libs/cappy_common/cappy_common/events.py:52-85`. A provider swap that
+  `backend/libs/cappy_common/cappy_common/events.py:50-100`. A provider swap that
   keeps the events the same (for example `payment.authorised`) touches only the
   service that owns the provider.
 - **Local parity.** `compose.yaml` runs LocalStack Pro (S3, SNS, SQS, SES) and
@@ -185,12 +186,13 @@ sign-in.
      `SOFTWARE_TOKEN_MFA` error `Login.tsx` switches to the code step on.
   2. Backend: point `AUTH_ISSUER`, `AUTH_JWKS_URL` and `AUTH_CLIENT_IDS` at the
      new issuer. Relax the `token_use` and `client_id` checks in `auth.py:137-140`
-     or make them configurable. Replace `StaffMfa` (1.3).
+     or make them configurable. Set `STAFF_CLAIM` and `STAFF_VALUE` to the new
+    provider's staff claim (1.3). Replace `StaffMfa`.
   3. **Data: keep the ids.** Every table keys people on the Cognito `sub`.
      Import users with their old `sub` as the new provider's user id (or as a
      custom claim mapped to `sub`), or migrate every `*_id` column in all five
      databases. TOTP secrets cannot be exported: staff enrol again.
-  4. Replace `CognitoDirectory` (see 12.2) and the staff-group check (1.3).
+  4. Replace `CognitoDirectory` (see 12.2).
   5. Infra: remove `identity.tf`, add the new tenant. Remove the CSP
      `connect-src` entry for `cognito-idp` (`infra/platform/edge.tf:413`) and
      add the new origin. Drop the Cognito WAF (`identity.tf:124`) or replace it.
@@ -230,14 +232,15 @@ to all their devices.
   `GlobalSignOut` plus the API for "everywhere"; a 429 is shown with the
   server's reason). The API route is catalog's
   `POST /api/me/sign-out-everywhere`
-  (`backend/services/catalog/catalog/routes.py:368-385`, moved from
+  (`backend/services/catalog/catalog/routes.py:377-395`, moved from
   notifications in `f303350`): at most 5 an hour (`rate_hits`, P-12), it
   records the person in catalog's `revoked_sessions` and publishes
   `person.signed_out`. Booking, payments and notifications record the same
   (`cappy_common/guard.py:58-77`). Notifications then calls
   `Directory.sign_out_everywhere` (`notifications/mail.py:30`), which is
   `CognitoDirectory._sign_out` → `AdminUserGlobalSignOut` (`mail.py:76`), and
-  deletes the person's devices (`notifications/handlers.py:168-174`). On
+  deletes the person's devices, each SNS endpoint first
+  (`notifications/handlers.py:208-213`, `push.py:85-94`, D-7). On
   another device, a request refused with 401 `token_expired` even after a
   refresh ends the session there (`web/src/data/repo.ts:100`, `endSession`
   `auth.ts:85`). The cross-tab sign-out listens for the `storage` event
@@ -247,18 +250,21 @@ to all their devices.
 - **To swap it:** implement it on the new directory (1.1). IAM:
   `cognito-idp:AdminUserGlobalSignOut` in `ecs.tf:223`.
 - **Limits:** cognito-local does not support global sign-out, so locally only
-  the devices go and the tokens are refused (`mail.py:77`). SNS endpoints of
-  the removed devices are not deleted.
+  the devices go and the tokens are refused (`mail.py:77`).
 
 ### 1.3 Staff role and staff MFA
 
 Moderators and support reach `/admin` and the `/api/admin/*` routes.
 
-- **Where:** `require_admin` (`backend/libs/cappy_common/cappy_common/auth.py:222`)
-  checks that `cognito:groups` contains `admin` and, wherever
+- **Where:** `require_admin` (`backend/libs/cappy_common/cappy_common/auth.py:229`)
+  checks that the token is staff and, wherever
   `ADMIN_MFA_REQUIRED` holds (always when deployed; a deployed service refuses
   to start with it false: `settings.py:161-163`), that the account has TOTP MFA
-  on. `StaffMfa` (`auth.py:186-219`) asks Cognito `AdminGetUser` for
+  on. Staff means the claim `STAFF_CLAIM` holds `STAFF_VALUE` (a list claim
+  or a space-separated string), `cognito:groups` and `admin` by default
+  (`is_staff`, `auth.py:222-226`; `settings.py:108-109`; since `235eeaa`,
+  F-3). Booking's evidence route uses the same check (`booking/messages.py:310`).
+  `StaffMfa` (`auth.py:186-219`) asks Cognito `AdminGetUser` for
   `UserMFASettingList`, caches the answer 5 minutes per person, and answers
   503 when Cognito cannot say. Without MFA a staff call gets 403
   `mfa_required`. IAM: `cognito-idp:AdminGetUser` for catalog and booking
@@ -270,12 +276,11 @@ Moderators and support reach `/admin` and the `/api/admin/*` routes.
   `:256`, over `cognito.ts:175-190`: `AssociateSoftwareToken`,
   `VerifySoftwareToken`, `SetUserMFAPreference`), an `otpauth://` link and the
   key, no QR code.
-- **Seam:** **no.** The claim name is hard-coded in two places, and the MFA
-  check calls Cognito directly.
-- **Smallest refactor:** a `STAFF_CLAIM` / `STAFF_VALUE` setting read by
-  `require_admin` (the web side is already the provider's `identity`); `StaffMfa` behind the
-  `Directory`-style interface, or an `amr` claim check where the new provider
-  puts one in the token.
+- **Seam:** the role, **yes** (two settings on the server; on the web the
+  provider's `identity` sets `staff`). The MFA check, **no**: it calls Cognito
+  directly.
+- **Smallest refactor:** `StaffMfa` behind the `Directory`-style interface, or
+  an `amr` claim check where the new provider puts one in the token.
 - **Limits:** there is one role and no separation of duties. Turning MFA off
   takes up to 5 minutes to bite (the cache).
 
@@ -287,7 +292,7 @@ Store builds older than the minimum are asked to update.
   returns `minVersion` and `latestVersion` from `APP_MIN_VERSION` and
   `APP_LATEST_VERSION` (`gateway/settings.py:34-35`). The app sends
   `X-App-Version` (`web/src/data/repo.ts:82`) and compares versions with
-  `versionBelow` (`repo.ts:415`). CloudFront caches the answer
+  `versionBelow` (`repo.ts:421`). CloudFront caches the answer
   (`infra/platform/edge.tf:494`).
 - **Seam:** n/a (in-house).
 
@@ -300,21 +305,29 @@ Store builds older than the minimum are asked to update.
 A member gives a display name, says whether they are a person or a business,
 picks a home district and confirms they are 18 or older.
 
-- **Where:** `GET/PUT /api/me` (`backend/services/catalog/catalog/routes.py:298`, `:307`).
+- **Where:** `GET/PUT /api/me` (`backend/services/catalog/catalog/routes.py:306`, `:315`).
   The input is `ProfileIn` (`routes.py:127`); `adult` is required at creation
-  and stored as `owners.adult_confirmed_at` (`catalog/tables.py:75`). The event
-  `profile.created` is emitted at `routes.py:331`. Public profile:
-  `GET /api/owners/{id}` (`routes.py:439`). Screens: `Onboarding.tsx` (the 18+
+  and stored as `owners.adult_confirmed_at` (`catalog/tables.py:77`).
+  `country` (ISO 3166-1 alpha-2, default `DE`, since `235eeaa`, M-9) is stored
+  on `owners.country`; the web does not send it yet. The event
+  `profile.created` is emitted at `routes.py:340`. Public profile:
+  `GET /api/owners/{id}` (`routes.py:448`). Screens: `Onboarding.tsx` (the 18+
   checkbox is at `:106`), `Profile.tsx`.
+- **After a deletion:** the same sign-in (`sub`) signing up again gets a fresh
+  profile: counters reset, `verified` and business cleared, 18+ asked again,
+  and `profile.created` emitted; a suspension stays (FL-11,
+  `catalog/repository.py:406-415`).
 - **Provider:** none. The `owners` table is in the catalog database.
 - **Status and limits:**
-  - Districts are the only notion of place (see 4.3). There is no country,
+  - Districts are the only notion of place (see 4.3), plus the profile's
+    `country`, which only sets the payout account's country (7.2). There is no
     address or time zone on a person.
   - The minimum age is one rule for every market. Age by market and category is
     M-38. The terms text and store questionnaires are still open (S-5).
-  - `Owner.verified` (`cappy_common/models.py:135`) is **not** linked to
-    identity verification. New profiles get `False` (`catalog/repository.py:330`),
-    and only seed data sets it. A badge from the ID check is U-32.
+  - `Owner.verified` (`cappy_common/models.py:137`) is set by a passed ID
+    check since `235eeaa` (F-10): catalog handles `payment.identity_verified`
+    (`catalog/handlers.py:84-90`). New profiles get `False`, and deletion
+    clears it.
 
 ### 2.2 Business identity (traders)
 
@@ -324,7 +337,7 @@ Renters see it on the listing and at checkout ("your contract is with…").
 - **Where:** `BusinessIn` with VAT normalisation and a regex check
   (`catalog/routes.py:102-124`), stored in `owners.business` (JSON,
   `catalog/tables.py:73`). It is copied into the booking snapshot
-  (`booking/routes.py:189`) and onto fee invoices (`payments/invoices.py:85-102`).
+  (`booking/routes.py:190`) and onto fee invoices (`payments/invoices.py:95-112`).
   Web: `web/src/app/components/BusinessFields.tsx` (also `TraderNote`).
 - **Provider:** none. A German VAT ID must be `DE` and 9 digits; other EU
   prefixes are checked only by shape. There is no VIES lookup.
@@ -345,37 +358,43 @@ Owners list an asset in one of nine categories, with price, rules, photos, a
 private hand-over address and the windows it is free. They can edit, pause,
 resume and remove a listing.
 
-- **Where:** catalog routes: `GET /api/me/listings` `routes.py:490`,
-  `POST /api/listings` `:518` (idempotent; kill switch; suspension check;
-  20 per day; a new owner's expensive listing is held), `PUT` `:554`,
-  slots `:583`/`:597`, pause and resume `:615`/`:620`, delete `:625`,
-  `GET /api/listings/{id}` `:444`. Validation (text limits, category mode,
-  numeric bounds `_check_numbers` `:271`, photo ownership) is at `:224`.
+- **Where:** catalog routes: `GET /api/me/listings` `routes.py:502`,
+  `POST /api/listings` `:530` (idempotent; kill switch; suspension check;
+  20 per day; a new owner's expensive listing is held), `PUT` `:566`,
+  slots `:595`/`:609`, pause and resume `:627`/`:632`, delete `:637`,
+  `GET /api/listings/{id}` `:453` (since `235eeaa` the owner can open their
+  own held or paused listing; anyone else gets 404, FL-6). Validation (text
+  limits, category mode, numeric bounds `_check_numbers` `:277`, photo
+  ownership) is at `:226`.
   Categories, including their `dac7` tag, are in
   `backend/libs/cappy_common/cappy_common/categories.py`. Events:
   `listing.changed`. Screens: `AddListing.tsx`, `Earn.tsx`, `Listing.tsx`.
 - **Private address:** the address is stored on `listings.address`
   (`catalog/tables.py:93`). Booking fetches it from `/internal/listings/{id}/handover`
-  (`routes.py:767`) and shows it only in accepted, active, completed or disputed
+  (`routes.py:779`) and shows it only in accepted, active, completed or disputed
   states (`booking/repository.py:70`).
 - **Provider:** none (Postgres).
 - **Status and limits:**
-  - Prices are integers in minor units with no currency on the listing. The
-    booking currency is hard-coded `"eur"` (`booking/routes.py:180`, column
-    default `booking/tables.py:50`). The web formats and inputs money per
-    currency (`formatMoney`, `currencySymbol`: `web/src/domain/money.ts`,
-    M-4 done in `f42a4ef`) and would use a `currency` field on listings,
-    quotes and bookings, but the API sends none yet, so it shows EUR (M-3).
+  - Prices are integers in minor units of the listing's `currency`, one of
+    twelve ISO 4217 codes (EUR, GBP, CHF, SEK, NOK, DKK, PLN, CZK, HUF, RON,
+    USD, CAD; default EUR; `cappy_common/models.py:156`, `:183`), since
+    `235eeaa` (M-3). Quotes carry it upper-case and bookings lower-case
+    (`booking/routes.py:181`); nothing is converted. The price bounds scale
+    roughly with the currency (`catalog/routes.py:273-289`). The web formats
+    and inputs money per currency (`formatMoney`, `currencySymbol`:
+    `web/src/domain/money.ts`, M-4) and now gets the currency from the API.
   - Listings have no time zone or coordinates, only a district (M-5, M-15). The
     address is free text (M-8).
   - The kill switch `ACCEPTING_LISTINGS` is at `catalog/settings.py:41`.
+  - Account deletion clears the listing's title, blurb, instructions, rules,
+    photos and address; the row stays for bookings and reviews (D-2).
 
 ### 3.2 Saved listings
 
 Members keep a shortlist.
 
-- **Where:** `GET /api/saved`, `PUT/DELETE /api/saved/{id}` (`catalog/routes.py:686-707`).
-  Web: `useSaveToggle` (`web/src/data/repo.ts:625`).
+- **Where:** `GET /api/saved`, `PUT/DELETE /api/saved/{id}` (`catalog/routes.py:698-720`).
+  Web: `useSaveToggle` (`web/src/data/repo.ts:631`).
 - **Provider:** none.
 
 ### 3.3 Photos
@@ -384,7 +403,7 @@ Owners upload photos. The server re-encodes each one to WebP, strips EXIF and
 GPS, bounds its size and stores it under a content hash.
 
 - **Where:**
-  - Upload: `POST /api/uploads` (`catalog/routes.py:638`), with 100 per person
+  - Upload: `POST /api/uploads` (`catalog/routes.py:650`), with 100 per person
     per day and two decodes at a time. `?purpose=evidence` stores the file in
     the private store and answers `evidence:<name>` instead of a URL (5.3).
   - Processing: `media.process` (`backend/services/catalog/catalog/media.py:46`,
@@ -392,15 +411,17 @@ GPS, bounds its size and stores it under a content hash.
   - Storage: `MediaStore` (`media.py:77`), `S3Store` (`:116`, key prefix
     `media/` or `private/`), `DirectoryStore` (`:88`), chosen by `make_store`
     (`:155`, `private=True` for evidence; catalog keeps one of each:
-    `catalog/main.py:56-57`). URLs come from `url_for` (`:177`).
+    `catalog/main.py:76`, `:78`). URLs come from `url_for` (`:177`).
   - Serving: CloudFront `/media/*` from S3 (`infra/platform/edge.tf:548`).
-    Locally the catalog serves it (`routes.py:675`) through the gateway
+    Locally the catalog serves it (`routes.py:687`) through the gateway
     (`gateway/main.py:263`).
   - Cleanup: uploads never used on a listing are swept after a day, from both
-    stores (`catalog/jobs.py:20-43`). A file is deleted only when nobody holds it.
+    stores (`catalog/jobs.py:24-42`). A file is deleted only when nobody holds
+    it. Since `235eeaa` an account deletion hands every photo of the person to
+    the next sweep (D-1).
   - Web: `shrink` downsizes to 2048 px JPEG on the device and refuses HEIC
     with a reason where the browser cannot decode it (`web/src/app/photos.ts`);
-    `uploadPhoto` (`repo.ts:570`, `purpose` `listing` or `evidence`) reports
+    `uploadPhoto` (`repo.ts:576`, `purpose` `listing` or `evidence`) reports
     per-photo progress over XHR, and the
     listing form keeps a failed photo with a **Retry** button.
 - **Seam:** **yes,** `MediaStore` (`put`, `get`, `delete`), selected by
@@ -426,14 +447,22 @@ GPS, bounds its size and stores it under a content hash.
 
 ### 3.4 CDN purge on take-down
 
-When moderation removes a listing, its cached API answers are purged at once.
+When moderation removes a listing, its photos are purged from the CDN at
+once. No listing page is cached at the edge (sign-in is required, GOAL 13);
+its photos are, for a year.
 
-- **Where:** `moderation.purge` (`backend/services/catalog/catalog/moderation.py:241`)
-  calls CloudFront `CreateInvalidation` through `aws_client` when
-  `CDN_DISTRIBUTION_ID` is set (`catalog/settings.py:49`). IAM: `ecs.tf:216`.
-- **Seam:** **no,** the call is inline.
-- **Smallest refactor:** a `Cdn.purge(paths)` interface next to `MediaStore`,
-  with CloudFront and no-op implementations chosen in `catalog/main.py`.
+- **Where:** `moderation.purge` (`backend/services/catalog/catalog/moderation.py:242-253`)
+  collects the listing's own photo names (a foreign URL is not ours to purge)
+  and calls `app.state.cdn.purge(["/media/<name>", …])`. `Cdn`
+  (`backend/services/catalog/catalog/cdn.py`, since `235eeaa`, F-4) is a
+  no-op; `CloudFrontCdn` calls `CreateInvalidation` and only logs a failure;
+  `make_cdn` picks CloudFront when `CDN_DISTRIBUTION_ID` is set
+  (`catalog/settings.py:52`, `catalog/main.py:77`). IAM: `ecs.tf:216`.
+- **Seam:** **yes,** `Cdn.purge(paths)`.
+- **To swap it** (Fastly, Cloudflare): a `Cdn` subclass, a branch in
+  `make_cdn` and its setting and secret; the IAM statement goes.
+- **Limits:** an account deletion does not purge the person's photos; they
+  leave the edge when their cache expires.
 
 ---
 
@@ -448,9 +477,9 @@ far). Matching returns ranked offers with a quote.
   `POST /api/matches` `:167`, `GET /api/browse/spotlight` `:180`,
   `GET /api/listings/{id}/offers` `:199`, `POST /api/quote` `:215`,
   `POST /api/feasibility` `:224`, internal `match-for-offer` `:233`.
-  Candidates come from the catalog (`catalog/routes.py:713` →
-  `repository.py:516`: nearest districts first, capped at `CANDIDATE_CAP` = 300).
-  Busy windows come from booking (`booking/routes.py:575`). Search degrades
+  Candidates come from the catalog (`catalog/routes.py:725` →
+  `repository.py:613`: nearest districts first, capped at `CANDIDATE_CAP` = 300).
+  Busy windows come from booking (`booking/routes.py:626`). Search degrades
   without them if booking is down (`matching/routes.py:75`).
 - **Ranking:** hand-tuned weights (`matching/domain/match.py:54`): price 0.3,
   soon 0.2, trust 0.3, near 0.2. Trust is cut by the owner's cancellation rate
@@ -460,16 +489,17 @@ far). Matching returns ranked offers with a quote.
   API works in km; the web shows distances and radius presets in miles for
   US and GB locales and km elsewhere (`formatDistance`, `formatRadius`:
   `web/src/app/format.ts:77-97`), though the presets are still km values
-  converted, not round miles (M-18). The unit follows the formatting locale,
-  and an English reader whose device region is not the US or Canada is
-  formatted as `en-GB` (`web/src/i18n.ts` `locale`), so they get miles too.
+  converted, not round miles (M-18). The unit follows the formatting locale.
+  Since `44a5520` an English reader whose device has no English region of
+  its own (not US, CA, GB and so on) is formatted as `en-IE`: km and 24 h
+  (`web/src/i18n.ts:56-57`).
 
 ### 4.2 Free-text search
 
 Searching listing titles and descriptions by keyword.
 
-- **Where:** `GET /api/search` (`catalog/routes.py:472`, at least 3
-  characters) → `CatalogRepository.search` (`catalog/repository.py:624`),
+- **Where:** `GET /api/search` (`catalog/routes.py:484`, at least 3
+  characters) → `CatalogRepository.search` (`catalog/repository.py:721`),
   a `lower(title|blurb) LIKE %q%` backed by a trigram index (see
   `catalog/tables.py:123` and the 0001 migration). Web: `useSearch`
   (`repo.ts:261`), `Browse.tsx`.
@@ -479,10 +509,10 @@ Searching listing titles and descriptions by keyword.
   SQL as the default implementation. Feed an external index (OpenSearch,
   Typesense, Algolia) from `listing.changed` events. The catalog already emits
   one on create, update, pause, resume, removal and approval
-  (`routes.py:548,579,609,631`, `moderation.py:272,522`).
+  (`routes.py:560,591,621,643`, `moderation.py:262,539`).
 - **To swap it:** the refactor above, plus a consumer that indexes on
   `listing.changed` and a backfill command. Keep the "live and bookable
-  owners only" filters (`repository.py:164`, `:631-633`). Add infra and IAM for
+  owners only" filters (`repository.py:182-187`, `_live` `:471`). Add infra and IAM for
   the index. There is no relevance ranking today (newest first).
 - **Limits:** no stemming, language analysis or typo tolerance; newest first.
 
@@ -494,7 +524,7 @@ or a Europe view of cities.
 - **Where:** reference table `districts` (name, city, metro, country,
   lat/lng: `catalog/tables.py:35`), loaded from seed data. Routes:
   `GET /api/districts`, `/api/cities`, `/api/districts/nearest`
-  (`catalog/routes.py:412-433`, in-memory haversine `repository.py:252`,
+  (`catalog/routes.py:421-445`, in-memory haversine `repository.py:339`,
   `catalog/geo.py`). The map is an in-house SVG projection with no tiles and no
   map library (`web/src/app/components/CapacityMap.tsx`). The district picker is
   `LocationPicker.tsx` and `DistrictSelect.tsx`. The browser's geolocation is
@@ -524,26 +554,33 @@ system completes it 48 hours after the end.
 - **Where:** booking service.
   - State machine as data: `backend/services/booking/booking/state.py:67`
     (`TRANSITIONS`), `:80` (`SYSTEM`).
-  - Create: `POST /api/bookings` (`booking/routes.py:122`). Matching prices the
+  - Create: `POST /api/bookings` (`booking/routes.py:122`), in the listing's
+    currency (`:181`, M-3). Matching prices the
     window. It then checks the per-listing advisory lock, the Postgres
     exclusion constraint (ADR 0004, `booking/tables.py:5-7`), the
     `Idempotency-Key`, `MAX_UNPAID` (3) and 10 requests a day.
-  - Payment start: `routes.py:258`. Actions: `routes.py:334-380`.
+  - Payment start: `routes.py:253`. Actions: `routes.py:341-389`.
   - Sweeps (lapse, auto-complete, publish reviews): `booking/jobs.py:18`.
   - Every change writes `booking_transitions` and emits `booking.status_changed`
-    (`booking/repository.py:172`).
+    (`booking/repository.py:192-200`).
+  - The owner sees a booking only once the card is held: never while it is
+    `awaiting_payment`, nor one whose payment failed before they saw it; a
+    capture declined after they accepted they do see (`_owner_sees`,
+    `repository.py:97-110`, used by `visible` and the list; since `235eeaa`,
+    FL-15).
   - Screens: `Listing.tsx`, `Bookings.tsx`, `BookingDetail.tsx`, `Earn.tsx`.
 - **Provider:** none (Postgres). Money moves through section 7.
 - **Settings:** `booking/settings.py`: `PAYMENT_TIMEOUT_MINUTES` 30,
   `ANSWER_WITHIN_HOURS` 24, `AUTO_COMPLETE_AFTER_HOURS` 48,
   `START_EARLY_MINUTES` 30, `MAX_UNPAID`, `MAX_REQUESTS_PER_DAY`, and the kill
-  switch `ACCEPTING_BOOKINGS` (`:40`).
-- **Limits:** EUR only on the server (M-3). Cross-cell bookings are not
+  switch `ACCEPTING_BOOKINGS` (`:52`).
+- **Limits:** one set of thresholds in minor units for every currency (M-2).
+  Cross-cell bookings are not
   refused (M-23). No extension or late return (S-12). No 3DS return into the
   store shells (U-7).
 - **Retries (FL-1, `f42a4ef`):** every create in the web (booking, listing,
   message, rating, evidence, report) takes its `Idempotency-Key` from
-  `attemptKeys` (`web/src/domain/attempt.ts`, `useAttemptKey` `repo.ts:548-550`):
+  `attemptKeys` (`web/src/domain/attempt.ts`, `useAttemptKey` `repo.ts:554-556`):
   the same body keeps its key after a 5xx, a timeout or a lost connection, and
   gets a new one after a success, a 4xx or a changed body
   (`npm run check:attempt`).
@@ -555,12 +592,17 @@ can report a no-show in the first two hours. The renter can dispute once the
 window has started. Staff resolve a dispute by paying the owner or refunding
 the renter.
 
-- **Where:** `_transition` (`booking/routes.py:285`, no-show windows
-  `:304-317`), refund preview `GET /api/bookings/{id}/cancellation` (`:433`),
-  admin resolution `POST /api/admin/bookings/{id}/resolve` (`:493`) and its
-  internal twin (`:501`). Screens: `BookingDetail.tsx`, `Admin.tsx`.
+- **Where:** `_transition` (`booking/routes.py:291`, no-show windows
+  `:310-323`), refund preview `GET /api/bookings/{id}/cancellation` (`:442`,
+  with `charged`: false before the accept, when cancelling only releases the
+  hold; FL-8, `235eeaa`), admin resolution `POST /api/admin/bookings/{id}/resolve`
+  (`:504`) and its internal twin (`:512`). Screens: `BookingDetail.tsx`, `Admin.tsx`.
 - **Provider:** none. The refund is carried as `refundAmount` on
-  `booking.status_changed` and executed by payments (7.1).
+  `booking.status_changed` and executed by payments (7.1). A cancellation
+  before the accept records none (`routes.py:228-231`, `:326-328`;
+  `cancellation.py:31-36` returns 0 when nothing was charged).
+- **Notifications:** a dispute tells the owner ("A problem was reported") and
+  the renter ("We received your report"), since `235eeaa` (FL-2).
 - **Limits:** no dispute negotiation between the parties or deadlines (S-21). No
   owner damage claim (S-8), which needs a saved card or deposit first (S-9).
 
@@ -569,17 +611,17 @@ the renter.
 Both sides can add check-in and check-out photos to a booking. They are
 private to the two sides and staff.
 
-- **Where:** `POST/GET /api/bookings/{id}/evidence` (`booking/messages.py:253`,
-  `:282`). The photos must be the person's own uploads made with
+- **Where:** `POST/GET /api/bookings/{id}/evidence` (`booking/messages.py:270`,
+  `:299`). The photos must be the person's own uploads made with
   `POST /api/uploads?purpose=evidence`, which stores them under the private
-  prefix and answers `evidence:<name>` (`catalog/routes.py:638-672`); catalog
-  `/internal/media/evidence` (`catalog/routes.py:740-752`) accepts only such
+  prefix and answers `evidence:<name>` (`catalog/routes.py:650-685`); catalog
+  `/internal/media/evidence` (`catalog/routes.py:752-764`) accepts only such
   references and marks them never swept. `GET …/evidence` hands each photo out
   as `/api/bookings/{id}/evidence/{eid}/{i}?exp&sig`, an HMAC link valid 15
-  minutes, keyed from booking's own internal token (`messages.py:315-351`);
+  minutes, keyed from booking's own internal token (`messages.py:335-370`);
   booking fetches the bytes from catalog `/internal/evidence/{name}`
-  (`catalog/routes.py:755-759`) and serves them `private`. Staff with MFA see
-  them too (`messages.py:290-295`). Web: `web/src/app/components/Evidence.tsx`
+  (`catalog/routes.py:767-771`) and serves them `private`. Staff with MFA see
+  them too (`messages.py:307-312`, `is_staff`). Web: `web/src/app/components/Evidence.tsx`
   uploads with `purpose=evidence` (since `f22f143`), shows per-photo progress,
   and a retried save reuses photos already up and the same key. The list is
   read again every 10 minutes and after a lapsed link fails to load
@@ -594,9 +636,9 @@ private to the two sides and staff.
 A member blocks another: no messages and no new bookings between them, in
 either direction.
 
-- **Where:** `PUT/DELETE/GET /api/me/blocks` (`booking/messages.py:210-229`),
+- **Where:** `PUT/DELETE/GET /api/me/blocks` (`booking/messages.py:227-246`),
   enforced in `create_booking` (`booking/routes.py:156`) and `send`
-  (`messages.py:140`). A report on a message offers **Block {name} too**
+  (`messages.py:141`). A report on a message offers **Block {name} too**
   right after it is sent (`Report.tsx`, U-13).
 - **Provider:** none.
 
@@ -608,10 +650,10 @@ either direction.
 
 An owner lets bookings confirm as soon as the card is authorised.
 
-- **Where:** `Listing.instant_book` (`cappy_common/models.py:165`), copied into
-  the booking snapshot (`booking/routes.py:190`). On `payment.authorised` the
+- **Where:** `Listing.instant_book` (`cappy_common/models.py:173`), copied into
+  the booking snapshot (`booking/routes.py:191`). On `payment.authorised` the
   system action `authorised_instant` moves the booking straight to `accepted`
-  (`booking/handlers.py:55-58`, `state.py:83`). The owner is told with the
+  (`booking/handlers.py:86-92`, `state.py:83`). The owner is told with the
   `instant_booked` notification (`notifications/handlers.py:71`). Form:
   `AddListing.tsx:222`.
 - **Provider:** none.
@@ -621,16 +663,15 @@ An owner lets bookings confirm as soon as the card is authorised.
 Flexible, moderate or strict refunds for a renter who cancels an accepted
 booking.
 
-- **Where:** `booking/cancellation.py:17` (`refund_share`), used by `_refund`
-  (`booking/routes.py:227`). The policy is on the listing
-  (`models.py:169`) and in the booking snapshot.
+- **Where:** `booking/cancellation.py:18` (`refund_share`), used by `_refund`
+  (`booking/routes.py:233`). The policy is on the listing
+  (`models.py:177`) and in the booking snapshot.
 - **One switch** (since `f303350`): the feature flag `paidCancellationPolicies`
   in `FEATURE_FLAGS`, which every service now receives (`ecs.tf:31`). Booking
   applies moderate or strict only when it is at 100; any partial rollout
-  counts as off (`booking/settings.py:38-45`). The web shows the stricter terms
-  to renters when the flag is on for them (`Listing.tsx:70`), so during a
-  partial rollout some renters would see terms the server does not apply;
-  keep it at 0 or 100.
+  counts as off (`booking/settings.py:38-47`). Since `44a5520` the web reads it
+  the same way, with `useGlobalFlag` (`repo.ts:416-418`, `Listing.tsx:70`):
+  only a flag at 100 shows the stricter terms, so app and server agree.
 - **Limits:** off until counsel confirms against the EU withdrawal right
   (G-B2, S-19). The same rules apply in every market; US and Canadian wording is
   M-19.
@@ -641,7 +682,7 @@ The owner sets a day rate (from 8 hours) and a week rate (from 40 hours),
 taken off the hourly base.
 
 - **Where:** `matching/domain/pricing.py:34` (`duration_discount`), with fields
-  `day_discount_pct` and `week_discount_pct` (0 to 50, `models.py:172-173`).
+  `day_discount_pct` and `week_discount_pct` (0 to 50, `models.py:180-181`).
   Form: `AddListing.tsx:224-225`.
 - **Provider:** none.
 
@@ -665,7 +706,7 @@ part) if it is cancelled after capture.
 
 - **Where:**
   - Intent: booking calls payments `POST /internal/intents`
-    (`booking/clients.py:89` → `payments/routes.py:111`). One intent per
+    (`booking/clients.py:89` → `payments/routes.py:121`). One intent per
     booking, idempotent. No database connection is held while Stripe answers.
     The owner must be payable (ADR 0005).
   - Card form: Stripe Payment Element, loaded only at the pay step
@@ -675,15 +716,16 @@ part) if it is cancelled after capture.
     `PayReturn`, U-7); the
     component itself is a lazily loaded chunk (`React.lazy` in `Listing.tsx`
     and `BookingDetail.tsx`, S-15). `GET /api/payments/config`
-    (`payments/routes.py:191`) tells the app which provider and publishable key
-    to use. The app skips the card step when the provider is `fake`
+    (`payments/routes.py:201`) tells the app which provider and publishable key
+    to use, and since `235eeaa` which ID-check provider (`identityProvider`,
+    section 9). The app skips the card step when the provider is `fake`
     (`Listing.tsx:203`).
-  - Money follows booking events: `payments/handlers.py:53`. On accepted it
+  - Money follows booking events: `payments/handlers.py:59`. On accepted it
     captures; on declined, cancelled, expired or payment_failed it cancels the
     hold; on cancelled after capture it refunds `refundAmount`; on completed it
     transfers (7.2). The events it emits are `payment.captured`,
     `payment.refunded`, `payment.failed` and `payment.payout_sent`.
-  - Webhooks: `POST /api/payments/webhooks/stripe` (`payments/routes.py:351`),
+  - Webhooks: `POST /api/payments/webhooks/stripe` (`payments/routes.py:419`),
     deduplicated by Stripe event id in `processed_events`.
     `payment_intent.amount_capturable_updated` marks the payment authorised,
     which emits `payment.authorised` with the card fingerprint.
@@ -691,13 +733,13 @@ part) if it is cancelled after capture.
     after 10 minutes, every 5 minutes.
 - **Seam:** **yes,** `Provider` (`backend/services/payments/payments/provider.py:39`):
   `create_intent`, `client_secret`, `intent_status`, `capture`, `cancel`,
-  `refund`, `transfer`, `card_fingerprint`, `create_account`,
-  `onboarding_link`, `account_status`, `verification_session`,
-  `parse_webhook`, `aclose`, plus the `authorises_immediately` flag and
-  `Declined`. Implementations: `StripeProvider` (`:73`) and `FakeProvider`
-  (`:200`). It is selected by `make_provider` (`:264`) from `PAYMENTS_PROVIDER`
-  (`payments/settings.py:16`, `fake` or `stripe`; deployed environments demand
-  `stripe`, `:42`).
+  `refund`, `transfer`, `card_fingerprint`, `create_account(owner_id,
+  country)`, `onboarding_link`, `account_status`, `parse_webhook`, `aclose`,
+  plus the `authorises_immediately` flag and `Declined`. ID checks left it for
+  their own `IdentityProvider` in `235eeaa` (section 9). Implementations:
+  `StripeProvider` (`:72`) and `FakeProvider` (`:194`). It is selected by
+  `make_provider` (`:255`) from `PAYMENTS_PROVIDER` (`payments/settings.py:16`,
+  `fake` or `stripe`; deployed environments demand `stripe`, `:46`).
 - **Config:** `STRIPE_SECRET_KEY`, `STRIPE_PUBLISHABLE_KEY` and
   `STRIPE_WEBHOOK_SECRET` from Secrets Manager (`ecs.tf:83-85`,
   `data.tf:169`), and `STRIPE_API_BASE` for stripe-mock contract tests
@@ -713,12 +755,14 @@ part) if it is cancelled after capture.
   - Idempotency keys `intent-`, `capture-`, `cancel-`, `refund-` and
     `transfer-{bookingId}`.
 - **Stripe assumptions outside the provider:**
-  - The webhook handler's event names and object shapes (`routes.py:366-403`).
+  - The webhook handler's event names and object shapes (`routes.py:420-460`).
   - The reconciliation job compares against the Stripe statuses
     `requires_capture` and `canceled` (`jobs.py:47,53`).
-  - The `FAKE_ACCOUNT_PREFIX` logic (`routes.py:143`).
+  - The `FAKE_ACCOUNT_PREFIX` logic (`routes.py:153`).
   - The web `PayStep` (and `PayReturn`, which reads Stripe's
     `redirect_status`) and the Stripe.js identity modal.
+  - `stripe_result` (`payments/identity.py:61-75`), because Stripe sends ID-check
+    events to the same webhook.
   - The CSP `script-src`, `connect-src`, `frame-src` and `img-src` entries for
     Stripe (`edge.tf:407-414`).
   - The WAF exemptions for `/api/payments/webhooks/` (`edge.tf:174-180`,
@@ -754,10 +798,12 @@ part) if it is cancelled after capture.
      (who holds funds), the terms' payment clause, and the privacy policy.
 - **Status and limits:**
   - Separate charges and transfers, with no `on_behalf_of`.
-  - One Stripe platform for all markets. Accounts are created without a
-    country (`provider.py:171`; M-9). A client per platform is M-10.
-  - EUR only on the server (M-3, M-39); the web formats whatever currency it
-    is given, EUR by default (M-4).
+  - One Stripe platform for all markets. Since `235eeaa` accounts are created
+    in the owner's country with the full service agreement, which lets a
+    German platform pay US and Canadian accounts (`provider.py:160-175`, M-9).
+    A client per platform is M-10.
+  - Charges are in the listing's currency (M-3, `235eeaa`); nothing is
+    converted, and payout currency and FX are M-39.
   - No saved card or deposit (S-9). No 3DS return into the shells (U-7).
   - The kill switch is `PAYOUTS_ON` (7.2).
 
@@ -768,14 +814,19 @@ a booking completes, or their share of what was kept after a late
 cancellation.
 
 - **Where:**
-  - `POST /api/payments/connect/onboarding` (`payments/routes.py:208`, Express
-    account plus account link) and `GET /api/payments/connect/status` (`:224`).
-  - `account.updated` webhook (`:371`) → `payment.payouts_ready` →
+  - `POST /api/payments/connect/onboarding` (`payments/routes.py:228`, Express
+    account plus account link). Since `235eeaa` it takes `{"country": "CA"}`
+    (default `DE`): the account is created in that country, and one outside
+    `PAYOUT_COUNTRIES` (the EEA, CH, GB, US, CA: `routes.py:33-35`) gets 422
+    `country_unsupported`. Stripe fixes an account's country at creation. The
+    web sends no country yet, so every account is German.
+    `GET /api/payments/connect/status` (`:253`).
+  - `account.updated` webhook (`:439`) → `payment.payouts_ready` →
     catalog `payable_owners` (`catalog/handlers.py:24`). Buyers only see
     listings of payable owners when `REQUIRE_PAYABLE_OWNERS=true` (required
     deployed, `catalog/settings.py:38,57`).
-  - Transfers happen in `payments/handlers.py:119-142` (completed) and
-    `:88-115` (the owner's share of a late cancellation).
+  - Transfers happen in `payments/handlers.py:125-148` (completed) and
+    `:94-121` (the owner's share of a late cancellation).
   - Screen: `Earn.tsx:112`.
 - **Seam:** yes, the same `Provider` (`create_account`, `onboarding_link`,
   `account_status`, `transfer`).
@@ -788,7 +839,7 @@ cancellation.
   - Kill switch `PAYOUTS_ON` (`payments/settings.py:26`, Terraform
     `switches.payouts`): payouts wait on the queue with backoff and nothing is
     lost.
-  - A chargeback holds the payout (`handlers.py:116`).
+  - A chargeback holds the payout (`handlers.py:122`).
   - Payout currency and FX are M-39. The Connect bank-account fingerprint is not
     read (S-17 note).
 
@@ -797,7 +848,7 @@ cancellation.
 A card holder's dispute with their bank holds the owner's payout and pages
 support.
 
-- **Where:** `charge.dispute.created` (`payments/routes.py:393`) sets
+- **Where:** `charge.dispute.created` (`payments/routes.py:450`) sets
   `payments.chargeback_at` and logs `CHARGEBACK`. The metric filter and alarm are
   in `infra/platform/observability.tf:134`.
 - **Seam:** partial (Stripe event name and `obj["charge"]`).
@@ -813,20 +864,25 @@ support.
 Each payout (or kept late-cancellation fee) issues an invoice for Cappy's
 fee. Numbers have no gaps per year, and an invoice never changes once issued.
 
-- **Where:** `issue` (`backend/services/payments/payments/invoices.py:55`,
-  under a row lock on `invoice_counters`), `GET /api/payments/invoices` (`:155`,
-  with a `description` line) and `GET /api/payments/invoices/{number}` (`:164`,
+- **Where:** `issue` (`backend/services/payments/payments/invoices.py:65`,
+  under a row lock on `invoice_counters`), `GET /api/payments/invoices` (`:165`,
+  with a `description` line) and `GET /api/payments/invoices/{number}` (`:174`,
   printable HTML in German with § 14 (4) UStG fields). Tables `invoices` and
   `invoice_counters` (`payments/tables.py:64-94`). Screen: `Earn.tsx:416`.
-- **Seam:** partial. `Issuer` (`invoices.py:33`) makes the time zone, tax rate
-  and label data (`INVOICE_TIME_ZONE`, `INVOICE_TAX_RATE_BPS`,
-  `INVOICE_TAX_LABEL`, `payments/settings.py:34-36`). The issuer's name, address
-  and tax ids are `LEGAL_*` (`:29-32`, Terraform `legal`, required deployed).
+- **Seam:** partial. `Issuer` (`invoices.py:34`) makes the time zone, tax rate,
+  label and retention period data (`INVOICE_TIME_ZONE`, `INVOICE_TAX_RATE_BPS`,
+  `INVOICE_TAX_LABEL`, `INVOICE_RETENTION_YEARS`, `payments/settings.py:37-40`).
+  The issuer's name, address and tax ids are `LEGAL_*` (`:32-35`, Terraform
+  `legal`, required deployed).
+- **Retention** (since `235eeaa`, D-9): `purge_invoices_once`
+  (`payments/jobs.py:61-77`, daily) deletes invoices once the issuer's period
+  (10 years by default) has run from the end of the year of issue
+  (`docs/retention.md`).
   The template, language and number series are code.
 - **To swap it** (for example to an invoicing service or Stripe Invoicing): call
   it from `issue` and store its invoice id on `invoices`. Keep the local number
   series if the provider cannot guarantee gapless per-entity numbering. Keep the
-  10-year retention (GoBD).
+  legal retention (GoBD) and the purge after it.
 - **Limits:**
   - One issuing entity for everyone. The per-market entity, template and series
     are M-13.
@@ -856,58 +912,85 @@ fee. Numbers have no gaps per year, and an invoice never changes once issued.
 ## 9. Identity verification
 
 A renter proves who they are once (government ID and a live selfie) before a
-booking above €300, or in categories configured for it.
+booking above 30 000 minor units (€300 for a euro listing), or in categories
+configured for it.
 
 - **Where:**
   - Gate: `create_booking` returns 403 `verification_required` when
-    `total > VERIFY_ABOVE_CENTS` (30 000) or the category is in
-    `VERIFY_CATEGORIES` (`booking/routes.py:160-164`, `booking/settings.py:33-34`)
-    and the person is not in `verified_people`.
-  - Session: `POST /api/payments/identity/session` (`payments/routes.py:262-290`)
+    `total > VERIFY_ABOVE_CENTS` (30 000, one number for every currency) or the
+    category is in `VERIFY_CATEGORIES` (`booking/routes.py:160-164`,
+    `booking/settings.py:33-37`) and the person is not in `verified_people`.
+  - Session: `POST /api/payments/identity/session` (`payments/routes.py:294-322`)
     requires `{"consent": true}` (422 `consent_required` otherwise) and stores
-    `consent_at` and `consent_version` (`identity-2026-09`, `:255`) on the
-    person's `identities` row (P-18, `f303350`). It calls
-    `Provider.verification_session` (`provider.py:161`: type `document`,
-    matching selfie, live capture, metadata `personId`).
-    `GET /api/payments/identity` (`:293`).
-  - Result: webhooks `identity.verification_session.verified` and
-    `.requires_input` (`routes.py:379-392`), counted only when the session id
-    is the row's current one (P-28, `f303350`) → `payment.identity_verified` →
-    booking `verified_people` (`booking/handlers.py:112`).
+    `consent_at` and `consent_version` (`identity-2026-09`, `:287`) on the
+    person's `identities` row (P-18). It calls
+    `IdentityProvider.start_session` and answers `{status: "pending",
+    clientSecret, url}`: a client secret for Stripe.js, a `url` for a hosted
+    flow. `StripeIdentity.start_session` (`payments/identity.py:88-96`) asks
+    for type `document`, a matching selfie, live capture and metadata
+    `personId`. `GET /api/payments/identity` (`routes.py:342`) answers
+    `none`, `pending`, `requires_input`, `failed` or `verified`.
+  - Result: a provider verdict in neutral words, `IdentityResult(session_id,
+    person_id, verified | failed | needs_input)`, applied by `_identity_result`
+    (`routes.py:325-340`) only to the person's current session (P-28). Stripe
+    sends its `identity.verification_session.*` events to the payments
+    webhook, which maps them with `stripe_result` (`identity.py:61-75`:
+    `verified`, `requires_input` → needs input, `canceled` → failed). A provider
+    with its own webhook posts to `POST /api/payments/webhooks/identity`
+    (`routes.py:463-477`), verified by the provider class and handled once per
+    session and status (`processed_events`). A pass publishes
+    `payment.identity_verified` → booking `verified_people`
+    (`booking/handlers.py:147-150`) and, since `235eeaa`, catalog's
+    `owners.verified`, the profile's badge (`catalog/handlers.py:84-90`, F-10).
   - Web: the sheet needs the consent box ticked (`Listing.tsx:98`, `:714-729`);
     `verify` (`Listing.tsx:222-244`) sends `{consent: true}`
-    (`startIdentity`, `web/src/data/repo.ts:537`, since `f22f143`), loads
-    Stripe.js on demand, calls `stripe.verifyIdentity(clientSecret)`, and polls
-    for the webhook's result for up to a minute before retrying the booking.
-- **Seam:** partial. Creating a session is behind `Provider`. The web modal
-  and the webhook are Stripe's.
-- **Provider-specific data:** `identities.session_id` (`vs_…`; fake `vs_fake_…`),
-  `status` (`pending`, `requires_input`, `verified`), `verified_at`, and the
-  consent columns (`payments/tables.py:47-61`). The document and selfie stay with Stripe; Cappy
-  stores only the outcome.
-- **To swap it** (for example to Onfido or Veriff):
-  1. Code: move ID checks out of the payments `Provider` into their own
-     `IdentityProvider` (`start(person_id) -> (session_id, client_token_or_url)`,
-     `parse_webhook`). It is the smallest clean seam, and it lets payments stay
-     on Stripe. Keep `payment.identity_verified` as the event, or rename it to an
-     identity-neutral name in `events.py` and every subscriber (booking, and the
-     SNS filter in `infra/modules/messaging/main.tf`).
-  2. Webhook: a new route. Match on the session id, not on metadata alone (P-28).
-  3. Web: replace the `verifyIdentity` call in `Listing.tsx` with the vendor's
-     SDK or hosted link. The shells may need camera permission strings (S-2).
-     Update the CSP.
-  4. Data: existing `verified_people` rows stay valid. The `identities` rows
-     point at Stripe sessions; keep them as history.
-  5. Legal: a DPIA (G-B3), explicit consent for biometric data, recorded before
-     the check (P-17; the recording exists, keep the `consent_version`
-     wording in step with the app's text), the vendor's DPA and its data
-     location.
+    (`startIdentity`, `web/src/data/repo.ts:543`), loads Stripe.js on demand,
+    calls `stripe.verifyIdentity(clientSecret)`, and polls for the webhook's
+    result for up to a minute before retrying the booking. It does not read
+    `identityProvider` from `/payments/config` or the session's `url`.
+- **Seam:** backend **yes** since `235eeaa` (F-1): `IdentityProvider`
+  (`payments/identity.py:48-58`: `name`, `verifies_immediately`,
+  `start_session`, `parse_webhook`, `redact`), with `StripeIdentity` (`:78`)
+  and `FakeIdentity` (`:115`, a started check is a passed check), chosen by
+  `make_identity` (`:132`) from `IDENTITY_PROVIDER` (`payments/settings.py:24`:
+  `stripe` or `fake`; empty follows `PAYMENTS_PROVIDER`; `fake` refused
+  deployed, `:50-51`). Routes and handlers see only `IdentitySession` and
+  `IdentityResult`. `/payments/config` names the provider (`identityProvider`).
+  Web: **no**, the Stripe.js modal is the only UI.
+- **Provider-specific data:** `identities.session_id` (`vs_…`; fake
+  `vs_fake_…`), `status`, `verified_at`, and the consent columns
+  (`payments/tables.py:47-61`). The document and selfie stay with the
+  provider; Cappy stores only the outcome. On account deletion the session is
+  redacted at the provider (`StripeIdentity.redact`, `identity.py:105-112`,
+  D-6) before the row goes.
+- **To swap it** (for example to Onfido, Veriff or Persona), as the module
+  docstring says (`identity.py:1-17`):
+  1. Code: a class in `identity.py` mapping the vendor's statuses to
+     verified / failed / needs_input, with `redact`. Widen the
+     `IDENTITY_PROVIDER` literal (`payments/settings.py:24`) and its
+     `unsafe_reasons`.
+  2. Config: its keys and webhook secret in Terraform secrets and `ecs.tf`
+     (today payments gets no `IDENTITY_PROVIDER`, so it follows
+     `PAYMENTS_PROVIDER=stripe`).
+  3. Webhook: point the vendor at `/api/payments/webhooks/identity`. The WAF
+     already exempts `/api/payments/webhooks/`; the gateway forwards only
+     `stripe-signature` of the signature headers (`gateway/main.py:34-44`), so
+     add the vendor's.
+  4. Web: choose the UI from `identityProvider` (Stripe.js with the client
+     secret, or open the hosted `url`); not built. The shells may need camera
+     permission strings (S-2). Update the CSP.
+  5. Data: existing `verified_people` rows and `owners.verified` stay valid.
+     The `identities` rows point at Stripe sessions; keep them as history.
+     `payment.identity_verified` keeps its name.
+  6. Legal: a DPIA (G-B3), explicit consent for biometric data, recorded before
+     the check (P-17; keep the `consent_version` wording in step with the
+     app's text), the vendor's DPA and its data location.
 - **Limits:**
   - The verified name is not compared with the profile (the rest of P-28).
-  - No badge on the profile (U-32; `Owner.verified` is unrelated, see 2.1).
   - The consent is recorded per person, overwritten on each new session, and
     is not in the data export.
-  - The €300 threshold is one for every market.
+  - The threshold is one number of minor units for every currency, so SEK or
+    HUF bookings ask sooner (M-2).
 
 ---
 
@@ -919,11 +1002,17 @@ both sides see what was written. Asking to pay outside Cappy is flagged, and
 the app warns both sides.
 
 - **Where:** `backend/services/booking/booking/messages.py`: `mask` `:73`,
-  `flagged` `:69`, `POST /api/bookings/{id}/messages` `:125` (idempotent,
+  `flagged` `:69`, `POST /api/bookings/{id}/messages` `:141` (idempotent,
   blocks enforced, 30 per sender per booking in 10 minutes, the original kept
-  in `unmasked`), `GET /api/bookings/{id}/messages` `:185` (unmasked once the
-  booking is in `SHOWS_HANDOVER`). The event `booking.message` becomes a push
-  to the other side, never an email (`notifications/handlers.py:77`). Web:
+  in `unmasked`; since `235eeaa` 409 `conversation_closed` once the booking is
+  cancelled, declined, expired or `payment_failed`, or completed and past the
+  14-day review window: `open_for_messages`, `:115-127`, FL-18),
+  `GET /api/bookings/{id}/messages` `:203` (unmasked once the booking is in
+  `SHOWS_HANDOVER`). The event `booking.message` becomes a push to the other
+  side every time and, since `235eeaa`, an email at most once per
+  conversation per 15 minutes (`MESSAGE_EMAIL_EVERY`,
+  `notifications/handlers.py:85-113`, `:174-186`; FL-3). Moderation
+  can replace a reported message's words (`remove_content`, 13.2). Web:
   `web/src/app/components/Conversation.tsx` (sender warning `:43`, receiver
   banner `:116`).
 - **Seam:** module boundary. `mask(text)` and `flagged(text)` are pure
@@ -933,8 +1022,8 @@ the app warns both sides.
   - The phone rule is European-shaped (`+`, `00` or `0` prefixes). NANP numbers
     without a prefix slip through (M-32).
   - English and German phrases only.
-  - Messages can be sent in any booking state. The per-sender limit is per
-    booking (30 in 10 minutes, `messages.py:39`, `:145-157`, P-12).
+  - The per-sender limit is per booking (30 in 10 minutes, `messages.py:39`,
+    `:160-175`, P-12).
   - After a cancellation, messages are masked again (`messages.py:106`).
 
 ---
@@ -946,20 +1035,22 @@ on-time, tags, text), and the owner rates the renter. Reviews are blind: both
 are published together once both are in, or when the 14-day window closes.
 
 - **Where:**
-  - Rating routes: `POST /api/bookings/{id}/rate` (`booking/routes.py:394`) and
-    `/rate-renter` (`:448`).
-  - Blind publishing: `publish_reviews` (`booking/repository.py:313`) and the
-    sweep `reviews_due` (`:347`).
+  - Rating routes: `POST /api/bookings/{id}/rate` (`booking/routes.py:401`) and
+    `/rate-renter` (`:459`).
+  - Blind publishing: `publish_reviews` (`booking/repository.py:335`) and the
+    sweep `reviews_due` (`:369`).
   - Events: `booking.rated` → catalog review plus the owner's record
     (`catalog/handlers.py:30`), and `booking.renter_rated` → the renter's record
     (`:20`).
-  - Reads: `GET /api/listings/{id}/reviews` (`catalog/routes.py:463`) and the
+  - Reads: `GET /api/listings/{id}/reviews` (`catalog/routes.py:475`) and the
     summary in the listing detail. Tags: `/api/review-tags`
     (`matching/domain/reviews.py`).
   - Web: `web/src/app/components/Reviews.tsx`, `BookingDetail.tsx`.
 - **Provider:** none.
 - **Limits:** no collusion signals (S-28). No in-app store review prompt (S-27).
   Reviewers are shown as "First L."; deleted accounts as "Former member".
+  Moderation can empty a review's text and tags and keep its rating
+  (`remove_content`, 13.2).
 
 ---
 
@@ -971,12 +1062,21 @@ Transactional email for booking changes, payouts, reports and moderation
 decisions, in the recipient's language.
 
 - **Where:** `backend/services/notifications/notifications/handlers.py`
-  (`messages` `:40`, `moderation_mail` `:106`, `deliver` `:129`). Texts:
-  `texts.py:11` (EN/DE), chosen by Cognito's `locale` (`texts.py:104`). Sender:
+  (`messages` `:40`, `moderation_mail` `:133`, `deliver` `:156`). Since
+  `235eeaa` `messages` also tells the renter of a failed payment, and the
+  owner too when the capture failed after they accepted, and both sides of a
+  dispute (`:74-82`, FL-2); message notices are emailed at most once per
+  conversation per 15 minutes, checked against the inbox (`_recently_told`,
+  `:85-99`, `notify` `:174-186`, FL-3). Texts: `texts.py:12` (EN/DE/FR, with
+  French since `235eeaa`: one neutral French for France and Québec,
+  « courriel »), chosen by Cognito's `locale` (`language`, `texts.py:202-205`:
+  `de…` and `fr…`, anything else English). Amounts are formatted per currency
+  and language (`money`, `:251-265`). Sender:
   `Mailer` (`mail.py:37`), `SesMailer` (`:106`, SES v1 `SendEmail`, plain text),
   `LogMailer` (`:124`). Selected in `notifications/main.py:26` by `MAILER`
   (`log` or `ses`; deployed must be `ses`, `settings.py:12,25`) and `MAIL_FROM`.
-  Always-emailed kinds are in `prefs.py:58`.
+  Always-emailed kinds are in `prefs.py:61-72` (since `235eeaa` also
+  `payment_failed`, `disputed_owner`, `disputed_renter`).
 - **Seam:** **yes,** `Mailer.send(Email(to, subject, text))`.
 - **Provider-specific data:** none stored. Bounces and complaints are handled
   by SES's account suppression list (`infra/platform/email.tf:50`), with alarms
@@ -997,10 +1097,9 @@ decisions, in the recipient's language.
   7. Legal: DPA. Mail is sent from the EU region today.
 - **Limits:**
   - Plain text only; no templates or HTML.
-  - Two languages (the app has three; emails have no French yet). French and
-    the rest are M-17 and M-34.
+  - Three languages, the app's three. The rest are M-17 and M-34.
   - Deadlines are told in `Europe/Berlin` unless the event carries a
-    `timeZone` (`texts.py:129`), and listings have none yet (M-15).
+    `timeZone` (`texts.py:228`), and listings have none yet (M-15).
   - No marketing mail, so no unsubscribe handling (M-30).
 
 ### 12.2 Recipient directory
@@ -1010,31 +1109,36 @@ time and never copied.
 
 - **Where:** `Directory` (`notifications/mail.py:21`), `CognitoDirectory` (`:41`,
   `AdminGetUser` with a `ListUsers` fallback; only verified emails are used).
-  It also signs a person out everywhere (`:76-88`) and deletes their Cognito
-  user when their account is deleted (`delete_person`, `:90-98`, P-23). IAM:
+  It also signs a person out everywhere (`:76-88`), deletes their Cognito
+  user when their account is deleted (`delete_person`, `:90-98`, P-23), and
+  gives the email and locale for the data export (`person_of`, `:100-103`,
+  D-10). IAM:
   `ecs.tf:223`.
 - **Seam:** yes. It is replaced together with identity (1.1).
 
 ### 12.3 Push
 
 Every notification that emails (except moderation) is also pushed to the
-person's signed-in phones. Chat messages are push-only.
+person's signed-in phones. Chat messages are pushed every time, and emailed
+at most once per conversation per 15 minutes.
 
 - **Where:**
-  - Devices: `POST/DELETE /api/notifications/devices` (`notifications/routes.py:38`,
-    `:78`), at most 10 per person, in the `devices` table (token, platform,
+  - Devices: `POST/DELETE /api/notifications/devices` (`notifications/routes.py:39`,
+    `:79`), at most 10 per person, in the `devices` table (token, platform,
     endpoint, `install_hash`: `tables.py:21-33`). A token registered by
     another person moves only when the request carries the same `installId`
     (a random id per app install, stored hashed) or the row has none; else 409
     `device_taken`. On a move the old endpoint is deleted first
-    (`routes.py:40-75`, P-33).
+    (`routes.py:40-76`, P-33). Since `235eeaa` every removal (sign-out,
+    sign-out-everywhere, deletion, the 10-device cap, a dead endpoint) deletes
+    the SNS endpoint first (`drop_devices`, `push.py:85-94`, D-7).
   - Sending: `Pusher` (`push.py:15`), `SnsPusher` (`:41`, SNS Mobile Push
     `CreatePlatformEndpoint` and `Publish` with APNS and FCM v1 payloads carrying a
     `link`; `unregister` is `DeleteEndpoint`), `LogPusher` (`:26`). Selected in
     `notifications/main.py:27-28`: SNS when `PUSH_IOS_APP_ARN` or
     `PUSH_ANDROID_APP_ARN` is set (`settings.py:18-19`, Terraform
     `push_app_arns`, `variables.tf:119`).
-  - Dead endpoints are forgotten (`handlers.py:187-196`).
+  - Dead endpoints are forgotten (`_push`, `handlers.py:226-236`).
   - App side: `enablePush` and `pushSignedOut` (`web/src/native.ts:114`, `:165`,
     with `@capacitor/push-notifications`); registration sends
     `{platform, token, installId}`, a random id made once per install
@@ -1072,9 +1176,9 @@ A paginated list of everything a person was notified about, with an unread
 count, rendered in the reader's language.
 
 - **Where:** `InboxRow` (`notifications/tables.py:36`, text key plus params),
-  written by `_keep` (`handlers.py:206`). `GET /api/notifications`
-  (`routes.py:129`, uses `Accept-Language`, which the gateway forwards at
-  `gateway/main.py:38`) and `POST /api/notifications/read` (`:171`). Screen:
+  written by `_keep` (`handlers.py:245`). `GET /api/notifications`
+  (`routes.py:132`, uses `Accept-Language`, which the gateway forwards at
+  `gateway/main.py:38`) and `POST /api/notifications/read` (`:174`). Screen:
   `web/src/app/screens/Notifications.tsx`. The bell is in `AppShell.tsx`.
 - **Provider:** none.
 
@@ -1085,11 +1189,13 @@ off. Marketing is off by default. Contract and moderation emails are always
 sent.
 
 - **Where:** `notifications/prefs.py` (`DEFAULTS` `:37`, `CATEGORY` `:47`,
-  `wanted` `:76`), `GET/PUT /api/notifications/settings` (`routes.py:156`,
-  `:161`), table `notification_prefs`. Screen: `Profile.tsx`.
+  `wanted` `:90`), `GET/PUT /api/notifications/settings` (`routes.py:159`,
+  `:164`), table `notification_prefs`. Screen: `Profile.tsx`.
 - **Provider:** none.
 - **Limits:** there is no consent record for marketing (M-30). The messages
-  email switch changes nothing, because messages are never emailed.
+  email switch works since `235eeaa` (FL-3); the Profile text shown before
+  the settings load still says "Everything also arrives by email"
+  (`Profile.tsx:596`), which is not true of every message.
 
 ---
 
@@ -1101,13 +1207,13 @@ Anyone can report a listing, profile, message or review with a reason,
 details and a good-faith confirmation. People without an account leave an
 email. Every report is acknowledged by email.
 
-- **Where:** `POST /api/reports` (`backend/services/catalog/catalog/moderation.py:140`),
+- **Where:** `POST /api/reports` (`backend/services/catalog/catalog/moderation.py:141`),
   public, idempotent when signed in. Limits: 3 a day per anonymous email, and
   per target a day 5 anonymous and 20 signed-in reports, counted apart so
   anonymous ones never use up the members' cap (`moderation.py:137`,
   `:170-186`, P-7, `f303350`). The event `moderation.report_received` becomes
   an email. Web: `web/src/app/components/Report.tsx`, `sendReport`
-  (`repo.ts:714`, with an `Idempotency-Key` per attempt). Signed out, the
+  (`repo.ts:720`, with an `Idempotency-Key` per attempt). Signed out, the
   form is on `/legal/report`, where the reporter picks what they report and
   pastes its link or reference (`Legal.tsx`, `Report.tsx` `referenceId`,
   FL-10, `f22f143`).
@@ -1115,54 +1221,68 @@ email. Every report is acknowledged by email.
 - **Limits:** anonymous addresses are still not confirmed; the receipt mail is
   kept on purpose (DSA Art. 16(4)) and bounded by the per-address cap.
   `reporterEmail` travels in events between services but is scrubbed from the
-  analytics lake (P-6, `f303350`).
+  analytics lake (P-6, `f303350`). A reporter's id, email and words are
+  cleared 183 days after the decision, and when they delete their account
+  (`catalog/jobs.py:45-60`, D-3); the reporter's export includes their
+  reports (D-10).
 
 ### 13.2 Moderation queue and decisions (DSA Art. 17)
 
-Staff see open reports oldest first, dismiss, take down a listing or suspend
-an owner, with a structured statement of reasons. Both sides are told, and
-every action is audited.
+Staff see open reports oldest first, dismiss, take down a listing, remove a
+message or review, or suspend the person, with a structured statement of
+reasons. Both sides are told, and every action is audited.
 
-- **Where:** `moderation.py`: queue `:219`, decide `:337`, take-down `:401`,
-  suspend `:423`, reinstate `:446`, audit `:461`, statement of reasons
-  `:104`. Every one needs a staff account with MFA (1.3). The event
+- **Where:** `moderation.py`: queue `:220`, decide `:352`, take-down `:418`,
+  suspend `:440`, reinstate `:463`, audit `:478`, statement of reasons
+  `:105`. Every one needs a staff account with MFA (1.3). Since `235eeaa`
+  (FL-7) `decide` also takes `remove_content` for a message or review report
+  (`DecisionIn`, `:101-102`): a review keeps its rating and loses its text and
+  tags, a message's words are replaced through booking
+  `POST /internal/messages/{id}/remove` (`_remove_content`, `:339-349`), and
+  the author is told ("We removed something you wrote"). `suspend` finds the
+  person behind any target: the owner of a listing or profile, the author of
+  a review, or of a message through booking `GET /internal/messages/{id}`
+  (`_affected`, `:318-336`). A take-down or suspension publishes
+  `listing.changed` with `by: "staff"`, so booking declines pending requests
+  with "The listing was taken down by Cappy" (`booking/handlers.py:114-128`,
+  FL-9), and purges the photos from the CDN (3.4). The event
   `moderation.decision` goes to notifications
-  (`statement_params`, `notifications/handlers.py:91`). `moderation.owner_suspended`
+  (`statement_params`, `notifications/handlers.py:116`). `moderation.owner_suspended`
   goes to booking, which declines the owner's pending requests and blocks new
-  bookings by them (`booking/handlers.py:95`). Screen:
+  bookings by them (`booking/handlers.py:130`). Screen:
   `web/src/app/screens/Admin.tsx`.
 - **Provider:** none. There is no automated content classifier. `automated`
   in the statement is always what staff say.
-- **Web and server disagree** (since `f22f143`): for a message or review
-  report the console offers **Remove the message / review** (`remove_content`)
-  and **Suspend the author** (`Admin.tsx:33-42`, `:334`), but the server
-  accepts only `dismiss`, `take_down` and `suspend` (`moderation.py:101`, 422
-  otherwise) and finds no owner to suspend for a message or review
-  (`_affected_owner`, `moderation.py:328-335`, 422). The console also lists
-  held listings and approves them (`getHeldListings`, `approveListing`,
-  `repo.ts:742-743`), which the server does support (13.3).
+- **Console:** for a message or review report it offers **Remove the
+  message / review** and **Suspend the author** (`Admin.tsx:33-42`, `:334`),
+  which the server accepts since `235eeaa` (they answered 422 before). It
+  also lists held listings and approves them (`getHeldListings`,
+  `approveListing`, `repo.ts:748-749`; 13.3).
 
 ### 13.3 Held listings (fraud rule)
 
 A new owner's listing above €100 an hour waits for a staff check.
 
-- **Where:** `create_listing` and `update_listing` (`catalog/routes.py:542`,
-  `:573`), `REVIEW_ABOVE_CENTS` (`catalog/settings.py:46`), and admin
-  `GET /api/admin/listings/held` and `POST .../approve` (`moderation.py:490`,
-  `:511`).
+- **Where:** `create_listing` and `update_listing` (`catalog/routes.py:530`,
+  `:566`), `REVIEW_ABOVE_CENTS` (`catalog/settings.py:49`, one number of minor
+  units for every currency), and admin `GET /api/admin/listings/held` and
+  `POST .../approve` (`moderation.py:507`, `:528`). The owner can open their
+  held listing (`catalog/routes.py:453-473`, FL-6).
 - **Provider:** none.
 
 ### 13.4 System notices: reliability and ban evasion
 
 - **Owner reliability (S-18):** booking counts an owner's cancellations and
-  no-shows over 12 months (`booking/repository.py:188`). It emits
+  no-shows over 12 months (`booking/repository.py:208`). It emits
   `booking.owner_reliability`, which becomes `owners.cancellation_rate`, a
   ranking signal (4.1), shown on the listing. Three failures in 30 days emit
-  `moderation.person_flagged`, which joins the queue (`moderation.py:530`).
+  `moderation.person_flagged`, which joins the queue (`moderation.py:547`).
 - **Linked cards (S-17):** payments reads the card fingerprint on
-  authorisation (`payments/routes.py:99`, `Provider.card_fingerprint`). Booking
+  authorisation (`payments/routes.py:102-110`, `Provider.card_fingerprint`). Booking
   compares it with cards used by suspended accounts
-  (`booking/handlers.py:63`) and flags the person. The booking still goes ahead.
+  (`booking/handlers.py:94-110`) and flags the person. On account deletion
+  the fingerprint is cleared everywhere, except booking's copy for a
+  suspended person (D-5). The booking still goes ahead.
 - **Seam:** the fingerprint is behind `Provider.card_fingerprint`. A new payment
   provider must supply a stable per-card fingerprint, or this signal goes dark.
 - **Limits:** no bank-account fingerprint, no device fingerprint, no
@@ -1175,7 +1295,7 @@ A new owner's listing above €100 an hour waits for a staff check.
   (`catalog/settings.py:45`). 100 photos a day (`catalog/settings.py:29`).
   30 messages per sender per booking in 10 minutes (`booking/messages.py:39`),
   5 data exports a day and 5 sign-outs-everywhere an hour
-  (`catalog/routes.py:375-399`, `rate_hits`; P-12, `f303350`).
+  (`catalog/routes.py:377-418`, `rate_hits`; P-12, `f303350`).
 - **Edge:** AWS WAF per-IP rate rule, IP reputation, and Bot Control in prod
   (`infra/platform/edge.tf:171`, `:263`; `bot_control`, `variables.tf:107`,
   on in `infra/envs/prod/main.tf:85`). A separate WAF sits on Cognito
@@ -1188,9 +1308,9 @@ A new owner's listing above €100 an hour waits for a staff check.
 
 ### 13.6 DSA transparency numbers
 
-- **Where:** `GET /api/admin/dsa-stats?month=` (`moderation.py:569`): notices by
+- **Where:** `GET /api/admin/dsa-stats?month=` (`moderation.py:586`): notices by
   reason and decision, median hours to decision, and active recipients from
-  booking `/internal/stats/active-people` (`booking/routes.py:530`). The exact
+  booking `/internal/stats/active-people` (`booking/routes.py:567`). The exact
   count is an Athena query (`docs/analytics.md`).
 - **Provider:** none.
 
@@ -1202,17 +1322,27 @@ A new owner's listing above €100 an hour waits for a staff check.
 
 A member downloads one JSON file with everything held about them.
 
-- **Where:** `GET /api/me/export` (`catalog/routes.py:388`) gathers the
-  catalog's part (`repository.py:194`) and each service's `/internal/people/{id}/export`:
-  booking (`booking/routes.py:550`), payments (`payments/routes.py:314`) and
-  notifications (`notifications/routes.py:181`). Web: `exportMyData`
-  (`repo.ts:430`). In the store shells it goes to the share sheet
+- **Where:** `GET /api/me/export` (`catalog/routes.py:397`) gathers the
+  catalog's part (`repository.py:242`: profile, listings, saved, reviews
+  written and about them, photo names, reports filed, moderation decisions)
+  and each service's `/internal/people/{id}/export`: booking
+  (`booking/routes.py:586`: bookings, messages, evidence with notes, blocks,
+  verified and suspended flags, card fingerprints), payments
+  (`payments/routes.py:363`: payout account, identity status, invoices with
+  recipient fields, payments with charge, refund and payout flags) and
+  notifications (`notifications/routes.py:184`: bell items, settings,
+  devices, and the Cognito email and locale). Coverage since `235eeaa` (D-10);
+  the register `cappy_common/privacy.py` records every table left out and
+  why. Web: `exportMyData`
+  (`repo.ts:436`). In the store shells it goes to the share sheet
   (`native.ts:184`).
 - **Provider data not included:** anything held by Stripe (cards, KYC, ID
-  documents) and Cognito (the email). The export says so only implicitly.
+  documents), and Cognito's password and MFA data. The export says so only
+  implicitly.
 - **Limits:** 5 a day per person (`rate_hits`, P-12). Hand-over photos
-  appear as `evidence:<name>` references, not files. No CCPA or Law 25 request
-  workflow (P-29).
+  appear as `evidence:<name>` references, not files. The ID-check consent and
+  decisions on the person's messages or reviews are missing (DATA.md §5.3).
+  No CCPA or Law 25 request workflow (P-29).
 
 ### 14.2 Account deletion
 
@@ -1220,25 +1350,37 @@ A member deletes their account in the app or at `/account/delete` (Google
 Play). It is refused while bookings are open or a payout is pending, with the
 reason and a date.
 
-- **Where:** `DELETE /api/me` (`catalog/routes.py:338`). It checks booking
-  `/internal/people/{id}/open` (`booking/routes.py:519`) and payments
-  `/internal/people/{id}/open` (`payments/routes.py:302`), then
-  `repository.forget` (`catalog/repository.py:171`: listings down, the profile
-  becomes "Former member", reviews anonymised), and ends the person's sessions
-  in catalog at once (`routes.py:361-365`). `profile.deleted` goes to:
-  - booking: blocks and verification go, messages are redacted
-    (`booking/handlers.py:117`);
-  - payments: the Connect link and identity row go (`payments/handlers.py:151`);
+- **Where:** `DELETE /api/me` (`catalog/routes.py:347`). It checks booking
+  `/internal/people/{id}/open` (`booking/routes.py:556`) and payments
+  `/internal/people/{id}/open` (`payments/routes.py:351`), then
+  `repository.forget` (`catalog/repository.py:189`: listings down with their
+  words and photos cleared, every upload handed to the photo sweep, reports
+  they filed without the reporter, stored answers deleted, the profile a
+  "Former member", reviews anonymised), and ends the person's sessions in
+  catalog at once (`routes.py:370-375`). `profile.deleted` goes to:
+  - booking: blocks and verification go, messages are redacted, bookings keep
+    their row but lose the hand-over details, the owner's name and business,
+    notes and (unless suspended) the card fingerprint, evidence loses photos
+    and notes, stored answers go (`booking/handlers.py:152-169`, `:38-65`);
+  - payments: the Connect link goes, the ID-check session is redacted at the
+    provider and the identity row deleted, and card fingerprints are cleared
+    (`payments/handlers.py:157-175`);
   - notifications: the Cognito user is deleted (`AdminDeleteUser`), then
-    devices, inbox and settings go (`notifications/handlers.py:158-166`);
+    devices with their SNS endpoints, inbox and settings go
+    (`notifications/handlers.py:198-206`);
   - and all three stop accepting the person's tokens (`cappy_common/guard.py`).
+  All of it is D-1 to D-7 in `235eeaa`, pinned by the register and
+  `test_privacy.py` (D-11).
   The app also calls Cognito `DeleteUser` itself, twice at most, as the quick
   path, and signs out whatever happens (`Profile.tsx` `remove`,
   `web/src/data/auth.ts:282`, FL-11). Screens: `Profile.tsx`, `App.tsx:61`
   (`/account/delete`).
 - **Provider data:** the Stripe Connect account stays with Stripe, which keeps
-  what financial regulation requires. Invoices are kept for 10 years.
-- **Limits:** booking snapshots keep the owner's name (P-23).
+  what financial regulation requires. Invoices are kept for the issuer's
+  legal period, then purged (8.1).
+- **Limits:** CloudFront keeps the person's listing photos until they expire
+  from the edge. The `delete_me` docstring (`catalog/routes.py:349-352`) still
+  says the app deletes the sign-in and that bookings hold no personal data.
 
 ---
 
@@ -1264,16 +1406,18 @@ reason and a date.
   start; the switch is on the welcome, sign-in and profile screens. The
   first render waits for the catalogue (`web/src/main.tsx:18-25`). Plurals go
   through `Intl.PluralRules`. Dates, money and units use `locale()`
-  (`i18n.ts:51-58`): the app's language with the device's region (`en-US`,
-  `fr-CA`, `de-AT`…), else `en-GB`, `fr-FR` or `de-DE`. `npm run check:i18n`
+  (`i18n.ts:51-59`): the app's language with the device's region (`en-US`,
+  `fr-CA`, `de-AT`…), else `en-IE` (since `44a5520`: km and 24 h across
+  Europe), `fr-FR` or `de-DE`. `npm run check:i18n`
   checks both catalogues have the same keys and placeholders, and that every
   literal `t('…')` and `plural(…)` in the source has an entry. Dev builds
-  stretch every string with `?pseudo=1` (U-28). Emails and legal pages have
-  no French yet (M-17).
+  stretch every string with `?pseudo=1` (U-28). Emails, pushes and the bell
+  have French since `235eeaa`; the legal pages have none yet (M-17).
 - **Limits:** no Web Vitals (S-23). `npm run check:a11y` is a static check
   (image alt text, 24 px targets) and not a browser axe run (U-30 partly).
-  None of the `check:*` scripts runs in CI, which only builds
-  (`.github/workflows/ci.yml:52-53`).
+  Since `44a5520` CI runs `tsc --noEmit`, the build and every `check:*`
+  script (`size`, `i18n`, `flags`, `attempt`, `a11y`), installing with
+  `--ignore-scripts` (`.github/workflows/ci.yml:52-61`).
 
 ### 15.2 Store shells (Capacitor)
 
@@ -1337,7 +1481,7 @@ open their `link`.
 ### 16.1 Feature flags and rollouts
 
 - **Where:** `FEATURE_FLAGS="name:percent,…"`, one setting for every service
-  (`backend/libs/cappy_common/cappy_common/settings.py:106-110`; Terraform
+  (`backend/libs/cappy_common/cappy_common/settings.py:111-115`; Terraform
   `feature_flags`, `variables.tf:101`, into every task at `ecs.tf:31`; CD
   reads it from the GitHub environment variable `FEATURE_FLAGS`). They are
   parsed by `flags.py:15` and served in `/api/app-config` as `flags` (100
@@ -1345,7 +1489,10 @@ open their `link`.
   cached by CloudFront for 5 minutes). The app places each user with FNV-1a
   (`web/src/domain/flags.ts`, `useFlag` `repo.ts:408`; check:
   `npm run check:flags`). A service enforces a flag with `flags.enabled`
-  (`flags.py:32`), as booking does for `paidCancellationPolicies`.
+  (`flags.py:32`), as booking does for `paidCancellationPolicies`. A flag
+  the server reads as on or off for everyone is read in the app with
+  `useGlobalFlag` (`repo.ts:416-418`, since `44a5520`): only 100 counts, never
+  a partial rollout.
 - **Seam:** **yes.** Two small modules and one endpoint.
 - **To swap it** (for example to LaunchDarkly, Unleash or ConfigCat): keep
   `useFlag(name)` as the web API. Back it with the vendor's SDK, or have the
@@ -1353,14 +1500,14 @@ open their `link`.
   that the vendor's per-user evaluation breaks the CDN cache of `app-config`,
   and that a client SDK is a new third-party script before consent (§ 25 TDDDG;
   CSP).
-- **In use:** `paidCancellationPolicies` (6.2).
+- **In use:** `paidCancellationPolicies` (6.2, through `useGlobalFlag`).
 
 ### 16.2 Kill switches
 
 Stop new bookings, stop payouts or stop new listings without a deploy.
 
-- **Where:** `ACCEPTING_BOOKINGS` (`booking/settings.py:49`), `PAYOUTS_ON`
-  (`payments/settings.py:26`) and `ACCEPTING_LISTINGS` (`catalog/settings.py:41`),
+- **Where:** `ACCEPTING_BOOKINGS` (`booking/settings.py:52`), `PAYOUTS_ON`
+  (`payments/settings.py:29`) and `ACCEPTING_LISTINGS` (`catalog/settings.py:41`),
   set from Terraform `switches` (`variables.tf:86`, `ecs.tf:43,47,50`), which
   CD reads from the GitHub environment variable `SWITCHES`
   (`.github/workflows/deploy.yml:73`). How to use them is in `docs/runbook.md`.
@@ -1403,7 +1550,7 @@ Stop new bookings, stop payouts or stop new listings without a deploy.
 
 - **Where:** JSON logs with request ids (`cappy_common/observability.py`).
   OpenTelemetry over OTLP to an ADOT sidecar and on to X-Ray, when
-  `OTEL_ENABLED=true` (`observability.py:148`, `settings.py:113-114`). Trace
+  `OTEL_ENABLED=true` (`observability.py:148`, `settings.py:118-119`). Trace
   context travels inside events (`events.py:123-125`). Alarms, SLOs and a
   synthetic canary are in `infra/platform/observability.tf`, `synthetics.tf` and
   `docs/slo.md`.
@@ -1413,9 +1560,10 @@ Stop new bookings, stop payouts or stop new listings without a deploy.
 ### 16.6 Event bus
 
 - **Where:** a transactional outbox per service. `Publisher`, `SnsPublisher`,
-  `Consumer` and `SqsConsumer` are in `cappy_common/events.py:213,444,470`,
+  `Consumer` and `SqsConsumer` are in `cappy_common/events.py:210,450,396,476`,
   selected by `EVENT_BUS_URL` (`memory://` or `sns://…`) and `EVENT_QUEUE_URL`
-  (`events.py:553`). Queues, DLQs and filters are in
+  (`events.py:559-568`). A row that fails to publish 20 times is set aside and
+  pages (`outbox-set-aside`, D-14). Queues, DLQs and filters are in
   `infra/modules/messaging/main.tf`.
 - **Seam:** yes. Swapping to EventBridge, Kafka or Pub/Sub means a new
   `Publisher` and `Consumer` pair and a URL scheme. Consumers are already
@@ -1430,13 +1578,12 @@ smallest refactor that would create one:
 
 | Feature | Called directly at | Smallest refactor |
 |---|---|---|
-| Staff role (Cognito group claim) and staff MFA (Cognito `AdminGetUser`) | `cappy_common/auth.py:186-237`, `web/src/data/cognito.ts:148-152` | `STAFF_CLAIM` and `STAFF_VALUE` settings; the MFA check behind a directory interface |
-| CDN purge (CloudFront) | `catalog/moderation.py:241` | A `Cdn.purge(paths)` interface beside `MediaStore`, chosen in `catalog/main.py` |
-| Free-text search (Postgres LIKE/trigram) | `catalog/repository.py:624` | A `SearchIndex` protocol with the current SQL as the default, fed by `listing.changed` |
-| Places and geocoding (none exists) | `districts` table, `catalog/repository.py:252` | A `Geocoder` interface when addresses become structured (M-5, M-7, M-8) |
-| Tax on the fee (fixed rate) | `payments/invoices.py:83` (`Issuer.tax_rate_bps`) | A `tax_for(owner, market, fee)` function per invoice line (M-12) |
-| Stripe webhook event handling | `payments/routes.py:351-403` | Have `Provider.parse_webhook` return neutral events (`authorised`, `account_changed`, `identity_verified`, `chargeback`) instead of Stripe's event dict |
-| Identity verification UI (Stripe.js modal) | `web/src/app/screens/Listing.tsx:222-244` | An `IdentityProvider` in payments, split from the payment `Provider`, with the session returning either a client secret or a hosted URL |
+| Staff MFA (Cognito `AdminGetUser`) | `cappy_common/auth.py:186-219` | The MFA check behind a directory interface, or an `amr` claim check (the role claim is settings since `235eeaa`) |
+| Free-text search (Postgres LIKE/trigram) | `catalog/repository.py:721` | A `SearchIndex` protocol with the current SQL as the default, fed by `listing.changed` |
+| Places and geocoding (none exists) | `districts` table, `catalog/repository.py:339` | A `Geocoder` interface when addresses become structured (M-5, M-7, M-8) |
+| Tax on the fee (fixed rate) | `payments/invoices.py:93` (`Issuer.tax_rate_bps`) | A `tax_for(owner, market, fee)` function per invoice line (M-12) |
+| Stripe webhook event handling | `payments/routes.py:419-460` | Have `Provider.parse_webhook` return neutral events (`authorised`, `account_changed`, `chargeback`) instead of Stripe's event dict, as `IdentityProvider.parse_webhook` already does for ID checks |
+| Identity verification UI (Stripe.js modal) | `web/src/app/screens/Listing.tsx:222-244` | Pick the flow from `/payments/config.identityProvider` and open the session's `url` for a hosted provider (the backend seam exists since `235eeaa`) |
 | Card form (Stripe Payment Element) | `web/src/app/components/PayStep.tsx` | Already one component. Pick it by `/payments/config.provider` |
 
 ## How to keep this file true

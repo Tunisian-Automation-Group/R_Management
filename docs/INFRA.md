@@ -100,7 +100,7 @@ Versions: Terraform `>= 1.10`, AWS provider `~> 6.0`, random `~> 3.6`, http
 `~> 3.4`, archive `~> 2.4` (`infra/platform/versions.tf:1-9`). The platform
 takes a second AWS provider, `aws.us_east_1`, for CloudFront's certificate and
 WAF (`infra/platform/versions.tf:4`; wired in `infra/envs/staging/main.tf:27-33`).
-CI pins Terraform 1.12.2 (`.github/workflows/ci.yml:76`). State locking is
+CI pins Terraform 1.12.2 (`.github/workflows/ci.yml:84`). State locking is
 S3-native (`use_lockfile = true`, `infra/envs/prod/main.tf:9`).
 
 All names start with `local.name = "cappy-${var.env}"` (`infra/platform/network.tf:6`).
@@ -166,9 +166,14 @@ adding a service starts there.
 
 - **Consumers** (`:6-11`): which event types each service's queue receives.
   Passed to `module "messaging"` (`:14-18`). The same map is copied into
-  `infra/localstack/main.tf:27-32`, `infra/localstack/check.py:35-56` and
-  `local/bootstrap.py:30-58`; keep them in step. `person.signed_out` goes to
-  booking, payments and notifications.
+  `infra/localstack/main.tf:27-32`, `infra/localstack/check.py:13-42` and
+  `local/bootstrap.py:30-59`. Since `235eeaa` a test keeps them in step
+  (`backend/libs/cappy_common/tests/test_subscriptions.py`, D-13): the four
+  copies must be equal, and each service must handle every type it receives
+  (sign-out and deletion are handled by every runtime) and receive every type
+  it handles. `person.signed_out` goes to booking, payments and
+  notifications; `payment.identity_verified` goes to booking and, since
+  `235eeaa`, catalog (the profile's `verified`).
 - **Database services** (`:5`): catalog, booking, payments, notifications.
   Matching and the gateway have no database.
 - DB subnet group on the private subnets (`:20-23`); security group allowing
@@ -246,6 +251,11 @@ adding a service starts there.
   notifications `MAILER=ses`, `MAIL_FROM`, the push app ARNs),
   `EVENT_QUEUE_URL` for consumers (`:70`), and `INTERNAL_CALLERS` (the hashes
   of the callers' tokens) for every service but the gateway (`:71-74`).
+  Settings added in `235eeaa` that Terraform does not set, so their defaults
+  hold when deployed: payments' `IDENTITY_PROVIDER` (empty follows
+  `PAYMENTS_PROVIDER`, so Stripe Identity; `fake` is refused deployed) and
+  `INVOICE_RETENTION_YEARS` (10), and every service's `STAFF_CLAIM` /
+  `STAFF_VALUE` (`cognito:groups` / `admin`).
 - **Secrets** injected by ECS (`:77-88`): `INTERNAL_TOKEN`, each service its
   own (all but the gateway), `DATABASE_URL`, `DATABASE_READ_URL`, and the
   three Stripe keys for payments (JSON keys of the one secret).
@@ -387,10 +397,11 @@ Each sets the backend, the two providers (cell region and us-east-1), takes
 as variables, and calls `../../platform` with the sizes in the tables above.
 Prod additionally turns on `cognito_threat_protection` and `bot_control`
 (`infra/envs/prod/main.tf:69`, `:85`). CD sets `legal`, `switches` and
-`feature_flags` from the GitHub environment's variables (`TF_VAR_*`,
-`.github/workflows/deploy.yml:71-74`); the env roots' comments still describe
-an untracked tfvars file (`infra/envs/prod/main.tf:47`, `:53-54`, `:59`), which
-is how a local apply would pass them.
+`feature_flags` from the GitHub environment's variables `LEGAL`, `SWITCHES`
+and `FEATURE_FLAGS` (`TF_VAR_*`, `.github/workflows/deploy.yml:71-74`), and
+since `44a5520` the env roots' comments say so, with an example of each value
+(`infra/envs/prod/main.tf:47-48`, `:54-55`, `:60-61`). A local apply passes the
+same values with `-var` or a tfvars file.
 
 ### `infra/bootstrap/main.tf`
 
@@ -404,9 +415,13 @@ Run by hand once per account (`:1-4`), local state:
 ### `infra/localstack/main.tf` and `check.py`
 
 The messaging module with `name = "cappy-tf"`, the provider pointed at
-`http://localhost:4566` with test credentials (`:11-33`). `check.py`
-publishes one event of every type and asserts each queue received exactly the
-types its filter asks for (`:32-63`). Run by `make infra-local`.
+`http://localhost:4566` with test credentials (`:11-33`). `check.py` holds
+the expected map (`:13-42`), publishes one event of every type any queue
+subscribes to plus `nobody.listens`, which must reach no queue (`:43-47`), and
+asserts each queue received exactly the types its filter asks for
+(`:48-56`). Since `235eeaa` the expected map is derived, not listed twice, and
+it includes `payment.failed` for booking, which it had been missing. Run by
+`make infra-local`.
 
 ---
 
@@ -423,7 +438,7 @@ types its filter asks for (`:32-63`). Run by `make infra-local`.
 **What "validated" means.** `make infra-validate` and the CI `infra` job run
 `terraform fmt -check -recursive` and, in `bootstrap`, `envs/staging`,
 `envs/prod` and `localstack`, `terraform init -backend=false` then
-`terraform validate` (`Makefile:56-57`, `.github/workflows/ci.yml:71-82`).
+`terraform validate` (`Makefile:56-57`, `.github/workflows/ci.yml:79-90`).
 That checks syntax, types and references. It does not evaluate `check`
 blocks, data sources or provider-side rules, which only a plan against an
 account would (and a plan against real AWS is out of scope, GOAL 12).
@@ -470,7 +485,7 @@ reviewed but has never run against an account.
 
 `make infra-local` (after `make up`) applies `infra/localstack` and runs
 `check.py` (`Makefile:59-60`). CI does the same in the `e2e` job when the
-`LOCALSTACK_AUTH_TOKEN` secret is set (`.github/workflows/ci.yml:99-108`).
+`LOCALSTACK_AUTH_TOKEN` secret is set (`.github/workflows/ci.yml:94-116`).
 Only the messaging module is applied: the LocalStack licence in use has no
 Cognito, ECS, RDS, ELB, CloudFront, WAF, ECR or SES v2 (ADR 0009).
 
@@ -708,16 +723,17 @@ All go to the `cappy-<env>-alarms` topic and `alarm_email`.
 | `db-cpu` | Aurora CPU above 80 % for 10 minutes | `:106-117` |
 | `db-at-max-capacity` | `ServerlessDatabaseCapacity` at 90 % of `db_max_acu` for 15 minutes | `:119-131` |
 | `chargeback` | a `CHARGEBACK` line in the payments log (metric filter) | `:134-157` |
+| `outbox-set-aside` | an `OUTBOX_SET_ASIDE` line in any database service's log: an event failed to publish 20 times and will not go out by itself (metric filter per service, D-14, since `235eeaa`; the relay logs it at `cappy_common/events.py:278-286`) | `:159-186` |
 | `replica-lag` | reader more than 1 s behind for 5 minutes | `data.tf:193-206` |
 | `ses-bounce-rate`, `ses-complaint-rate` | above 2 % / 0.05 % | `email.tf:54-80` |
 | `canary-failing` | canary success below 100 % for two runs, missing data breaches | `synthetics.tf:66-80` |
-| `slo-burning-fast` (composite) | page: burn 14.4× over 1 h **and** 5 min | `observability.tf:209-215` |
-| `slo-burning` (composite) | ticket: burn 6× over 6 h **and** 30 min | `:217-222` |
+| `slo-burning-fast` (composite) | page: burn 14.4× over 1 h **and** 5 min | `observability.tf:238-244` |
+| `slo-burning` (composite) | ticket: burn 6× over 6 h **and** 30 min | `:246-251` |
 
 **SLO burn alarms.** The Terraform implements one API-wide availability
-objective, 99.5 % (budget 0.5 % of requests as 5xx, `observability.tf:164-172`).
+objective, 99.5 % (budget 0.5 % of requests as 5xx, `observability.tf:188-201`).
 Four metric alarms compute the 5xx share over 5 min, 1 h, 30 min and 6 h
-(`:174-207`) with thresholds 7.2 % (14.4 × 0.5 %) and 3 % (6 × 0.5 %); the two
+(`:203-236`) with thresholds 7.2 % (14.4 × 0.5 %) and 3 % (6 × 0.5 %); the two
 composites pair them, Google SRE workbook style. The per-journey objectives
 in [`slo.md`](slo.md) (browse under 800 ms at 99.5 %, book and owner answers
 at 99.9 %, money within 15 minutes at 99.95 %) are not yet separate alarms.
@@ -757,7 +773,7 @@ the setting. What each one does when off: runbook "Kill switches".
 gateway's `/api/app-config` (cached up to 5 minutes at CloudFront) and
 enforced by the service that owns the rule (booking reads
 `paidCancellationPolicies`, where anything under 100 counts as off:
-`booking/settings.py:38-45`). Roll out by setting the GitHub environment
+`booking/settings.py:38-47`). Roll out by setting the GitHub environment
 variable `FEATURE_FLAGS` (`deploy.yml:74`) to `newcheckout:5`, then 25, 50,
 100, each followed by a deploy run; `0` turns it off for everyone.
 
@@ -891,6 +907,12 @@ and `LOCALSTACK_AUTH_TOKEN` in `.env` (compose refuses to start without it,
 
 The web dev server is `cd web && npm run dev` (Vite; it proxies `/api` to the
 gateway, `web/vite.config.ts:13`, `:89`).
+
+CI's `web` job does more than `make web` (since `44a5520`,
+`.github/workflows/ci.yml:43-61`): `npm ci --ignore-scripts` (no package
+install scripts run), `npx tsc --noEmit -p .`, the build, then
+`check:size`, `check:i18n`, `check:flags`, `check:attempt` and `check:a11y`,
+each failing the job when broken.
 
 ### Ports
 

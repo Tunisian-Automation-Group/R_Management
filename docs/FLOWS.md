@@ -6,7 +6,8 @@ Capacitor shells for the App Store and Google Play (ADR 0012). Where the two
 behave differently, the flow says so.
 
 This file describes the **committed code**. It was written against commit
-`ac716b5` on `prod-readiness` and last synced with `f22f143`. Numbers come from the code, and each has its
+`ac716b5` on `prod-readiness` and last synced with `c454c92` (the code as of
+`7ef9b2c`: `44a5520` and `235eeaa` since the previous sync). Numbers come from the code, and each has its
 source file next to it. If the code and this file disagree, the code wins, and
 this file needs fixing (see the last section).
 
@@ -73,11 +74,11 @@ The booking lifecycle diagram is in [section 7](#the-booking-lifecycle).
 | Stripe reconciliation | intents still `created` after 10 min, checked about every 300 s | `payments/jobs.py` |
 | Unpaid bookings one person may have at once | 3 | `booking/settings.py` `max_unpaid` |
 | Booking requests per person per 24 h | 10 | `booking/settings.py` `max_requests_per_day` |
-| ID check needed | booking total above 30 000 cents (EUR 300); no categories | `booking/settings.py` `verify_above_cents`, `verify_categories` |
+| ID check needed | booking total above 30 000 minor units of the listing's currency (EUR 300 for a euro listing); no categories | `booking/settings.py` `verify_above_cents`, `verify_categories` |
 | Paid cancellation policies | **off**: every cancellation refunds in full, unless the feature flag `paidCancellationPolicies` is at 100 | `booking/settings.py` `paid_cancellation_policies`, `FEATURE_FLAGS` |
 | Platform fee | 15 %, inside the total | `matching/domain/pricing.py`, `web/src/domain/pricing.ts` |
 | New listings per owner per 24 h | 20 | `catalog/settings.py` `max_listings_per_day` |
-| Listing held for a staff check | owner with 0 completed jobs and a rate above 10 000 cents/h (EUR 100) | `catalog/settings.py` `review_above_cents` |
+| Listing held for a staff check | owner with 0 completed jobs and a rate above 10 000 minor units an hour (EUR 100) | `catalog/settings.py` `review_above_cents` |
 | Photos | 12 per listing, 12 MB each, 100 uploads per person per day; shrunk on the device to 2048 px | `catalog/routes.py`, `catalog/settings.py`, `web/src/app/photos.ts` |
 | Hand-over photo links | valid 15 min; the app re-reads the list every 10 min | `booking/messages.py` `LINK_TTL`, `web/src/data/repo.ts` `useEvidence` |
 | Owner reliability | cancels and no-shows over 12 months, shown after 5 accepted bookings; 3 in 30 days flags the owner to staff | `booking/repository.py` |
@@ -89,6 +90,11 @@ The booking lifecycle diagram is in [section 7](#the-booking-lifecycle).
 | Resend a code | every 30 s | `Login.tsx` |
 | Reports | 3 per anonymous email per 24 h; per target per 24 h, 5 anonymous and 20 signed-in, counted apart | `catalog/moderation.py` |
 | Messages | 30 per sender per booking in 10 min | `booking/messages.py` `MESSAGES_PER_WINDOW` |
+| A conversation closes | when the booking is cancelled, declined, expired or `payment_failed`, or 14 days after a completed booking's window | `booking/messages.py` `open_for_messages` |
+| Message emails | at most one per conversation per 15 min (every message is pushed) | `notifications/handlers.py` `MESSAGE_EMAIL_EVERY` |
+| Reporter's details on a report | cleared 183 days after the decision | `catalog/jobs.py` `REPORTER_KEPT` |
+| Stored answers to retried creates | 24 h | `cappy_common/idempotency.py` `KEEP` |
+| Fee invoices kept | 10 years from the end of the year of issue, then deleted | `payments/settings.py` `invoice_retention_years`, `payments/jobs.py` |
 | Data exports | 5 per person per 24 h | `catalog/routes.py` `export_me` |
 | Sign out everywhere | 5 per person per hour | `catalog/routes.py` `sign_out_everywhere` |
 | Push devices per person | 10 (newest kept) | `notifications/routes.py` `MAX_DEVICES` |
@@ -318,7 +324,10 @@ profile exists. Web and app are the same.
 6. Accepting the terms and privacy policy is stated in words next to the
    button ("By continuing you accept the Terms…").
 7. `PUT /me` creates the profile, and the catalog publishes `profile.created`.
-   The app reloads `/me` and the product appears.
+   The app reloads `/me` and the product appears. The server also takes a
+   `country` (ISO code, default `DE`), which sets the payout account's
+   country ([section 18](#18-payouts-and-invoices)); the app does not send it
+   yet.
 
 Editing later (Profile, **Edit profile**) uses the same `PUT /me`. It changes
 the name, kind, district and business details. The track record is never
@@ -330,6 +339,10 @@ touched by an edit.
 - *Unknown district.* 422 "unknown district".
 - *Sign out* is offered on this screen, for someone who signed in to the wrong
   account.
+- *Signing up again after deleting the account* with the same sign-in. The
+  person sees onboarding again, must confirm 18+ again, and gets a fresh
+  profile: no ratings, jobs, badge or business details come back. A
+  suspension does stay.
 
 ---
 
@@ -365,9 +378,9 @@ the same. The phone layout has a bottom dock; the desktop has a header.
   "56 mi" in a miles locale) and **Allow 3 weeks**.
 - *Distances* read in km (and m under 1 km), or in miles where the formatting
   locale's region is the US or the UK; under 300 m it says "Nearby"
-  (`format.ts` `formatDistance`, `formatRadius`). An English reader outside
-  the US and Canada is formatted as `en-GB`, so they get miles too; see
-  [gaps](#23-known-gaps-between-code-ui-and-docs).
+  (`format.ts` `formatDistance`, `formatRadius`). An English reader whose
+  device has no English region of its own is formatted as `en-IE`, so reads
+  km (since `44a5520`).
 - *Service down.* "Cappy is not reachable right now", with a retry button.
 - *Overload.* The gateway sheds reads first: browsing gets 80 % of in-flight
   capacity and writes keep the rest (`gateway/main.py` `Admission`). A shed
@@ -397,15 +410,17 @@ What the page shows, and the calls behind it:
 - **Price**: the base, extras, any discount and the total, under which the
   bar says "Total, incl. {fee} service fee". The 15 % fee is inside the total,
   and the owner's share is shown. Amounts are formatted for the reader's
-  locale in the booking's currency, which is EUR until the API sends one
-  (`domain/money.ts` `formatMoney`).
+  locale in the listing's currency, which the API sends on listings, quotes
+  and bookings since `235eeaa` (`domain/money.ts` `formatMoney`). Nothing is
+  converted.
 - **The host**: name, verified shield, track record, cancellation rate (if
   there is one), response time, and whether they are a business or a private
   person (consumer rights differ). A business shows its legal identity
   (`TraderNote`).
 - **Cancellation policy**: while paid policies are off, every listing shows
   as flexible (`format.ts` `policyInForce` with the flag
-  `paidCancellationPolicies`).
+  `paidCancellationPolicies`, read with `useGlobalFlag`: only 100 % counts,
+  as on the server, since `44a5520`).
 - House rules, **Report** (listing and owner), **Block** (owner), and the
   **heart**, which saves the listing (`PUT` or `DELETE /saved/{id}`, retried
   on a blip, shown at once).
@@ -414,8 +429,8 @@ What the page shows, and the calls behind it:
 
 - *Your own listing.* A banner, "This is your listing", and no book button.
 - *Paused, removed, taken down or held listing.* `GET /listings/{id}` returns
-  404 and the page shows "not found". The owner too gets 404 while the
-  listing is held; see [gaps](#23-known-gaps-between-code-ui-and-docs).
+  404 and the page shows "not found". The owner can still open their own
+  held or paused listing (since `235eeaa`).
 - *Nothing free that long.* An empty state with **Try {min hours}** or a
   smaller batch.
 - *Offline.* The **Request** / **Book** button is disabled.
@@ -448,9 +463,10 @@ same.
      never taken from the client;
    - refuses your own listing, anyone blocked either way ("this listing is not
      available to you"), and a suspended account;
-   - asks for the ID check if the total is above EUR 300 ([section
-     16](#16-the-id-check));
-   - inserts the booking as `awaiting_payment`, holding the window.
+   - asks for the ID check if the total is above 30 000 minor units (EUR 300)
+     ([section 16](#16-the-id-check));
+   - inserts the booking as `awaiting_payment` in the listing's currency,
+     holding the window.
      `expires_at` is now + 30 min. An advisory lock per listing and a Postgres
      exclusion constraint (ADR 0004) make a second overlapping booking fail
      with 409 "that window was just taken; pick another";
@@ -477,9 +493,11 @@ same.
      booking: {title} was booked instantly" (email, push, bell). Both emails
      are sent whatever the settings.
 
-The owner can see a booking in their **I'm hosting** list while it is still
-`awaiting_payment`, shown as "Authorising payment", but gets no notification
-until it is `requested`.
+The owner does not see the booking at all until the card is held: the
+server leaves `awaiting_payment` bookings, and payments that failed before
+the owner saw them, out of **I'm hosting** and answers 404 for them
+(since `235eeaa`). The app's "Authorising payment" label for owners is no
+longer reached.
 
 **Edge cases**
 
@@ -490,7 +508,8 @@ until it is `requested`.
 - *Payments refuses for good* (4xx, for example "this owner has not finished
   setting up payments yet"). The booking moves to `payment_failed`, the
   window is free, and the message is shown. The booking stays in the
-  renter's list as "Payment failed".
+  renter's list as "Payment failed", and the renter gets "Payment failed:
+  {title}… Nothing was taken." (email, always).
 - *Payments down or slow* (5xx or timeout). The booking **stays**
   `awaiting_payment` and the app says "we could not start the payment, and
   you have not been charged; try again". A retry sends the same key, so it
@@ -505,9 +524,12 @@ until it is `requested`.
 - *Listing taken down or removed before the owner answers.* Booking gets
   `listing.changed` (`removed`) and moves `awaiting_payment` and `requested`
   bookings to `declined`, with the reason "The listing was removed by its
-  owner". Payments releases the hold, and the renter gets "Declined… Nothing
-  was charged". Accepted bookings stand: the owner still owes them, and the
-  hand-over address is still served for a removed listing.
+  owner", or "The listing was taken down by Cappy" when staff took it down
+  (since `235eeaa`). Payments releases the hold, and the renter gets
+  "Declined… Nothing was charged". The app shows the reason in English in
+  every language ([gaps](#23-known-gaps-between-code-ui-and-docs)).
+  Accepted bookings stand: the owner still owes them, and the hand-over
+  address is still served for a removed listing.
 - *Owner suspended.* Their live listings are taken down, which declines
   pending requests as above. When the *renter* is suspended, their own
   pending requests are declined with the reason "The account was suspended".
@@ -636,8 +658,8 @@ sequenceDiagram
 - *Capture declined after accept* (a reversed hold, a closed account).
   Payments publishes `payment.failed` (`stage: capture`). Booking moves
   `accepted` to `payment_failed` and the window is free. Nothing was taken.
-  See [gaps](#23-known-gaps-between-code-ui-and-docs): neither side is
-  notified.
+  Both sides get "Payment failed: {title}… the booking is off" (email,
+  always, since `235eeaa`).
 - *Chargeback* (`charge.dispute.created`). Payments stamps `chargeback_at`
   and logs an error line that the chargeback alarm pages on. A later
   `completed` does **not** pay the owner out; the money waits for a person.
@@ -826,7 +848,9 @@ reads **Cancel booking**.
   | strict | full until 7 days before, half until 24 h, then nothing | full |
 
   Nothing has been charged before the owner accepts, so a cancel then only
-  releases the hold.
+  releases the hold. Since `235eeaa` the server records no refund for it,
+  and `GET /bookings/{id}/cancellation` answers `charged: false` and
+  `refundAmount: 0`.
 
 **Steps**
 
@@ -834,7 +858,7 @@ reads **Cancel booking**.
    `GET /bookings/{id}/cancellation` (what cancelling now would refund) and
    shows "You get back …".
 2. `POST /bookings/{id}/cancel`. The booking becomes `cancelled`, with
-   `refund_amount` set.
+   `refund_amount` set when the card was charged (`accepted`).
 3. Payments: not yet captured means the hold is cancelled. Captured means a
    refund of `refund_amount` (full or partial) and `payment.refunded`. With a
    partial refund, the owner's share of what was kept is transferred and
@@ -858,8 +882,9 @@ reads **Cancel booking**.
 
 **Who and where.** The renter, on `/bookings/{id}`, once the booked time has
 started, from `accepted` or `active`: **Report a problem**. The owner cannot
-open a dispute. Staff resolve in the console at `/admin`, which only accounts
-in the Cognito `admin` group can use; the server checks every call, and
+open a dispute. Staff resolve in the console at `/admin`, which only staff
+accounts can use (the token's staff claim: the Cognito `admin` group by
+default, `STAFF_CLAIM` and `STAFF_VALUE`); the server checks every call, and
 wherever it is deployed also that the staff account has an authenticator app
 (TOTP MFA). Without one every staff call answers 403 `mfa_required`, and the
 console shows **Set up two-step sign-in** instead of the queue: **Start**
@@ -873,9 +898,11 @@ Locally MFA is not required (cognito-local has none).
    start ("nothing to report before the booked time; cancel instead").
 2. The booking becomes `disputed`. The captured money stays with Cappy: no
    payout, and **no auto-complete**.
-3. The renter sees "Under review: … The payment is on hold". The owner sees
-   "{renter} reported a problem… Your payout is on hold", but only in the
-   app; see [gaps](#23-known-gaps-between-code-ui-and-docs).
+3. The renter sees "Under review: … The payment is on hold" and gets "We
+   received your report: {title}". The owner sees "{renter} reported a
+   problem… Your payout is on hold" and gets "A problem was reported:
+   {title}… Your payout waits while we look at it" (both emailed always,
+   plus push and bell, since `235eeaa`).
 4. Staff open the console's **Actions** section, pick **Pay the owner** or
    **Refund the buyer**, and enter the booking id. That calls
    `POST /admin/bookings/{id}/resolve {outcome}`; support tooling can also
@@ -950,6 +977,12 @@ are over. A redelivered `booking.rated` is counted once (review id
 **Who and where.** Both sides, in **Messages with {name}** on
 `/bookings/{id}`. The panel is hidden while the booking is `awaiting_payment`,
 and read-only once it is declined, cancelled, expired or `payment_failed`.
+The server agrees since `235eeaa`: a message to such a booking, or to a
+completed one more than 14 days after its window, gets 409
+`conversation_closed` ("this booking is closed; its conversation is
+read-only"). The app does not handle that code, and still offers the
+composer on an old completed booking
+([gaps](#23-known-gaps-between-code-ui-and-docs)).
 
 1. `POST /bookings/{id}/messages {body}` (1 to 2000 characters) with an
    `Idempotency-Key` per attempt (kept while the outcome is unknown). At most
@@ -968,20 +1001,25 @@ and read-only once it is declined, cancelled, expired or `payment_failed`.
    transfer, cash, "Überweisung"…) is not blocked. It is flagged and logged.
    The sender sees "Keep payments on Cappy…", and the reader sees a warning
    with the advice to report it.
-4. The recipient gets a **push** ("New message: {title}") and a bell item.
-   Messages are **never emailed**.
+4. The recipient gets a **push** ("New message: {title}") and a bell item for
+   every message, and, since `235eeaa`, an **email** at most once per
+   conversation per 15 minutes, per the Messages setting. The email carries
+   the title and a link, never the text.
 5. **Report** is on every message from the other side; once it is sent, the
    sheet offers **Block {name} too**. **Block** (on the booking page or the
    listing) stops messages and new bookings both ways
    (`PUT /me/blocks/{person}`). The booking itself stands. Unblocking is on
    the Profile screen.
 6. Drafts are saved per booking and survive an expired session.
+7. Staff can remove a reported message: its words become "[removed by Cappy:
+   it broke our rules]" for both sides ([section 20](#20-reporting-and-moderation-dsa)).
 
 ---
 
 ## 16. The ID check
 
-**Who and where.** A renter whose booking total is **above EUR 300**. There
+**Who and where.** A renter whose booking total is **above 30 000 minor
+units** of the listing's currency (EUR 300). There
 are no categories in the list today. It starts from the listing page, when
 `POST /bookings` answers 403 `verification_required`. The check is done once
 per person.
@@ -991,14 +1029,20 @@ per person.
    explicit consent tick is required before it can start (biometric data,
    P-18).
 2. `POST /payments/identity/session {consent: true}` starts or continues a
-   Stripe Identity VerificationSession. The server refuses without the
+   session with the ID-check provider, Stripe Identity today (behind
+   `IdentityProvider` since `235eeaa`). The server refuses without the
    consent (422 `consent_required`) and records when it was given and which
-   wording (`identity-2026-09`). The app opens Stripe's modal
-   (`stripe.verifyIdentity(clientSecret)`).
-3. The result comes by webhook: `identity.verification_session.verified`, or
-   `.requires_input`, and counts only for the person's current session. On
-   `verified`, payments publishes `payment.identity_verified` and booking
-   records the person as verified.
+   wording (`identity-2026-09`). It answers a `clientSecret` (Stripe) or a
+   `url` (a hosted provider). The app always opens Stripe's modal
+   (`stripe.verifyIdentity(clientSecret)`); it does not read
+   `identityProvider` from `/payments/config` yet.
+3. The result comes by webhook: Stripe's `identity.verification_session.*`
+   events at the payments webhook (`verified`; `requires_input` → needs
+   input; `canceled` → failed), or another provider's at
+   `/payments/webhooks/identity`. It counts only for the person's current
+   session. On `verified`, payments publishes `payment.identity_verified`;
+   booking records the person as verified, and the profile shows the
+   verified badge (since `235eeaa`).
 4. The app polls `GET /payments/identity` every 2 s for up to 60 s, then
    retries the **same booking attempt, with the same key**.
 5. If Stripe is still processing: "Your ID check is still being processed.
@@ -1006,7 +1050,8 @@ per person.
 
 With the fake provider (local) the check passes at once. Refusing the consent
 means this booking cannot go ahead. An account deletion forgets the
-verification.
+verification and has the provider erase the document and selfie (since
+`235eeaa`).
 
 ---
 
@@ -1063,7 +1108,8 @@ there.
 - **Remove** (confirmed): `DELETE /listings/{id}` is a soft delete.
   `listing.changed` (`removed`) declines pending requests and releases their
   holds. Confirmed bookings stand.
-- **View as a guest** opens the public page.
+- **View as a guest** opens the public page, also for a held or paused
+  listing (since `235eeaa`).
 - The Earn screen also shows idle hours this week and their value, hours sold,
   earned (completed) and "to come" (accepted or active), what is coming up,
   invoices, and the owner's record.
@@ -1083,7 +1129,10 @@ Deployed, the catalog hides listings of owners Stripe cannot pay yet.
    bookings** (or **Continue setup**).
 2. `POST /payments/connect/onboarding` creates the connected account if there
    is none and returns a Stripe-hosted onboarding link. The app navigates to
-   it. Cappy never sees identity or bank details.
+   it. Cappy never sees identity or bank details. Since `235eeaa` the call
+   takes `{country}` and creates the account there; a country outside the
+   EEA, Switzerland, the UK, the US and Canada gets 422 `country_unsupported`.
+   The app sends none, so the account is German.
 3. Stripe sends the owner back to `{WEB_BASE_URL}/earn?payments=done` (or
    `?payments=retry`). `/earn` is an App Link path, so in the store apps the
    return opens the app.
@@ -1116,6 +1165,8 @@ Locally, the fake provider makes every owner payable on their first booking.
   owner, once per booking, numbered per year in the issuer's time zone. VAT
   is treated as included, at 19 % German USt by default (`payments/invoices.py`,
   `Issuer`).
+- Invoices are kept 10 years from the end of the year of issue (the
+  issuer's setting), then deleted (since `235eeaa`).
 - `GET /payments/invoices` lists them on Earn. Tapping one fetches
   `GET /payments/invoices/{number}` (HTML, which needs the token). The web
   opens it in a new tab; the store apps hand it to the share sheet to print,
@@ -1140,18 +1191,24 @@ Profile screen under **Notifications**.
 | to `cancelled` | the side that did not cancel (the renter when staff or the system did) | "Cancelled: …" | **always** | per setting | yes |
 | to `expired` from `requested` | renter | "Expired: … Nothing was charged." | **always** | per setting | yes |
 | to `completed` | renter | "How was …? Rate it" | per setting | per setting | yes |
+| to `payment_failed` | renter; the owner too when it failed after they accepted | "Payment failed: … Nothing was taken." | **always** | per setting | yes |
+| to `disputed` | owner | "A problem was reported: … Your payout waits" | **always** | per setting | yes |
+| to `disputed` | renter | "We received your report: …" | **always** | per setting | yes |
 | payout sent | owner | "You have been paid {amount}" | per setting | per setting | yes |
-| new message | recipient | "New message: …" | **never** | per setting | yes |
+| new message | recipient | "New message: …" | per setting, at most once per conversation per 15 min | per setting | yes |
 | report received | reporter | "We received your report" | always | never | yes, if signed in |
 | moderation decision | person affected, reporter | statement of reasons / outcome | always | never | yes, if signed in |
 
-Nothing goes out for `active`, `disputed`, `payment_failed` or an expiry from
-`awaiting_payment`.
+The `payment_failed`, `disputed` and message emails are new in `235eeaa`
+(FL-2, FL-3). Nothing goes out for `active` or an expiry from
+`awaiting_payment`. The moderation decision texts include "We removed
+something you wrote" for a removed message or review.
 
-- **Language**: each person's Cognito `locale` (English, or German for any
-  `de…`; French readers get English, since emails, pushes and the bell have
-  no French yet). The bell re-renders each item in the language it is read
-  in, with the same two languages.
+- **Language**: each person's Cognito `locale`: German for any `de…`, French
+  for any `fr…` (one neutral French for France and Québec, since `235eeaa`),
+  English otherwise. The bell re-renders each item in the language it is read
+  in, with the same three languages. Amounts are written in the booking's
+  currency in the reader's format.
 - **Times** in emails are told in Europe/Berlin (`texts.py`
   `DEFAULT_TIME_ZONE`), because listings carry no time zone yet.
 - **Emails** only go to a verified address.
@@ -1223,17 +1280,24 @@ Art. 16).
    20 characters), ground (law or terms), clause, automated}`.
    - `dismiss`: nobody is restricted. The reporter gets "we found no breach".
    - `take_down` (listings only): the listing is hidden (`moderated_at`),
-     `listing.changed` (`removed`) declines its pending requests, and the CDN
-     is purged.
-   - `suspend`: the owner is marked suspended, all their live listings are
-     taken down, and `moderation.owner_suspended` goes out. Booking then
-     refuses their new bookings and declines their own pending requests; the
-     catalog refuses their new listings.
-   - For a message or review report the console offers **Remove the message
-     / review** and **Suspend the author**; the server refuses both (422), see
-     [gaps](#23-known-gaps-between-code-ui-and-docs).
+     `listing.changed` (`removed`, by staff) declines its pending requests with
+     "The listing was taken down by Cappy", and its photos are purged from
+     the CDN.
+   - `remove_content` (messages and reviews, since `235eeaa`): a message's
+     words become "[removed by Cappy: it broke our rules]"; a review loses
+     its text and tags and keeps its stars. The author is told; the account
+     is not otherwise restricted. The console calls it **Remove the message /
+     review**. A listing is refused (422): it is taken down instead.
+   - `suspend`: the person behind the target (a listing's or profile's
+     owner, a review's or message's author, since `235eeaa`) is marked
+     suspended, all their live listings are taken down, and
+     `moderation.owner_suspended` goes out. Booking then refuses their new
+     bookings and declines their own pending requests; the catalog refuses
+     their new listings. The console calls it **Suspend the author** for a
+     message or review.
 3. **The statement of reasons** (Art. 17): the person affected gets "We
-   removed your listing" or "We suspended your account", with the facts, the
+   removed your listing", "We removed something you wrote" or "We suspended
+   your account", with the facts, the
    ground, whether it was automated, and how to contest it (reply within
    6 months, out-of-court settlement under Art. 21, or the courts). The
    reporter gets the outcome (Art. 16(5)).
@@ -1242,6 +1306,9 @@ Art. 16).
    book again, but their listings stay down.
 5. Everything is written to the audit log (`GET /admin/audit`). The DSA
    transparency figures for a month come from `GET /admin/dsa-stats?month=`.
+6. Six months after a decision (183 days) the report forgets who made it:
+   their id, email and words go; the case and the decision stay (since
+   `235eeaa`).
 
 **While suspended**: accepted bookings stand on both sides (the owner still
 owes them), sign-in still works, and messages still work.
@@ -1260,13 +1327,18 @@ people who cannot sign in.
 ### Download my data (GDPR Art. 15/20)
 
 1. `GET /me/export`, at most 5 a day (429 after that: "you have downloaded
-   your data several times today; try again tomorrow"). The catalog gathers its own data (profile, listings,
-   saved listings, reviews written, uploads), then asks booking (bookings,
-   messages sent with the original unmasked text, evidence), payments (payout
-   link, ID-check status, invoices, payments; never card details) and
-   notifications (bell items and settings). It returns one JSON file,
-   `cappy-my-data.json`. Hand-over photos appear as `evidence:…` references,
-   not pictures.
+   your data several times today; try again tomorrow"). The catalog gathers
+   its own data (profile, listings, saved listings, reviews written and
+   reviews about them, uploads, reports they filed, moderation decisions
+   about their listings and profile), then asks booking (bookings, messages
+   sent with the original unmasked text, evidence with its notes, who they
+   blocked, the verified and suspended flags, their card fingerprints),
+   payments (payout link, ID-check status, invoices with the recipient
+   details, payments with whether they were charged, refunded and paid out;
+   never card details) and notifications (bell items, settings, devices, and
+   the sign-in's email and language). The additions are from `235eeaa`. It
+   returns one JSON file, `cappy-my-data.json`. Hand-over photos appear as
+   `evidence:…` references, not pictures.
 2. The web downloads the file (or uses the share sheet on phones that cannot
    save a download). The store apps write it to the cache and open the share
    sheet.
@@ -1281,19 +1353,28 @@ people who cannot sign in.
    last open window. The sheet shows "finish or cancel your open bookings, and
    wait for your payouts, before deleting your account. You can delete your
    account from {date}."
-3. Otherwise the catalog **forgets** the person: listings are soft-deleted and
-   their addresses wiped, saved listings and the payable flag removed, the
-   profile becomes an anonymous "Former member", and reviews they wrote are
+3. Otherwise the catalog **forgets** the person: listings are soft-deleted
+   and lose their title, description, instructions, rules, photos and
+   address; every photo they uploaded is deleted within the hour; saved
+   listings, the payable flag and stored answers are removed; reports they
+   filed lose their name, email and words; the profile becomes an anonymous
+   "Former member" without its badge or business; and reviews they wrote are
    re-signed "Former member". Their tokens stop working in catalog at once.
    It then publishes `profile.deleted`, which leads to (each service also
    stops accepting their tokens):
    - booking: blocks and the verified flag deleted, and their messages
      replaced with "[removed: the account was deleted]". Bookings stay as
-     financial records;
-   - payments: the payout link and the ID-check record deleted. The Stripe
-     account itself stays with Stripe;
+     financial records, without the hand-over address and instructions, the
+     owner's name and business, notes, and (unless suspended) the card
+     fingerprint; their hand-over photos and notes go;
+   - payments: the payout link deleted, the ID-check session erased at the
+     provider and its record deleted, and card fingerprints cleared. The
+     Stripe account itself stays with Stripe;
    - notifications: the Cognito user deleted (`AdminDeleteUser`: the sign-in
-     and the email go), then devices, bell items and settings.
+     and the email go), then devices (with their push endpoints), bell items
+     and settings.
+
+   The redactions are new in `235eeaa` (D-1 to D-7).
 4. The app also calls Cognito `DeleteUser` itself (twice at most, the quick
    path; failures are ignored because the server finishes it), then signs out
    in every tab, clears the cache and shows "Your account is deleted".
@@ -1307,8 +1388,10 @@ people who cannot sign in.
   server deletes the sign-in when `profile.deleted` reaches notifications.
 - *What the sheet promises.* "Your sign-in, profile and saved listings are
   deleted", listings taken down and names removed from reviews; bookings,
-  payments and invoices kept without the name for up to ten years. Photos are
-  no longer promised (fixed in `f22f143`).
+  payments and invoices kept without the name for up to ten years. It does not
+  mention photos, which are now deleted too (since `235eeaa`).
+- *Signing up again later with the same sign-in* starts from nothing
+  ([section 4](#4-onboarding-profile-18-business-identity-rent--earn--both)).
 - *Session expired.* "Sign in again to delete your account."
 
 ---
@@ -1345,7 +1428,8 @@ platform's app storage), because iOS can purge a web view's localStorage.
 - After any sign-out, or a session ended elsewhere, the next account to sign
   in on the device registers afresh (FL-13).
 - Sign-out removes this device's token (`DELETE /notifications/devices/{token}`).
-  Sign out everywhere removes all of them.
+  Sign out everywhere removes all of them. Since `235eeaa` each removal also
+  deletes the device's SNS endpoint.
 - The Profile screen shows the permission state and a way to turn it on
   ([section 19](#19-notifications-and-their-settings)).
 
@@ -1417,105 +1501,112 @@ available" today.
 
 Found while writing this file. Each is a place where the code, the UI and the
 docs say different things. They are listed so they are not mistaken for
-intended behaviour.
+intended behaviour. Each keeps the number of its `FL-` task in
+[`TASKS.md`](TASKS.md).
 
 Items marked **fixed** are kept, struck through, with the commit that fixed
-them, until the next pass removes them.
+them, until the next pass removes them. The pass at `c454c92` removed those
+fixed in `f42a4ef` and `f22f143` (FL-1, 4, 5, 10, 11, 13, 14, 16, 17, 19 and
+21).
 
-1. ~~**A retry after a payments outage makes a second booking.**~~ **Fixed in
-   `f42a4ef`** (FL-1): the key follows the attempt, so the retry reaches the
-   first booking and its PaymentIntent ([section 7](#7-book-request-and-instant-book)).
-2. **Nobody is told about `payment_failed`, `disputed` or `active`.**
-   `notifications/handlers.py:62` (`messages`) has no entry for them. The
-   capture-declined comment in `payments/handlers.py` and ADR 0011 say both
-   sides are told of a failed capture; neither is. An owner whose booking is
-   disputed learns of it only by opening the app.
-3. **The Messages email toggle does nothing.** Messages are never emailed
-   (`notifications/handlers.py:77` `chat_push`, delivered with
-   `email=False`), but Profile offers an email checkbox for them
-   (`Profile.tsx:623`, `Channels`). Its fallback text says "Everything also
-   arrives by email" (`Profile.tsx:596`).
-4. ~~**A held listing is announced as live.**~~ **Fixed in `f22f143`** (FL-4):
-   a new or edited listing that is held says it is waiting for a check.
-5. ~~**Held listings cannot be approved from the console.**~~ **Fixed in
-   `f22f143`** (FL-5): the console lists and approves them.
-6. **The owner of a held listing gets 404 on its page.** `catalog/routes.py:448`
-   `listing_detail` reads the row without `include_held`, so **View as a
-   guest** on Earn shows "not found".
-7. **Removing or suspending from a message or review report fails.** Since
-   `f22f143` the console offers **Remove the message / review**
-   (`remove_content`) and **Suspend the author** for them (`Admin.tsx:334`),
-   but the server accepts only `dismiss`, `take_down` and `suspend`
-   (`catalog/moderation.py:101`) and `_affected_owner`
-   (`catalog/moderation.py:328-335`) returns `None` for messages and reviews,
-   so both answer 422.
-8. **"Refunded" shown when nothing was charged.** `cancellation.py`
-   `refund_amount` returns the full amount when `charged` is false, so a
-   request cancelled before acceptance shows "{amount} is refunded to the
-   card" (`BookingDetail.tsx:420`), when in fact only a hold was released.
-   `f22f143` (FL-8) changed the wording only for cancellations with no
-   `refundAmount` (a staff `refund_buyer`), where it now wrongly says nothing
-   was charged.
-9. **The removal reason blames the owner when moderation did it.**
-   `booking/handlers.py:92` declines pending requests with "The listing was
-   removed by its owner", including listings taken down by staff.
-10. ~~**No report form for signed-out people.**~~ **Fixed in `f22f143`**
-    (FL-10): `/legal/report` carries the form.
-11. ~~**Deleting the account can loop into onboarding.**~~ **Fixed in
-    `f303350` and `f22f143`** (P-23, FL-11): the server deletes the sign-in,
-    and the app signs out after `DELETE /me` whatever `DeleteUser` answers.
-12. ~~**Photos of a deleted account are not deleted.**~~ The sheet no longer
-    promises it (**`f22f143`**, FL-12). They are still kept
-    (`CatalogRepository.forget` deletes no media).
-13. ~~**Push is not re-registered for the next account on the same
-    device.**~~ **Fixed in `f22f143`** (FL-13).
-14. ~~**Offline at cold start shows the sign-in screen.**~~ **Fixed in
-    `f22f143`** (FL-14).
-15. **The owner sees unpaid bookings.** `booking/routes.py` says "The owner
-    only sees the request once the card is authorised", but
-    `GET /bookings?role=owner` returns `awaiting_payment` (and later
-    `payment_failed`) bookings, and **I'm hosting** lists them.
-16. ~~**The pay form can show again right after paying.**~~ **Fixed in
-    `f22f143`** (FL-16): "Confirming your payment…" until the webhook lands.
-17. ~~**"24 hours to answer" is not always true.**~~ **Fixed in `f42a4ef`**:
-    `PushPrime.tsx:61-62` now says requests lapse within 24 hours or before
-    the start.
-18. **Server and client disagree on closed conversations.** The app hides the
-    composer for declined, cancelled, expired and `payment_failed` bookings,
-    and hides the whole thread while `awaiting_payment`
-    (`Conversation.tsx:136`, `BookingDetail.tsx`). The server's
-    `POST /bookings/{id}/messages` (`booking/messages.py:126`) accepts a
-    message in any status (with a per-booking rate limit since `f303350`).
-19. **One market in the code.** Bookings are always `currency="eur"`
-    (`booking/routes.py:180`), email times are Berlin time, the business VAT
-    check only knows EU formats, and the report sheet says "call 112"
-    (`Report.tsx:224`). GOAL 16 names the US and Canada, where 112 is not the
-    emergency number. The app itself formats money per currency and locale
-    since `f42a4ef` (`formatMoney`), but gets no currency from the API.
-20. ~~**Redirect payment methods in the shells may not come back.**~~ **Fixed
-    in `f22f143`** (FL-19, U-7): `return_url` is `/pay/return` on Cappy's
-    domain, an app link.
-21. **ADR 0012 is out of date on two points.** It says the refresh token lives
-    in the shell's web storage (the code uses Capacitor Preferences) and that
-    notifications are email only (push is built).
-22. ~~**Placeholders that block a store release.**~~ **Fixed in `f22f143`**
-    (FL-21): release builds sign with `App.release.entitlements`
-    (`aps-environment` `production`, `applinks:$(CAPPY_DOMAIN)`); debug builds
-    keep `development`.
-23. **Miles for English readers in Europe.** `locale()` (`web/src/i18n.ts:51-58`)
-    formats English as `en-GB` unless the device region is the US or Canada,
-    and `formatDistance` reads miles for `GB`, so an English reader in
-    Germany or France sees miles, not km (GOAL 16 asks for km outside the US
-    and the UK).
-24. **A partial rollout of `paidCancellationPolicies` splits the app from the
-    server.** Booking treats anything under 100 % as off
-    (`booking/settings.py:38-45`), but the app shows the stricter terms to the
-    renters inside the rollout (`Listing.tsx:70`).
-25. **Stale docstring on account deletion.** `delete_me`
-    (`catalog/routes.py:340-343`) still says the app deletes the sign-in and
-    that bookings and payments "hold no personal data"; the server deletes the
-    sign-in since `f303350`, and bookings keep names and business details
-    ([`DATA.md`](DATA.md) §5.4).
+- **FL-2.** ~~**Nobody is told about `payment_failed` or `disputed`.**~~
+  **Fixed in `235eeaa`**: a failed payment tells the renter, and the owner too
+  when the capture failed after they accepted; a dispute tells both sides
+  (all always emailed, [section 19](#19-notifications-and-their-settings)).
+  `active` still tells no one, by design (the other side sees it on the
+  page).
+- **FL-3.** ~~**The Messages email toggle does nothing.**~~ **Fixed on the
+  server in `235eeaa`**: messages are emailed at most once per conversation
+  per 15 minutes, per the setting. The Profile text shown before the settings
+  load still says "Everything also arrives by email" (`Profile.tsx:596`); see
+  the open web items below.
+- **FL-6.** ~~**The owner of a held listing gets 404 on its page.**~~ **Fixed
+  in `235eeaa`**: the owner can open their own held or paused listing, so
+  **View as a guest** works.
+- **FL-7.** ~~**Removing or suspending from a message or review report
+  fails.**~~ **Fixed in `235eeaa`**: the server accepts `remove_content` and
+  suspends the message's or review's author.
+- **FL-8.** **"Refunded" shown when nothing was charged.** ~~The server
+  recorded a full `refund_amount` for a request cancelled before the
+  accept.~~ **Fixed on the server in `235eeaa`**: nothing is recorded, and the
+  cancellation quote says `charged: false`. Still open in the app: after a
+  staff **Refund the buyer** there is no `refundAmount` either, so the
+  booking page says "The hold on your card is released; nothing was charged"
+  (`BookingDetail.tsx:418-426`) although the charge was refunded in full.
+- **FL-9.** ~~**The removal reason blames the owner when moderation did
+  it.**~~ **Fixed in `235eeaa`**: a staff take-down declines with "The
+  listing was taken down by Cappy". The app shows it in English only (open
+  web items).
+- **FL-12.** ~~**Photos of a deleted account are not deleted.**~~ **Fixed in
+  `235eeaa`** (D-1): every upload of the person goes with the next hourly
+  sweep. The deletion sheet (fixed in `f22f143`) no longer promises it, so it
+  now says less than happens.
+- **FL-15.** ~~**The owner sees unpaid bookings.**~~ **Fixed in `235eeaa`**:
+  `GET /bookings?role=owner` and the booking page hide `awaiting_payment`
+  bookings and payments that failed before the owner saw them.
+- **FL-18.** ~~**Server and client disagree on closed conversations.**~~
+  **Fixed on the server in `235eeaa`**: `POST /bookings/{id}/messages`
+  answers 409 `conversation_closed` for cancelled, declined, expired and
+  `payment_failed` bookings, and for completed ones after the 14-day review
+  window. The app closes the composer for the first four only and does not
+  handle the code (open web items).
+- **FL-20.** ~~**ADR 0012 is out of date on two points.**~~ **Fixed in
+  `c454c92`**: the ADR carries a dated correction (Capacitor Preferences for
+  the refresh token, push built).
+- **One market in the code.** ~~Bookings are always `currency="eur"`.~~
+  **Fixed in `235eeaa`** (M-3): a booking takes its listing's currency. Still
+  one market: email times are Berlin time, the business VAT check only knows
+  EU formats, the ID-check and held-listing thresholds are one number of
+  minor units for every currency, and the report sheet says "call 112"
+  (`Report.tsx:224`), which is not the emergency number in the US and Canada
+  (GOAL 16).
+- ~~**Miles for English readers in Europe.**~~ **Fixed in `44a5520`**: English
+  without an English region of its own formats as `en-IE` (km, 24 h).
+- ~~**A partial rollout of `paidCancellationPolicies` splits the app from the
+  server.**~~ **Fixed in `44a5520`**: the app reads it with `useGlobalFlag`,
+  where only 100 % counts, as booking does.
+- **Stale docstring on account deletion.** `delete_me`
+  (`catalog/routes.py:349-352`) still says the app deletes the sign-in and
+  that bookings and payments "hold no personal data"; the server deletes the
+  sign-in since `f303350`, and bookings keep redacted records
+  ([`DATA.md`](DATA.md) §5.4).
+
+### Open web items from the backend round (`235eeaa`)
+
+The server changed; the app does not follow yet (`web/` is unchanged since
+`44a5520`).
+
+- **`conversation_closed`.** Handle the 409 from `POST /bookings/{id}/messages`
+  (close the composer, say why), including a completed booking whose review
+  window has closed, which the app still offers a composer for
+  (`Conversation.tsx:136`, `BookingDetail.tsx:573`).
+- **The `charged` flag in the cancel sheet.** `GET /bookings/{id}/cancellation`
+  now says whether anything was charged; the sheet fetches it only for
+  `accepted` bookings and words the rest by status
+  (`BookingDetail.tsx:164`, `:745-750`). Use `charged`, and fix the
+  **Refund the buyer** banner (FL-8 above).
+- **German and French for the new decline reason** "The listing was taken
+  down by Cappy". The app translates `declineReason` through `t()`
+  (`BookingDetail.tsx:377`), and neither `i18n.de.ts` nor `i18n.fr.ts` has
+  it. The same is true of the older system reasons "The listing was removed
+  by its owner" and "The account was suspended".
+- **The Profile copy about message emails.** Messages are now emailed (at
+  most once per conversation per 15 minutes, per the setting); the Profile
+  text "Only bookings and messages; never marketing. Everything also arrives
+  by email." (`Profile.tsx:596`) needs to match. No string in the app says
+  messages are never emailed today.
+- **The country at payout onboarding.** `POST /payments/connect/onboarding`
+  takes `{country}` (and `PUT /me` a `country`), and Stripe fixes an account's
+  country at creation; the app sends neither, so every payout account is
+  German. Send the owner's country, and show `country_unsupported`.
+- **`identityProvider` driving the ID-check UI.** `/payments/config` names the
+  ID-check provider and a session may answer a hosted `url`; the app always
+  opens Stripe.js `verifyIdentity` (`Listing.tsx:222-244`).
+- **Currency case.** Listings and quotes carry upper-case codes (`EUR`,
+  `CAD`), bookings, payments and cancellation quotes lower-case (`eur`,
+  Stripe's form). `formatMoney` upper-cases before formatting, so display is
+  right, but the client should normalise one form before comparing or
+  storing currencies.
 
 ---
 
