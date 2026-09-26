@@ -13,7 +13,7 @@ import { t } from '../../i18n.ts'
 
 const LIVE: BookingStatus[] = ['awaiting_payment', 'requested', 'accepted', 'active', 'disputed']
 
-const statusPill = (
+export const statusPill = (
   status: BookingStatus,
   rated: boolean,
 ): { label: string; tone: 'neutral' | 'accent' | 'success' | 'warn' | 'danger' } => {

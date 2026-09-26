@@ -1389,4 +1389,10 @@ export const FR: Record<string, string> = {
   "Open {what}": "Ouvrir {what}",
   "Photo {n} of {total}, {title}": "Photo {n} sur {total}, {title}",
   "Show all {n} photos": "Voir les {n} photos",
+  "Inbox": "Messages",
+  "No messages yet": "Pas encore de messages",
+  "Nothing unread": "Rien de non lu",
+  "Unread": "Non lus",
+  "Messages about a booking appear here, for what you booked and for what people booked from you.": "Les messages sur une réservation apparaissent ici, pour ce que vous avez réservé et pour ce que d’autres ont réservé chez vous.",
+  "Your renter": "Votre personne locataire",
 }

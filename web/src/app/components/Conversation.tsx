@@ -1,4 +1,5 @@
 import { useEffect, useId, useRef, useState, type ReactNode } from 'react'
+import { markSeen } from '../seen.ts'
 import { useQueryClient } from '@tanstack/react-query'
 import { ApiError, HIDDEN_CONTACT, sendMessage, unblockPerson, useAttemptKey, useBlocks, useMessages, type Message } from '../../data/repo.ts'
 import { messageOf, useToast } from '../store.tsx'
@@ -99,6 +100,12 @@ export function Conversation({
   const iBlocked = Boolean(otherId && blocks.data?.includes(otherId))
   const blocked = iBlocked || refusedHere
   const list = useRef<HTMLUListElement>(null)
+  const heading = useRef<HTMLHeadingElement>(null)
+  // Opened from the Inbox (#messages): bring the thread into view once it is there.
+  const arrived = Boolean(messages.data)
+  useEffect(() => {
+    if (arrived && location.hash === '#messages') heading.current?.scrollIntoView({ block: 'start' })
+  }, [arrived])
   const items = messages.data?.items ?? []
 
   // The newest message in view by scrolling the list itself, never the page:
@@ -106,7 +113,10 @@ export function Conversation({
   useEffect(() => {
     const el = list.current
     if (el) el.scrollTop = el.scrollHeight
-  }, [items.length])
+    // Read here: the Inbox drops its unread dot (UX-12).
+    const last = items[items.length - 1]
+    if (last) markSeen(bookingId, last.at)
+  }, [items.length, bookingId])
 
   const send = async () => {
     const text = draft.trim()
@@ -133,7 +143,7 @@ export function Conversation({
 
   return (
     <Card className="mt-3 p-5">
-      <h2 className="t-label mb-1">{t('Messages with {name}', { name: otherName })}</h2>
+      <h2 ref={heading} id="messages" className="t-label mb-1 scroll-mt-24">{t('Messages with {name}', { name: otherName })}</h2>
       {items.some((m) => !m.mine && m.flagged) && (
         <p role="note" className="t-sm mb-3 rounded-[var(--radius-control)] bg-[var(--warn-subtle)] p-3 text-[var(--ink-2)]">
           {t('{name} asked about paying outside Cappy. Payments outside Cappy are not protected: no refund, no help if something goes wrong. Report the message if it happens again.', { name: otherName })}

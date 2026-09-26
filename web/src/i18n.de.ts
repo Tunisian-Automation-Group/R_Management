@@ -1385,4 +1385,10 @@ export const DE: Record<string, string> = {
   "Open {what}": "{what} öffnen",
   "Photo {n} of {total}, {title}": "Foto {n} von {total}, {title}",
   "Show all {n} photos": "Alle {n} Fotos zeigen",
+  "Inbox": "Nachrichten",
+  "No messages yet": "Noch keine Nachrichten",
+  "Nothing unread": "Nichts ungelesen",
+  "Unread": "Ungelesen",
+  "Messages about a booking appear here, for what you booked and for what people booked from you.": "Nachrichten zu Buchungen erscheinen hier: für das, was du gebucht hast, und für das, was andere bei dir gebucht haben.",
+  "Your renter": "Deine mietende Person",
 }
