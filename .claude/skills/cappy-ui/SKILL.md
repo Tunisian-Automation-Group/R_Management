@@ -24,7 +24,7 @@ The scale is 4 · 8 · 12 · 16 · 20 · 24 · 32 · 40 · 48 · 64. Nothing off
 | Between items in a list or form fields | 12–16 |
 | Card inner padding | 16 (phone), 20–24 (desktop) |
 | Between sections of a screen | 32 (phone), 48 (desktop) |
-| Screen side gutter | 16 (phone < 600), 24 (tablet), 32 (desktop), content max 1200 |
+| Screen side gutter | 16 below 375, 20 from 375 (phones), 24 (tablet), 32 (desktop), content max 1200 |
 | Space between two tap targets | at least 8 |
 
 Rules:
@@ -77,8 +77,12 @@ The roles are `ink` (text, 4 levels) · `surface` / `sunken` / `elevated` (backg
   accent buttons carry dark text if white fails 4.5:1.
 - Photos and plates are dimmed about 8–12 % (`filter: brightness(.9)`) so they don't
   glare; illustrations get dark variants.
-- Dividers and card edges must still be visible (`line` at least 1.5:1 against the surface).
-- The theme switch is one tap (sun/moon) in the You header and the desktop header.
+- Dividers and card edges must still be visible (`line` at least 1.5:1 against the surface: 18 % ink in dark, 22 % in light meet it).
+- Dark surface steps (lightest last): page #121813 · sunken #161c17 · surface #1a211b · elevated #232b24 · overlay #2c352d · pill #38443a. `sunken` is never darker than the page.
+- In dark, Bodoni only from 34 px (its hairlines break up below). Glass only on the dock; sheets are opaque.
+- The theme switch is one tap (sun/moon) in the You header and the desktop header;
+  Appearance is the first section of You. **Light is the default** until dark mode
+  passes this rulebook on every screen (owner's call, 2026-09-27); then System.
 
 ## 4. Components
 
@@ -86,15 +90,16 @@ The roles are `ink` (text, 4 levels) · `surface` / `sunken` / `elevated` (backg
 
 - **Buttons:** heights 48 (primary, full width on the phone), 40 (secondary), 32 (compact,
   desktop only). Radius `radius-control`. Label `text-label` or `text-body` semibold.
-  Pressed state: scale .97 plus a darker shade within `dur-instant`. Disabled at 40 % opacity
-  with the reason nearby. Loading keeps the width (spinner replaces the label).
+  Pressed state: scale .97 plus a darker shade within `dur-instant`. Disabled: a `sunken` fill with `ink-4` text (never
+  opacity alone, which fails in dark), with the reason nearby. Loading keeps the width (spinner replaces the label).
 - **Inputs:** height 48, label above (never placeholder-only), 8 between label and field,
   helper or error below in `text-label`. The error uses `danger` plus an icon plus text.
   Focus ring 2 px `focus` with a 2 px offset.
 - **Cards:** padding 16, radius `radius-card`, one hairline `line` or `shadow-1`,
   never both. The image sits on top at a fixed aspect ratio (4:3 listings) with
   width and height set (no layout shift).
-- **Chips:** height 32 (36 on touch), horizontal padding 12, radius full. Selected =
+- **Chips:** height 32 (36 on touch), horizontal padding 12. Filter and category chips
+  radius full; choice chips inside forms `radius-s`. Selected =
   filled `ink` with inverse text, plus a check icon.
 - **Badges:** min 16×16, `text-caption` bold, on the icon's top-right corner at
   (−4, −4), never clipped by its container, a 2 px ring in the bar colour.
@@ -111,6 +116,11 @@ The roles are `ink` (text, 4 levels) · `surface` / `sunken` / `elevated` (backg
     every scroll view gets bottom padding = dock height + 16 so content never
     sits under it;
   - hidden on detail screens; at 200 % text it goes icons-only with aria-labels.
+- **Sticky action bar (phone):** one primary action plus at most one secondary, 16 padding,
+  above the safe area; it replaces the dock on detail screens, never stacks on it.
+- **Toasts:** top of the screen when a sheet or the keyboard is open, else above the
+  dock; `role="status"`; 4 s, longer for errors.
+- **Route change:** focus moves to the new screen's `h1`; announce via a live region.
 - **Top bars:** height 44–56, title `text-title-s`, back chevron 44 hit area.
 - **Lists:** row min 56 (one line) / 72 (two lines), 16 side padding, dividers
   inset to the text edge.
@@ -138,7 +148,8 @@ The tokens are `dur-instant` 100 · `dur-short` 150 · `dur-medium` 250 · `dur-
 ## 7. Review checklist: run it on every screen you touch
 
 Sizes: **390×844, 375×667, 360×800, 430×932** (iframes if resizing does not
-apply), plus desktop 1440. Each in **light and dark**, **100 % and 200 % text**,
+apply), plus desktop 1440. The safe area cannot be seen in an iframe: add top 47 /
+bottom 34 px padding to the frame's root to simulate it, and check `env(safe-area-inset-*)` in code. Each in **light and dark**, **100 % and 200 % text**,
 **EN, DE and FR**. Simulate the safe area (top 47, bottom 34).
 
 For each screen check:

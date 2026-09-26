@@ -757,3 +757,442 @@ Proposed for the agent that owns READINESS.md. Each is scored 1–5 and checkabl
 10. **Native feel.** Status bar, splash, keyboard and back all handled on real iOS and Android 16 devices; the native bounce and pull to refresh work.
 11. **Consistency.** One card component, one sheet, one set of state styles; a design review signs off each key screen against §3.6.
 12. **Localisation layout.** No truncated verbs or overflow in DE/FR at 200% text; French punctuation spacing correct; hyphenation on; the original language of user text labelled.
+
+---
+
+# Round 2 (2026-09-26, at `7ef8bf1`)
+
+The UI/UX lead's second pass, after the first UX build (`1daf0da`, `0a74b1c`).
+It re-scores round 1's areas, checks every UX-n in the browser, lists what the
+build got wrong, and proposes UX-46 onwards. It proposes and changes no code.
+
+**How the screens were seen.**
+- Browser: Chrome on `http://127.0.0.1:5173`, signed in with the demo buttons as buyer, host 2 and staff.
+- Desktop: a 1440 px window.
+- Phones: same-origin iframes at 390×844, 375×667, 360×800 and 430×932, side by side and scaled to fit. A window resize could not go below the desktop width.
+- Themes and text size: light and dark (via the Appearance setting), and 100 % and 200 % text (the root font size set to 200 % inside each frame, the way the app's own large-text probe reads Dynamic Type).
+- Languages: EN, DE and FR.
+- Checks: a scripted audit ran in every frame on Explore, Listing, Bookings, Inbox, Earn, You and Notifications. It measured text contrast against the composited background, targets under 44 px, values off the 4 px grid, accent-filled elements, truncation and horizontal scroll, against `.claude/skills/cappy-ui/SKILL.md` §7.
+- **Safe area:** `env(safe-area-inset-*)` cannot be simulated in an iframe. It was checked in code: the dock has none (R2-F2).
+- **Data changed:** one request booking as host 2 on the Festool saw (`bk_01m3fgk1w1368s45kxgmp9rh16`, "waiting for Nadia"), so that the pay path, the booking page and the Inbox could be seen. No message was sent.
+- **Owner feedback** (via the coordinator) was treated as P0: "the dark mode is a bit bad, and it needs to be easy to change to light mode". Their screenshot of the phone dock in dark was also reviewed.
+
+**GIFs** (`gif_creator`, saved to `~/Downloads`, not in the repo):
+- `cappy-r2-explore-to-booking-phone-dark-en.gif`: search "saw" → listing → confirm sheet → drag the sheet away.
+- `cappy-r2-gallery-fullscreen-phone-dark-en.gif`: the gallery → full screen → next → Esc.
+- `cappy-r2-inbox-empty-after-request-phone-dark-en.gif`: the empty Inbox, the buyer's Bookings and You, sign-out, host 2's request → booking page → the Inbox still empty.
+- `cappy-r2-filters-dialog-and-map-desktop-light-en.gif`: category → the Filters dialog → When "Tomorrow" → the "map".
+- `cappy-r2-dark-mode-toggle-and-explore-phone-en.gif`: You → Appearance Light → Dark → Explore.
+
+**Before screenshots** (the scratchpad, for the builder): `r2-before-earn-dock-390-dark.png` and `r2-before-earn-dock-390-light.png`.
+
+## R2.1 Scores, round 1 → round 2
+
+| Area | R1 | R2 | Why (round 2) |
+|---|---|---|---|
+| Visual hierarchy and identity | 3 | 3 | Archivo titles and figures make listings readable. But the first thing on Explore is still smokestacks for a 3D printer. The phone dock (six slots and a crimson disc) is now the loudest thing on every screen. |
+| Typography | 2 | 3 | Prices, times, ratings and user titles are Archivo tabular (UX-4 verified). Still wrong: dock labels are 10.5 px; phone body runs 13 and 15, not the rulebook's 17; Bodoni hairlines break up in dark at 28 px ("No messages yet"); "Earn" breaks mid-word at 200 % text. |
+| Spacing and layout | 3 | 3 | Consistent 20 px gutter. Off the 4 px grid in every screen: 3, 5, 6, 10 and 14 px gaps and paddings. The desktop mosaic leaves a hole when a listing has 2 photos. Desktop text-search results are 56 px rows across 1,110 px. |
+| Colour and contrast | 3 | 3 | The roles are split, and `check:contrast` passes 40 pairs in both themes. The audit found no text under 4.5:1 on solid surfaces. But crimson now also fills the "Sold" bars; amber (warning) carries reassurance ("Nothing is charged yet"); hairlines are 1.33:1 light / 1.35:1 dark (rule 1.5). |
+| Imagery | 1 | 2 | Real gallery, n / N, no photo twice in a grid, designed plates. But the demo data still shows the wrong stock photos (the grid-claim rule keeps the *wrong* photo and plates the others). Stock images get no colour placeholder. Photos are not dimmed in dark. The full-screen viewer is ivory in dark. |
+| Iconography | 3 | 3 | Unchanged. The active tab has no filled variant. |
+| Motion and feedback | 2 | 3 | Push/pop on phones, a tab crossfade, the hero morph, sheets that drag between detents and leave, exits at ⅔. Browser/hardware Back skips the pop transition; no haptics; no optimistic UI. |
+| Navigation | 3 | 3 | Inbox is a destination, and detail screens hide the dock. But the dock keeps the "+" (six slots), the notifications badge sits on "You", a thread opens inside the booking page, and a request makes no thread until someone writes. |
+| Forms and input | 3 | 3 | Unchanged: AddListing is one 3,092 px page with "Publish listing" pinned. Disabled primaries are still 30 % crimson. |
+| Search and discovery | 2 | 2 | A day and a start hour exist, but only inside the category Filters dialog (15 wrapping day chips next to a contradicting "Needed within"). The chosen day is not shown in the applied chip. Text search has no filters. The map is still the radial diagram. |
+| Booking and checkout | 3 | 3 | `PriceSummary` is clear: line × hours, total, fee named once, a dated policy. But on a request listing the button says "Book and pay · €16.00" ("Zahlungspflichtig buchen") right under "Nothing is charged yet". There's no payment-method row and no success moment, and the sticky bar on the new booking is "Withdraw". |
+| Trust and safety | 3 | 3 | Unchanged. The badge doesn't say what was checked. There's no rating distribution and no host replies, and listing text in DE/FR is not labelled as untranslated. |
+| Empty, error, offline | 4 | 4 | Good. But the Inbox empty state has no action. |
+| Perceived performance | 2 | 3 | `fetchpriority="high"` on the hero, `width`/`height`/`sizes` everywhere, renditions with a colour for uploads. No prefetch on hover or viewport, no optimistic UI. The hero can morph into a skeleton. |
+| Accessibility | 3 | 3 | Sheets trap and return focus, and the gallery dialog focuses Close. But focus stays on `<body>` after a route change. There's no live region until a toast. The gallery lacks APG carousel semantics. The unread dot is `aria-hidden` with no text. 14–29 targets under 44 px per screen. |
+| Consistency | 2 | 2 | Three result layouts still. Two accent fills on most screens (the dock "+" and the page's primary). Chips are capsules on Explore and 8 px on the slot picker. |
+| Dark mode and theming | 1 | 2 | It exists, follows the system, and is set before first paint. It is not yet good, and the owner says so: surfaces 1.09–1.2:1 apart, a darker-than-page "sunken", a near-black active pill, a see-through dock, an ivory lightbox, undimmed photos, and the switch buried at the bottom of You. |
+| Native feel | 2 | 2 | The dock ignores the bottom safe area. No haptics, status-bar, splash or keyboard plugins. |
+| Delight | 2 | 2 | No confirmed-booking moment. The Earn hero still guilts ("€1,428.75 of time nobody is paying you for"). |
+| Staff console | 2 | 2 | Unchanged consumer shell with "List capacity". |
+
+**Overall: 2.5 → about 2.8.** The build fixed the data-legibility problems and
+added the missing structures (inbox, gallery, sheets, dark tokens). The new
+chrome, the dock and dark mode, is now the weakest craft on screen. The P0 list
+below (UX-46 … UX-54) is what takes it to about 3.5.
+
+## R2.2 Round 1 items: verified status
+
+"Done" means seen working in the browser; "partial" says what is left.
+
+| Item | Status | Evidence / what is left |
+|---|---|---|
+| UX-1 | partial | The code rule works (no photo twice, plates). The demo seed still shows a smokestack for the Bambu printer and an electrician for the Festool saw, first on Explore and in search → UX-53 |
+| UX-2 | partial | Phone swipe, n / N, full screen, alt "Photo n of N". But the viewer is ivory in dark; the sticky price bar and the back button paint over it and hide the counter; the desktop mosaic leaves a hole with 2 photos; no carousel semantics → UX-49, UX-56 |
+| UX-3 | partial | `fetchpriority`, `sizes`, `width`/`height` verified. Placeholders are a flat `--sunken` for all non-upload images (demo) → UX-69 |
+| UX-4 | done | Titles, prices, times and ratings in Archivo; "1.4 m" and "€4.00" read correctly |
+| UX-5 | partial | `check:tokens` passes. Dock labels are 10.5 px (rule 11). Off-grid 3/5/6/10/14 values. No DTCG file → UX-64 |
+| UX-6 | done | Money in green ("Earned €0.00"), focus blue, danger apart from crimson. New misuse → UX-61 |
+| UX-7 | not done | Disabled "Sign in" and "Send" are still 30 % crimson: 1.46:1 against the page in dark, text 1.49:1 |
+| UX-8 | partial | Push/pop and crossfade work via `useNav`. Browser Back / Android back (popstate) cut without the pop → UX-58 |
+| UX-9 | done | Drag to dismiss (verified), detents, a grabber button, the desktop dialog (verified on Filters), exit animation |
+| UX-10 | not done | No `useOptimistic` or `onMutate` in the code |
+| UX-11 | not done | No haptics helper or plugin |
+| UX-12 | partial | Inbox tab, server unread, All/Unread. But the "+" is still in the dock; no thread screen (a row opens `/bookings/:id#messages`); no thread until the first message; empty state without an action → UX-46, UX-52 |
+| UX-13 | done | Dock hidden on listing, booking and add routes. The bar floats as a capsule with content visible below it; fine, but see UX-46 for the safe area |
+| UX-14 | not done | `/admin` unchanged |
+| UX-15 | partial | Day and start hour in the category Filters dialog, honoured by results. No composite What · When · Where; text search has none; the chosen day is missing from the applied chip → UX-55 |
+| UX-16 | not done | The radial diagram remains |
+| UX-17 | not done | Three result layouts; truncated rows with no rating; 75 km shown as "47 mi" |
+| UX-18 | not done | One merged "2 hours · 47 mi" chip |
+| UX-19 | not done | One 3,092 px page |
+| UX-20 | partial | Desktop Day / Starts / Duration selects work. On the phone the bar's time line is not tappable, and the week chart does not set the time |
+| UX-21 | not done | 22 ragged time chips, 15 day chips on 3 rows |
+| UX-22 | partial | "service fee" on the listing and sheet, but "Cappy fee" remains in 3 strings (`src/app`) |
+| UX-23 | partial | `PriceSummary` verified. The button copy contradicts the request flow, and there's no payment-method row → UX-50 |
+| UX-24 | partial | Stripe `appearance` from tokens (code). No Express Checkout Element; the pay step was not shown on the demo path |
+| UX-25 | partial | The chat scrolls its own box (code). But the only sticky action on a fresh request is the destructive "Withdraw from this booking"; no countdown header → UX-51 |
+| UX-26 | not done | Hypothetical euro total still the hero |
+| UX-27 | not done | Profile is still one long page; Appearance is the 11th section |
+| UX-28 | partial | An unread dot exists. No icons or groups; rows say "The details are in the app" inside the app; the dot is `aria-hidden` → UX-62 |
+| UX-29 | not done | Help has no search |
+| UX-30 | partial | Ivory primary on green, example prices as chips. No photographs |
+| UX-31 | not done | Tabs, password first, the disabled crimson button |
+| UX-32 | not done | Initials on `--sunken` |
+| UX-33 | partial | `hyphens: auto` on headings only, and it breaks 4-letter words at 200 % ("Ear / n"). Body `hyphens: manual`. No "Translated" label → UX-54 |
+| UX-34 | not done | Dock "+" 44×40; chips 36 high; heart 36×36; back 40×40; the rating link 56×22; profile checkboxes 20×20 |
+| UX-35 | not done | No axe |
+| UX-36 | partial | Themes work and follow the system. Quality defects → UX-47, UX-48 |
+| UX-37 | not done | Plugins not installed |
+| UX-38 | not done | `overscroll-behavior-y: none` still on the body |
+| UX-39 | partial | `check:tokens` shows radius literals at 0. The Bookings switch and the Inbox tabs share one underline style; chips mix capsule and 8 px |
+| UX-40 | not done | The request lands straight on the booking page |
+| UX-41 | not done | — |
+| UX-42 | partial | Category plates exist. Empty states still use a 20 px icon |
+| UX-43 | not done | — |
+| UX-44 | done | Skeletons after 300 ms (code `edd0521`; not timed in the browser) |
+| UX-45 | not done | No `web-vitals` |
+
+Round 1: 5 done, 18 partial, 22 not done.
+
+## R2.3 New findings on the built work
+
+**R2-F1 The phone dock: owner's P0.**
+- *Screenshots:* Earn · 390 · dark (owner's `10.png` and ours): six slots, 58 px each at 390 and 52 px at 360. The measured parts:
+  - a 44×40 crimson disc in the middle;
+  - the active tab a `--sunken` (#0b0f0c) lozenge on a 55 % dark glass, **1.08:1** against the bar;
+  - the notifications badge "7" on "You", clipped by the capsule's top edge at 100 % and cut in half at 200 %;
+  - labels 10.5 px `ink-4`: 5.8:1 over the page, but as low as **1.4:1** where white text scrolls under the glass;
+  - "Bandsaw and bench…" and the amber "Payout on hold" readable through the bar, in light too.
+- *Why it matters:*
+  - HIG: "Use a tab bar to support navigation, not to provide actions." Reserve badges for critical information. Label with single words. Tab bars minimise on scroll in iOS 26 (https://developer.apple.com/tutorials/data/design/human-interface-guidelines/tab-bars.json).
+  - M3: 3–5 destinations. The active indicator is a 56×32 capsule in `secondaryContainer`, the bar is 80 dp (64 in Expressive) on `surfaceContainer` (https://raw.githubusercontent.com/material-components/material-components-android/master/docs/components/BottomNavigation.md).
+  - The rulebook (§4 Dock) already says at most 5, no floating create button, and an opaque bar.
+- *Comparison* (own observation of the current apps; their pages could not be fetched this session):
+
+  | App | Items | Create in the bar? | Active state | Background |
+  |---|---|---|---|---|
+  | Airbnb | 5: Explore, Wishlists, Trips, Messages, Profile | No. Hosting is a mode switch in Profile | Brand-tinted filled icon and label | Opaque white with a hairline |
+  | Vinted | 5, with "Sell" as a labelled tab | Yes, but as an ordinary labelled tab, not a disc | Tinted icon | Opaque |
+  | Revolut | 5 | No; actions sit in the Home header | Filled icon | Blurred, dense |
+  | Instagram (2025) | 5 | Moved out of the bar into a header "+" | Filled icon, no label | Opaque |
+  | Apple (iOS 26 Music, Photos) | 3–5 | No; actions are toolbar buttons | A glass lozenge, tinted | Liquid Glass capsule that minimises on scroll, with a separate search button |
+
+  Cappy's disc copies none of them. It is the old iOS 6 "raised centre tab", and it is also the second accent fill on every screen.
+- *Proposal:* **UX-46** (spec below).
+
+**R2-F2 The dock ignores the bottom safe area.**
+- *Code:* the nav is `max-md:bottom-0` with no padding. `--dock-h` reserves `56 + 10 + env(safe-area-inset-bottom)` for content, but the bar itself sits on the screen edge.
+- *Risk:* on an iPhone the 34 pt home indicator lies across the labels, and the capsule's rounded bottom corners meet the display corner.
+- *Proposal:* part of **UX-46**.
+
+**R2-F3 Dark mode surfaces have no steps.**
+- *Measured:*
+  - page #0f1410 (L\* 5.8, near black);
+  - `surface` 1.09:1 and `elevated` 1.20:1 against it;
+  - `sunken` #0b0f0c is *darker* than the page, so every image placeholder, input and the old active pill is a hole;
+  - `line` 1.35:1 (rule 1.5).
+- *Other defects:*
+  - Photos are undimmed.
+  - Bodoni at 28 px on dark loses hairlines ("yet" reads "yct").
+  - Disabled primaries are 1.46:1.
+  - The full-screen gallery uses `--inverse` and turns ivory.
+  - The content sheet is glass, so the page's crimson bleeds through behind "Not yet".
+- *Why it matters:*
+  - Material dark: a #121212 base, lighter surfaces for elevation, desaturated colour (https://m2.material.io/design/color/dark-theme.html).
+  - Apple: base vs elevated backgrounds, test with Increase Contrast and Reduce Transparency (https://developer.apple.com/tutorials/data/design/human-interface-guidelines/dark-mode.json).
+  - web.dev: tone images down in dark (https://web.dev/articles/prefers-color-scheme).
+- *Proposal:* **UX-47** (spec below).
+
+**R2-F4 The theme is hard to change.**
+- *Where it is:* Appearance is a segmented control at the bottom of You, after the "How Cappy works" essay, and absent from the desktop header.
+- *Owner:* "it needs to be easy to change to light mode".
+- *Proposal:* **UX-48**.
+
+**R2-F5 The full-screen gallery is covered by the page.**
+- *Measured:* the viewer is a `fixed z-[70]` div, but the listing's sticky bar (z-30) and back button paint above it and hide "1 / 2" (inside a lower stacking context).
+- *Accessibility:* `aria-modal` is set on a div whose background is not inert.
+- *Proposal:* **UX-49**. Use `<dialog>.showModal()` (the top layer), a black backdrop in both themes, and the APG carousel roles (https://www.w3.org/WAI/ARIA/apg/patterns/carousel/).
+
+**R2-F6 The confirm button contradicts the flow.**
+- *EN:* "Book and pay · €16.00" under "Nothing is charged yet. Your card is held…", on a listing whose bar says "Request".
+- *DE:* "Zahlungspflichtig buchen" for a request.
+- *Styling:* the reassurance box is `warn` amber with an ⓘ, so a calming message reads as a warning. There's no payment-method row.
+- *Why it matters:* Baymard ranks card-security distrust at 19 % and a total not shown upfront at 12 % among abandonment reasons (https://baymard.com/lists/cart-abandonment-rate). A button that says "pay" over a "nothing is charged" message is the kind of mismatch that erodes trust.
+- *Proposal:* **UX-50**.
+
+**R2-F7 After the request, the only sticky action is "Withdraw from this booking".**
+- *What's missing:* no confirmation moment and no "Message Nadia". This contradicts UX-25's own rule (destructive actions in an overflow).
+- *Proposal:* **UX-51**, and UX-40.
+
+**R2-F8 A request creates no conversation.**
+- *Seen:* host 2's fresh request is not in the Inbox. `InboxItem.lastMessage` is required, so a thread only exists after a message.
+- *Why it matters:* on Airbnb the request *is* the first thread item. Here the buyer's first question has no home, and the owner sees the request only in Earn.
+- *Proposal:* **UX-52**.
+
+**R2-F9 The chosen day is invisible once applied.**
+- *Seen:* choosing "Tomorrow" puts `on=2026-09-27` in the URL, but the chip still reads "2 hours · 47 mi".
+- *Contradiction:* "Needed within 14 days" stays selectable next to a fixed day.
+- *Proposal:* **UX-55** (with UX-18).
+
+**R2-F10 200 % text breaks short headings.**
+- *Seen:* `hyphens: auto` plus a last-resort break turns "Earn" into "Ear / n" (390, 375) and "Ea / rn" (360), with no hyphen.
+- *Why it matters:* `hyphenate-limit-chars` sets the minimum word length and the letters before and after the break (https://developer.mozilla.org/en-US/docs/Web/CSS/hyphenate-limit-chars).
+- *Proposal:* **UX-54**.
+
+**R2-F11 Crimson used as data, amber as comfort.**
+- *Seen:* the Earn and listing week charts fill "Sold" and "Your booking" in `--sold` = `--accent`, so the audit counts 4–6 accent fills on Earn. "Waiting for Nadia" and "Nothing is charged yet" are `warn` callouts.
+- *Rule broken:* rulebook §3: one accent-filled control per view; crimson is never decoration.
+- *Proposal:* **UX-61**.
+
+**R2-F12 Screen-reader gaps on the key flows.**
+- *Found:*
+  - After each route change `document.activeElement` is `BODY`. `main#main` has `tabIndex=-1` but is never focused.
+  - No polite live region exists before the first toast.
+  - The notification unread dot is `aria-hidden`, with no text alternative.
+  - The gallery strip has no `aria-roledescription`.
+  - The toast rendered over the middle of the login form.
+- *Why it matters:* Gatsby's user testing found focus on the new heading preferred (https://www.gatsbyjs.com/blog/2019-07-11-user-testing-accessible-client-routing/). A live region must exist before its content changes (https://developer.mozilla.org/en-US/docs/Web/Accessibility/ARIA/Guides/Live_regions).
+- *Proposal:* **UX-57**.
+
+**R2-F13 Notifications speak like an email.**
+- *Seen:* "…booked instantly by Demo Buyer. The details are in the app." shown inside the app. The title repeats the listing and time from the body. The notifications badge counts on "You" as well as on the bell.
+- *Proposal:* **UX-62**.
+
+**R2-F14 The desktop listing mosaic assumes 5 photos.**
+- *Seen:* with 2 photos, the second tile is a quarter-size square and the rest of the row is empty. The category chip and the heart float over the page background.
+- *Proposal:* **UX-56**.
+
+**R2-F15 Localisation.**
+- *Seen:*
+  - The FR dock truncates "Réservat…" at every width.
+  - Listing titles, descriptions and reviews stay English in DE/FR, with no "original language" label (UX-33).
+  - The chart's day labels wrap to two lines at 360 ("Mo / 28").
+- *Proposal:* **UX-66**, with UX-33.
+
+**R2-F16 Rulebook conformance, measured** (rule → measured):
+- *Side gutter:* rule 16 on the phone → **20** everywhere. The rule is probably what's wrong; see amendments.
+- *Card padding:* rule 16 → **20** (Bookings, Earn, Listing, You).
+- *Phone body text:* rule 17 → **13 and 15** (Listing: 14× 13 px, 8× 15 px; Earn: 9× 15 px).
+- *Dock labels:* rule 11–12 → **10.5**.
+- *Buttons:*
+  - Secondary: rule 40 → **34** ("Add", "Open booking", "View as a guest", "Edit", "Pause", "Remove").
+  - Primary: rule 48 → **52** (sticky "Request").
+  - Compact 32 is used on the phone.
+- *Tap targets:* rule ≥ 44 → under 44 per screen: Explore 29, Listing 25, You 26, Earn 14. Worst are the notification checkboxes (20×20), "Edit profile" (69×18), the rating link (56×22), the heart (36×36), back (40×40), chips (36) and the dock "+" (44×40).
+- *4 px grid:* off-grid values on every screen: gaps 3, 5, 6, 10, 14; paddings 6, 10, 11, 14; margins 6, 10, 25.5.
+- *One accent fill per view:* 2 on Bookings ("+" and "Open booking"), 2 on Listing (Request and the chart), 5 or more on Earn.
+- *Hairlines:* rule ≥ 1.5:1 → **1.33** light and **1.35** dark.
+- *Dock:* opaque or 85 % plus blur → **55 %** (dark) and see-through in light. Active pill → `--sunken`. Bottom padding "dock + 16" → content is visible under the bar on Earn at all four sizes.
+- *Contrast:* the audit found **no text pair under 4.5:1** on solid surfaces in either theme at any width. The failures are non-text (surfaces, lines, pill) and text over glass.
+- *Horizontal scroll:* none at 360–430.
+
+## R2.4 Specs for the builder (P0)
+
+### UX-46 Phone dock redesign
+
+**Items.** Five: **Explore · Bookings · Inbox · Earn · You**. The crimson "+" leaves the bar. Creation moves to:
+- a "List something" primary in the Earn header (already "+ Add"; make it the filled accent there);
+- an empty-state action on Earn;
+- the desktop header, as today.
+
+This follows the HIG ("navigation, not actions"), M3 (3–5), Airbnb, Instagram 2025 and the rulebook.
+
+**Geometry** (4 px grid):
+
+| Part | Value |
+|---|---|
+| Bar | Full width, docked to the bottom edge (not a floating capsule): height 56 + `env(safe-area-inset-bottom)`, content box 56. Items centred in a max 480 px row. Radius 0, with a 1 px top hairline `line` (the amended 1.5:1 value) |
+| Item | Equal flex, min 64 wide at 360 (5 × 64 = 320 plus 2 × 20 gutter). Hit area the whole cell (≥ 56 × 56) |
+| Active indicator | A 56 × 32 capsule (`radius-full`) behind the icon, centred at y = 20 |
+| Icon | 24 px on a 24 grid, 1.75 stroke; **filled variant when active** (HIG "prefer filled") |
+| Label | 12 / 16 `text-caption` 12, weight 500, 600 when active. 4 below the indicator; never truncated. At 200 % text it goes icons-only with the names in `aria-label` (as today) |
+| Badge | Min 16 × 16, `radius-full`, `text-caption` 11 bold tabular. Anchored at the indicator's top-right (x +4, y −4) *inside* the bar, with a 2 px ring in the bar colour. Numbers above 9 show "9+". Never clipped. Unread messages on **Inbox**, requests waiting on **Bookings** (host side) and **Earn** (payout action needed); **none on You**. The bell keeps its own count |
+
+**Colours** (tokens):
+
+| | Light | Dark |
+|---|---|---|
+| Bar | `elevated` #ffffff at 92 %, blur 20, saturate 180 %; opaque `elevated` under Reduce Transparency | `elevated` (new #232b24) at 94 %, blur 20; opaque under Reduce Transparency |
+| Top hairline | `line` (α .20) | `line` (α .18) |
+| Inactive icon + label | `ink-3` #5a6157 (≥ 6:1 on the bar) | `ink-3` (new #a8b0a4, 6.5:1 on #232b24) |
+| Active indicator | `accent-subtle` #f9eaeb | `pill`, a new token #38443a (1.6:1 against the bar, clearly visible) |
+| Active icon + label | `accent-text` #8b0d1a | `ink` #eef0ea |
+| Badge | `badge` #8b0d1a / `on-badge` #fff (9.7:1) | `badge` #e0525f / `on-badge` #1a0507 (5.2:1) |
+
+**Behaviour.**
+- The indicator animates its width 0 → 56 and opacity in 150 ms `ease-standard` on a tab change (transform only: `scaleX`).
+- **Hide on scroll** (iOS 26 minimise, simplified): after 48 px of downward scroll, translate the bar down by its content height (56), leaving the safe area painted, over 250 ms `ease-accelerate`. It returns on any upward scroll of 8 px or more, on reaching the top, or on focus inside it. Never on the first screen height. Off under reduced motion (stays visible).
+- Every scroll view pads its bottom with `--dock-h + 16`.
+- Detail routes keep hiding it (UX-13).
+- The desktop header is unchanged, except the bell badge also moves off "You".
+
+**Acceptance.**
+- At 360, 375, 390 and 430 in light and dark: no label truncated (EN/DE/FR); no content legible through the bar; badge unclipped at 100 % and 200 %; the indicator ≥ 1.5:1 against the bar; inactive labels ≥ 4.5:1.
+- `check:contrast` gains the pairs `ink-3/elevated`, `accent-text/accent-subtle`, `ink/pill` and `on-badge/badge`.
+
+### UX-47 Dark mode fix
+
+**Surfaces** (each step about +4.5 L\*, distinct from the one below):
+
+| Token | Now | Proposed | L\* | Use |
+|---|---|---|---|---|
+| `page` | #0f1410 | **#121813** | 7.5 | Base |
+| `sunken` | #0b0f0c (below the page) | **#161c17** | 9.5 | Fills and placeholders sit *above* the base, never a hole |
+| `surface` | #171d18 | **#1a211b** | 11.9 | Cards |
+| `elevated` | #1f2620 | **#232b24** | 16.6 | Sheets, dialogs, dock, popovers |
+| `overlay` (new) | — | **#2c352d** | 21.1 | Menus over sheets, hovered rows |
+| `pill` (new) | — | **#38443a** | 27.5 | Selected segments, the dock indicator, selected chips |
+| `line` | α .12 (1.35:1) | **α .18** (1.67–1.71:1) | | |
+| `line-strong` | α .28 | α .32 | | Input borders ≥ 3:1 stays |
+
+**Text:**
+- `ink` #eef0ea stays (15.7:1 on the new page).
+- `ink-3` → **#a8b0a4** and `ink-4` → **#959d90**. These keep ≥ 4.5:1 up to `overlay` (4.54:1) and ≥ 5.2:1 on `elevated`.
+
+**Accent:**
+- Keep #e0525f with dark text (5.2:1).
+- Reduce it to one fill per view (UX-61).
+- **Disabled** = `pill` fill + `ink-4` text (UX-7), never 30 % crimson.
+
+**Imagery:**
+- Listing photos and the Welcome collage get `filter: brightness(.9)` in dark (the rulebook's 8–12 %); gallery full screen is excluded.
+- The colour placeholder uses `photoMeta.color` at 70 % mixed into `sunken`.
+- Plates keep `field` #1f3a24 but gain a 1 px `line` edge.
+- Transparent PNG uploads sit on a `surface` tile.
+
+**Display type:** in dark, Bodoni only at 34 px and up (`headline`, `display`). Screen titles and empty-state titles at 28 go to Archivo 600, or Bodoni at `wght` +100. The hairlines at 28 px on dark are what breaks "yet" into "yct".
+
+**Materials:**
+- Content sheets and the confirm sheet become opaque `elevated`; glass stays only on the dock and floating buttons (Apple: no glass in the content layer).
+- Scrim `rgba(0,0,0,.6)`.
+- The full-screen gallery is `#000` in both themes, with white controls on a 40 % black chip.
+
+**States:**
+- Reassurance ("Nothing is charged yet") uses a neutral `sunken` box with a lock icon, not `warn`.
+- `warn` stays for real warnings only.
+
+**Acceptance.**
+- Every pair in `check:contrast` passes in both themes, plus surface-step pairs (each ≥ 1.15:1 against the level below) and `line` ≥ 1.5:1.
+- The 390 before/after screenshots in both themes are attached to the PR.
+
+### UX-48 One-tap theme switch
+
+- **Phone:** a sun/moon icon button (44 × 44) in the You header, cycling System → Light → Dark. It shows a toast "Appearance: Light" with "Undo". The Appearance row moves into a Preferences group near the top of You (with Language and Notifications), not after the essay.
+- **Desktop:** the same button left of the bell in the header, and a System · Light · Dark segmented switch in the footer next to the language switch.
+- **Change:** a 150 ms crossfade via `startViewTransition`, none under reduced motion.
+- **Default:** keep **System** (Apple advises against an app-only appearance), but make the override one tap from every main screen. See the rulebook amendment on "light is the default".
+
+## R2.5 New proposals
+
+**P0**
+- [ ] UX-46 [web]+[app] Phone dock redesign per R2.4: 5 destinations, no "+" in the bar, full-width bar with the bottom safe area, 56×32 active indicator (`accent-subtle` light, `pill` dark) with a filled icon, 12 px labels in `ink-3`, 16 px ringed badges never clipped and never on "You", 92–94 % bar with blur (opaque under Reduce Transparency), hide on scroll, icons-only at 200 % — https://developer.apple.com/tutorials/data/design/human-interface-guidelines/tab-bars.json · https://raw.githubusercontent.com/material-components/material-components-android/master/docs/components/BottomNavigation.md
+- [ ] UX-47 [design]+[web] Dark-mode fix per R2.4: surface ladder `page` #121813 → `sunken` #161c17 → `surface` #1a211b → `elevated` #232b24 → `overlay` #2c352d → `pill` #38443a; `line` α .18; `ink-3` #a8b0a4, `ink-4` #959d90; photos `brightness(.9)`; Bodoni ≥ 34 px only in dark; opaque content sheets; black full-screen gallery; disabled = `pill` + `ink-4`; surface-step and line pairs in `check:contrast` — https://m2.material.io/design/color/dark-theme.html · https://web.dev/articles/prefers-color-scheme
+- [ ] UX-48 [web] One-tap theme switch: sun/moon in the You header and the desktop header, System · Light · Dark in the footer, Appearance moved into a Preferences group at the top of You, a 150 ms crossfade, "Undo" on the toast — https://developer.apple.com/tutorials/data/design/human-interface-guidelines/dark-mode.json
+- [ ] UX-49 [web] Full-screen gallery on the top layer: `<dialog>.showModal()` so the sticky bar and back button can't paint over it; `#000` backdrop in both themes; the counter visible; APG carousel roles (`aria-roledescription="carousel"`/`"slide"`, labelled slides, prev/next buttons); the page behind inert — https://www.w3.org/WAI/ARIA/apg/patterns/carousel/ · https://www.w3.org/WAI/ARIA/apg/patterns/dialog-modal/
+- [ ] UX-50 [web] Confirm button says what happens: request = "Request · €16.00 held" (DE "Zahlungspflichtig anfragen · 16,00 €", FR "Demander · 16,00 € bloqués"); instant = "Book and pay · €16.00"; "Nothing is charged yet" as a neutral box with a lock, not `warn`; a payment-method row (saved card or "Card, next step"); the cancellation line once, not three times — https://baymard.com/lists/cart-abandonment-rate · https://baymard.com/blog/perceived-security-of-payment-form
+- [ ] UX-51 [web] Booking page after a request: sticky primary "Message Nadia" (and after acceptance "Directions"), "Withdraw" moved to the ⋯ overflow with a confirm; a status header with a countdown ("Nadia usually replies in ~12 min · 23:41 left to answer") — https://www.nngroup.com/articles/error-message-guidelines/
+- [ ] UX-52 [web]+[backend] A request opens a thread: the Inbox lists every live booking with a system first line ("You requested Sat 8:00–12:00") and the status chip; a dedicated `/inbox/:bookingId` thread with the booking card pinned and a composer that follows the keyboard; empty state with "Find something nearby" — https://www.nngroup.com/articles/push-notification/
+- [ ] UX-53 [design]+[backend] Demo and seed photos that show the thing (3D printers, saws, vans, studios), licensed per category and never reused within a category; the grid-claim rule gives the photo to the *best-matching* listing, not the first — https://www.nngroup.com/articles/trustworthy-design/
+- [ ] UX-54 [web] 200 % text and hyphenation: `hyphenate-limit-chars: 8 4 4` and `overflow-wrap: normal` on screen titles, so "Earn" never breaks; `hyphens: auto` on body text with the element's `lang`; a 200 % screenshot pass at 360 in DE and FR in each verification round — https://developer.mozilla.org/en-US/docs/Web/CSS/hyphenate-limit-chars
+
+**P1**
+- [ ] UX-55 [web] The chosen When shows in the applied chips ("Tomorrow · from 2 PM", removable); "Needed within" hides once a day is picked; When also on text search; the day row as a horizontal strip, not 15 wrapping chips (with UX-15, UX-18, UX-21) — https://baymard.com/blog/how-to-design-applied-filters
+- [ ] UX-56 [web] Desktop gallery mosaic by count: 1 = full width 16:9; 2 = 50/50; 3 = 2/3 + two stacked; 4 = 1 + 3; 5+ = 1 + 4 with "Show all n photos"; the category chip and heart always over a photo — https://baymard.com/research/product-page
+- [ ] UX-57 [web] Screen readers on key flows: on each route change focus the `<h1>` (`tabindex=-1`) and announce the title in a permanent `role=status` region; result counts ("6 bookable slots") announced there; the unread dot gets text ("Unread"); toasts at the bottom above the dock/bar, never over a form; a VoiceOver (iOS Safari) and TalkBack (Chrome) script for Explore → Request, Inbox and AddListing in each verification round — https://www.gatsbyjs.com/blog/2019-07-11-user-testing-accessible-client-routing/ · https://developer.mozilla.org/en-US/docs/Web/Accessibility/ARIA/Guides/Live_regions · https://www.gov.uk/service-manual/technology/testing-with-assistive-technologies
+- [ ] UX-58 [web] Perceived performance: prefetch the listing and its slots on card hover/focus and when a card enters the viewport on phones (`queryClient.prefetchQuery`, staleTime 60 s); `ensureQueryData` before `transition()`, so the hero never morphs into a skeleton; browser/hardware Back (popstate) runs the pop transition too — https://tanstack.com/query/latest/docs/framework/react/guides/prefetching · https://developer.chrome.com/docs/web-platform/view-transitions/same-document
+- [ ] UX-59 [web] Motion choreography: transition types (`startViewTransition({types:['push']})` and `:active-view-transition-type()`) instead of `data-nav`; `view-transition-class: card` for list items; the title and price of the tapped card morph with the photo (shared elements named only on the tapped card); the M3 spring pairs as `linear()` tokens (spatial 0.9/700, effects 1/1600) — https://developer.chrome.com/docs/web-platform/view-transitions/same-document · https://developer.mozilla.org/en-US/docs/Web/CSS/view-transition-class
+- [ ] UX-60 [web] Materials: glass only on the dock and floating buttons; sheets, dialogs and the sticky action bar opaque `elevated` with a hairline; scrim 40 % ink light / 60 % black dark — https://developer.apple.com/tutorials/data/design/human-interface-guidelines/materials.json
+- [ ] UX-61 [web] One accent fill per view: "Sold" and "Your booking" bars in `ink` with a pattern or `money`, not crimson; secondary buttons outlined; `warn` only for warnings ("Payout on hold" yes, "Waiting for Nadia" and "Nothing is charged yet" no) — https://www.w3.org/WAI/WCAG22/Understanding/use-of-color.html
+- [ ] UX-62 [web] Notifications as app copy: no "The details are in the app"; the title says what happened ("Demo Buyer booked Bandsaw, Sat 9 PM"); tapping opens the booking; an icon per type; Today / Earlier; the count on the bell only (not on "You") — https://developer.apple.com/tutorials/data/design/human-interface-guidelines/notifications.json
+- [ ] UX-63 [web] Reviews that build trust: a 5–1 star distribution, the average only from 3 reviews, per-aspect counts kept, the owner's public reply under a review, sort by recent, and "Translated from English · Show original" on review text; the verified badge says what and when ("ID checked · Mar 2026") — https://www.airbnb.com/help/article/1257 · https://www.airbnb.com/help/article/1237
+- [ ] UX-64 [design]+[web] Rulebook conformance sweep: off-grid values (3/5/6/10/11/14/25.5) to the 4 px scale; secondary buttons 40 (not 34) on the phone; targets ≥ 44 (heart, back, chips, rating link, "Edit profile", notification checkboxes → switches in rows); phone body 17 for reading text; card padding per the amended rule; a `check:tokens` rule for off-grid spacing classes — `.claude/skills/cappy-ui/SKILL.md` §1, §2, §4
+- [ ] UX-65 [app]+[backend] Push that earns its place: prime after the first request or message (not at launch); Android channels "Booking updates" (high), "Messages" (high), "Reminders" (default), "News" (low); a "Reply" action on message pushes; in-app preferences mirror the channels — https://developer.android.com/develop/ui/views/notifications/channels · https://developer.android.com/develop/ui/views/notifications/notification-permission
+- [ ] UX-66 [web] Localisation layout: FR dock label that fits ("Résas", or "Locations" if counsel prefers); times as `Intl.DateTimeFormat.formatRange` everywhere ("Sat 12 Sep, 10:00–13:00"); chart day labels that never wrap at 360; an `en-XA` pseudo-locale (+40 %, accented, bracketed) in the dev build and screenshot runs; logical CSS properties (`margin-inline-*`) for later RTL — https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Intl/DateTimeFormat/formatRange · https://learn.microsoft.com/en-us/globalization/methodology/pseudolocalization
+
+**P2**
+- [ ] UX-67 [web] Map search spec for UX-16: price pins on the top ~20 results and dot pins for the rest; MapLibre clustering (`clusterRadius` 50, `clusterMaxZoom` 14); centre on likely bookings, not the list order; a bottom sheet over the map on phones; district-level fuzzing until acceptance — https://arxiv.org/html/2407.00091 · https://maplibre.org/maplibre-gl-js/docs/examples/create-and-style-clusters/
+- [ ] UX-68 [app] Haptics map for UX-11: `selectionChanged` on slot/day/chip scrubs, `impact(Light)` on the heart, `notification(Success)` on request sent / accepted / published, `notification(Error)` on a refused card; never `vibrate()`; no-op on the web; a setting to turn them off — https://developer.apple.com/tutorials/data/design/human-interface-guidelines/playing-haptics.json · https://developer.android.com/develop/ui/views/haptics/haptics-principles
+- [ ] UX-69 [web] Image placeholders for every source (the demo stock too): a stored colour per photo, `content-visibility: auto` with `contain-intrinsic-size` on long result lists — https://web.dev/articles/content-visibility · https://web.dev/articles/cls
+- [ ] UX-70 [web]+[design] Host listing wizard detail for UX-19: a visible step list with the current step, photos first with a cover picker and per-photo captions, autosave with "Save and exit" on every step, a review summary before Publish — https://www.nngroup.com/articles/wizards/ · https://www.airbnb.com/resources/hosting-homes/a/how-to-take-great-listing-photos-12
+
+## R2.6 Rulebook amendments proposed (`.claude/skills/cappy-ui/SKILL.md`)
+
+1. **§1 gutter.**
+   - Conflict: the rule says 16 on the phone, but every screen uses 20, and round 1 §3.1 set 20.
+   - Proposal: 20 at ≥ 375 px and 16 below, so the code isn't changed for nothing.
+2. **§3 "light is the default".**
+   - Conflict: `theme.ts` defaults to System, and Apple advises against an app-only appearance.
+   - Proposal: **System is the default, with a one-tap override** (UX-48). Otherwise the rule and the code fight.
+3. **§3 hairlines ≥ 1.5:1.**
+   - Conflict: today's tokens are 1.33 / 1.35.
+   - Proposal: state the token values that meet it: `line` α .20 light and α .18 dark.
+4. **§3 dark surfaces.**
+   - Gap: "about 4–6 % more lightness each" is not checkable.
+   - Proposal: state it as L\* steps of 4–5 and ≥ 1.15:1 between adjacent levels. List the ladder of UX-47, and say `sunken` is *above* the page in dark.
+5. **§4 disabled buttons.**
+   - Conflict: "40 % opacity" gives 1.46:1 for crimson on dark, and round 1 UX-7 asks for a fill.
+   - Proposal: disabled = `sunken` (light) / `pill` (dark) fill with `ink-4` text.
+6. **§4 dock active pill.**
+   - Gap: `accent-subtle` is 1.17:1 on white, which is fine only because the icon also fills and the label turns `accent-text`. Say so.
+   - Proposal: define the dark value (`pill` #38443a, ≥ 1.5:1 against the bar). State where badges go (Inbox, Bookings, Earn; never You) and that the bar docks to the edge with the safe area.
+7. **§4 chips "radius full".**
+   - Conflict: round 1 §3.2 kept capsules for floating chrome, and the code mixes the two.
+   - Proposal: filter and category chips full; choice chips inside forms (slots, durations) `radius-s`.
+8. **§4 buttons.**
+   - Gap: the sticky bar's primary is 52 and the phone uses 34 for secondaries.
+   - Proposal: primary 48 (52 allowed in sticky bars); secondary 40; 32 desktop only. Add a **sticky action bar** spec (height 72 + safe area, opaque `elevated`, one primary).
+9. **Missing specs.**
+   - Toasts: bottom, above the bar, never over a form.
+   - Route-change focus: to the `<h1>`.
+   - Notification rows: icon, 2-line clamp, unread text.
+   - Full-screen media: black, on the top layer.
+   - Bodoni in dark: ≥ 34 px.
+   - The theme toggle placement.
+10. **§7 safe area.**
+    - Gap: an iframe cannot simulate `env()`.
+    - Proposal: `max(env(safe-area-inset-bottom), var(--test-safe-bottom, 0px))` in the one place the bar reads it, so a review can set `--test-safe-bottom: 34px`, or else a device pass.
+
+## R2.7 READINESS §14 as seen now (for its owner; READINESS.md is not edited here)
+
+| # | Criterion | Met? | Evidence now | Still needed |
+|---|---|---|---|---|
+| 1 | Imagery truth | No | The gallery, plates and the no-reuse rule were walked. But the demo seed shows unrelated stock first on Explore | UX-53; UX-49 and UX-56 for the gallery defects |
+| 2 | Type legibility | Nearly | Archivo figures verified in EN/DE/FR; `check:tokens` text size 0 | Dock labels 10.5 → 12 (UX-46); Bodoni in dark ≥ 34 (UX-47); 200 % mid-word breaks (UX-54) |
+| 3 | Token system | Partly | Semantic CSS tokens in both themes; `check:tokens` and `check:contrast` in CI | UX-47 ladder; DTCG + Figma (UX-5, UX-43); off-grid sweep (UX-64) |
+| 4 | Contrast and accessibility | No | No text under 4.5:1 on solid surfaces in the audit | axe (UX-35); targets (UX-34, UX-64); focus and live regions (UX-57); gallery semantics (UX-49); non-text surface pairs (UX-47) |
+| 5 | Price clarity | Partly | `PriceSummary` walked on the listing and confirm sheet; fee named once there | UX-50 button copy; `PriceSummary` on the booking page; "Cappy fee" strings (UX-22) |
+| 6 | Search completeness | No | A day and start hour in category filters | UX-15, UX-55, UX-18, UX-16/UX-67 |
+| 7 | Navigation model | No | Inbox destination; the dock hides on detail screens | UX-46 dock; UX-52 threads; UX-14 staff shell |
+| 8 | Motion and feedback | Partly | Drag, detents, exits, push/pop walked | Optimistic UI (UX-10), haptics (UX-11/UX-68), Back transitions (UX-58) |
+| 9 | Perceived performance | Partly | Hero priority, intrinsic sizes and `srcset` verified | Prefetch (UX-58), placeholders for all images (UX-69), a lab run, field vitals (UX-45) |
+| 10 | Native feel | No | — | Safe area on the dock (UX-46), plugins (UX-37), bounce and pull to refresh (UX-38), device pass |
+| 11 | Consistency | No | One `Sheet` | One card (UX-17), states (UX-7), one accent fill (UX-61), materials (UX-60), design sign-off |
+| 12 | Localisation layout | No | FR spacing enforced; DE sticky bar fits | FR dock truncation (UX-66), mid-word breaks (UX-54), "original language" labels (UX-33, UX-63) |
+
+**None of the twelve is met yet.** Criterion 2 is closest: UX-46 plus UX-54 would close it.
+
+## R2.8 What could not be reviewed
+
+- **Real devices and the safe area.** No iOS or Android shell was run. The home-indicator overlap is inferred from code, and haptics, keyboard, predictive back and wallets were not seen.
+- **Screen readers.** VoiceOver and TalkBack were not run. The findings come from the DOM (focus, roles, live regions, names). UX-57 asks for a scripted pass.
+- **A populated Inbox thread.** Sending a message was outside the data allowance, so the thread and bubble UI was read from `Inbox.tsx` and `Conversation.tsx`.
+- **The Stripe payment step.** The fake provider held the card without showing it. UX-24's look is judged from `PayStep.tsx`.
+- **Booking states beyond "requested"** (confirmed, in progress, finished) for host 2.
+- **Reduced motion and Increase Contrast** could not be toggled in the browser, and were checked in code only.
+- **Sources.** Vinted, Turo, Revolut and Instagram pages, Airbnb's listing-flow and messaging help, Baymard's review display and NN/g's map article could not be fetched. The dock comparison for those apps is the lead's own observation, marked as such.
