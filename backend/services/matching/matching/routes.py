@@ -17,6 +17,7 @@ from pydantic import Field
 from cappy_common.app import ApiRouter
 from cappy_common.auth import Principal, optional_principal, require_admin, require_internal, require_principal
 from cappy_common.errors import Conflict, Invalid, NotFound
+from cappy_common.markets import market
 from cappy_common.models import CamelModel, Iso, MatchView, Quote, Requirement, World
 from cappy_common.timeutil import HOUR_MS, iso_from_ms, ms_from_iso, now_iso
 
@@ -235,6 +236,16 @@ async def spotlight(
     return available_soon(world, district, max_km, now, within_hours, limit, busy)
 
 
+def _zone(world: World) -> str:
+    """The listing's own time zone, as booking reads it: its weekly hours'
+    zone, else its owner's market's."""
+    listing = world.listings[0] if world.listings else None
+    if listing is not None and listing.availability is not None:
+        return listing.availability.time_zone
+    owner = world.owners[0] if world.owners else None
+    return market(owner.country if owner else None).time_zone
+
+
 @router.get("/listings/{listing_id}/offers", response_model=list[Offer])
 async def offers(
     listing_id: str,
@@ -250,7 +261,7 @@ async def offers(
     world, busy = await _context(request, listing_id)
     start = max(from_ or now_iso(), _earliest_start(request))
     end = until or iso_from_ms(ms_from_iso(start) + 28 * 24 * HOUR_MS)
-    return offers_for(world.slots, hours, start, end, limit, busy.get(listing_id), per_day)
+    return offers_for(world.slots, hours, start, end, limit, busy.get(listing_id), per_day, _zone(world))
 
 
 @router.post("/quote", response_model=QuoteOut)
@@ -331,7 +342,7 @@ async def staff_offers(
     world, busy = await _context(request, listing_id, staff=True)
     start = _earliest_start(request)
     end = iso_from_ms(ms_from_iso(start) + 28 * 24 * HOUR_MS)
-    return offers_for(world.slots, hours, start, end, limit, busy.get(listing_id), per_day)
+    return offers_for(world.slots, hours, start, end, limit, busy.get(listing_id), per_day, _zone(world))
 
 
 @admin.post("/quote", response_model=QuoteOut)

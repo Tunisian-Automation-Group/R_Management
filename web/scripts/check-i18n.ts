@@ -11,6 +11,15 @@ for (const [name, cat] of [['de', DE], ['fr', FR]] as const) {
   for (const [en, tr] of bad) console.error(`${name}: placeholders differ:\n  en: ${en}\n  ${name}: ${tr}`)
   failed ||= bad.length > 0
 }
+// French typography, the rule the server's emails follow too: a no-break
+// space (U+00A0) before ":", a narrow no-break space (U+202F) before ; ? !
+// ("?!" may follow its own mark). URLs, {placeholders} and clock times are
+// not prose and are left out.
+const prose = (s: string) =>
+  s.replace(/(?:https?:\/\/|mailto:)\S+/g, 'X').replace(/\{\w+\}/g, 'X').replace(/\b\d{1,2}:\d{2}\b/g, 'X')
+const typo = Object.entries(FR).filter(([, tr]) => /[^ ]:|[^ ;?!][;?!]/.test(prose(tr)))
+for (const [en, tr] of typo) console.error(`fr: typography (U+00A0 before ":", U+202F before ; ? !):\n  en: ${en}\n  fr: ${tr}`)
+failed ||= typo.length > 0
 const onlyDe = Object.keys(DE).filter((k) => !(k in FR))
 const onlyFr = Object.keys(FR).filter((k) => !(k in DE))
 for (const k of onlyDe) console.error(`missing in fr: ${k}`)

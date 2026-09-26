@@ -339,6 +339,7 @@ Locally and in tests all services share one token.
 | Caller → callee | Route | What crosses | Caller code | Callee code |
 |---|---|---|---|---|
 | matching → catalog | `POST /internal/candidates` | listings, owners, slots and districts for a search (ReadTx) | `backend/services/matching/matching/clients.py:46` | `catalog/routes.py:725-737` |
+| matching → catalog | `GET /internal/revocations/{sub}` | `{notBefore}`: when the person's sessions ended (sign out everywhere, deletion), so matching refuses older tokens too (P-24); cached 30 s | `matching/clients.py` `CatalogRevocations` | `catalog/routes.py` `revocation` |
 | matching → catalog | `GET /internal/listings/{id}/context` | one listing's world (ReadTx); since `ad9dee9` `?staff=true` includes a held listing, asked only by matching's staff routes (the staff preview's offers and quote) | `matching/clients.py:51-52` | `catalog/routes.py:740-744` |
 | matching → booking | `POST /internal/busy` | taken intervals (ReadTx) | `matching/clients.py:65` | `booking/routes.py:626-633` |
 | booking → matching | `POST /internal/match-for-offer` | the quote (with its `currency` since `235eeaa`), listing and owner (including **owner name and business**) for a new booking | `backend/services/booking/booking/clients.py:79` | `backend/services/matching/matching/routes.py:233` |

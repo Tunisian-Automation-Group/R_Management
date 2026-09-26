@@ -2,10 +2,12 @@
 
 from __future__ import annotations
 
+import time
+
 import pytest
 from fastapi.testclient import TestClient
 
-from cappy_common.errors import NotFound
+from cappy_common.errors import NotFound, Unavailable
 from cappy_common.fixtures import build_world
 from cappy_common.models import World
 from cappy_common.testing import TestIssuer
@@ -56,6 +58,24 @@ class FakeBookings(Bookings):
         return {lid: self.taken[lid] for lid in listing_ids if lid in self.taken}
 
 
+class FakeRevocations:
+    """Catalog's answer to "when did this person's sessions end?"."""
+
+    def __init__(self) -> None:
+        self.ended: dict[str, float] = {}
+        self.down = False
+
+    async def not_before(self, sub: str) -> float | None:
+        if self.down:
+            raise Unavailable("catalog is unreachable")
+        return self.ended.get(sub)
+
+
+@pytest.fixture()
+def revocations():
+    return FakeRevocations()
+
+
 @pytest.fixture()
 def issuer():
     return TestIssuer()
@@ -67,13 +87,14 @@ def fakes():
 
 
 @pytest.fixture()
-def client(fakes, issuer):
+def client(fakes, issuer, revocations):
     catalog, bookings = fakes
     app = build_app(
         Settings(app_env="test", internal_token="i" * 40),
         catalog=catalog,
         bookings=bookings,
         verifier=issuer.verifier(),
+        revocations=revocations,
     )
     with TestClient(app, headers=issuer.headers("viewer-1")) as c:
         yield c
@@ -262,3 +283,19 @@ def test_staff_see_a_held_listings_offers_and_quote(client, fakes, issuer):
     assert r.status_code == 200 and r.json() and catalog.calls[-1] == "staff-context"
     q = client.post("/admin/quote", json={"listingId": "l9", "requirement": _saw_requirement()}, headers=staff)
     assert q.status_code == 200 and q.json()["quote"]["total"] > 0
+
+
+def test_a_session_ended_elsewhere_is_refused_here_too(client, revocations):
+    """Sign out everywhere ends the old access token in matching at once, not
+    after its 15 minutes (P-24): matching asks catalog when sessions ended."""
+    body = {"requirement": _saw_requirement()}
+    assert client.post("/matches", json=body).status_code == 200
+    revocations.ended["viewer-1"] = time.time() + 60  # after this token was issued
+    r = client.post("/matches", json=body)
+    assert r.status_code == 401 and r.json()["error"]["code"] == "token_expired"
+
+
+def test_catalog_down_is_an_outage_not_a_sign_out(client, revocations):
+    # A 401 would make the app sign the person out over a blip.
+    revocations.down = True
+    assert client.post("/matches", json={"requirement": _saw_requirement()}).status_code == 503

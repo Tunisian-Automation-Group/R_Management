@@ -437,3 +437,13 @@ def test_a_van_takes_no_more_than_it_has_room_for_and_loads(world, brackets):
     assert assess_feasibility(ask(2), van).feasible
     assert "takes at most 2 per booking" in assess_feasibility(ask(3), van).blockers
     assert quote_for(ask(2), van).extra_label == "Loading"
+
+
+def test_the_daily_cap_counts_the_listings_own_day():
+    """perDay is per local day: a Toronto evening (22:00-03:30 UTC) is one
+    day there, not two days in UTC (the V6-23 cap split it)."""
+    slot = Slot(id="eve", listing_id="lt", start="2030-10-01T22:00:00Z", end="2030-10-02T03:30:00Z", hours_usable=5.5)
+    args = ([slot], 1, "2030-10-01T00:00:00Z", "2030-10-03T00:00:00Z", 60, None, 4)
+    local = offers_for(*args, "America/Toronto")
+    assert [o.start[11:16] for o in local] == ["22:00", "22:30", "23:00", "23:30"]
+    assert len(offers_for(*args, "UTC")) > 4, "UTC days split the evening in two"

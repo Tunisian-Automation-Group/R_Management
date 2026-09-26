@@ -820,6 +820,14 @@ async def candidates(body: CandidatesIn, request: Request, repo=Depends(get_read
     )
 
 
+@internal.get("/revocations/{sub}")
+async def revocation(sub: str, request: Request) -> dict:
+    """When this person's sessions ended (sign out everywhere, deletion), for
+    matching, which keeps no database of its own (P-24). Catalog records the
+    revocation first, in the same request that asked for it."""
+    return {"notBefore": await request.app.state.revocations.not_before(sub)}
+
+
 @internal.get("/listings/{listing_id}/context", response_model=World)
 async def listing_context(
     listing_id: str,

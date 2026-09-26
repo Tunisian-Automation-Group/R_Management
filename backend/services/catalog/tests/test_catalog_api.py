@@ -1287,6 +1287,11 @@ def test_signing_out_everywhere_ends_every_session_now(client, app, issuer, brok
     assert r.status_code == 401 and r.json()["error"]["code"] == "token_expired"
     fresh = issuer.headers("user-a", iat=int(time.time()) + 1)
     assert client.get("/me", headers=fresh).status_code == 200
+    # Matching, which has no database, asks catalog the same question.
+    assert client.get("/internal/revocations/user-a").status_code == 403
+    ended = client.get("/internal/revocations/user-a", headers=INTERNAL).json()["notBefore"]
+    assert ended and time.time() - 60 < ended <= time.time()
+    assert client.get("/internal/revocations/nobody", headers=INTERNAL).json() == {"notBefore": None}
     flush(app)
     # V4-24: a token issued in the same second as the sign-out is ended too
     # (whole-second iat against the exact revocation time).

@@ -1032,7 +1032,8 @@ Use a **fresh** account for deletion.
       getting notifications" (since `9107ad2`; before, "within an hour").
       Confirm. **Expect:** that browser is signed out with "Signed out on every device", and its old
       token is refused at once (since `42c777c` the check is exact to the
-      moment, not the second).
+      moment, not the second), by every service including browse and
+      search (matching asks catalog, within 30 s).
 - [ ] The other browser, on its next action. **Deployed**, it is signed out.
       **Locally this may not happen:** the local sign-in service cannot end
       other sessions, so Cappy skips that step and the other browser can

@@ -2098,16 +2098,16 @@ items in TASKS):
 
 Found in the `9107ad2` pass (no task yet):
 
-- **"Signed out at once."** Since `9107ad2` the sign-out-everywhere dialog
-  says every device "is signed out at once". Catalog refuses the old tokens
-  at once, but booking, payments and notifications only once
-  `person.signed_out` reaches them (seconds), matching (browse and search)
-  accepts an access token until it expires (at most 15 minutes), and on
-  the local stack another device that refreshes carries on (GD-4)
-  ([section 3](#sign-out-everywhere)).
-- **Day chips in UTC.** `perDay` counts starts per UTC day
-  (`offers_for`, a `ponytail:` note), so for a listing whose evening starts
-  cross midnight UTC the cap can split one local day's starts across two.
+- ~~**"Signed out at once."**~~ Fixed after `9107ad2`: matching now asks
+  catalog when a person's sessions ended (`GET /internal/revocations/{sub}`,
+  cached 30 s per replica, `matching/clients.py` `CatalogRevocations`), so
+  browse and search refuse the old token too. Catalog refuses it at once,
+  booking, payments and notifications once `person.signed_out` reaches them
+  (seconds), matching within its 30 s cache. On the local stack another
+  device that refreshes can still carry on (GD-4, the GUIDE's caveat).
+- ~~**Day chips in UTC.**~~ Fixed after `9107ad2`: `perDay` counts starts
+  per day in the listing's own time zone (its weekly hours' zone, else its
+  owner's market's), so a Toronto evening is one day, not two.
 
 ---
 

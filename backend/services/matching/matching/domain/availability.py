@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import math
 from collections.abc import Sequence
+from datetime import date, datetime
+from zoneinfo import ZoneInfo
 
 from cappy_common.models import CamelModel, Iso, Slot
 from cappy_common.timeutil import HOUR_MS, MINUTE_MS, iso_from_ms, ms_from_iso
@@ -41,6 +43,7 @@ def offers_for(
     limit: int = 60,
     busy: Sequence[Interval] | None = None,
     per_day: int | None = None,
+    time_zone: str = "UTC",
 ) -> list[Offer]:
     """Every start time at which ``hours`` of work fits inside one of these idle
     windows, between ``from_`` and ``until``, without touching anything already
@@ -53,16 +56,17 @@ def offers_for(
 
     ``per_day`` caps the starts on any one day, so a busy near day cannot use
     up ``limit`` and hide the days after it (V6-23: an every-day schedule ran
-    out after four days). ponytail: days are UTC days; the listing's own zone
-    when a market's evening starts cross midnight UTC.
+    out after four days). Days are the listing's own (``time_zone``), so an
+    evening start after midnight UTC still counts on its local day.
     """
+    zone = ZoneInfo(time_zone)
     from_ms = ms_from_iso(from_)
     until_ms = ms_from_iso(until)
     duration_ms = math.ceil(hours * HOUR_MS)
     step = _step_ms(hours)
     taken = sorted(busy or [])
     out: list[Offer] = []
-    per: dict[int, int] = {}
+    per: dict[date, int] = {}
 
     for slot in sorted(slots, key=lambda s: ms_from_iso(s.start)):
         slot_start = ms_from_iso(slot.start)
@@ -83,7 +87,7 @@ def offers_for(
                 # Jump past the booking to the next aligned start.
                 t = _align_up(clash[1], step)
                 continue
-            day = t // (24 * HOUR_MS)
+            day = datetime.fromtimestamp(t / 1000, zone).date()
             if per_day is not None and per.get(day, 0) >= per_day:
                 t += step
                 continue

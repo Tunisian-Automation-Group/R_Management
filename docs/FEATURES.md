@@ -264,7 +264,10 @@ to all their devices.
   notifications in `f303350`): at most 5 an hour (`rate_hits`, P-12), it
   records the person in catalog's `revoked_sessions` and publishes
   `person.signed_out`. Booking, payments and notifications record the same
-  (`cappy_common/guard.py:58-77`). Notifications then calls
+  (`cappy_common/guard.py:58-77`). Matching, which has no database, asks
+  catalog (`GET /internal/revocations/{sub}`, `CatalogRevocations` in
+  `matching/clients.py`, cached 30 s); if catalog cannot answer, the request
+  is a 5xx, never a 401 that would sign the person out. Notifications then calls
   `Directory.sign_out_everywhere` (`notifications/mail.py:30`), which is
   `CognitoDirectory._sign_out` → `AdminUserGlobalSignOut` (`mail.py:76`), and
   deletes the person's devices, each SNS endpoint first
@@ -694,7 +697,8 @@ far). Matching returns ranked offers with a quote.
 - **Starts per day** (since `ad9dee9`, V6-23): `GET /api/listings/{id}/offers`
   takes `perDay` (1 to 100), which caps each day's starts so a busy near day
   cannot use up `limit` and hide the days after it (`offers_for`,
-  `matching/domain/availability.py`; days are UTC days). Since `9107ad2` the
+  `matching/domain/availability.py`; days are the listing's own, in its
+  weekly hours' zone or its owner's market's). Since `9107ad2` the
   listing page asks `limit=500&perDay=28`, its day rail shows two weeks of
   days (was one), and the duration being priced is always one of the chips,
   selected (V6-3).
