@@ -16,7 +16,13 @@ committed. The reasons behind them are in the ADRs, mainly
 > when applied".
 
 References are `path:line` in the committed tree. Last synced with the code
-as of `4e86866` (`7444e37` to `4e86866`): TLS on every hop inside the VPC
+as of `9107ad2` (`e2e77ab` to `9107ad2`): the `admin-lead` Cognito group in
+Terraform, `COGNITO_ENDPOINT_URL` in compose's shared env block, the local
+dispute and late-return timers (`DISPUTE_OFFER_MINUTES=10`,
+`LATE_RETURN_EARLY_MINUTES`), the analytics scrub keeping only what and when
+of a `staff.action`, and matching's staff MFA check (the staff listing
+preview's offers and quote, routed by the gateway to matching). The sync
+before, as of `4e86866` (`7444e37` to `4e86866`), covered: TLS on every hop inside the VPC
 (P-11: Service Connect TLS from a private CA, HTTPS from the ALB to the
 gateway, Aurora `verify-full`), dependency audits in CI and Dependabot plus
 an audited ECS Exec (P-32), per-journey burn alarms and SLI queue-age
@@ -414,7 +420,9 @@ adding a service starts there.
   (`:106-115`), zipped from `infra/platform/analytics/scrub.py` by
   `data "archive_file"` (`:87-91`, into `infra/platform/.build/`). It keeps
   the envelope and an allowlist of scalar fields, rewrites a `by` of
-  `support:<who>` to `staff` (since `747ed6b`), and drops anything it cannot
+  `support:<who>` to `staff` (since `747ed6b`), keeps only `action`,
+  `targetType` and `at` of a `staff.action` (since `b5cdd93`,
+  `STAFF_ACTION_FIELDS`, with a self-check), and drops anything it cannot
   parse ([`DATA.md`](DATA.md) §3.1). Its role has only
   `AWSLambdaBasicExecutionRole` (`:93-104`).
 - SNS subscribes the Firehose to **every** event, raw delivery (`:133-139`),
@@ -647,14 +655,14 @@ Every service has two roles (`ecs.tf:165-260`):
 | Service | Its code may | Line |
 |---|---|---|
 | gateway | nothing else | 232 |
-| matching | nothing else | 233 |
-| catalog | `s3:Put/Get/DeleteObject` on `media/*` and `private/*` of the media bucket; `cloudfront:CreateInvalidation` on this distribution; `cognito-idp:AdminGetUser` on this pool (staff MFA check, P-3); `sns:Publish` on the event topic; consume its queue | 234-238, 267-279 |
-| booking | `cognito-idp:AdminGetUser` on this pool (staff MFA check for the staff tools and evidence); since `7444e37`, `cognito-idp:ListUsers` on this pool (the staff case view finds a member by email, H-9); `sns:Publish` on the event topic; consume its queue | 239-243, 267-279 |
-| payments | `sns:Publish` on the event topic; consume its queue | 244, 267-279 |
-| notifications | `ses:SendEmail`/`SendRawEmail` only from `no-reply@<domain>`; `cognito-idp:AdminGetUser`, `ListUsers`, `AdminUserGlobalSignOut`, `AdminDeleteUser` on this pool; `sns:CreatePlatformEndpoint` on the push apps and publish/manage/delete `endpoint/*` (never the event topic); consume its queue | 245-252 |
+| matching | since `ad9dee9`, `cognito-idp:AdminGetUser` on this pool (the staff MFA check for its staff routes, the preview's offers and quote, V6-2) | 233-234 |
+| catalog | `s3:Put/Get/DeleteObject` on `media/*` and `private/*` of the media bucket; `cloudfront:CreateInvalidation` on this distribution; `cognito-idp:AdminGetUser` on this pool (staff MFA check, P-3); `sns:Publish` on the event topic; consume its queue | 235-239, 268-280 |
+| booking | `cognito-idp:AdminGetUser` on this pool (staff MFA check for the staff tools and evidence); since `7444e37`, `cognito-idp:ListUsers` on this pool (the staff case view finds a member by email, H-9); `sns:Publish` on the event topic; consume its queue | 240-244, 268-280 |
+| payments | `sns:Publish` on the event topic; consume its queue | 245, 268-280 |
+| notifications | `ses:SendEmail`/`SendRawEmail` only from `no-reply@<domain>`; `cognito-idp:AdminGetUser`, `ListUsers`, `AdminUserGlobalSignOut`, `AdminDeleteUser` on this pool; `sns:CreatePlatformEndpoint` on the push apps and publish/manage/delete `endpoint/*` (never the event topic); consume its queue | 246-253 |
 
 "Consume" is `sqs:ReceiveMessage`, `DeleteMessage`, `ChangeMessageVisibility`,
-`GetQueueAttributes` on that service's queue only (`ecs.tf:267-279`).
+`GetQueueAttributes` on that service's queue only (`ecs.tf:268-280`).
 Notifications does not publish events. Before the push apps exist,
 `CreatePlatformEndpoint` is scoped to any `app/*` in the account (`ecs.tf:8`).
 

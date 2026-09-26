@@ -6,9 +6,9 @@ Capacitor shells for the App Store and Google Play (ADR 0012). Where the two
 behave differently, the flow says so.
 
 This file describes the **committed code**. It was written against commit
-`ac716b5` on `prod-readiness` and last synced with the code as of `4e86866`
-(`7444e37`, `32338dd`, `22b5e0f` and `4e86866` since the previous sync at
-`2257182`). Numbers come from the code, and each has its
+`ac716b5` on `prod-readiness` and last synced with the code as of `9107ad2`
+(`e2e77ab`, `eaeb485`, `b5cdd93`, `ad9dee9` and `9107ad2` since the previous
+sync at `4e86866`). Numbers come from the code, and each has its
 source file next to it. If the code and this file disagree, the code wins, and
 this file needs fixing (see the last section).
 
@@ -80,7 +80,8 @@ The booking lifecycle diagram is in [section 7](#the-booking-lifecycle).
 | Settle a dispute between the two sides | 72 h from the dispute, and again from each new offer; then staff decide (10 min locally) | `booking/settings.py` `dispute_offer_minutes` |
 | A staff member refunds alone, in a dispute | up to EUR 250 (support) or EUR 2 500 (lead) in DE and AT, CHF 233 / 2 333 in CH; above it a second staff member approves | `markets.json` `refund_limit_support`, `refund_limit_lead` |
 | Report a late return | within 24 h after the booked end; the first 30 min are free; the rest at the hourly rate (quarter hours), plus a fee of one hour's rate capped at EUR 50 (CHF 47) (locally from the hand-over; the app is told by the booking's `lateReturnFrom`) | `booking/settings.py` `late_return_claim_hours`, `late_return_early_minutes`; `booking/support.py` `LATE_GRACE_MINUTES`; `markets.json` `late_fee_cap` |
-| Extend a booking | the time straight after, while it is on; up to 24 h (the app offers 1, 2 or 4) | `booking/support.py` `ExtendIn`, `BookingExtras.tsx` |
+| Extend a booking | the time straight after, while it is on; up to 24 h (the app offers 1, 2 or 4 within the listing's minimum and maximum, since `9107ad2`) | `booking/support.py` `ExtendIn`, `BookingExtras.tsx` |
+| Start times on a listing page | at most 28 starts a day, up to 500, two weeks of day chips (since `9107ad2`) | `web/src/data/repo.ts` `useOffers`, `Listing.tsx`; `perDay` in `matching/routes.py` |
 | Listings outside an open market or the owner's country | held by an hourly job | `catalog/jobs.py` `hold_out_of_market_once` |
 | Platform fee | 15 %, inside the total | `matching/domain/pricing.py`, `web/src/domain/pricing.ts` |
 | New listings per owner per 24 h | 20 | `catalog/settings.py` `max_listings_per_day` |
@@ -288,6 +289,9 @@ On the Profile screen, **Sign out** (also on the onboarding screen):
 
 On the Profile screen, **Sign out everywhere**, then confirm:
 
+The confirm dialog says (since `9107ad2`) that every device "is signed out
+at once and stops getting notifications".
+
 1. `POST /me/sign-out-everywhere` (catalog service; at most 5 an hour, else
    429 with the reason) records that every token issued until now is void,
    and publishes `person.signed_out`. Catalog refuses those tokens at once;
@@ -353,7 +357,9 @@ profile exists. Web and app are the same.
    `district_not_in_country`, "Pick a district in your own country." since
    `4e86866`), and the demo world has Austrian (Wien, Graz, Linz, Salzburg,
    Innsbruck) and Swiss (Zürich, Genève, Basel, Bern, Lausanne) districts,
-   so every live country has some.
+   so every live country has some. Since `9107ad2` (V6-16) the picker names
+   each with its city where the name alone would not say ("Flon
+   (Lausanne)", "Lend (Graz)"; Berlin's districts stay bare), sorted.
 5. **What brings you to Cappy?**: Renting, Earning or Both (default Both). It
    is kept on the device (`intent`) and only decides where the person lands:
    **Earning** goes to `/earn` once, and the rest stay where they are. Nothing
@@ -413,8 +419,11 @@ the same. The phone layout has a bottom dock; the desktop has a header.
 2. **Free in the next 24 hours**:
    `GET /browse/spotlight?district&maxKm&withinHours=24&limit=60` (matching).
    It shows a rail of covers and the same set on the map.
-3. **Free text**: `GET /search?q&metro&limit=30` (catalog, trigram index). It
-   needs at least 3 characters ("Type at least 3 letters to search.").
+3. **Free text**: `GET /search?q&metro&limit=30` (catalog, trigram index),
+   scoped to the city (metro) being searched, so a Berlin search never finds
+   Amsterdam. It needs at least 3 characters ("Type at least 3 letters to
+   search."). Enter puts a touch keyboard away; with a mouse and keyboard
+   the field keeps focus (since `9107ad2`, V6-20).
 4. **What do you need?**: groups and categories. Choosing a category builds a
    *requirement*: hours or a batch quantity, district, radius and the next N
    days. `POST /matches {requirement, sort, limit: 50}` returns bookable
@@ -467,12 +476,16 @@ What the page shows, and the calls behind it:
 - The listing, its owner, district, upcoming windows and review summary:
   `GET /listings/{id}`. Reviews: `GET /listings/{id}/reviews?limit=100`.
 - **How long / how many**: duration chips between the listing's minimum and
-  maximum hours, or batch quantities.
+  maximum hours, or batch quantities. Since `9107ad2` (V6-3) the duration
+  being priced is always one of the chips, and selected.
 - **Pick a start**: `POST /quote` prices it and says how many hours it takes,
   then `GET /listings/{id}/offers?hours` lists the starts that fit around what
   is already booked. The day comes first, then the time; since `4e86866`
   every start of the day is shown (before, the first twelve, V5-9), and
-  every day chip carries its weekday. The page pre-selects the slot from the
+  every day chip carries its weekday. Since `9107ad2` (V6-23) the page asks
+  `limit=500&perDay=28`, at most 28 starts a day, so the day rail reaches
+  two weeks of days (before, 120 starts ran out after four or five days, and
+  the rail showed one week). The page pre-selects the slot from the
   results, else the soonest. A batch listing's quantity chips (since
   `4e86866`, V5-22) start at 1 and never pass the listing's `maxQuantity` or
   what the longest free window holds; a freight listing reads "{n} pallets
@@ -491,7 +504,8 @@ What the page shows, and the calls behind it:
   and is null until the owner has 3 answered or lapsed requests. Since
   `2257182` the page then says nothing about it; measured, it reads
   "Replies in ~{n} min · Answers {pct} % of requests". The owner's name
-  wraps instead of being cut short.
+  wraps instead of being cut short, and since `9107ad2` so does the rating
+  column (200 % text in French no longer scrolls the page sideways, V6-7).
 - **Where it is**: the district; a listing with a point has it snapped to
   about 500 m in the answer, and no postal code (M-6, `61b15b8`). Since
   `2257182` everyone but the owner is told "Approximate area. The exact
@@ -512,7 +526,8 @@ What the page shows, and the calls behind it:
 - *Paused, removed, taken down or held listing* (held for the price check or,
   since `22b5e0f`, for being outside an open market). `GET /listings/{id}`
   returns 404 and the page shows "not found". The owner can still open their own
-  held or paused listing (since `235eeaa`).
+  held or paused listing (since `235eeaa`). Staff open any listing in its
+  staff view instead (`/admin/listing/{id}`, [section 20](#staff-decide-admin)).
 - *Nothing free that long.* An empty state with **Try {min hours}**, or for
   a batch **Try {n} {unit}** with the largest batch the longest free window
   holds (since `2257182`, V4-14; no button when none fits). A batch listing
@@ -801,12 +816,15 @@ made, and "Answer {when}, or the request lapses".
 
 1. The owner picks a reason from four chips ("Already promised it to
    someone", "Turns out I need it then", "It needs a repair first", "Too short
-   notice for me"). The server needs a non-empty reason of up to 500
+   notice for me") and presses **Send decline** (on the booking page too
+   since `9107ad2`). The server needs a non-empty reason of up to 500
    characters.
 2. `POST /bookings/{id}/decline {reason}`. The booking becomes `declined`.
 3. Payments releases the hold.
 4. The renter gets "Declined: {title}. Nothing was charged." with, since
-   `22b5e0f`, "Reason: {reason}." on its own line (email, always; V5-16), and
+   `22b5e0f`, "Reason: {reason}." on its own paragraph with one full stop
+   (email, always; V5-16; a system reason such as "The listing was taken
+   down by Cappy" in the reader's language since `e2e77ab`), and
    sees the reason on the booking. Since `4e86866` both pages show
    "Reason: {reason}." on its own line above "The hold on the card is
    released; nothing was charged.", and only the renter's page offers **Find
@@ -872,9 +890,12 @@ the sweep has run.
   signed for 15 minutes and served by booking, never a public CDN address;
   the app re-reads the list every 10 minutes, and when a link has lapsed.
   Staff look at it first in a dispute.
-- The panel shows when each photo was uploaded, and says: "Found damage or a
-  problem? Report it before the booking is marked complete, at the latest 48
-  hours after it ends." On a completed booking it says instead "This booking
+- The panel shows when each photo was uploaded, and says to the renter:
+  "Found damage or a problem? Report it before the booking is marked
+  complete, at the latest 48 hours after it ends."; since `9107ad2` (V6-13)
+  the owner, who cannot report, reads "Found damage? Take photos when it
+  comes back: Cappy looks at them first if you get help with this booking."
+  On a completed booking it says instead "This booking
   is complete. Something still wrong? Get help with this booking below."
   (since `2257182`). When the sheet the app opened by itself at hand-over
   closes, focus moves to the photos panel (V4-22).
@@ -905,7 +926,11 @@ renter's word, or the sweep's.
 While a time booking is `accepted` or `active` and before its end, the
 renter's page shows "Need it longer? Ask for the time straight after, if it
 is free." with **Extend** (`Extend`, `BookingExtras.tsx`). The sheet **How
-much longer?** offers 1, 2 or 4 hours and **Book {duration} more and pay**.
+much longer?** offers 1, 2 or 4 hours and **Book {duration} more and pay**;
+since `9107ad2` (V6-4) only the lengths the listing takes (its minimum
+first, never above its maximum), so the plunge saw (2 hours at least)
+offers 2 and 4 hours, and a "not feasible" answer reads "That does not fit
+this listing. Pick a length or amount it takes."
 
 1. `POST /bookings/{id}/extend {hours}` (up to 24) with an
    `Idempotency-Key`. Booking makes a **new booking** of the same listing by
@@ -915,12 +940,21 @@ much longer?** offers 1, 2 or 4 hours and **Book {duration} more and pay**.
    booking is not on any more.").
 2. It goes the way of any booking: paid by card, confirmed at once for an
    instant-book listing ("Extended"), else a request the owner answers
-   ("Asked for more time"). The app opens the new booking.
+   ("Asked for more time"). The app opens the new booking, which since
+   `9107ad2` links back: "This extends your booking before it."
+3. Since `ad9dee9` (V6-22) an extension ends with its booking: when the
+   booking it extends is cancelled (a no-show too), a waiting extension is
+   declined with "The booking it extends was cancelled" (nothing was
+   charged) and a confirmed one is cancelled with a full refund; both sides
+   hear it through the usual notices.
 
 ### Late return (since `7444e37`, S-12)
 
 From the booked end until 24 hours after it, on an `active`, `completed` or
-`disputed` booking, the owner's page shows **Late return**: "Came back late?
+`disputed` booking, the owner's page shows **Late return** (since `b5cdd93`
+the app follows the booking's `lateReturnFrom`, which is the end deployed
+and, with the local `LATE_RETURN_EARLY_MINUTES`, as soon as it is handed
+over): "Came back late?
 Report it within 24 hours after the end. The first 30 minutes are free." with
 **Report a late return** (`LateReturn`, `BookingExtras.tsx`).
 
@@ -965,8 +999,18 @@ booking whose hand-over nobody marked (S-11).
    - Renter missing: nothing is refunded. The owner's share of what was kept
      is transferred and a fee invoice issued, unless payouts are switched off
      or there is a chargeback, in which case the event waits on its queue.
-4. The other side gets the generic "Cancelled: {title}" email (always sent).
-   Both see a banner: "Reported: … did not show up".
+4. Since `ad9dee9` (V6-11) both sides are told, by email always, plus push
+   and bell. Owner missing: the renter gets "Refunded: {title}… you get the
+   full price back ({amount})", the owner "Reported as a no-show: {title}…
+   it counts against your reliability. If this is wrong, tell us through
+   Get help on the booking." Renter missing: the owner gets "No-show
+   recorded: {title}… you are paid as for a late cancellation: nothing is
+   refunded.", the renter "Reported as a no-show: {title}… nothing is
+   refunded. If this is wrong, tell us through Get help on the booking."
+   Both see a banner: "Reported: … did not show up". A waiting or confirmed
+   extension of the booking ends with it ([Extend](#extend-since-7444e37-s-12)).
+   Payments records a renter no-show as `transferred` (paid out, nothing
+   refunded; since `b5cdd93`).
 5. An owner's no-show counts in their reliability rate. Three cancels or
    no-shows in 30 days put them in the staff queue (`reliability` notice).
 
@@ -1025,7 +1069,10 @@ reads **Cancel booking**.
    partial refund, the owner's share of what was kept is transferred and
    invoiced.
 4. The other side gets "Cancelled: {title}" (email always, plus push and
-   bell). The window is free again.
+   bell); since `ad9dee9` (V6-11) a renter whose confirmed booking the owner
+   cancelled gets "Cancelled by the owner: {title}… You get {amount} back to
+   your card." instead. The window is free again, and an extension of the
+   booking ends with it.
 5. An owner cancelling an `accepted` booking counts in their reliability rate
    and can flag them to staff.
 
@@ -1045,7 +1092,8 @@ reads **Cancel booking**.
 booked time has started, or from `active` at any time (since `42c777c`: an
 item handed over early can be reported at once, V4-3): **Report a problem**. The owner cannot
 open a dispute. Since `7444e37` the two sides first get 72 hours to settle it
-between them (S-21); then staff decide in the console at `/admin` and on the
+between them (S-21; `DISPUTE_OFFER_MINUTES`, 10 minutes on the local stack
+since `b5cdd93`); then staff decide in the console at `/admin` and on the
 case page `/admin/case/{id}`, which only staff accounts can use (the token's
 staff claim: the Cognito `admin` group by default, `STAFF_CLAIM` and
 `STAFF_VALUE`; leads also hold `admin-lead`). The server checks every call,
@@ -1065,8 +1113,8 @@ Locally MFA is not required (cognito-local has none).
    does 48 h after the end. If the server refuses, the sheet stays open with
    what was typed and an error toast (since `2257182`, V4-4).
 2. The booking becomes `disputed`, and its dispute row opens with a deadline
-   72 hours away. The captured money stays with Cappy: no payout, and **no
-   auto-complete**.
+   72 hours away (10 minutes locally). The captured money stays with Cappy:
+   no payout, and **no auto-complete**.
 3. The renter sees "Under review: … The payment is on hold" and gets "We
    received your report: {title}". The owner sees "{renter} reported a
    problem… Your payout is on hold" and gets "A problem was reported:
@@ -1085,37 +1133,49 @@ Locally MFA is not required (cognito-local has none).
    offer** opens "What should go back to the renter?" (**You get back** for
    the renter, **You give back** for the owner, between nothing and the
    price). `POST /bookings/{id}/dispute/offer {refundAmount}` puts it on the
-   table, replaces any earlier offer, and gives the other side 72 hours
-   again. The other side gets "An offer to settle: {title}… {amount} back to
+   table, replaces any earlier offer, and gives the other side the whole
+   window again. The other side gets "An offer to settle: {title}… {amount} back to
    the renter. Accept it, or make another offer, by {deadline}; after that
    we decide." (bell, push, email per setting). The app says "Offer sent.
-   {name} has 72 hours to answer".
+   {name} can answer until {day} {time}" (the server's `respondBy`, since
+   `9107ad2`, V6-5).
 5. The other side sees "{name} offers {amount} back to the renter · Of
-   {total}. The owner is paid the rest." and **Accept {amount}**, or makes
+   {total}. The owner is paid the rest." (the owner reads "You are paid the
+   rest." since `9107ad2`) and **Accept {amount}**, or makes
    another offer. `POST /bookings/{id}/dispute/accept {refundAmount}`: the
    amount must be the one on the table (else 409 `offer_changed`), and
    nobody accepts their own (403 `own_offer`). It is settled at once
    ("Agreed. The dispute is settled"; step 8).
 6. No agreement by the deadline: booking's sweep marks the dispute
    escalated, and both sides get "We are deciding now: {title}… There was no
-   agreement within 72 hours". The card then says "You did not agree within
-   72 hours, so Cappy’s staff decide now. You can still agree on an offer
-   until then."
+   agreement in time" (since `ad9dee9`; "within 72 hours" before). The card
+   then says "You did not agree in time, so Cappy’s staff decide now. You
+   can still agree on an offer until then." (since `9107ad2`).
 
 ### Staff decide (since `7444e37`, H-6 and H-9)
 
 7. The console (`/admin`) opens with **Cases**: disputed bookings (or
    **All**), escalated ones first, each with its status, price, time, the two
-   people, "Escalated to staff", the offer on the table, "Waiting for
-   approval" and open claims; a search by **Member id or email** and
+   people, "Escalated to staff" and the offer on the table (since
+   `9107ad2` only while the booking is disputed), "Waiting for approval" and
+   open claims ("1 open claim", "2 open claims"); a search by **Member id or email** and
    **Booking id**, and **Only with open claims** (`GET /admin/bookings`).
    A case opens `/admin/case/{id}` (`GET /admin/bookings/{id}/case`; opening
-   it is logged): the dispute banner ("Escalated: the parties did not agree
-   in 72 hours" or "In dispute", who reported what and when, the offer), the
-   renter and owner by name, **Decide the dispute**, the refund decisions,
-   the claims, the timeline, the **Conversation, as written** (what masking
-   hid, and "flagged: paying outside Cappy"), the **Hand-over photos** and
-   the **Payment**.
+   it is logged, and since `ad9dee9` opening it again within the minute is
+   the same log line; since `9107ad2` the page fetches it once per opening):
+   **Open the listing (staff view)** (since `eaeb485`, [section
+   20](#staff-decide-admin)), the dispute banner while the booking is
+   disputed ("Escalated: the parties did not agree in time" or "In
+   dispute", who reported what and when, the offer), the renter and owner
+   by name, **Decide the dispute**, the **Decisions** (called "Refund
+   decisions" before `9107ad2`), the claims, the timeline (each step by
+   renter, owner, "you" or "staff {id}", or **Cappy (automatic)** for a
+   payment result or a sweep, from the entry's `actorKind` since
+   `e2e77ab`), the **Conversation, as written** (what masking hid, and
+   "flagged: paying outside Cappy"), the **Hand-over photos** and the
+   **Payment** (status in payments' own words, "Paid out" for
+   `transferred`, and what was captured, refunded and paid out to the owner
+   as amounts, since `b5cdd93`).
    - **Decide the dispute**: **Refund the renter in full**, **Refund part of
      it** (an amount above nothing and below the price) or **Pay the
      owner**, a **Reason** (damage, no-show, not as described, late return,
@@ -1124,12 +1184,22 @@ Locally MFA is not required (cognito-local has none).
      refundAmount?, reasonCode, note}`. Within the staff member's limit for
      the market and role ([section 0](#0-the-numbers)) it is settled at once:
      "Decided. Both sides have been told". Above it: "Above your limit: it
-     waits for a second staff member", and nothing moves yet.
+     waits for a second staff member", and nothing moves yet. Since
+     `9107ad2` (V6-10) the form is then replaced by a **Decide** card: "A
+     proposal is waiting for a second staff member: {outcome · amount}.
+     Nothing else can be decided until it is approved, rejected or
+     withdrawn.", with **Withdraw my proposal** for its proposer.
    - **Waiting for approval** (on the console): each proposed refund with
-     who proposed it, **Open the case**, **Approve** and **Reject**, each
-     with a "Why" of at least 5 characters (`GET /admin/resolutions`,
-     `POST /admin/resolutions/{id}/approve` or `/reject`). The proposer
-     cannot decide their own (403 `four_eyes`); a support member cannot
+     the listing and owner (since `9107ad2`), who proposed it, **Open the
+     case**, **Approve** and **Reject**, each with a "Why" of at least 5
+     characters (`GET /admin/resolutions`, `POST /admin/resolutions/{id}/approve`
+     or `/reject`). The proposer's own card offers only **Open the case**
+     and **Withdraw my proposal** (since `eaeb485`; the server would answer
+     403 `four_eyes`). **Withdraw my proposal** (`POST
+     /admin/resolutions/{id}/withdraw`, since `e2e77ab`; only the proposer,
+     else 403 `not_yours`) marks it "Withdrawn by the proposer", says
+     "Withdrawn. You can decide the case again", and the case is open for a
+     new decision, so one staff member alone never leaves it stuck; a support member cannot
      approve above their own limit (403 `needs_lead`); a lead can. Rejecting
      leaves the booking in dispute for another decision; a second proposal
      while one waits is 409 `approval_pending`.
@@ -1146,14 +1216,23 @@ Locally MFA is not required (cognito-local has none).
      transferred and invoiced, and the owner gets "You have been paid".
    - Both sides get "Settled: {title}", with "You agreed a settlement:" or
      "Cappy decided:" and what happens to the money (always emailed, since
-     `22b5e0f`, V5-7). No "Cancelled" or "How was …?" follows a dispute.
+     `22b5e0f`, V5-7), and since `b5cdd93`, when staff decided, their note
+     as its own paragraph, "From Cappy's team: {note}", as written; since
+     `ad9dee9` the bell item keeps that paragraph too (V6-1). No
+     "Cancelled" or "How was …?" follows a dispute.
    - Both booking pages show **The reported problem was decided** with the
      outcome from their side ("You get {amount} back to your card, and the
      owner is paid the rest.", "It was decided in your favour: your payout
-     is on its way.", and so on; since `4e86866`).
+     is on its way.", and so on; since `4e86866`). Since `9107ad2` its
+     title is **You agreed on the reported problem** when the two sides
+     agreed, and a staff decision shows "From Cappy’s team: {note}" under it
+     (from the dispute's `staffNote`, `settledBy`, `outcome` and
+     `refunded`, since `ad9dee9`).
 9. A staff settlement is recorded as `by = support:{staff sub}` (the lake
    gets `by: "staff"`), the resolution with its reason, role and approver
-   in `booking_resolutions`, and the action in the staff **Audit log**.
+   in `booking_resolutions`, and the action in the staff **Audit log**
+   (since `ad9dee9` with its facts in `details` and only staff's note as the
+   statement; the lake keeps only what and when, since `b5cdd93`).
 
 Evidence photos (`GET /bookings/{id}/evidence` works for staff with MFA,
 not only the two sides; each read is logged since `7444e37`) and the message
@@ -1359,7 +1438,8 @@ in is the **Earn** tab (`/earn`; "List your first thing" when empty) or
    (optional)** (`maxQuantity`, since `22b5e0f`; for freight "How many pallet
    spaces you have free, say 2."), and freight asks for the **Vehicle** and
    **Pallets loaded per hour** instead of the machine and parts per hour
-   (`4e86866`, V5-22). The earnings box reads "for a booking of {duration},
+   (`4e86866`, V5-22), and **Loading time** and **Loading fee** instead of
+   Setup (`9107ad2`, V6-15). The earnings box reads "for a booking of {duration},
    after the 15% Cappy fee" in the reader's plural and percent format, and
    the payment note follows **Instant book** ("Buyers pay by card when they
    book…" when it is on, V5-21).
@@ -1401,7 +1481,23 @@ before the first completed job holds it again. The owner's Earn card shows
 "Waiting for a quick check". An edit that holds it says so too. Staff see the
 held listings in the console (`GET /admin/listings/held`) and approve them
 there; since `4e86866` each shows the owner's name, jobs done and year
-joined (V5-4).
+joined (V5-4), and since `b5cdd93` the rate in the listing's own currency
+(CHF for a Swiss one).
+
+**The staff view of a listing** (since `eaeb485`, V5-4; V6-2 in `9107ad2`).
+**Look at it** on a held card (or **Open the listing (staff view)** on a
+case) opens `/admin/listing/{id}` (`GET /admin/listings/{id}`), whatever the
+listing's state: the listing page, read-only, under a **Staff view ·
+{state}** banner ("Held: waiting for a quick check", "Live: everyone can
+see it", "Paused by its owner", "Taken down", "Deleted"), with the hold
+reason and how long it has been held, and **Approve** for an ordinary hold
+(never for one held for where it is). Staff also see the **Hand-over
+address** and the listing's reviews; there is no **Report** or **Block**
+and nothing can be booked. Prices and free starts come from staff's own
+`POST /admin/quote` and `GET /admin/listings/{id}/offers` (matching, held
+listings included); a listing nobody could book (paused, taken down,
+deleted, or held for where it is) shows no duration or start times. A
+non-staff account gets "Only for Cappy staff".
 
 **Held for where it is** (since `22b5e0f`, V5-1). An hourly job holds every
 live listing whose district is not in an open market (`market_not_live`) or
@@ -1508,6 +1604,13 @@ Locally, the fake provider makes every owner payable on their first booking.
   `GET /payments/invoices/{number}` (HTML, which needs the token). The web
   opens it in a new tab; the store apps hand it to the share sheet to print,
   save or mail.
+- Since `ad9dee9` (V6-21) the invoice page is in the app's language (the
+  request's `Accept-Language`: English, German or French; German without
+  one): "Invoice" / "Rechnung" / "Facture", the service named by the listing
+  ("Platform fee for {title}"), the booking id on a "Booking reference"
+  line, amounts in the language's format ("€6.00", "6,00 €"), and the
+  German issuer's VAT ID and tax number in every language. Before, it was
+  always German and named the booking id as the service.
 
 ---
 
@@ -1525,15 +1628,18 @@ Profile screen under **Notifications**.
 | to `accepted` | renter | "Confirmed: …" | **always** | per setting | yes |
 | instant book (`awaiting_payment` to `accepted`) | owner | "New booking: … booked instantly" | **always** | per setting | yes |
 | to `declined` | renter | "Declined: … Nothing was charged." and "Reason: …" (since `22b5e0f`) | **always** | per setting | yes |
-| to `cancelled` | the side that did not cancel (the renter when staff or the system did) | "Cancelled: …" | **always** | per setting | yes |
+| to `cancelled` | the side that did not cancel (the renter when staff or the system did), except the two cases below | "Cancelled: …" | **always** | per setting | yes |
+| to `cancelled` by the owner from `accepted` (since `ad9dee9`) | renter | "Cancelled by the owner: … You get {amount} back to your card." | **always** | per setting | yes |
+| a no-show: the owner did not come (since `ad9dee9`) | renter; owner | "Refunded: …" with the full price; "Reported as a no-show: …", counts against their reliability, contest through Get help | **always** | per setting | yes |
+| a no-show: the renter did not come (since `ad9dee9`) | owner; renter | "No-show recorded: …", paid as for a late cancellation; "Reported as a no-show: …", nothing refunded, contest through Get help | **always** | per setting | yes |
 | to `expired` from `requested` | renter | "Expired: … Nothing was charged." | **always** | per setting | yes |
 | to `completed` | renter | "How was …? Rate it" | per setting | per setting | yes |
 | to `payment_failed` | renter; the owner too when it failed after they accepted | "Payment failed: … Nothing was taken." | **always** | per setting | yes |
 | to `disputed` | owner | "A problem was reported: … Your payout waits" | **always** | per setting | yes |
 | to `disputed` | renter | "We received your report: …" | **always** | per setting | yes |
 | a dispute offer (`booking.dispute_offer`, since `7444e37`) | the other side | "An offer to settle: … by {deadline}" | per setting | per setting | yes |
-| no agreement in 72 h (`booking.notice` `dispute_escalated`, since `22b5e0f`) | both | "We are deciding now: …" | per setting | per setting | yes |
-| a dispute settled (`dispute_refunded`, `dispute_partial`, `dispute_owner_paid`, since `22b5e0f`) | both | "Settled: …" with "You agreed a settlement:" or "Cappy decided:" and the amount | **always** | per setting | yes |
+| no agreement in time (`booking.notice` `dispute_escalated`, since `22b5e0f`) | both | "We are deciding now: … There was no agreement in time" | per setting | per setting | yes |
+| a dispute settled (`dispute_refunded`, `dispute_partial`, `dispute_owner_paid`, since `22b5e0f`) | both | "Settled: …" with "You agreed a settlement:" or "Cappy decided:" and the amount, and staff's note ("From Cappy's team: …", since `b5cdd93`; in the bell too since `ad9dee9`) | **always** | per setting | yes |
 | a late return reported (`claim_filed`, since `22b5e0f`) | renter | "A late return was reported: … Nothing is charged" | per setting | per setting | yes |
 | a late-return claim decided (`claim_confirmed`, `claim_rejected`, since `22b5e0f`) | both | "Late return: our decision on …" | **always** | per setting | yes |
 | payout sent | owner | "You have been paid {amount}"; "Your share for {title}, {start}…" since `22b5e0f` | per setting | per setting | yes |
@@ -1549,9 +1655,15 @@ The `payment_failed`, `disputed` and message emails are new in `235eeaa`
 was …?"). The moderation decision texts include "We removed
 something you wrote" for a removed message or review.
 
-- **Language**: each person's Cognito `locale`: German for any `de…`, French
-  for any `fr…` (one neutral French for France and Québec, since `235eeaa`),
-  English otherwise. The bell re-renders each item in the language it is read
+- **Language**: the reader's own, never the triggering person's (since
+  `ad9dee9`, V6-6): the app locale the bell last saw from that person, else
+  their Cognito `locale`. German for any `de…`, French for any `fr…` (one
+  neutral French for France and Québec, since `235eeaa`), English
+  otherwise; the dates follow the full locale, so an `en-US` owner reads
+  "3:00 PM" even when an `en-GB` renter caused the mail. Words the server
+  makes (a system decline reason, the default DSA clause, "your booking")
+  are translated too, and French text has a no-break space before ":" and
+  a narrow one before "; ? !" (since `e2e77ab` and `ad9dee9`). The bell re-renders each item in the language it is read
   in, with the same three languages. Amounts are written in the booking's
   currency in the reader's format. The bell keeps items for 12 months;
   older ones are deleted hourly (since `747ed6b`).
@@ -1591,7 +1703,9 @@ focus. Opening the screen marks what is on it read after 1.5 s; **Mark all as
 read** is also there. An item shows the first paragraph of its text; a
 decision about the reader's own content or account (taken down, suspended,
 removed) shows the whole statement of reasons, with its line breaks (since
-`22b5e0f` and `4e86866`, V5-31). Tapping an item opens its screen inside the app. Links
+`22b5e0f` and `4e86866`, V5-31); a settled dispute also shows staff's note
+(since `ad9dee9`). Reading the bell remembers the app's locale for the
+person's emails. Tapping an item opens its screen inside the app. Links
 that point off the app are never followed.
 
 ### In the store apps
@@ -1675,12 +1789,20 @@ Art. 16).
 5. Every staff action is written to the one audit log (`GET /admin/audit`),
    since `7444e37` also the dispute resolutions, approvals and rejections,
    claim decisions, and staff opening a case or looking at hand-over photos
-   (booking sends them as `staff.action`). The console's **Audit log** (since
+   (booking sends them as `staff.action`), and since `e2e77ab` withdrawn
+   proposals ("Withdrew a refund proposal"). The console's **Audit log** (since
    `4e86866`) is paged (**Older**) and filters by **About (booking, listing
    or person id)** and **By (staff id)**; entries read in words ("Resolved a
    dispute · Booking …", "Opened a case", "by you", "by staff 1a2b3c4d"), a
    booking's id links to its case page, and the server's own statements
-   ("Checked and approved") read in the app's language (V5-18). The DSA
+   ("Checked and approved") read in the app's language (V5-18). Since
+   `9107ad2` (V6-9) a booking action reads in words from its `details`:
+   listing · outcome · money · reason, then staff's note ("Table saw ·
+   Refund the renter in full · €15.00 · Not as described. The motor fault
+   is on video."); older rows have their machine line read into the same
+   words, and bare echoes ("withdrew rs_…", "opened the case view") show
+   nothing. Opening a case twice within a minute is one line
+   (`ad9dee9`). The DSA
    transparency figures for a month come from `GET /admin/dsa-stats?month=`.
 6. Six months after a decision (183 days) the report forgets who made it:
    their id, email and words go; the case and the decision stay (since
@@ -1973,6 +2095,20 @@ items in TASKS):
   shared env block of `compose.yaml`, so every service asks cognito-local.
 - ~~**Leads have no group in Terraform.**~~ `aws_cognito_user_group.admin_lead`
   in `infra/platform/identity.tf`.
+
+Found in the `9107ad2` pass (no task yet):
+
+- **"Signed out at once."** Since `9107ad2` the sign-out-everywhere dialog
+  says every device "is signed out at once". Catalog refuses the old tokens
+  at once, but booking, payments and notifications only once
+  `person.signed_out` reaches them (seconds), matching (browse and search)
+  accepts an access token until it expires (at most 15 minutes), and on
+  the local stack another device that refreshes carries on (GD-4)
+  ([section 3](#sign-out-everywhere)).
+- **Day chips in UTC.** `perDay` counts starts per UTC day
+  (`offers_for`, a `ponytail:` note), so for a listing whose evening starts
+  cross midnight UTC the cap can split one local day's starts across two.
+
 ---
 
 ## 24. How to keep this file true

@@ -23,8 +23,9 @@ Everything here runs on one computer. **Nothing is ever run against real AWS
 or any real cloud account** (GOAL 12). No staging or production environment
 exists yet: the Terraform for them is only validated, never applied.
 
-Last synced with the code as of `4e86866` (`7444e37`, `32338dd`, `22b5e0f`
-and `4e86866`).
+Last synced with the code as of `9107ad2` (`e2e77ab`, `eaeb485`,
+`b5cdd93`, `ad9dee9` and `9107ad2`; the guide items V6-25, V6-26 and V6-27
+from verification round 6).
 
 ## Contents
 
@@ -167,7 +168,9 @@ Be aware:
 - **The "Continue as demo …" buttons** (**Continue as demo host**,
   **Continue as demo buyer**, **Continue as demo host 2 (new owner)**, **Continue as demo
   staff**) appear under the
-  sign-in form only when the build has `VITE_DEMO_ACCOUNTS`. Only the local
+  sign-in form only when the build has `VITE_DEMO_ACCOUNTS`. Since
+  `9107ad2` they are translated too (German "Weiter als Demo-Anbieter 2
+  (neu)", French "Continuer avec le compte …"). Only the local
   bootstrap writes that setting (into `.local/web.env`, which `make up` copies
   to `web/.env.development.local`), so a deployed build never has them.
 - **After a bootstrap re-run.** `make up` does the copy for you (`Makefile`,
@@ -397,7 +400,8 @@ Use a fresh Incognito window (so the app thinks this is a first visit).
       offers only Germany, Austria and Switzerland, named in the app's
       language, and starts at your device's country if it is one of them
       (else the first). Pick Switzerland. **Expect:** **Where are you?** lists
-      only that country's districts: since `7444e37` Zürich-Kreis 5,
+      only that country's districts, each with its city where the name
+      alone would not say it (since `9107ad2`): since `7444e37` Zürich-Kreis 5,
       Plainpalais (Genève), Kleinbasel (Basel), Länggasse (Bern) and Flon
       (Lausanne); for Austria Neubau (Wien), Lend (Graz), Urfahr (Linz),
       Salzburg-Altstadt and Wilten (Innsbruck). Pick Germany again.
@@ -441,6 +445,18 @@ Use a fresh Incognito window (so the app thinks this is a first visit).
       put English (United States) first), look at times. **Expect:** "5:00
       PM", no leading zero; in German and French, 24-hour times. Emails to
       an `en-US` account read "Sat, Sep 26, 2:00 PM" (since `42c777c`).
+- [ ] **Each reader's own locale** (since `ad9dee9`). Buyer's browser on
+      English (United Kingdom), host's on English (United States); each
+      opens the bell once (that is when the app's locale is remembered).
+      The buyer requests the plunge saw. **Expect:** the host's "New
+      request" email reads "3:00 PM" style, and a mail the host causes for
+      the buyer (accept, an offer) reads "Sat 3 Oct, 15:00" style: always
+      the reader's format, never the sender's.
+- [ ] In French, emails put a no-break space before ":" and a narrow one
+      before ";", "?" and "!" (as in "Refusée : …" and the offer mail's
+      "… ; ensuite, c’est nous qui décidons"), and never two full stops
+      after a reason. They say « la
+      personne locataire » throughout (since `e2e77ab` and `ad9dee9`).
 
 ### 3. Browse and search
 
@@ -450,7 +466,10 @@ As the demo buyer.
       on the map, starting from Kreuzberg.
 - [ ] Type two letters in search. **Expect:** "Type at least 3 letters to
       search." Type `saw`. **Expect:** matching listings, including the
-      plunge saw.
+      plunge saw. Search looks only in the city you are in (the place in
+      the header). On a desktop, press Enter. **Expect:** the cursor stays
+      in the field and you can type on (since `9107ad2`; on a phone Enter
+      puts the keyboard away).
 - [ ] Pick a category (for example Workshop & tools). Set hours, district and
       radius. **Expect:** bookable times, never starting sooner than 5
       minutes from now locally (2 hours deployed; see
@@ -485,7 +504,12 @@ As the demo buyer, open the plunge saw (`/listing/l9`).
       updates; only free starts are offered, and **every** start of the day
       (since `4e86866`: with 2 hours on a day open until 22:00, 20:00 is
       there; before, the chips stopped after twelve). Each day chip carries
-      its weekday, also after the first week.
+      its weekday, also after the first week. Since `9107ad2` the day chips
+      reach **two weeks** ahead (before, they stopped after four or five
+      days), so next weekend can be picked.
+- [ ] The duration being priced is always a selected chip (since
+      `9107ad2`): on the photo studio (2 to 10 hours) the chips include the
+      duration the price and the sticky bar name, selected.
 - [ ] The host card's response time. The seeded owners start with the
       response time in the demo data (the plunge saw's host: "Replies in ~12
       min"). Once booking has measured an owner (after their first answer or
@@ -504,6 +528,9 @@ As the demo buyer, open the plunge saw (`/listing/l9`).
 - [ ] Tap the heart. **Expect:** it fills at once; the listing appears under
       Saved on your profile. Tap again to remove it.
 - [ ] **Report** and **Block** are on the page (tested in scripts 18 and 13).
+- [ ] At 200 % text on a phone-sized window in French (A7), **Expect:** no
+      sideways scrolling; the host card's rating column wraps (since
+      `9107ad2`).
 - [ ] As the demo host, open the same listing. **Expect:** "This is your
       listing" and no book button.
 - [ ] Open `/listing/does-not-exist`. **Expect:** a "not found" page.
@@ -580,8 +607,9 @@ Use two windows: buyer and host.
 - [ ] Host: **Edit** the listing's hand-over address after accepting. Buyer:
       reload the booking. **Expect:** the new address (since `42c777c`: it is
       read live while the booking is accepted or in progress).
-- [ ] Make a second request. Host: **Decline**, pick a reason chip, **Send
-      decline**. **Expect:** both pages show "Reason: It needs a repair
+- [ ] Make a second request. Host: **Decline** (on Earn or on the booking
+      page), pick a reason chip, **Send decline** (the booking page's
+      button says so too since `9107ad2`). **Expect:** both pages show "Reason: It needs a repair
       first." on its own line above "The hold on the card is released;
       nothing was charged.", and only the buyer's offers **Find another**
       (since `4e86866`); the buyer's bell and email end with "Reason: …"
@@ -633,10 +661,19 @@ needs another 30 minutes of waiting.
 - [ ] Buyer, after the start, nobody marked the hand-over: **… did not show
       up**, confirm. **Expect:** the sheet says you get everything back and it
       counts against the host. The booking is cancelled with "Reported: … did
-      not show up".
+      not show up". **Expect** (emails, since `ad9dee9`): the buyer gets
+      "Refunded: …" with "you get the full price back (€…)"; the host gets
+      "Reported as a no-show: …", that it counts against their reliability,
+      and "If this is wrong, tell us through Get help on the booking."
 - [ ] On another booking, host, from 30 minutes after the start: **… did not
       show up**. **Expect:** the sheet says the renter gets nothing back and
-      you are paid.
+      you are paid. The host gets "No-show recorded: …" ("you are paid as for
+      a late cancellation: nothing is refunded."), the buyer "Reported as a
+      no-show: …" with "nothing is refunded" and how to contest. In the
+      staff case, **Payment** reads "Paid out", with nothing refunded.
+- [ ] A booking with an extension waiting (script 27): report the no-show
+      on the first booking. **Expect:** the extension is declined with "The
+      booking it extends was cancelled" (since `ad9dee9`).
 - [ ] After 2 hours: **Expect:** the button is gone; the buyer's route is
       **Report a problem**.
 
@@ -650,7 +687,9 @@ needs another 30 minutes of waiting.
       are off, so every cancellation refunds in full). Confirm with **Yes,
       withdraw**.
 - [ ] Host, on an accepted booking: **Cancel booking** → **Yes, cancel it**.
-      **Expect:** the buyer gets "Cancelled: …" and a full refund.
+      **Expect:** the buyer gets "Cancelled by the owner: …", "The owner
+      cancelled your booking of … You get €… back to your card." (since
+      `ad9dee9`), and a full refund.
 - [ ] After the start: **Expect:** no cancel button; the buyer sees **Report a
       problem** instead.
 - [ ] Handed over before the start (tap **I have handed it over** early):
@@ -834,6 +873,13 @@ Austria, CHF 95 in Switzerland.
       `42c777c`): a business's own address, or for a private host the address
       the payout provider verified; with the fake provider that is
       "Musterstraße 1, 10115 Berlin, DE (test)".
+- [ ] **The invoice in the app's language** (since `ad9dee9`). With the app
+      in English, open an invoice. **Expect:** "Invoice", "Platform fee for
+      {listing title}", a separate "Booking reference: bk_…" line, amounts
+      like "€6.00", and "VAT ID (USt-IdNr.)" and "Tax number (Steuernummer)"
+      in the issuer block. Switch to French: "Facture", "Référence de
+      réservation", "6,00 €". German: "Rechnung", "Vermittlungsgebühr für
+      …".
 - [ ] Stripe mode: **Set up payouts** creates the Stripe account in the
       profile's country (since `2257182` the app sends it; every demo host is
       German).
@@ -852,7 +898,8 @@ Austria, CHF 95 in Switzerland.
       still arrive: confirmations, declines, cancellations, failed payments
       and disputes are always emailed, because they are records of a contract
       or money; since `22b5e0f` also how a dispute was settled ("Settled: …")
-      and a late-return decision.
+      and a late-return decision, and since `ad9dee9` the no-show notices and
+      "Cancelled by the owner: …".
 - [ ] A removal notice in the bell (a message or review of yours removed by
       staff, script 19). **Expect** (since `22b5e0f` and `4e86866`) the whole
       statement: what was removed, why, the ground and how to contest, on
@@ -914,9 +961,21 @@ reports queue, held listings, **Act directly** and the **Audit log**.
       message, and keep accepted bookings.
 - [ ] **Waiting for a check**: approve a held listing (script 15). Each card
       shows the title, the rate, how long it has waited and the owner's name,
-      jobs done and year joined (since `4e86866`). On a clean rebuild the
-      second host's *Photo studio with daylight wall* waits here. **Approve**
-      it. **Expect:** "Approved: it is live now"; the
+      jobs done and year joined (since `4e86866`), the rate in the
+      listing's own currency (since `b5cdd93`), and **Look at it**.
+- [ ] **The staff view** (since `eaeb485`, reworked in `9107ad2`). On the
+      held *Photo studio with daylight wall* (second host, waiting after a
+      clean rebuild), **Look at it**. **Expect:** `/admin/listing/<id>`: the
+      listing page under a banner **Staff view · Held: waiting for a quick
+      check** with "Held … ago" and **Approve**; a **Hand-over address**
+      card; its reviews, if it has any; its real free starts for Monday to Friday, 09:00 to
+      18:00 (not "Nothing free that long") and a price; no **Report**, no
+      **Block**, and no way to book. On one of the 29 held for where they
+      are (script 28), **Expect:** the reason ("In a country where Cappy is
+      not open yet"), no **Approve**, and no durations or start times. As the
+      demo buyer, the same address says "Only for Cappy staff".
+- [ ] Back on **Waiting for a check**, **Approve** the studio (or approve it
+      from its staff view). **Expect:** "Approved: it is live now"; the
       buyer finds it and can book it Monday to Friday, 09:00 to 18:00, for
       the next eight weeks; as host2, **Edit** shows "Repeats every week". It
       stays approved until the next `make clean`.
@@ -929,8 +988,14 @@ reports queue, held listings, **Act directly** and the **Audit log**.
       decided on the case page, script 24).
 - [ ] **Audit log**: every staff action, in every service, newest first, in
       words ("Taken down · Listing", "Resolved a dispute · Booking …",
-      "Opened a case", "Looked at hand-over photos"; "by you", or "by staff"
-      and the first 8 characters of their id). A booking's id links to its
+      "Opened a case", "Looked at hand-over photos", "Withdrew a refund
+      proposal"; "by you", or "by staff" and the first 8 characters of their
+      id). Since `9107ad2` a booking action's line reads the listing, the
+      outcome, the money and the reason in words, then the note ("Bandsaw
+      and bench… · Refund part of it · €5.00 · Damage. The photos show…"),
+      never "partial 500 EUR (damage)" or "withdrew rs_…", and one visit to
+      a case is one "Opened a case" (twice within a minute is one line,
+      since `ad9dee9`). A booking's id links to its
       case. Type an id under **About (booking, listing or person id)** and
       **Filter**: only that target's entries. **Older** loads the next page
       (since `4e86866`). In German, the approve statement reads in German,
@@ -962,8 +1027,10 @@ Use a **fresh** account for deletion.
 ### 21. Sign out everywhere
 
 - [ ] Sign in as the same fresh account in two browsers.
-- [ ] In one: Profile → **Sign out everywhere** → confirm. **Expect:** that
-      browser is signed out with "Signed out on every device", and its old
+- [ ] In one: Profile → **Sign out everywhere**. **Expect:** the dialog
+      says every phone, tablet and browser "is signed out at once and stops
+      getting notifications" (since `9107ad2`; before, "within an hour").
+      Confirm. **Expect:** that browser is signed out with "Signed out on every device", and its old
       token is refused at once (since `42c777c` the check is exact to the
       moment, not the second).
 - [ ] The other browser, on its next action. **Deployed**, it is signed out.
@@ -1005,6 +1072,10 @@ scripts 1 to 22 again at 390 × 844 and check:
 - [ ] No sideways scrolling on any screen, in all three languages (German
       words are long).
 - [ ] Text and buttons are big enough to tap.
+- [ ] At 200 % text (the browser's text size, or Dynamic Type in the app),
+      in French: **Expect:** no sideways scroll on a listing, and the dock
+      turns to icons only, also when the text size changes after the page
+      has loaded (since `9107ad2`).
 
 ### 24. The staff case view and resolving a dispute
 
@@ -1033,26 +1104,30 @@ limit is €2 500.
 - [ ] As `staff@demo.cappy.local`, open the console. **Expect:** **Cases**
       at the top with **Disputed** selected: your disputed booking with its
       status, price, time, "Demo Buyer → Demo Host Two" (the two names) and
-      "changed … ago". An offer on the table shows "Offer on the table: …".
+      "changed … ago". An offer on the table shows "Offer on the table: …",
+      and "Escalated to staff" an escalated one; both only while the
+      booking is disputed (since `9107ad2`, a settled one shows neither).
 - [ ] Switch to **All**. **Expect:** every booking, most recently changed
       first, and **Next page** when there are more.
 - [ ] Paste the booking id (the end of its `/bookings/<id>` address) into
       **Booking id** and **Search**. **Expect:** that one case.
 - [ ] Type `buyer@demo.cappy.local` into **Member id or email** and
-      **Search**. **Expect:** the demo buyer's bookings on either side.
-      Locally this may fail with an error: booking looks the email up in the
-      sign-in service, and the local stack does not point booking at
-      cognito-local (only notifications gets `COGNITO_ENDPOINT_URL` in
-      `compose.yaml`). Note what you see; search by booking id instead.
+      **Search**. **Expect:** the demo buyer's bookings on either side
+      (works locally since `b5cdd93`: every service asks cognito-local).
 - [ ] Open the case (its title). **Expect:** `/admin/case/<id>` with the
-      status, time, price and id; a banner **In dispute** ("Reported by the
-      renter … ago: {reason}"); **People** (renter and owner by name);
-      **Decide the dispute**; **Timeline** (each step, by renter, owner or
-      staff); **Conversation, as written**, where contact details masked
-      before acceptance read in full; **Hand-over photos**; **Payment**.
-- [ ] **Audit log** on the console. **Expect:** "Opened a case · Booking …"
-      by you (every opening is logged, and so is looking at hand-over photos
-      as staff).
+      status, time, price and id; **Open the listing (staff view)** (script
+      19); a banner **In dispute** ("Reported by the renter … ago:
+      {reason}"); **People** (renter and owner by name); **Decide the
+      dispute**; **Timeline** (each step by renter, owner, "you" or "staff
+      …", and payment results and sweeps as **Cappy (automatic)**, never a
+      service name; since `eaeb485`); **Conversation, as written**, where
+      contact details masked before acceptance read in full; **Hand-over
+      photos**; **Payment** (status, amount, and what was captured,
+      refunded and paid out to the owner as money, since `b5cdd93`).
+- [ ] **Audit log** on the console. **Expect:** one "Opened a case ·
+      Booking …" by you for the visit (every opening is logged, and so is
+      looking at hand-over photos as staff; opening it again within a
+      minute adds no second line, since `ad9dee9`).
 
 **Within the limit: settled at once.**
 
@@ -1060,17 +1135,23 @@ limit is €2 500.
       it**. Type `20`. **Expect:** "More than nothing and less than €15.00."
       Type `5`. **Decide** stays greyed out until a **Reason** is chosen and
       **What you found** has at least 10 characters. Pick **Damage**, write
-      a note, **Decide**. **Expect:** "Decided. Both sides have been told";
-      under **Refund decisions** "Refund part of it · €5.00 · Done" with the
-      reason and "staff …".
-- [ ] **Expect** for both sides (bell and email, always emailed): "Settled:
-      Bandsaw and bench…", "Cappy decided: €5.00 goes back to the renter,
-      and the owner is paid for the rest." No "Cancelled" and no "How was
-      …?". Host2 gets "You have been paid €8.50" (their 85 % of the €10
-      kept). Both booking pages show **The reported problem was decided**
-      ("You get €5.00 back to your card, and the owner is paid the rest." /
-      "The renter gets €5.00 back, and you are paid the rest."). The case's
-      **Payment** status reads "Partly refunded".
+      a note such as "The photos show a bent fence; a small refund is
+      fair.", **Decide**. **Expect:** "Decided. Both sides have been told";
+      under **Decisions** (since `9107ad2`; "Refund decisions" before)
+      "Refund part of it · €5.00 · Done" with the reason, "you" and your
+      note.
+- [ ] **Expect** for both sides (always emailed): "Settled: Bandsaw and
+      bench…", "Cappy decided: €5.00 goes back to the renter, and the owner
+      is paid for the rest.", then "From Cappy's team: The photos show a
+      bent fence; …" as its own paragraph (email since `b5cdd93`; the bell
+      item carries the note too since `ad9dee9`). No "Cancelled" and no
+      "How was …?". Host2 gets "You have been paid €8.50" (their 85 % of the
+      €10 kept). Both booking pages show **The reported problem was
+      decided** ("You get €5.00 back to your card, and the owner is paid the
+      rest." / "The renter gets €5.00 back, and you are paid the rest.") and
+      under it "From Cappy’s team: The photos show…" (since `9107ad2`). The
+      case's **Payment** status reads "Partly refunded", with €15.00
+      captured, €5.00 refunded and €8.50 paid out to the owner.
 - [ ] On another disputed booking, **Pay the owner**. **Expect:** completed;
       the renter's banner says it was decided in the owner's favour, the
       owner's that the payout is on its way. **Refund the renter in full**
@@ -1080,19 +1161,32 @@ limit is €2 500.
 
 - [ ] On the €320 studio booking, as `staff@demo.cappy.local`: **Refund the
       renter in full**, a reason and a note, **Decide**. **Expect:** "Above
-      your limit: it waits for a second staff member"; the decision reads
-      "Waiting for a second staff member"; nothing is refunded yet; the case
-      card on the console says "Waiting for approval".
-- [ ] **Decide** again on the same case. **Expect:** "A refund for this
-      booking is already waiting for approval."
-- [ ] On the console, **Waiting for approval** lists it ("proposed by you").
-      **Approve**, with a **Why** of at least 5 characters. **Expect:** "A
-      second staff member has to approve a refund you proposed."
+      your limit: it waits for a second staff member"; under **Decisions**
+      "Refund the renter in full · €320.00 · Waiting for a second staff
+      member" with "you" and **Withdraw my proposal**; nothing is refunded
+      yet; the case card on the console says "Waiting for approval".
+- [ ] **The Decide lock** (since `9107ad2`). **Expect:** in place of the
+      form, a **Decide** card: "A proposal is waiting for a second staff
+      member: Refund the renter in full · €320.00. Nothing else can be
+      decided until it is approved, rejected or withdrawn.", with
+      **Withdraw my proposal**. No other decision can be sent.
+- [ ] On the console, **Waiting for approval** lists it with the listing
+      and the owner ("Photo studio with daylight wall · …", since
+      `9107ad2`) and "proposed by you". **Expect:** only **Open the case**
+      and **Withdraw my proposal**: you cannot approve your own proposal
+      (since `eaeb485`; the server would refuse it with "A second staff
+      member has to approve a refund you proposed.").
+- [ ] **Withdraw my proposal** (since `e2e77ab`/`eaeb485`). **Expect:**
+      "Withdrawn. You can decide the case again"; it leaves **Waiting for
+      approval**; on the case its decision reads "Withdrawn by the
+      proposer" and the **Decide the dispute** form is back. Propose it
+      again for the next step.
 - [ ] As the lead, **Waiting for approval** → **Approve** with a why.
       **Expect:** "Approved. The money moves now"; the booking is cancelled
       and refunded in full; both sides get "Settled: … Cappy decided: the
-      renter gets the full price back (€320.00)"; the decision reads "…
-      Done · approved by staff …".
+      renter gets the full price back (€320.00)" and the note under "From
+      Cappy's team:" (the proposer's note); the decision reads "… Done ·
+      approved by staff …" (as the lead: "approved by you").
 - [ ] Propose another over-limit refund, and as the lead **Reject** it.
       **Expect:** "Rejected. The booking stays in dispute", and a new
       decision can be made.
@@ -1102,9 +1196,12 @@ limit is €2 500.
       it."
 - [ ] As the lead, decide a €320 refund yourself. **Expect:** settled at
       once (within the lead's €2 500).
-- [ ] **Audit log**: "Proposed a refund", "Approved a refund", "Rejected a
-      refund", "Resolved a dispute", each with who and when; the statement
-      names the outcome, the amount, the reason and your note.
+- [ ] **Audit log**: "Proposed a refund", "Withdrew a refund proposal",
+      "Approved a refund", "Rejected a refund", "Resolved a dispute", each
+      with who and when, and in words (since `9107ad2`): the listing, the
+      outcome, the money and the reason, then the note ("Photo studio with
+      daylight wall · Refund the renter in full · €320.00 · Damage. …").
+      No machine text such as "refund_buyer 32000 EUR (damage)".
 
 ### 25. Dispute offers between the two sides
 
@@ -1113,12 +1210,15 @@ windows.
 
 - [ ] Both pages. **Expect:** **Settle it between you**: "Agree on what goes
       back to the renter, and it is settled at once. Otherwise Cappy decides
-      {when}." (about three days from the report) and **Make an offer**.
+      {when}." (in about 10 minutes locally, about three days deployed; one
+      full stop, also in German) and **Make an offer**.
 - [ ] Buyer: **Make an offer**. **Expect:** a sheet "What should go back to
       the renter?", the field **You get back**, "Of €15.00. The owner is paid
       the rest." Type `20`. **Expect:** "Between nothing and €15.00." and
       the button greyed out. Type `10`, **Offer €10.00**. **Expect:** "Offer
-      sent. Demo has 72 hours to answer" (the other side's first name), and
+      sent. Demo can answer until {day} {time}" (the other side's first name
+      and the real deadline, about 10 minutes away locally; since
+      `9107ad2`), and
       "Your offer · €10.00 back to the renter … Waiting for Demo.", with no
       **Accept** for your own offer.
 - [ ] Host2: **Expect:** a bell item (and an email, per the Bookings
@@ -1126,35 +1226,40 @@ windows.
       renter. Accept it, or make another offer, by {date and time}; after
       that we decide." On the page (within 15 seconds): "Demo offers €10.00
       back to the renter" and **Accept €10.00**.
-- [ ] Host2: **Make another offer** (the field reads **You give back**), €6.
-      **Expect:** the buyer's page shows host2's offer instead, and the 72
-      hours start again.
+- [ ] Host2: **Make another offer** (the field reads **You give back**, and
+      "Of €15.00. You are paid the rest.", since `9107ad2`), €6.
+      **Expect:** the buyer's page shows host2's offer instead, and the
+      window starts again.
 - [ ] Stale offer: with the buyer's page open, host2 offers €7; before the
       buyer's page refreshes (15 s), the buyer taps **Accept €6.00**.
       **Expect:** "The offer changed a moment ago. Look at the new one."
 - [ ] Buyer: **Accept €7.00**. **Expect:** "Agreed. The dispute is
       settled"; the booking completes; both get "Settled: …", "You agreed a
       settlement: €7.00 goes back to the renter, and the owner is paid for
-      the rest." (always emailed); both pages show **The reported problem was
-      decided**. In the staff case, the decision reads "agreed by the
-      parties".
+      the rest." (always emailed); both pages show **You agreed on the
+      reported problem** (since `9107ad2`; staff decisions keep **The
+      reported problem was decided**). In the staff case, the decision reads
+      "agreed by the parties", and on the console's **All** the case no
+      longer shows "Offer on the table".
 - [ ] An offer of €0 (nothing back) or of the whole €15 also settles: paying
       the owner in full, or cancelling with a full refund.
 - [ ] **Escalation**: locally the window is 10 minutes (`DISPUTE_OFFER_MINUTES`
-      in `compose.yaml`; 72 hours deployed, and the texts always say 72
-      hours). Wait 10 minutes after the report or the last offer, then within a
-      sweep (seconds) both sides get
-      "We are deciding now: …", the card reads "You did not agree within 72
-      hours, so Cappy’s staff decide now. You can still agree on an offer
+      in `compose.yaml`; 72 hours deployed). No text names a fixed number of
+      hours any more (since `ad9dee9` and `9107ad2`). Wait 10 minutes after
+      the report or the last offer, then within a sweep (seconds) both sides
+      get "We are deciding now: …" ("There was no agreement in time, so
+      Cappy now looks at what happened…"), the card reads "You did not agree
+      in time, so Cappy’s staff decide now. You can still agree on an offer
       until then.", and the console lists the case first with "Escalated to
-      staff" and the banner "Escalated: the parties did not agree in 72
-      hours".
+      staff" and the banner "Escalated: the parties did not agree in
+      time".
 
 ### 26. Late return
 
 Deployed, the owner reports it after the booked end. Locally
 `LATE_RETURN_EARLY_MINUTES` opens it as soon as the booking is handed over, so
-nobody waits for the end. Use the bandsaw (instant book, 1 hour, €15 an hour,
+nobody waits for the end (the app follows the booking's `lateReturnFrom`,
+since `b5cdd93`). Use the bandsaw (instant book, 1 hour, €15 an hour,
 open every day 08:00 to 22:00):
 
 1. As the buyer, book it for **1 hour** starting about 5 minutes from now.
@@ -1179,7 +1284,8 @@ open every day 08:00 to 22:00):
 - [ ] Host2 again. **Expect:** no second report button (one late return per
       booking).
 - [ ] Staff: on the console, **All** and **Only with open claims**.
-      **Expect:** the booking with "1 open claims". Open it: **Claims**,
+      **Expect:** the booking with "1 open claim" (singular since
+      `9107ad2`). Open it: **Claims**,
       "Late return: 90 minutes · €30.00 · Open", the note, **Confirm** and
       **Reject**, and "Confirming records the claim; nothing is charged to
       the renter yet."
@@ -1205,8 +1311,17 @@ open every day 08:00 to 22:00):
       straight after the first, confirmed; host2 gets "New booking: …". The
       first booking is unchanged.
 - [ ] On the plunge saw (by request, 2 hours at least), extend an accepted
-      booking. **Expect:** the sheet says "… The owner accepts it first.",
-      the toast "Asked for more time", and a new request the host answers.
+      booking. **Expect:** the sheet offers only **2 h** and **4 h** (never
+      less than the listing's minimum, since `9107ad2`) and says "… The owner
+      accepts it first."; the toast "Asked for more time", and a new request
+      the host answers. Its page reads "This extends your booking before
+      it." and links back (since `9107ad2`).
+- [ ] **An extension ends with its booking** (since `ad9dee9`). With that
+      extension still waiting, host: **Cancel booking** on the first one.
+      **Expect:** the extension is declined, "Reason: The booking it extends
+      was cancelled." (German and French too), and nothing is charged for
+      it. A confirmed extension (the bandsaw) is cancelled with a full
+      refund when its first booking is.
 - [ ] Block the time after: as another renter (script 29) book the hour
       straight after one of your bookings, then **Extend** it. **Expect:**
       "The time straight after is not free, or the booking is not on any
@@ -1230,11 +1345,22 @@ within about an hour of `make up` (a developer can run `docker compose
 restart catalog` to do it at once; `docker compose logs catalog` shows a
 "listing … held: market_not_live" line for each).
 
-- [ ] As the demo buyer, search `sander` or `mitre`. **Expect:** no *Festool
-      ETS 150 sander + extractor* (Oud-West, Amsterdam) and no *Makita mitre
-      saw + stand* (Lambrate, Milan) among the results.
-- [ ] Open `/listing/n-l3` (the Amsterdam sander). **Expect:** "That
-      listing is not here".
+Explore's search looks only in the city you are in (the place in the
+header), so a search from Berlin never shows Amsterdam or Milan, held or
+not. The checks below search where the hidden listings are, and open them
+directly.
+
+- [ ] As the demo buyer, open `/listing/n-l3` (the Amsterdam sander).
+      **Expect:** "That listing is not here". (Before the job has run it
+      opens; that is how you know the check can fail.)
+- [ ] On Explore, tap the place in the header and pick **Amsterdam**; search
+      `sander`. **Expect:** no *Festool ETS 150 sander + extractor*
+      (Oud-West). Pick **Milan** and search `mitre`. **Expect:** no *Makita
+      mitre saw + stand* (Lambrate). The city list still offers Amsterdam
+      and Milan (they are places), counting no listings there once the job
+      has run.
+- [ ] The same search can find something: pick **Wien** and search `drill`.
+      **Expect:** the *Bosch cordless drill set* (a live Austrian listing).
 - [ ] As staff, **Waiting for a check**. **Expect:** the 29 listed with
       "Not live: Cappy is not open in that country yet. Move it to a place in
       an open market to publish it." and **no Approve** button (approving is
@@ -1289,10 +1415,18 @@ developer can change a setting.
   handed back**.
 - `SWEEP_SECONDS: "5"` (`booking`): expiries and auto-completions are applied
   within seconds of being due (deployed: 30 seconds).
+- `DISPUTE_OFFER_MINUTES: "10"` (`booking`, since `b5cdd93`): a dispute the
+  two sides do not settle goes to staff after 10 minutes (deployed: 72
+  hours), and each new offer restarts the 10 minutes (script 25).
+- `LATE_RETURN_EARLY_MINUTES: "100000"` (`booking`, since `b5cdd93`): the
+  owner may report a late return as soon as the booking is handed over
+  (deployed: 0, from the booked end; script 26).
 
 These shortcuts never reach real people: deployed (staging, prod) a service
 refuses to start with `MIN_LEAD_MINUTES` under 60, `START_EARLY_MINUTES`
-above 60 or `AUTO_COMPLETE_AFTER_HOURS` under 24 (`unsafe_reasons` in
+above 60, `AUTO_COMPLETE_AFTER_HOURS` under 24, `DISPUTE_OFFER_MINUTES`
+under 72 hours, `LATE_RETURN_EARLY_MINUTES` above 0 or
+`LATE_RETURN_CLAIM_HOURS` under 24 (`unsafe_reasons` in
 `matching/settings.py` and `booking/settings.py`).
 
 **Not shortened** (so the time must really pass, or a developer changes the
@@ -1305,8 +1439,7 @@ setting):
 | Auto-complete | 48 h after the end | `AUTO_COMPLETE_AFTER_HOURS` (booking) |
 | No-show | from the start (the buyer reporting the host) or start + 30 min (the host reporting the buyer), until start + 2 h; only if nobody marked the hand-over | fixed in code (`booking/routes.py` `NO_SHOW_GRACE`, `NO_SHOW_REPORTABLE`) |
 | Dispute | the buyer, from the start (at once once handed over, since `42c777c`) until the booking completes | fixed in code (`booking/routes.py`) |
-| Settling a dispute between the two sides | 72 h from the report and from each new offer, then it goes to staff; **10 min locally** | `DISPUTE_OFFER_MINUTES` (booking) |
-| Late return | reported from the booked end until 24 h after it (**from the hand-over, locally**); the first 30 min are free | `LATE_RETURN_CLAIM_HOURS`, `LATE_RETURN_EARLY_MINUTES` (booking); grace fixed in code |
+| Late return, the end of the window | until 24 h after the booked end (its start is shortened locally, above); the first 30 min are free | `LATE_RETURN_CLAIM_HOURS` (booking); grace fixed in code |
 | Booking requests per renter | 10 in 24 h | `MAX_REQUESTS_PER_DAY` (booking) |
 | Review window | 14 days after the end | fixed in code |
 | Weekly schedule roll-on and the "no free time next week" notice | hourly | fixed in code (`catalog/jobs.py`) |
@@ -1599,7 +1732,7 @@ server: the Cognito client id changes.
 
 | Command | What it proves | Needs |
 |---|---|---|
-| `make test` | Lint, format and every unit and API test (SQLite, in-memory bus, a throwaway JWKS). Includes the subscription consistency test (D-13) and the privacy register test (D-11) | nothing |
+| `make test` | Lint, format and every unit and API test (SQLite, in-memory bus, a throwaway JWKS). Includes the subscription consistency test (D-13), the privacy register test (D-11) and, since `e2e77ab`, `notifications/tests/test_texts_every_kind.py`, which renders every notification kind in EN, DE and FR and fails on English left in a translation, a missing or unfilled placeholder, two full stops, or the wrong space before French punctuation (a new text must pass it) | nothing |
 | `make test-pg` | Also the Postgres tests: migrations build exactly the models, concurrency, the no-double-booking constraint | `make up` |
 | `make test-stripe` | The Stripe calls against stripe-mock | Docker |
 | `make e2e` | Sign up, list with a photo, search, book, pay, accept, hand over, complete, pay out, rate, review, emails, plus the edge refusing what it must. Since `32338dd` it signs up a second buyer of its own for the contested window and deletes it at the end, so it never touches the demo accounts. In Stripe mode it needs `sk_test_` keys and confirms with Stripe's test card | `make up` |

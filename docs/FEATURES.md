@@ -6,8 +6,9 @@ not the plan: planned work appears only as task ids from
 [`TASKS.md`](TASKS.md). Markets are all of Europe, the US and Canada
 ([GOAL 16](GOAL.md), [ADR 0013](adr/0013-markets.md)). Where the code
 assumes one market (German tax, Berlin time, EU-shaped rules), this file
-says so. Last synced with the code as of `4e86866` (covering `7444e37`,
-`32338dd`, `22b5e0f` and `4e86866` since the previous sync at `2257182`).
+says so. Last synced with the code as of `9107ad2` (covering `e2e77ab`,
+`eaeb485`, `b5cdd93`, `ad9dee9` and `9107ad2` since the previous sync at
+`4e86866`).
 
 Paths are relative to the repository root. `path:line` points at the
 definition. "Seam" means the interface or module boundary a replacement
@@ -316,9 +317,13 @@ Moderators and support reach `/admin` and the `/api/admin/*` routes.
   everyone else `support` (`staff_role`, `auth.py:233-237`). The role picks
   the per-market refund limit a staff member may settle alone
   (`refund_limit_support`, `refund_limit_lead` in `markets.json`, 13.7).
-  Terraform creates only the `admin` group; `admin-lead` is made by hand
-  (locally `make confirm EMAIL=… LEAD=1`, which creates it if missing and
-  adds the account to both groups, since `22b5e0f`).
+  Since `b5cdd93` Terraform creates the `admin-lead` group beside `admin`
+  (`aws_cognito_user_group.admin_lead`, `identity.tf`); membership is granted
+  by hand, a lead in both groups (locally `make confirm EMAIL=… LEAD=1`,
+  which creates it if missing and adds the account to both, since
+  `22b5e0f`). Since `ad9dee9` matching also has staff routes (the preview's
+  offers and quote, 13.3), so its task gets the staff MFA check's IAM too
+  (`ecs.tf` `local.staff_mfa_check`).
 - **Limits:** two roles (support and lead) and, for refunds above a limit,
   four eyes (13.7); nothing else is separated. Turning MFA off takes up to 5
   minutes to bite (the cache).
@@ -557,8 +562,10 @@ resume and remove a listing.
     `cappy_common/categories.py`), which the quote's `extraLabel` is for a
     batch listing. Web (`4e86866`): the form's **Most per booking
     (optional)** field, freight wording (**Vehicle**, **Pallets loaded per
-    hour**, "take about … including … to load"), and quantity chips that
-    start at 1 and never pass the cap or the longest free window.
+    hour**, "take about … including … to load"; since `9107ad2` also
+    **Loading time** and **Loading fee** in place of Setup, V6-15), and
+    quantity chips that start at 1 and never pass the cap or the longest
+    free window.
   - **A weekly window already under way** is cut to start at the next
     quarter hour instead of being dropped for the day (since `22b5e0f`,
     V5-23, `catalog/schedule.py` `windows`); less than a quarter hour left
@@ -684,6 +691,13 @@ far). Matching returns ranked offers with a quote.
   listing's own point when it has one, already snapped to about 500 m, else
   its district's centre (`point_of`, `match.py:44`), in matches, offers,
   spotlight and idle-nearby. Candidates are still gathered by district.
+- **Starts per day** (since `ad9dee9`, V6-23): `GET /api/listings/{id}/offers`
+  takes `perDay` (1 to 100), which caps each day's starts so a busy near day
+  cannot use up `limit` and hide the days after it (`offers_for`,
+  `matching/domain/availability.py`; days are UTC days). Since `9107ad2` the
+  listing page asks `limit=500&perDay=28`, its day rail shows two weeks of
+  days (was one), and the duration being priced is always one of the chips,
+  selected (V6-3).
 - **Measured:** `make bench` (since `42c777c`,
   `backend/services/catalog/bench/candidates.py`) builds a throwaway
   database `scale` on the local Postgres with N synthetic listings (100 000
@@ -742,7 +756,10 @@ or a Europe view of cities.
   `catalog/geo.py`). The map is an in-house SVG projection with no tiles and no
   map library (`web/src/app/components/CapacityMap.tsx`). The district picker is
   `LocationPicker.tsx` and `DistrictSelect.tsx`. The browser's geolocation is
-  not used.
+  not used. Since `ad9dee9` `/api/districts` comes ordered by city, then
+  district, and since `9107ad2` `DistrictSelect` labels a district with its
+  city ("Flon (Lausanne)"), sorted, unless its name already holds the city or
+  it is one of several districts of its own city's metro (Berlin's) (V6-16).
 - **Listing points:** since `61b15b8` a listing may carry its own point,
   country and postal code, snapped to about 500 m in every public answer
   (3.1, M-5/M-6). It is stored as JSON in the listing's spec, not as a
@@ -816,7 +833,8 @@ can report a no-show in the first two hours. The renter can dispute once the
 window has started, and since `42c777c` at any time once the booking is
 `active` (handed over early, V4-3). Cancel is never open from `active`: the
 renter has the item, so a refund must not happen without staff. Since
-`7444e37` the two sides first get 72 hours to settle it themselves (5.5),
+`7444e37` the two sides first get 72 hours (`DISPUTE_OFFER_MINUTES`, 10
+minutes locally since `b5cdd93`) to settle it themselves (5.5),
 then staff decide: pay the owner, refund the renter in full, or refund part,
 with a reason (13.7).
 
@@ -846,7 +864,16 @@ with a reason (13.7).
   follows a dispute. Web (`4e86866`): a decided dispute shows **The reported
   problem was decided** on both sides' booking page (`DisputeDecided`), and
   a disputed booking's sticky button is **Get help with this booking**, its
-  **Getting in** address stays shown (V5-32).
+  **Getting in** address stays shown (V5-32). Since `9107ad2` (V6-1) the
+  decided banner reads **You agreed on the reported problem** when the
+  parties settled it, and shows staff's note ("From Cappy’s team: …") when
+  staff did. A no-show and an owner cancelling a confirmed booking tell both
+  sides the money and how to contest (12.1, `ad9dee9`). Payments records a
+  renter no-show (nothing back, the owner paid) as `transferred` (7.1).
+- **Extensions end with their booking** (since `ad9dee9`, V6-22): cancelling
+  a booking, a no-show too, declines its waiting extension ("The booking it
+  extends was cancelled", EN/DE/FR; nothing was charged) and cancels a
+  confirmed one with a full refund (`_end_extensions`, `booking/routes.py`).
 - **Limits:** ~~no dispute negotiation between the parties or deadlines
   (S-21)~~: since `7444e37` (5.5). No owner damage claim (S-8), which needs a
   saved card or deposit first (S-9); a late return can be claimed but is not
@@ -857,11 +884,14 @@ with a reason (13.7).
 Either side of a disputed booking offers how much of the price goes back to
 the renter; the other accepts it and the dispute is settled at once, with no
 staff. Each offer gives the other side 72 hours; when a deadline passes with
-no agreement, the dispute goes to staff.
+no agreement, the dispute goes to staff. Since `b5cdd93` the window is the
+booking setting `dispute_offer_minutes` (`DISPUTE_OFFER_MINUTES`, 72 hours;
+local compose sets 10, and a deployed service refuses under 72 hours,
+`unsafe_reasons`).
 
 - **Where:** `booking/support.py`: `GET /api/bookings/{id}/dispute`
   (`:296`), `POST …/dispute/offer` `{refundAmount}` (`:307`, 0 to the price;
-  a new offer replaces the one on the table and restarts the 72 hours; emits
+  a new offer replaces the one on the table and restarts the window; emits
   `booking.dispute_offer` to the other side), `POST …/dispute/accept`
   `{refundAmount}` (`:345`, idempotent; the amount is sent back so nobody
   accepts an offer that changed: 409 `offer_changed`; your own offer is 403
@@ -875,12 +905,20 @@ no agreement, the dispute goes to staff.
   disputed booking's banner: **Settle it between you**, the offer on the
   table ("{name} offers … back to the renter", "Of {total}. The owner is paid
   the rest."), **Accept {amount}**, **Make an offer** / **Make another
-  offer** in a sheet, polled every 15 s.
+  offer** in a sheet, polled every 15 s. Since `9107ad2` (V6-5) no web text
+  names a fixed 72 hours: the toast after an offer reads "Offer sent. {name}
+  can answer until {day time}" from the server's `respondBy`, the escalated
+  card "You did not agree in time…", and the owner reads "Of {total}. You
+  are paid the rest." (V6-13).
 - **Provider:** none.
 
 ### 5.6 Late returns and extensions (S-12, since `7444e37`)
 
 - **Late return:** the owner reports it within 24 hours after the booked end
+  (`LATE_RETURN_CLAIM_HOURS`, since `b5cdd93` a setting, refused under 24
+  deployed; locally `LATE_RETURN_EARLY_MINUTES=100000` opens it long before
+  the end, refused above 0 deployed; each booking answer carries
+  `lateReturnFrom`, which the web follows instead of its own rule)
   (`POST /api/bookings/{id}/late-return` `{minutesLate, note?}`,
   `support.py:790`; `active`, `completed` or `disputed` only; one per
   booking). The claim is the extra time after 30 minutes' grace at the
@@ -904,7 +942,12 @@ no agreement, the dispute goes to staff.
   whichever idle slot holds the window (`extension`, 409 `not_extendable`
   when the time after is not free). Web: `Extend` in `BookingExtras.tsx`
   (1, 2 or 4 hours, **Book {duration} more and pay**), then the new
-  booking's page.
+  booking's page. Since `9107ad2` (V6-4) the sheet offers only lengths the
+  listing takes (from its minimum, up to its maximum), and matching's "not
+  feasible: …" answers read as one translated sentence. Since `ad9dee9`
+  every booking answer carries `extendsId`, and the extension's page links
+  to the booking it extends ("This extends your booking before it."); an
+  extension ends with its booking (5.2).
 - **Provider:** none.
 
 ### 5.3 Hand-over evidence photos
@@ -1038,14 +1081,19 @@ part) if it is cancelled after capture.
     `refundAmount` (a dispute settled in part) it refunds that part and
     transfers the owner's share of the rest. Since `22b5e0f` a payment of
     which only part was refunded ends `partially_refunded`, `refunded` only
-    when all of it went back. The events it emits are `payment.captured`,
+    when all of it went back, and since `b5cdd93` a cancellation with
+    nothing refunded and the owner paid (a renter no-show) is `transferred`;
+    `refunded_amount` and `paid_out_amount` record what moved (migration
+    `0010_moved_amounts`, which also backfilled old no-shows; a partial
+    refund from before it shows 0). The events it emits are `payment.captured`,
     `payment.refunded`, `payment.failed` and `payment.payout_sent` (since
     `22b5e0f` with the booking's `title`, `windowStart` and `timeZone`, for
     the notice).
   - Staff case view (since `7444e37`, H-9): `GET /internal/bookings/{id}/payment`
     (`payments/routes.py:358`) answers where a booking's money stands
-    (status, amount, owner net, whether captured, refunded, paid out, a
-    chargeback).
+    (status, amount, owner net, a chargeback, and since `b5cdd93`
+    `captured`, `refunded` and `paidOut` as amounts in minor units, no longer
+    flags).
   - Webhooks: `POST /api/payments/webhooks/stripe` (`payments/routes.py:419`),
     deduplicated by Stripe event id in `processed_events`. Since `747ed6b` the
     gateway forwards a signature header only to its own route
@@ -1201,7 +1249,13 @@ fee. Numbers have no gaps per year, and an invoice never changes once issued.
 - **Where:** `issue` (`backend/services/payments/payments/invoices.py:65`,
   under a row lock on `invoice_counters`), `GET /api/payments/invoices` (`:165`,
   with a `description` line) and `GET /api/payments/invoices/{number}` (`:174`,
-  printable HTML in German with § 14 (4) UStG fields). Tables `invoices` and
+  printable HTML with § 14 (4) UStG fields). Since `ad9dee9` (V6-21) the
+  printable invoice is in the reader's language, from the app's
+  `Accept-Language` (EN, DE or FR; German without one; `LABELS`, `_lang`,
+  `_money` in `invoices.py`): the service is named by the listing ("Platform
+  fee for {title}"), the booking id is a separate "Booking reference" line,
+  and the German issuer's VAT ID and tax number are on it in every language
+  ("Tax number (Steuernummer)"). Tables `invoices` and
   `invoice_counters` (`payments/tables.py:64-94`). Screen: `Earn.tsx`; since
   `2257182` its list line is built in the app ("Service fee · title ·
   dates", dates in the reader's locale) instead of the server's
@@ -1224,7 +1278,7 @@ fee. Numbers have no gaps per year, and an invoice never changes once issued.
   (`payments/jobs.py:61-77`, daily) deletes invoices once the issuer's period
   (10 years by default) has run from the end of the year of issue
   (`docs/retention.md`).
-  The template, language and number series are code.
+  The template, its three languages and the number series are code.
 - **To swap it** (for example to an invoicing service or Stripe Invoicing): call
   it from `issue` and store its invoice id on `invoices`. Keep the local number
   series if the provider cannot guarantee gapless per-entity numbering. Keep the
@@ -1446,7 +1500,8 @@ decisions, in the recipient's language.
   conversation per 15 minutes, checked against the inbox (`_recently_told`,
   `:85-99`, `notify` `:174-186`, FL-3). Texts: `texts.py:12` (EN/DE/FR, with
   French since `235eeaa`: one neutral French for France and Québec,
-  « courriel »), chosen by Cognito's `locale` (`language`, `texts.py:202-205`:
+  « courriel »), chosen by the reader's remembered app locale, else Cognito's
+  `locale` (below; `language`, `texts.py:202-205`:
   `de…` and `fr…`, anything else English). Amounts are formatted per currency
   and language (`money`, `:251-265`). Times (`when`, `texts.py:255`) are
   24-hour for German, French and European English, and since `42c777c`
@@ -1463,6 +1518,42 @@ decisions, in the recipient's language.
   `listing.idle` becomes `listing_idle` ("No free time next week: …", in the
   `bookings` category, linking to `/earn/edit/<id>`; 3.1). Money formats ISK
   with no decimals, like HUF (`747ed6b`).
+- **Whose language** (since `ad9dee9`, V6-6): every email is written in the
+  reader's own locale, never the triggering person's. The bell remembers the
+  app's `Accept-Language` per person (`seen_locale`, `prefs.py`, in
+  `notification_prefs.locale`, migration `0008_person_locale`, written only
+  when it changes); `deliver` uses it before Cognito's `locale`, which stays
+  the fallback for someone who never opened the app. The data export carries
+  it as `appLocale`.
+- **Server words and typography** (since `e2e77ab`, V5-16/18/19): words the
+  server makes up that reach a reader as params (a system decline reason,
+  the default DSA clause, the fallback title "your booking") are told in the
+  reader's language (`PHRASES`, `phrase`, `texts.py`); a person's own words
+  stay as written. A decline reason is its own paragraph with one full stop
+  (`_reason`). French text gets a no-break space (U+00A0) before `:` and,
+  since `ad9dee9` (V6-17), a narrow no-break space (U+202F) before `; ? !`
+  (not inside a URL or a time), and never two full stops (`french`), and
+  every text says « la personne locataire ». `tests/test_texts_every_kind.py`
+  renders every kind in EN, DE and FR and fails on a missing kind, different
+  placeholders, English left in a translation, an unfilled placeholder, two
+  full stops, or the wrong space before French punctuation.
+- **The staff note** (since `b5cdd93`): a dispute settled by staff carries
+  their note to both parties in the "Settled" notice, as its own paragraph
+  under "From Cappy's team:" (`_note`, EN/DE/FR); an item stored before notes
+  existed still renders. Since `ad9dee9` (V6-1) the bell shows it too (12.4).
+- **No-shows and owner cancellations** (since `ad9dee9`, V6-11): a no-show
+  cancellation (`noShow` on the event) tells both sides who was reported,
+  the money and how to contest: the owner missing gives the renter
+  `no_show_owner_renter` ("Refunded: …", the full price) and the owner
+  `no_show_owner_owner` ("Reported as a no-show: …", it counts against their
+  reliability, contest through Get help); the renter missing gives the owner
+  `no_show_renter_owner` ("No-show recorded: …", paid as for a late
+  cancellation) and the renter `no_show_renter_renter` ("Reported as a
+  no-show: …", nothing refunded, contest through Get help). An owner
+  cancelling a confirmed booking gives the renter `owner_cancelled`
+  ("Cancelled by the owner: …", with the amount back). All five are
+  `bookings` and always emailed. The escalation notice says "no agreement in
+  time" rather than "within 72 hours", since the window is a setting (5.5).
 - **Seam:** **yes,** `Mailer.send(Email(to, subject, text))`.
 - **Provider-specific data:** none stored. Bounces and complaints are handled
   by SES's account suppression list (`infra/platform/email.tf:50`), with alarms
@@ -1570,7 +1661,9 @@ count, rendered in the reader's language.
   reader's content or account (`taken_down`, `suspended`,
   `content_removed`), which carries the whole statement of reasons (since
   `22b5e0f`, V5-31, `summary`, `texts.py:315-321`); the web keeps its line
-  breaks (`4e86866`).
+  breaks (`4e86866`). Since `ad9dee9` (V6-1) a settlement's item keeps
+  staff's "From Cappy's team: …" paragraph after the first one. Reading the
+  bell also remembers the app's locale for that person's emails (12.1).
 - **Retention** (since `747ed6b`): items older than `INBOX_RETENTION_DAYS`
   (365) are deleted by an hourly loop (`expire_inbox_once`,
   `notifications/jobs.py:16`; `docs/retention.md`).
@@ -1693,6 +1786,26 @@ AT, CHF 95 in CH) waits for a staff check.
   currency where the answer has one, and the hold reason in place of
   **Approve** (V5-4); the title no longer links to the listing page, which
   staff cannot open while it is held.
+- **The staff preview** (since `e2e77ab`/`eaeb485`, V5-4): `GET
+  /api/admin/listings/{id}` (catalog `staff_listing`, `moderation.py`) answers
+  any listing, live, held, paused, taken down or deleted, as its public
+  detail (`detail_of`, shared with the listing page) plus `state`,
+  `holdReason` and `heldAt`; the public page still answers 404 to everyone
+  but the owner. Since `ad9dee9` (V6-2) it also carries `handover` (address,
+  instructions, point, postal code) and up to 20 `reviews`, and matching
+  answers staff's own `GET /api/admin/listings/{id}/offers?hours=&perDay=`
+  (the next 28 days) and `POST /api/admin/quote` with held listings included
+  (`admin` router in `matching/routes.py`, `require_admin`; catalog's
+  internal `listing-context` takes `staff=true`; the gateway routes both to
+  matching). Web: `/admin/listing/:id` (`AdminListing` in `AdminCases.tsx`,
+  reached by **Look at it** on a held card and **Open the listing (staff
+  view)** on a case) renders the listing page read-only under a **Staff
+  view · {state}** banner, with **Approve** on an ordinary hold (never on a
+  hold for where it is). Since `9107ad2` it prices and lists free times
+  through the staff endpoints, shows the **Hand-over address** and the
+  reviews, hides **Report** and **Block**, and shows no duration or start
+  times for a listing nobody can book (paused, taken down, deleted, or held
+  for where it is).
 - **Provider:** none.
 
 ### 13.4 System notices: reliability and ban evasion
@@ -1755,7 +1868,10 @@ AT, CHF 95 in CH) waits for a staff check.
   the hand-over photos as short-lived links, the payment (7.1: `captured`,
   `refunded` and `paidOut` as amounts in minor units, payments' own
   statuses), the dispute, the resolutions and the claims. Opening a case, and reading a booking's
-  evidence as staff, is logged (`read_case`, `read_evidence`).
+  evidence as staff, is logged (`read_case`, `read_evidence`). Since
+  `e2e77ab` each timeline entry carries `actorKind`: `person` (a party, `by`
+  their id), `staff` (`by` the staff id) or `system` (a payment result or a
+  sweep, `by` always `cappy`, never a service name).
 - **Resolutions (H-6):** `POST /api/admin/bookings/{id}/resolve`
   `{outcome: pay_owner | refund_buyer | partial, refundAmount?, reasonCode,
   note}` (`:471`, idempotent; the answer is `{resolution, booking}` since
@@ -1768,17 +1884,33 @@ AT, CHF 95 in CH) waits for a staff check.
   it (someone other than the proposer, 403 `four_eyes`; a non-lead only
   within their own limit, else 403 `needs_lead`) and `/reject` leaves the
   booking in dispute. A second resolution while one waits is 409
-  `approval_pending`. The internal twin (`POST /internal/bookings/{id}/resolve`,
+  `approval_pending`. Since `e2e77ab` `POST
+  /api/admin/resolutions/{id}/withdraw` lets the proposer (only them, else
+  403 `not_yours`; only a waiting one, else 409) take it back as `withdrawn`
+  (audited, `withdraw_resolution`), so the case can be decided again and one
+  staff member alone never stalls it; `GET /api/admin/resolutions?status=`
+  accepts `withdrawn`. Since `ad9dee9` (V6-10) its items also carry `title`,
+  `requesterId`, `ownerId` and `ownerName`. The settled dispute
+  (`GET /api/bookings/{id}/dispute` and the case's `dispute`) carries
+  `outcome`, `refunded`, `settledBy` (`staff` or `agreement`) and
+  `staffNote` (V6-1). The internal twin (`POST /internal/bookings/{id}/resolve`,
   support tooling) applies the support limit and needs `by`.
 - **Claims:** `POST /api/admin/claims/{id}/decide` `{decision: confirm |
   reject, note}` (5.6).
 - **Audit log (H-7):** every staff action in any service is one row of
   catalog's `moderation_actions`: moderation writes there directly, booking
-  sends `staff.action` events (resolve, propose, approve, reject, claim
-  decisions, case and evidence reads) that catalog stores once each
+  sends `staff.action` events (resolve, propose, approve, reject, withdraw,
+  claim decisions, case and evidence reads) that catalog stores once each
   (`on_staff_action`, `catalog/moderation.py:538`). `GET /api/admin/audit`
   `?target=&actor=&cursor=` (`:488`) is paged, newest first, with the person
-  and request id; nothing updates or deletes a row.
+  and request id; nothing updates or deletes a row. Since `ad9dee9` (V6-9)
+  booking's lines carry `details` (`bookingId`, `listingTitle`, `currency`
+  and, as they apply, `outcome`, `amount`, `reasonCode`, `resolutionId`,
+  `claimKind`, `claimId`), stored in `moderation_actions.details` (migration
+  `0021_audit_details`), and the `statement` is only what staff wrote (empty
+  for a read), never machine text. A case or evidence read repeated by the
+  same person within the same minute is one line: booking sends a `dedupe`
+  key and catalog derives the row id from it.
 - **Web** (`4e86866`): `web/src/app/screens/AdminCases.tsx`. The console
   (`/admin`) opens with **Cases** (disputed or all; member id or email,
   booking id, only with open claims; **Next page**), **Waiting for approval**
@@ -1791,10 +1923,26 @@ AT, CHF 95 in CH) waits for a staff check.
   characters of "What you found"), the refund decisions with who proposed
   and approved them, the claims with **Confirm** and **Reject**, the
   timeline, the conversation as written, the hand-over photos and the
-  payment.
+  payment. Since `eaeb485`: **Withdraw my proposal** on the proposer's own
+  waiting proposal (the case page and **Waiting for approval**, where the
+  proposer gets it instead of **Approve** and **Reject**); **Open the
+  listing (staff view)** (13.3); timeline steps by a party read renter or
+  owner, by staff "you" or "staff {id}", by the system **Cappy
+  (automatic)**; the dispute banner only while the booking is disputed.
+  Since `9107ad2`: while a proposal waits, a **Decide** card stands in for
+  the form ("A proposal is waiting for a second staff member: … Nothing
+  else can be decided until it is approved, rejected or withdrawn.", with
+  **Withdraw my proposal** for the proposer); the section is **Decisions**;
+  approval cards name the listing and owner; the audit log renders
+  `details` in words (listing · outcome · money · reason, then the note;
+  rows from before `details` have their old machine line read into words,
+  and bare echoes such as "withdrew rs_…" are dropped); the case is fetched
+  once per opening (no refetch on focus); case cards show the offer and
+  "Escalated" only while disputed, and "1 open claim" in the singular.
 - **Provider:** none; the email lookup is Cognito behind `People`.
 - **Limits:** staff appear in the log and the console as the first 8
-  characters of their id. Leads are a group made by hand (1.3).
+  characters of their id. Leads are the `admin-lead` group, filled by hand
+  (1.3).
 
 ---
 
@@ -1916,6 +2064,12 @@ reason and a date.
   `clockTime` in `format.ts`: "5:00 PM" without a leading zero for en-US,
   V4-19). The English privacy policy lists messages, hand-over photos,
   reports, ID checks and push like the German since `2257182`.
+- **Large text** (since `9107ad2`, V6-7): the dock watches a 1rem probe, so
+  a text-size change after load (Dynamic Type, a text zoom) switches it to
+  icons only, and the listing's host card wraps its rating column, so 200 %
+  text in French at 390 px no longer scrolls sideways. Enter in the Explore
+  search puts the keyboard away on touch screens only; with a mouse and
+  keyboard the field keeps focus (V6-20).
 - **Limits:** no Web Vitals (S-23). `npm run check:a11y` is a static check
   (image alt text, 24 px targets) and not a browser axe run (U-30 partly).
   Since `44a5520` CI runs `tsc --noEmit`, the build and every `check:*`
@@ -2042,8 +2196,10 @@ Stop new bookings, stop payouts or stop new listings without a deploy.
   keeps only the envelope and an allowlist of non-identifying fields
   (`infra/platform/analytics/scrub.py`, P-6, `f303350`). Since `747ed6b` a
   status change made by support (`by: "support:<who>"`) arrives as `by:
-  "staff"`, so no staff name or id reaches the lake (`scrub.py:35`). There
-  is no client SDK.
+  "staff"`, so no staff name or id reaches the lake (`scrub.py:35`). Since
+  `b5cdd93` a `staff.action` keeps only `action`, `targetType` and `at`
+  (`STAFF_ACTION_FIELDS`): who acted, about whom, and the note stay in the
+  audit log. There is no client SDK.
 - **Seam:** infra only (an SNS subscription and the Firehose transform).
 - **To swap it** (for example to Segment, Amplitude or BigQuery): add a
   subscriber to the events topic that forwards to the vendor, through the
