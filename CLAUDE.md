@@ -34,6 +34,14 @@ After each round of work, a docs-sync agent reads the round's commits
 (`git log -p <from>..HEAD`) and brings all five docs up to date, so a
 builder that missed one is caught.
 
+## UI work
+
+Any agent building or reviewing a screen first loads the `frontend-design`
+skill and reads [`.claude/skills/cappy-ui/SKILL.md`](.claude/skills/cappy-ui/SKILL.md)
+(spacing, type, colour pairing in light and dark, component specs, motion) and
+runs its review checklist at 390, 375, 360 and 430 px wide in light and dark.
+Light is the default theme; dark is opt-in.
+
 ## Rules
 
 - Work on the `prod-readiness` branch. Commit as the repo's configured identity
