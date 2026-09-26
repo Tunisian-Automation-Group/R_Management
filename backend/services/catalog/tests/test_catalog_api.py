@@ -54,6 +54,14 @@ class FakeBookings:
     async def active_people(self, start, end):  # noqa: ANN001
         return 7
 
+    removed: list[str] = []
+
+    async def message_author(self, message_id):  # noqa: ANN001
+        return {"msg_1": "user-b"}.get(message_id)
+
+    async def remove_message(self, message_id):  # noqa: ANN001
+        self.removed.append(message_id)
+
     async def aclose(self) -> None:
         pass
 
@@ -236,6 +244,7 @@ def test_server_mints_ids_and_ignores_the_client_s(client, issuer, app, broker):
         ({"district": "Atlantis"}, "district"),
         ({"ratePerHour": 0}, "ratePerHour"),
         ({"extraFee": -5000}, "extraFee"),
+        ({"currency": "JPY"}, "validate"),
         ({"minHours": 0}, "minHours"),
         ({"minHours": 8, "maxHours": 2}, "minHours"),
         ({"photos": ["https://evil.example/pixel.gif"]}, "uploaded"),
@@ -807,6 +816,7 @@ def test_a_new_owner_s_expensive_listing_waits_for_a_staff_check(client, app, is
     assert client.get(f"/listings/{lid}").status_code == 404, "nobody sees it yet"
     mine = client.get("/me/listings", headers=h).json()["items"]
     assert [(v["listing"]["id"], v.get("held")) for v in mine] == [(lid, True)], "the owner does"
+    assert client.get(f"/listings/{lid}", headers=h).status_code == 200, "and can open it (FL-6)"
     cheap = client.post("/listings", json={"listing": _window_listing(), "slots": [_slot()]}, headers=h).json()
     assert cheap["held"] is False
     assert [x["id"] for x in client.get("/admin/listings/held", headers=_staff(issuer)).json()] == [lid]
@@ -912,7 +922,9 @@ def test_taking_down_declines_requests_and_owners_manage_held_listings(client, a
     why = {"statement": "Counterfeit machinery offered under a known brand (terms 4)."}
     assert client.post("/admin/listings/l9/take-down", json=why, headers=_staff(issuer)).status_code == 204
     flush(app)
-    assert any(e.data == {"listingId": "l9", "change": "removed"} for e in broker.of_type(LISTING_CHANGED))
+    assert any(
+        e.data == {"listingId": "l9", "change": "removed", "by": "staff"} for e in broker.of_type(LISTING_CHANGED)
+    )
     _profile(client, issuer)
     h = issuer.headers("user-a")
     lid = client.post("/listings", json={"listing": _window_listing(ratePerHour=90_000)}, headers=h).json()["listing"][
@@ -927,31 +939,34 @@ def test_taking_down_declines_requests_and_owners_manage_held_listings(client, a
     assert client.delete(f"/listings/{lid}", headers=h).status_code == 204
 
 
-def test_a_take_down_purges_the_listing_from_the_cdn(issuer, broker, tmp_path, bookings, monkeypatch):
-    import cappy_common.events as events
+def test_a_take_down_purges_the_listing_s_photos_from_the_cdn(issuer, broker, tmp_path, bookings):
+    """F-4: through the Cdn seam; the photos are what the edge caches."""
+    from catalog.cdn import Cdn
+    from catalog.tables import ListingRow
 
-    calls = []
+    class Recorded(Cdn):
+        purged: list[list[str]] = []
 
-    class FakeCloudFront:
-        def create_invalidation(self, **kw):
-            calls.append(kw)
+        async def purge(self, paths):  # noqa: ANN001
+            self.purged.append(paths)
 
-    monkeypatch.setattr(events, "aws_client", lambda *a, **k: FakeCloudFront())
-    settings = Settings(
-        app_env="test", database_url="sqlite+aiosqlite://", internal_token="i" * 40, cdn_distribution_id="E123"
+    cdn = Recorded()
+    settings = Settings(app_env="test", database_url="sqlite+aiosqlite://", internal_token="i" * 40)
+    app = build_app(
+        settings, media_store=DirectoryStore(str(tmp_path)), bookings=bookings, cdn=cdn, verifier=issuer.verifier()
     )
-    app = build_app(settings, media_store=DirectoryStore(str(tmp_path)), bookings=bookings, verifier=issuer.verifier())
     with TestClient(app, headers=issuer.headers("viewer-1")) as c:
 
         async def seed():
             async with app.state.db.transaction() as s:
                 await CatalogRepository(s).load_seed(build_world())
+                row = await s.get(ListingRow, "l9")
+                row.photos = [f"{settings.media_public_base}/media/{'a' * 40}.webp", "https://images.example/x.jpg"]
 
         c.portal.call(seed)
         why = {"statement": "Counterfeit machinery offered under a known brand (terms 4)."}
         assert c.post("/admin/listings/l9/take-down", json=why, headers=_staff(issuer)).status_code == 204
-    [call_] = calls
-    assert call_["DistributionId"] == "E123" and "/api/listings/l9*" in call_["InvalidationBatch"]["Paths"]["Items"]
+    assert cdn.purged == [[f"/media/{'a' * 40}.webp"]], "our photos only; a foreign URL is not ours to purge"
 
 
 def test_a_retried_listing_create_makes_one_listing(client, issuer):
@@ -1181,3 +1196,132 @@ def test_hand_over_photos_are_never_public(client, issuer):
     public = client.post("/uploads", files={"file": ("p.png", _png(41), "image/png")}, headers=h).json()["url"]
     body = {"ownerId": "user-a", "urls": [public]}
     assert client.post("/internal/media/evidence", json=body, headers=INTERNAL).status_code == 422
+
+
+def test_deletion_leaves_no_words_photos_or_reports_behind(client, app, issuer):
+    """D-1..D-4: the listing's words and photos, every upload, the reports they
+    filed and their stored answers go; rows others point at stay as shells."""
+    from sqlalchemy import select
+
+    from catalog.jobs import sweep_orphans_once
+    from catalog.tables import IDEMPOTENCY, ListingRow, MediaRow, OwnerRow, ReportRow
+
+    _profile(client, issuer)
+    h = issuer.headers("user-a")
+    photo = client.post("/uploads", files={"file": ("p.png", _png(), "image/png")}, headers=h).json()["url"]
+    body = {
+        "listing": _window_listing(title="Ada's lathe", instructions="Door code 4711", photos=[photo]),
+        "slots": [_slot()],
+    }
+    lid = client.post("/listings", json=body, headers={**h, "Idempotency-Key": "k-1"}).json()["listing"]["id"]
+    report = {
+        "goodFaith": True,
+        "targetType": "listing",
+        "targetId": "l9",
+        "reason": "spam",
+        "details": "Spam, clearly",
+    }
+    assert client.post("/reports", json=report, headers=h).status_code == 201
+    assert [r["details"] for r in client.get("/me/export", headers=h).json()["reportsFiled"]] == ["Spam, clearly"]
+
+    assert client.delete("/me", headers=h).status_code == 204
+
+    async def left():
+        async with app.state.db.transaction() as s:
+            listing = await s.get(ListingRow, lid)
+            owner = await s.get(OwnerRow, "user-a")
+            reports = (await s.execute(select(ReportRow).where(ReportRow.details == "Spam, clearly"))).scalars().all()
+            keys = (await s.execute(select(IDEMPOTENCY).where(IDEMPOTENCY.c.principal == "user-a"))).all()
+            return listing, owner, reports, keys
+
+    listing, owner, reports, keys = _run(app, left)
+    assert (listing.title, listing.instructions, listing.photos) == ("Removed listing", "", [])
+    assert (owner.name, owner.verified, owner.business) == ("Former member", False, None)
+    assert reports == [] and keys == []
+    assert _run(app, lambda: sweep_orphans_once(app)) == 1, "their photo goes on the next sweep"
+    assert client.get(photo).status_code == 404
+
+    async def media():
+        async with app.state.db.transaction() as s:
+            return (await s.execute(select(MediaRow).where(MediaRow.owner_id == "user-a"))).all()
+
+    assert _run(app, media) == []
+
+
+def test_a_reporter_is_forgotten_six_months_after_the_decision(client, app, issuer):
+    from datetime import UTC, datetime, timedelta
+
+    from catalog.jobs import forget_reporters_once
+    from catalog.tables import ReportRow
+
+    body = {"goodFaith": True, "targetType": "listing", "targetId": "l9", "reason": "spam", "details": "Spam again"}
+    rid = client.post("/reports", json={**body, "email": "r@example.com"}, headers=ANON).json()["id"]
+
+    async def decided(days):
+        async with app.state.db.transaction() as s:
+            row = await s.get(ReportRow, rid)
+            row.decided_at = datetime.now(UTC) - timedelta(days=days)
+
+    async def reporter():
+        async with app.state.db.transaction() as s:
+            row = await s.get(ReportRow, rid)
+            return row.reporter_email, row.details
+
+    _run(app, lambda: decided(100))
+    assert _run(app, lambda: forget_reporters_once(app)) == 0
+    _run(app, lambda: decided(200))
+    assert _run(app, lambda: forget_reporters_once(app)) == 1
+    assert _run(app, reporter) == (None, "[removed after the case closed]")
+
+
+def test_reported_messages_and_reviews_are_removed_and_their_authors_suspendable(client, app, issuer, bookings, broker):
+    """FL-7: remove_content takes the words out; suspend targets the author."""
+    from cappy_common.events import MODERATION_DECISION, OWNER_SUSPENDED
+
+    _profile(client, issuer, sub="user-b", name="Bo Builder")
+    staff = _staff(issuer)
+
+    def report(target_type, target_id):
+        body = {"goodFaith": True, "targetType": target_type, "targetId": target_id, "reason": "offensive"}
+        return client.post(
+            "/reports", json={**body, "details": "Rude and abusive words"}, headers=issuer.headers("user-a")
+        ).json()["id"]
+
+    decision = {"statement": "Insults another member, against the rules for conduct."}
+    rid = report("message", "msg_1")
+    r = client.post(f"/admin/reports/{rid}/decide", json={**decision, "action": "remove_content"}, headers=staff)
+    assert r.status_code == 200 and bookings.removed == ["msg_1"]
+    assert r.json()["statementOfReasons"]["restriction"].startswith("The message or review was removed")
+    rid = report("message", "msg_1")
+    assert (
+        client.post(f"/admin/reports/{rid}/decide", json={**decision, "action": "suspend"}, headers=staff).status_code
+        == 200
+    )
+    flush(app)
+    assert [e.data["ownerId"] for e in broker.of_type(OWNER_SUSPENDED)] == ["user-b"], "the author, not a listing owner"
+    assert [e.data["affectedId"] for e in broker.of_type(MODERATION_DECISION)] == ["user-b", "user-b"]
+    rid = report("listing", "l9")
+    bad = client.post(f"/admin/reports/{rid}/decide", json={**decision, "action": "remove_content"}, headers=staff)
+    assert bad.status_code == 422, "a listing is taken down, not removed this way"
+
+
+def test_signing_up_again_after_deletion_is_a_fresh_start(client, app, issuer):
+    """FL-11: the old record never comes back, and onboarding does not loop."""
+    from catalog.tables import OwnerRow
+
+    _profile(client, issuer)
+    h = issuer.headers("user-a")
+
+    async def had_a_record():
+        async with app.state.db.transaction() as s:
+            row = await s.get(OwnerRow, "user-a")
+            row.rating_sum, row.jobs_done, row.verified = 45, 9, True
+
+    _run(app, had_a_record)
+    assert client.delete("/me", headers=h).status_code == 204
+    assert client.get("/me", headers=h).json().get("owner") is None, "onboarding again"
+    again = {"name": "Ada L", "kind": "person", "district": "Kreuzberg"}
+    assert client.put("/me", json=again, headers=h).status_code == 422, "18+ asked again"
+    fresh = client.put("/me", json={**again, "adult": True}, headers=h).json()
+    assert (fresh["name"], fresh["jobsDone"], fresh["verified"]) == ("Ada L", 0, False)
+    assert client.get("/me", headers=h).json()["owner"]["id"] == "user-a"

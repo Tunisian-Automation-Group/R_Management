@@ -34,6 +34,7 @@ CONSUMERS = {
         "booking.renter_rated",
         "booking.owner_reliability",
         "moderation.person_flagged",
+        "payment.identity_verified",
     ],
     "booking": [
         "payment.authorised",

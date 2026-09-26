@@ -7,7 +7,7 @@ from datetime import UTC, datetime
 
 from fastapi import Depends, Request, Response, status
 from pydantic import Field
-from sqlalchemy import and_, delete, func, or_, select, update
+from sqlalchemy import and_, func, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from cappy_common.app import ApiRouter
@@ -19,6 +19,7 @@ from cappy_common.runtime import Tx
 from cappy_common.timeutil import dt_from_iso, iso_from_datetime
 
 from .prefs import Prefs, prefs_of, save
+from .push import drop_devices
 from .tables import DeviceRow, InboxRow
 from .texts import render
 
@@ -71,27 +72,29 @@ async def register(
         row.platform, row.endpoint = body.platform, endpoint
         row.install_hash = install or row.install_hash
     await session.flush()
-    await _keep_newest(session, p.sub)
+    await _keep_newest(session, pusher, p.sub)
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
 @router.delete("/devices/{token}", status_code=status.HTTP_204_NO_CONTENT)
-async def unregister(token: str, session: AsyncSession = Tx, p: Principal = Depends(require_principal)):
+async def unregister(
+    token: str, request: Request, session: AsyncSession = Tx, p: Principal = Depends(require_principal)
+):
     """On sign-out: this device stops getting this person's notifications."""
-    await session.execute(delete(DeviceRow).where(DeviceRow.token == token, DeviceRow.user_id == p.sub))
+    rows = (
+        await session.execute(select(DeviceRow).where(DeviceRow.token == token, DeviceRow.user_id == p.sub))
+    ).scalars()
+    await drop_devices(session, request.app.state.pusher, rows)
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
-async def _keep_newest(session: AsyncSession, user_id: str) -> None:
-    from sqlalchemy import select
-
+async def _keep_newest(session: AsyncSession, pusher, user_id: str) -> None:  # noqa: ANN001
     rows = (
         await session.execute(
             select(DeviceRow).where(DeviceRow.user_id == user_id).order_by(DeviceRow.created_at.desc())
         )
     ).scalars()
-    for old in list(rows)[MAX_DEVICES:]:
-        await session.delete(old)
+    await drop_devices(session, pusher, list(rows)[MAX_DEVICES:])
 
 
 # --- the notification centre -----------------------------------------------------------------
@@ -179,8 +182,11 @@ async def mark_read(body: ReadIn, session: AsyncSession = Tx, p: Principal = Dep
 
 
 @internal.get("/people/{person}/export")
-async def export_person(person: str, session: AsyncSession = Tx) -> dict:
-    """Their notifications and settings, for a data export (GDPR art. 15/20)."""
+async def export_person(person: str, request: Request, session: AsyncSession = Tx) -> dict:
+    """Their notifications, settings, devices, and the sign-in's email and
+    language (Cognito), for a data export (GDPR art. 15/20, D-10)."""
+    email, locale = await request.app.state.directory.person_of(person)
+    devices = (await session.execute(select(DeviceRow).where(DeviceRow.user_id == person))).scalars()
     rows = (
         await session.execute(
             select(InboxRow).where(InboxRow.user_id == person).order_by(InboxRow.at.desc()).limit(10_000)
@@ -189,6 +195,8 @@ async def export_person(person: str, session: AsyncSession = Tx) -> dict:
     return {
         "items": [_item(r, None).model_dump(mode="json", by_alias=True) for r in rows],
         "settings": (await prefs_of(session, person)).model_dump(mode="json", by_alias=True),
+        "signIn": {"email": email, "locale": locale},
+        "devices": [{"platform": d.platform, "registeredAt": d.created_at.isoformat()} for d in devices],
     }
 
 

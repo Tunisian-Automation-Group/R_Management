@@ -52,10 +52,24 @@ CATEGORY = {
     "cancelled": "bookings",
     "expired": "bookings",
     "completed": "bookings",
+    "payment_failed": "bookings",
+    "disputed_owner": "bookings",
+    "disputed_renter": "bookings",
     "message": "messages",
     "paid": "payouts",
 }
-ALWAYS_EMAILED = frozenset({"accepted", "instant_booked", "declined", "cancelled", "expired"})
+ALWAYS_EMAILED = frozenset(
+    {
+        "accepted",
+        "instant_booked",
+        "declined",
+        "cancelled",
+        "expired",
+        "payment_failed",
+        "disputed_owner",
+        "disputed_renter",
+    }
+)
 
 
 async def prefs_of(session: AsyncSession, user_id: str) -> Prefs:

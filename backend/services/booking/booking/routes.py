@@ -177,7 +177,8 @@ async def create_booking(
         updated_at=now,
         expires_at=now + settings.payment_timeout,
         amount=m.quote.total,
-        currency="eur",
+        # The listing's currency, in Stripe's lowercase (M-3): never converted.
+        currency=view.listing.currency.lower(),
         requirement=body.requirement.model_dump(mode="json", by_alias=True),
         match=m.model_dump(mode="json", by_alias=True),
         listing_snapshot={
@@ -224,6 +225,11 @@ def _contention(e: DBAPIError) -> bool:
     return code in ("40P01", "55P03", "57014") or "Deadlock" in name or "QueryCanceled" in name
 
 
+def _charged(row: BookingRow) -> bool:
+    """The card is charged at accept; before that there is only a hold."""
+    return row.status in ("accepted", "active")
+
+
 def _refund(request: Request, row: BookingRow, user: str, now: datetime) -> int:
     policy = (row.listing_snapshot or {}).get("cancellationPolicy", "flexible")
     if not request.app.state.settings.paid_cancellation_policies:
@@ -231,7 +237,7 @@ def _refund(request: Request, row: BookingRow, user: str, now: datetime) -> int:
     return refund_amount(
         policy,
         row.amount,
-        charged=row.status in ("accepted", "active"),
+        charged=_charged(row),
         by_owner=user == row.owner_id,
         now=now,
         window_start=row.window_start,
@@ -317,7 +323,8 @@ async def _transition(
         fields["refund_amount"] = row.amount if missing == "owner" else 0
     if to not in ("awaiting_payment", "requested"):
         fields["expires_at"] = None
-    if to == "cancelled" and "refund_amount" not in fields:
+    if to == "cancelled" and "refund_amount" not in fields and _charged(row):
+        # Nothing charged yet (a request, awaiting payment): no refund to show.
         fields["refund_amount"] = _refund(request, row, user, now)
     await repo.move(row, to, user, now, **fields)
     return to_booking(row, user)
@@ -428,6 +435,8 @@ class CancellationQuote(CamelModel):
     refund_amount: int
     currency: str
     policy: str
+    # False: nothing was charged yet; cancelling releases the card hold (FL-8).
+    charged: bool
 
 
 @router.get("/bookings/{booking_id}/cancellation", response_model=CancellationQuote)
@@ -442,7 +451,9 @@ async def cancellation_quote(
     policy = (row.listing_snapshot or {}).get("cancellationPolicy", "flexible")
     if not request.app.state.settings.paid_cancellation_policies:
         policy = "flexible"
-    return CancellationQuote(refund_amount=_refund(request, row, p.sub, _now()), currency=row.currency, policy=policy)
+    return CancellationQuote(
+        refund_amount=_refund(request, row, p.sub, _now()), currency=row.currency, policy=policy, charged=_charged(row)
+    )
 
 
 @router.post("/bookings/{booking_id}/rate-renter", response_model=Booking)
@@ -516,6 +527,32 @@ class OpenBookings(CamelModel):
     until: Iso | None = None
 
 
+class MessageAuthor(CamelModel):
+    sender_id: str
+
+
+@internal.get("/messages/{message_id}", response_model=MessageAuthor)
+async def message_author(message_id: str, repo: BookingRepository = Depends(get_repo)) -> MessageAuthor:
+    """Who wrote a reported message (catalog's moderation, FL-7)."""
+    from .tables import MessageRow
+
+    row = await repo.s.get(MessageRow, message_id)
+    if row is None:
+        raise NotFound(f"message {message_id} not found")
+    return MessageAuthor(sender_id=row.sender_id)
+
+
+@internal.post("/messages/{message_id}/remove", status_code=204)
+async def remove_message(message_id: str, repo: BookingRepository = Depends(get_repo)) -> None:
+    """A moderation decision: the words go, the conversation keeps its shape."""
+    from .tables import MessageRow
+
+    row = await repo.s.get(MessageRow, message_id, with_for_update=True)
+    if row is None:
+        raise NotFound(f"message {message_id} not found")
+    row.body, row.unmasked = "[removed by Cappy: it broke our rules]", None
+
+
 @internal.get("/people/{person}/open", response_model=OpenBookings)
 async def open_bookings(person: str, repo: BookingRepository = Depends(get_repo)) -> OpenBookings:
     """Before an account is deleted: is anything still in flight for them?"""
@@ -539,12 +576,11 @@ class PersonExport(CamelModel):
     bookings: list[Booking]
     messages_sent: list[dict]
     evidence: list[dict]
-
-
-@internal.get("/people/{person}/bookings", response_model=list[Booking])
-async def bookings_of(person: str, repo: BookingRepository = Depends(get_repo)) -> list[Booking]:
-    """Every booking they were part of, for their data export."""
-    return [to_booking(r, person) for r in await repo.all_for(person)]
+    # Who they blocked, and what booking holds as flags about them (D-10).
+    blocked: list[str]
+    identity_verified: bool
+    suspended: bool
+    card_fingerprints: list[str]
 
 
 @internal.get("/people/{person}/export", response_model=PersonExport)
@@ -561,13 +597,28 @@ async def export_person(person: str, repo: BookingRepository = Depends(get_repo)
     ev = (
         await s.execute(select(EvidenceRow).where(EvidenceRow.by == person).order_by(EvidenceRow.at).limit(10_000))
     ).scalars()
+    from .tables import BlockRow, SuspendedRow, VerifiedRow
+
+    rows = await repo.all_for(person)
+    blocked = (await s.execute(select(BlockRow.blocked_id).where(BlockRow.blocker_id == person))).scalars()
     return PersonExport(
-        bookings=[to_booking(r, person) for r in await repo.all_for(person)],
+        bookings=[to_booking(r, person) for r in rows],
+        blocked=list(blocked),
+        identity_verified=await s.get(VerifiedRow, person) is not None,
+        suspended=await s.get(SuspendedRow, person) is not None,
+        card_fingerprints=sorted({r.card_fingerprint for r in rows if r.card_fingerprint and r.requester_id == person}),
         messages_sent=[
             {"bookingId": m.booking_id, "body": m.unmasked or m.body, "at": iso_from_datetime(m.at)} for m in msgs
         ],
         evidence=[
-            {"bookingId": e.booking_id, "stage": e.stage, "photos": e.photos, "at": iso_from_datetime(e.at)} for e in ev
+            {
+                "bookingId": e.booking_id,
+                "stage": e.stage,
+                "photos": e.photos,
+                "note": e.note,
+                "at": iso_from_datetime(e.at),
+            }
+            for e in ev
         ],
     )
 

@@ -56,6 +56,7 @@
 | `api-5xx-rate` | Logs of the gateway and services for `ERROR`. Every line carries `requestId`, which is also in the client's `x-request-id` response header. |
 | `api-p99-latency` | Container Insights CPU per service, and Aurora `ServerlessDatabaseCapacity`. |
 | `<service>-dead-letters` | An event failed 12 times (about 2 h of backoff). Read it: `aws sqs receive-message --queue-url <dlq>`. Fix the cause, then redrive with `aws sqs start-message-move-task --source-arn <dlq-arn>`. Handlers are idempotent, so redriving is safe. |
+| `outbox-set-aside` | A service could not publish an event 20 times (SNS down or refusing it); the change is committed, its event is not sent. Find `OUTBOX_SET_ASIDE <id> <type>` in the service's logs, fix the cause, then send it again: `UPDATE outbox SET attempts = 0 WHERE id = '<id>' AND sent_at IS NULL;` in that service's database (the relay picks it up within seconds). |
 | `<service>-queue-age` | The consumer is down or too slow. Check the service is running and its logs. |
 | `db-cpu`, `db-at-max-capacity` | Raise `db_max_acu`; find the slow queries in Performance Insights. |
 

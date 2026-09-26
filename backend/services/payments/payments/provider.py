@@ -60,9 +60,8 @@ class Provider:
     async def transfer(
         self, *, booking_id: str, amount: int, currency: str, account_id: str, charge_id: str
     ) -> str: ...
-    async def create_account(self, owner_id: str) -> str: ...
-    async def verification_session(self, person_id: str) -> tuple[str, str]:
-        """(session id, client secret) for Stripe Identity: document and selfie."""
+    async def create_account(self, owner_id: str, country: str = "DE") -> str:
+        """A payout account in the owner's country (ISO 3166-1 alpha-2)."""
 
     async def onboarding_link(self, account_id: str, return_url: str, refresh_url: str) -> str: ...
     async def account_status(self, account_id: str) -> AccountStatus: ...
@@ -158,20 +157,15 @@ class StripeProvider(Provider):
         )
         return t.id
 
-    async def verification_session(self, person_id: str) -> tuple[str, str]:
-        v = await self._c.v1.identity.verification_sessions.create_async(
-            {
-                "type": "document",
-                "options": {"document": {"require_matching_selfie": True, "require_live_capture": True}},
-                "metadata": {"personId": person_id},
-            }
-        )
-        return v.id, v.client_secret or ""
-
-    async def create_account(self, owner_id: str) -> str:
+    async def create_account(self, owner_id: str, country: str = "DE") -> str:
         a = await self._c.v1.accounts.create_async(
             {
                 "type": "express",
+                # The owner's own country; the full service agreement is what
+                # lets a German platform pay US and Canadian accounts
+                # (cross-border payouts, M-9, docs/research/2026-09-multi-market.md).
+                "country": country,
+                "tos_acceptance": {"service_agreement": "full"},
                 "capabilities": {"transfers": {"requested": True}},
                 "metadata": {"ownerId": owner_id},
             },
@@ -245,11 +239,8 @@ class FakeProvider(Provider):
         self._call("transfer", booking_id)
         return f"tr_fake_{booking_id}"
 
-    async def create_account(self, owner_id: str) -> str:
+    async def create_account(self, owner_id: str, country: str = "DE") -> str:
         return f"{FAKE_ACCOUNT_PREFIX}{owner_id}"[:80]
-
-    async def verification_session(self, person_id: str) -> tuple[str, str]:
-        return f"vs_fake_{person_id}"[:80], "vs_fake_secret"
 
     async def onboarding_link(self, account_id: str, return_url: str, refresh_url: str) -> str:
         return return_url

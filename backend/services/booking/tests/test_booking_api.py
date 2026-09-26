@@ -71,6 +71,7 @@ class FakePayments(Payments):
             raise Conflict("this owner cannot take payments yet")
         assert owner_net < amount
         self.started.append(booking_id)
+        self.currencies = [*getattr(self, "currencies", []), currency]
         return PaymentStart(client_secret=f"pi_{booking_id}_secret", intent_id=f"pi_{booking_id}")
 
 
@@ -290,8 +291,11 @@ def test_strangers_cannot_see_or_touch_a_booking(client, app, issuer):
 
 
 def test_listing_is_paged_and_split_by_role(client, app, issuer):
-    for h in (24, 30, 36):
-        _book(client, issuer, start_h=h)
+    ids = [_book(client, issuer, start_h=h)["booking"]["id"] for h in (24, 30, 36)]
+    owner = client.get("/bookings", params={"role": "owner"}, headers=issuer.headers(HOST)).json()["items"]
+    assert owner == [], "not before the card is held (FL-15)"
+    for bid in ids:
+        assert _authorise(app, bid)
     page = client.get("/bookings", params={"limit": 2}, headers=issuer.headers(BUYER)).json()
     assert len(page["items"]) == 2 and page["nextCursor"]
     rest = client.get(
@@ -402,7 +406,7 @@ def test_what_is_open_and_everything_for_one_person(client, app, issuer):
     assert client.get(f"/internal/people/{HOST}/open", headers=INTERNAL).json()["open"] == 1
     _do(client, issuer, BUYER, bid, "cancel")
     assert client.get(f"/internal/people/{BUYER}/open", headers=INTERNAL).json() == {"open": 0}
-    [b] = client.get(f"/internal/people/{BUYER}/bookings", headers=INTERNAL).json()
+    [b] = client.get(f"/internal/people/{BUYER}/export", headers=INTERNAL).json()["bookings"]
     assert b["id"] == bid and b["status"] == "cancelled"
 
 
@@ -471,8 +475,20 @@ def test_removing_a_listing_declines_its_pending_requests(client, app, issuer):
     assert call(app, app.state.dispatcher.handle, ev)
     for bid in (pending, unpaid):
         b = client.get(f"/bookings/{bid}", headers=issuer.headers(BUYER)).json()
-        assert b["status"] == "declined" and "removed" in b["declineReason"]
+        assert b["status"] == "declined" and b["declineReason"] == "The listing was removed by its owner"
     assert client.get(f"/bookings/{accepted}", headers=issuer.headers(BUYER)).json()["status"] == "accepted"
+    # FL-9: a staff take-down says so.
+    later = _requested(client, app, issuer, start_h=60)
+    ev = Event(
+        id=new_id("ev"),
+        type=LISTING_CHANGED,
+        source="catalog",
+        occurred_at=now_iso(),
+        data={"listingId": "l9", "change": "removed", "by": "staff"},
+    )
+    assert call(app, app.state.dispatcher.handle, ev)
+    b = client.get(f"/bookings/{later}", headers=issuer.headers(BUYER)).json()
+    assert b["declineReason"] == "The listing was taken down by Cappy"
 
 
 def test_an_accepted_booking_says_when_the_hand_over_opens(client, app, issuer):
@@ -691,7 +707,7 @@ def test_cancellation_policy_decides_the_refund(issuer, broker, payments):
         _authorise(app, bid)
         c.post(f"/bookings/{bid}/accept", headers=issuer.headers(HOST))
         quote = c.get(f"/bookings/{bid}/cancellation", headers=issuer.headers(BUYER)).json()
-        assert quote == {"refundAmount": 2300, "currency": "eur", "policy": "strict"}
+        assert quote == {"refundAmount": 2300, "currency": "eur", "policy": "strict", "charged": True}
         assert c.get(f"/bookings/{bid}/cancellation", headers=issuer.headers(HOST)).json()["refundAmount"] == 4600, (
             "owner cancels: in full"
         )
@@ -704,6 +720,15 @@ def test_flexible_only_until_counsel_confirms(client, app, issuer):
     _do(client, issuer, HOST, bid, "accept")
     q = client.get(f"/bookings/{bid}/cancellation", headers=issuer.headers(BUYER)).json()
     assert q["policy"] == "flexible" and q["refundAmount"] == 4600
+
+
+def test_withdrawing_a_request_releases_the_hold_and_refunds_nothing(client, app, issuer):
+    """FL-8: nothing was charged before accept, so no refund is claimed."""
+    bid = _requested(client, app, issuer, start_h=30)
+    q = client.get(f"/bookings/{bid}/cancellation", headers=issuer.headers(BUYER)).json()
+    assert (q["charged"], q["refundAmount"]) == (False, 0)
+    done = _do(client, issuer, BUYER, bid, "cancel").json()
+    assert done["status"] == "cancelled" and done.get("refundAmount") is None
 
 
 def test_neither_side_sees_the_other_s_review_before_publication(client, app, issuer):
@@ -889,3 +914,90 @@ def test_paid_policies_follow_the_flag_the_app_reads():
     assert BookingSettings(**base, feature_flags="paidCancellationPolicies:100").paid_cancellation_policies
     # Money rules are everyone or no one.
     assert not BookingSettings(**base, feature_flags="paidCancellationPolicies:50").paid_cancellation_policies
+
+
+def test_deletion_redacts_what_names_or_locates_the_person(client, app, issuer):
+    """D-5: the booking stays for accounting; the owner's name and business,
+    the hand-over address, notes and evidence of the deleted person go."""
+    from booking.tables import BookingRow, EvidenceRow
+    from cappy_common.events import PROFILE_DELETED
+
+    bid = _requested(client, app, issuer)
+    _do(client, issuer, HOST, bid, "accept")
+
+    async def dress():
+        async with app.state.db.transaction() as s:
+            row = await s.get(BookingRow, bid)
+            row.listing_snapshot = {
+                **row.listing_snapshot,
+                "ownerName": "Nadia Brandt",
+                "ownerBusiness": {"legalName": "NB"},
+            }
+            row.handover = {"address": "Oranienstr. 5", "instructions": "Code 4711"}
+            row.card_fingerprint = "fp_buyer"
+            row.outcome = {"quality": 5, "onTime": True, "note": "Nadia was lovely"}
+            s.add(
+                EvidenceRow(
+                    id="ev_1",
+                    booking_id=bid,
+                    by=BUYER,
+                    stage="check_in",
+                    photos=["a.jpg"],
+                    note="Scratch",
+                    at=datetime.now(UTC),
+                )
+            )
+
+    call(app, dress)
+    for person in (HOST, BUYER):
+        ev = Event(
+            id=new_id("ev"), type=PROFILE_DELETED, source="catalog", occurred_at=now_iso(), data={"ownerId": person}
+        )
+        assert call(app, app.state.dispatcher.handle, ev)
+
+    async def left():
+        async with app.state.db.transaction() as s:
+            return await s.get(BookingRow, bid), await s.get(EvidenceRow, "ev_1")
+
+    row, evidence = call(app, left)
+    assert row.listing_snapshot["ownerName"] == "Former member" and "ownerBusiness" not in row.listing_snapshot
+    assert row.handover is None and row.card_fingerprint is None and row.outcome["note"] is None
+    assert (evidence.photos, evidence.note) == ([], None)
+    assert row.amount and row.status == "accepted", "the booking itself stays"
+
+
+def test_a_closed_booking_s_conversation_is_read_only(client, app, issuer):
+    """FL-18: no new messages once a booking will never happen."""
+    bid = _requested(client, app, issuer, start_h=30)
+    say = lambda: client.post(f"/bookings/{bid}/messages", json={"body": "Still on?"}, headers=issuer.headers(BUYER))  # noqa: E731
+    assert say().status_code == 201
+    _do(client, issuer, BUYER, bid, "cancel")
+    r = say()
+    assert r.status_code == 409 and r.json()["error"]["code"] == "conversation_closed"
+
+
+def test_moderation_can_read_a_message_s_author_and_remove_its_words(client, app, issuer):
+    """FL-7, the booking half: catalog asks who wrote it, then removes it."""
+    bid = _requested(client, app, issuer, start_h=30)
+    mid = client.post(
+        f"/bookings/{bid}/messages", json={"body": "Rude words here"}, headers=issuer.headers(BUYER)
+    ).json()["id"]
+    assert client.get(f"/internal/messages/{mid}").status_code == 403
+    assert client.get(f"/internal/messages/{mid}", headers=INTERNAL).json() == {"senderId": BUYER}
+    assert client.post(f"/internal/messages/{mid}/remove", headers=INTERNAL).status_code == 204
+    [m] = client.get(f"/bookings/{bid}/messages", headers=issuer.headers(HOST)).json()["items"]
+    assert m["body"].startswith("[removed by Cappy")
+    assert client.get("/internal/messages/nope", headers=INTERNAL).status_code == 404
+
+
+def test_a_booking_is_in_its_listing_s_currency(issuer, broker, payments):
+    """M-3: a Toronto listing priced in CAD is booked and paid in CAD."""
+    matching = FakeMatching()
+    matching.listing = matching.listing.model_copy(update={"currency": "CAD"})
+    settings = Settings(app_env="test", database_url="sqlite+aiosqlite://", internal_token="i" * 40)
+    app = build_app(settings, matching=matching, payments=payments, catalog=FakeCatalog(), verifier=issuer.verifier())
+    with TestClient(app) as c:
+        app.state._portal = c.portal
+        b = c.post("/bookings", json=_body(), headers=issuer.headers(BUYER)).json()["booking"]
+        assert b["currency"] == "cad"
+        assert payments.currencies[-1] == "cad", "and paid in it"

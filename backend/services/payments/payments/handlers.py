@@ -17,6 +17,7 @@ from __future__ import annotations
 import logging
 from datetime import UTC, datetime
 
+from sqlalchemy import update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from cappy_common.events import (
@@ -31,6 +32,7 @@ from cappy_common.events import (
     Outbox,
 )
 
+from .identity import IdentityProvider
 from .invoices import GERMANY, Issuer, issue
 from .provider import Declined, Provider
 from .tables import OUTBOX, ConnectAccountRow, IdentityRow, PaymentRow
@@ -46,7 +48,11 @@ class NotReady(RuntimeError):
 
 
 def handlers(
-    provider: Provider, service_name: str, payouts_on: bool = True, issuer: Issuer = GERMANY
+    provider: Provider,
+    service_name: str,
+    payouts_on: bool = True,
+    issuer: Issuer = GERMANY,
+    identity: IdentityProvider | None = None,
 ) -> dict[str, Handler]:
     outbox = Outbox(OUTBOX, service_name)
 
@@ -150,12 +156,22 @@ def handlers(
 
     async def on_profile_deleted(session: AsyncSession, event: Event) -> None:
         """Their payout link goes; the Stripe account itself stays with Stripe,
-        which keeps what financial regulation requires."""
-        account = await session.get(ConnectAccountRow, event.data["ownerId"])
+        which keeps what financial regulation requires. The ID document and
+        selfie are erased at the provider (D-6); the card fingerprint goes
+        (booking keeps a suspended person's for fraud prevention, S-17)."""
+        person = event.data["ownerId"]
+        account = await session.get(ConnectAccountRow, person)
         if account is not None:
             await session.delete(account)
-        identity = await session.get(IdentityRow, event.data["ownerId"])
-        if identity is not None:
-            await session.delete(identity)
+        row = await session.get(IdentityRow, person)
+        if row is not None:
+            if identity is not None:
+                await identity.redact(row.session_id)
+            await session.delete(row)
+        await session.execute(
+            update(PaymentRow)
+            .where((PaymentRow.requester_id == person) | (PaymentRow.owner_id == person))
+            .values(card_fingerprint=None)
+        )
 
     return {BOOKING_STATUS_CHANGED: on_status_changed, PROFILE_DELETED: on_profile_deleted}

@@ -20,8 +20,8 @@ from sqlalchemy import and_, delete, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from cappy_common.app import ApiRouter
-from cappy_common.auth import Principal, require_admin, require_principal
-from cappy_common.errors import Forbidden, Invalid, NotFound, RateLimited
+from cappy_common.auth import Principal, is_staff, require_admin, require_principal
+from cappy_common.errors import Conflict, Forbidden, Invalid, NotFound, RateLimited
 from cappy_common.events import BOOKING_MESSAGE
 from cappy_common.idempotency import IdempotencyKey, fingerprint, remember, replayed
 from cappy_common.ids import new_id
@@ -112,6 +112,21 @@ def _view(row: MessageRow, viewer: str, agreed: bool) -> Message:
     )
 
 
+CLOSED = frozenset({"cancelled", "declined", "expired", "payment_failed"})
+
+
+def open_for_messages(row, now: datetime) -> bool:  # noqa: ANN001
+    """FL-18: a conversation stays open while the booking can still happen,
+    and after it until the review window closes (questions about the return,
+    a lost key); after that, and for bookings that never happened, it is
+    read-only."""
+    from .repository import REVIEW_WINDOW
+
+    if row.status in CLOSED:
+        return False
+    return not (row.status == "completed" and row.window_end < now - REVIEW_WINDOW)
+
+
 async def blocked_between(session: AsyncSession, a: str, b: str) -> bool:
     q = select(BlockRow).where(
         or_(
@@ -139,6 +154,8 @@ async def send(
     other = row.owner_id if p.sub == row.requester_id else row.requester_id
     if await blocked_between(session, p.sub, other):
         raise Forbidden("you cannot message this person")
+    if not open_for_messages(row, datetime.now(UTC)):
+        raise Conflict("this booking is closed; its conversation is read-only", code="conversation_closed")
     text = body.body.strip()
     if not text:
         raise Invalid("say something")
@@ -290,7 +307,7 @@ async def evidence(
     try:
         await BookingRepository(session, request.app.state.outbox).visible(booking_id, p.sub)
     except NotFound:
-        if "admin" not in (p.claims.get("cognito:groups") or []):
+        if not is_staff(p, request.app.state.settings):
             raise
         await require_admin(request)
     rows = (

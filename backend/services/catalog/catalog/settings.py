@@ -43,6 +43,9 @@ class Settings(CommonSettings):
     # per day, and the hourly price above which a new owner's listing waits
     # for a staff check.
     max_listings_per_day: int = 20
+    # ponytail: minor units, compared across currencies as if all were euros
+    # (fine for EUR/GBP/CHF/USD/CAD; SEK, HUF and the like hold sooner). Per
+    # currency with the market config (M-2).
     review_above_cents: int = 10_000
     # CloudFront distribution to purge when moderation takes something down
     # (it would otherwise stay cached for up to 10 minutes). Empty locally.

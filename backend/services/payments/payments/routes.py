@@ -19,12 +19,20 @@ from cappy_common.events import IDENTITY_VERIFIED, PAYMENT_AUTHORISED, PAYOUTS_R
 from cappy_common.models import CamelModel
 from cappy_common.runtime import Tx
 
+from .identity import IdentityResult, stripe_result
 from .provider import FAKE_ACCOUNT_PREFIX, Provider
 from .tables import PROCESSED, ConnectAccountRow, IdentityRow, PaymentRow
 
 log = logging.getLogger(__name__)
 router = ApiRouter(prefix="/payments")
 internal = ApiRouter(prefix="/internal", dependencies=[Depends(require_internal)])
+
+
+# Where owners can be paid (GOAL 16: Europe, the US and Canada). ponytail: a
+# constant until the market config (M-2) carries it per market.
+PAYOUT_COUNTRIES = frozenset(
+    "AT BE BG CH CY CZ DE DK EE ES FI FR GB GR HR HU IE IS IT LI LT LU LV MT NL NO PL PT RO SE SI SK US CA".split()
+)
 
 
 def _now() -> datetime:
@@ -52,6 +60,8 @@ class IntentOut(CamelModel):
 class Config(CamelModel):
     provider: str
     publishable_key: str | None = None
+    # Which ID-check UI the app shows (F-1): "stripe" = Stripe.js verifyIdentity.
+    identity_provider: str
 
 
 class Onboarding(CamelModel):
@@ -192,7 +202,11 @@ async def create_intent(body: IntentIn, request: Request) -> IntentOut:
 async def config(request: Request) -> Config:
     """What the app needs to load Stripe.js, or to know there is no card step."""
     s = request.app.state.settings
-    return Config(provider=_provider(request).name, publishable_key=s.stripe_publishable_key or None)
+    return Config(
+        provider=_provider(request).name,
+        publishable_key=s.stripe_publishable_key or None,
+        identity_provider=request.app.state.identity.name,
+    )
 
 
 @router.get("/bookings/{booking_id}", response_model=PaymentView)
@@ -205,15 +219,30 @@ async def payment_for_booking(
     return PaymentView(booking_id=row.booking_id, status=row.status, amount=row.amount, currency=row.currency)
 
 
+class OnboardingIn(CamelModel):
+    # Where the owner lives (their profile's country). Stripe fixes an
+    # account's country at creation; a later change needs a new account.
+    country: str = Field(default="DE", pattern="^[A-Z]{2}$")
+
+
 @router.post("/connect/onboarding", response_model=Onboarding)
-async def onboarding(request: Request, session: AsyncSession = Tx, p: Principal = Depends(require_principal)):
+async def onboarding(
+    request: Request,
+    body: OnboardingIn | None = None,
+    session: AsyncSession = Tx,
+    p: Principal = Depends(require_principal),
+):
     """A Stripe-hosted page where an owner gives Stripe their identity and bank
     details. We never see either."""
     provider = _provider(request)
     base = request.app.state.settings.web_base_url.rstrip("/")
+    country = (body or OnboardingIn()).country
+    if country not in PAYOUT_COUNTRIES:
+        raise Invalid(f"payouts are not available in {country} yet", code="country_unsupported")
     account = await session.get(ConnectAccountRow, p.sub)
     if account is None:
-        account = ConnectAccountRow(owner_id=p.sub, account_id=await provider.create_account(p.sub), updated_at=_now())
+        account_id = await provider.create_account(p.sub, country)
+        account = ConnectAccountRow(owner_id=p.sub, account_id=account_id, updated_at=_now())
         session.add(account)
     url = await provider.onboarding_link(
         account.account_id, f"{base}/earn?payments=done", f"{base}/earn?payments=retry"
@@ -240,8 +269,11 @@ async def connect_status(request: Request, session: AsyncSession = Tx, p: Princi
 
 
 class IdentityOut(CamelModel):
+    # none | pending | requires_input | failed | verified
     status: str
     client_secret: str | None = None
+    # Hosted flows (another provider) open this instead of using a client secret.
+    url: str | None = None
 
 
 async def _verified(request: Request, session: AsyncSession, row: IdentityRow) -> None:
@@ -274,20 +306,37 @@ async def identity_session(
         return IdentityOut(status="verified")
     if body is None or not body.consent:
         raise Invalid("agree to the identity check first (consent: true)", code="consent_required")
-    provider = _provider(request)
-    session_id, secret = await provider.verification_session(p.sub)
+    identity = request.app.state.identity
+    started = await identity.start_session(p.sub)
     now = _now()
     if row is None:
-        row = IdentityRow(person_id=p.sub, session_id=session_id, status="pending", updated_at=now)
+        row = IdentityRow(person_id=p.sub, session_id=started.session_id, status="pending", updated_at=now)
         session.add(row)
     else:
-        row.session_id, row.status, row.updated_at = session_id, "pending", now
+        row.session_id, row.status, row.updated_at = started.session_id, "pending", now
     row.consent_at, row.consent_version = now, IDENTITY_CONSENT_VERSION
     await session.flush()
-    if provider.authorises_immediately:  # the fake: verified at once
+    if identity.verifies_immediately:  # the fake: verified at once
         await _verified(request, session, row)
         return IdentityOut(status="verified")
-    return IdentityOut(status="pending", client_secret=secret)
+    return IdentityOut(status="pending", client_secret=started.client_secret, url=started.url)
+
+
+async def _identity_result(request: Request, session: AsyncSession, result: IdentityResult) -> None:
+    """A provider's verdict, applied once and only to the session we started
+    for that person (P-28): not an older one, not one made elsewhere carrying
+    their id in its metadata."""
+    row = await session.get(IdentityRow, result.person_id, with_for_update=True) if result.person_id else None
+    if row is None or row.session_id != result.session_id:
+        log.warning(
+            "identity result for session %s is not %s's current one; ignored", result.session_id, result.person_id
+        )
+        return
+    if result.status == "verified":
+        await _verified(request, session, row)
+    elif row.status != "verified":
+        row.status = "requires_input" if result.status == "needs_input" else "failed"
+    row.updated_at = _now()
 
 
 @router.get("/identity", response_model=IdentityOut)
@@ -336,11 +385,30 @@ async def export_person(person: str, session: AsyncSession = Tx) -> dict:
         if identity
         else None,
         "invoices": [
-            {"number": i.number, "bookingId": i.booking_id, "gross": i.gross, "issuedAt": i.issued_at.isoformat()}
+            {
+                "number": i.number,
+                "bookingId": i.booking_id,
+                "gross": i.gross,
+                "currency": i.currency,
+                "issuedAt": i.issued_at.isoformat(),
+                "recipient": {"name": i.recipient_name, "address": i.recipient_address, "vatId": i.recipient_vat_id},
+            }
             for i in invoices
         ],
+        # D-10: what was charged, refunded and paid out, and the card's
+        # fingerprint (never the card: that stays with Stripe).
         "payments": [
-            {"bookingId": p.booking_id, "amount": p.amount, "currency": p.currency, "status": p.status} for p in paid
+            {
+                "bookingId": p.booking_id,
+                "amount": p.amount,
+                "currency": p.currency,
+                "status": p.status,
+                "charged": bool(p.charge_id),
+                "refunded": bool(p.refund_id),
+                "paidOut": bool(p.transfer_id),
+                "cardFingerprint": p.card_fingerprint if p.requester_id == person else None,
+            }
+            for p in paid
         ],
     }
 
@@ -376,20 +444,9 @@ async def stripe_webhook(request: Request, session: AsyncSession = Tx) -> dict:
             # state rather than trusting this event's copy of it.
             status = await _provider(request).account_status(account.account_id)
             await _update_account(request, session, account, status.payouts_enabled, status.details_submitted)
-    elif kind.startswith("identity.verification_session."):
-        pid = (obj.get("metadata") or {}).get("personId")
-        row = await session.get(IdentityRow, pid, with_for_update=True) if pid else None
-        # Only the session we started for that person counts (P-28): not an
-        # older one, not one made elsewhere carrying their id in its metadata.
-        if row is not None and row.session_id != obj.get("id"):
-            log.warning("identity event for session %s, not %s's current one; ignored", obj.get("id"), pid)
-            row = None
-        if row is not None:
-            if kind.endswith(".verified"):
-                await _verified(request, session, row)
-            elif kind.endswith(".requires_input"):
-                row.status = "requires_input"
-            row.updated_at = _now()
+    elif (result := stripe_result(event)) is not None:
+        # Stripe sends ID-check events to this same endpoint.
+        await _identity_result(request, session, result)
     elif kind == "charge.dispute.created":
         q = select(PaymentRow).where(PaymentRow.charge_id == obj["charge"]).with_for_update()
         row = (await session.execute(q)).scalar_one_or_none()
@@ -400,4 +457,21 @@ async def stripe_webhook(request: Request, session: AsyncSession = Tx) -> dict:
             log.error("CHARGEBACK on booking %s (dispute %s); payout held", row.booking_id, obj.get("id"))
     else:
         log.info("ignoring stripe event %s", kind)
+    return {"received": True}
+
+
+@router.post("/webhooks/identity", status_code=200)
+async def identity_webhook(request: Request, session: AsyncSession = Tx) -> dict:
+    """For an ID-check provider with its own webhook (F-1). Verified by the
+    provider class; handled once per session and status."""
+    result = request.app.state.identity.parse_webhook(await request.body(), dict(request.headers))
+    if result is None:
+        return {"received": True}
+    key = f"idv:{result.session_id}:{result.status}"[:40]
+    try:
+        async with session.begin_nested():
+            await session.execute(insert(PROCESSED).values(event_id=key, type="identity", processed_at=_now()))
+    except IntegrityError:
+        return {"received": True, "duplicate": True}
+    await _identity_result(request, session, result)
     return {"received": True}

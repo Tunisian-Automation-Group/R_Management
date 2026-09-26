@@ -20,6 +20,13 @@ class Bookings:
         """People who were a party to a booking made in [start, end)."""
         return 0
 
+    async def message_author(self, message_id: str) -> str | None:
+        """Who sent a message (a reported one: FL-7), or None if there is none."""
+        return None
+
+    async def remove_message(self, message_id: str) -> None:
+        """A moderation decision: the message's words are replaced."""
+
     async def aclose(self) -> None:
         """Release resources."""
 
@@ -63,6 +70,12 @@ class HttpBookings(Bookings):
     async def active_people(self, start: datetime, end: datetime) -> int:
         q = urlencode({"from": start.isoformat(), "until": end.isoformat()})
         return (await self._c.get(f"/internal/stats/active-people?{q}"))["people"]
+
+    async def message_author(self, message_id: str) -> str | None:
+        return (await self._c.get(f"/internal/messages/{quote(message_id, safe='')}"))["senderId"]
+
+    async def remove_message(self, message_id: str) -> None:
+        await self._c.post(f"/internal/messages/{quote(message_id, safe='')}/remove")
 
     async def aclose(self) -> None:
         await self._c.aclose()

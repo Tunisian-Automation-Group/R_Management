@@ -28,6 +28,10 @@ class LogPusher(Pusher):
 
     def __init__(self) -> None:
         self.sent: list[tuple[str, str]] = []
+        self.unregistered: list[str] = []
+
+    async def unregister(self, endpoint: str) -> None:
+        self.unregistered.append(endpoint)
 
     async def register(self, platform: str, token: str) -> str | None:
         return f"local:{platform}:{token[:12]}"
@@ -76,3 +80,15 @@ class SnsPusher(Pusher):
             return True
         except self._c.exceptions.EndpointDisabledException:
             return False
+
+
+async def drop_devices(session, pusher: Pusher, rows) -> None:  # noqa: ANN001
+    """Forget devices: their endpoints are deleted at SNS first (D-7), so an
+    endpoint left behind can never carry another notification."""
+    for row in list(rows):
+        if row.endpoint:
+            try:
+                await pusher.unregister(row.endpoint)
+            except Exception as e:  # noqa: BLE001 - the row goes anyway; SNS disables dead endpoints itself
+                log.warning("could not delete push endpoint %s: %s", row.endpoint, e)
+        await session.delete(row)

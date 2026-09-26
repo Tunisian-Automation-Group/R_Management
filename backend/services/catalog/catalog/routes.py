@@ -23,7 +23,7 @@ from cappy_common.runtime import ReadTx, Tx
 from cappy_common.timeutil import HOUR_MS, dt_from_iso, ms_from_iso, now_iso
 
 from . import media
-from .repository import CatalogRepository
+from .repository import CatalogRepository, to_listing
 from .tables import IDEMPOTENCY, RATE_HITS
 
 # Signed-in only (GOAL 13): nothing of the product is served to anonymous
@@ -132,6 +132,8 @@ class ProfileIn(CamelModel):
     business: BusinessIn | None = None
     # Required when the profile is created: Cappy is for adults (the terms).
     adult: bool | None = None
+    # Country of residence, ISO 3166-1 alpha-2 (payouts are set up there, M-9).
+    country: str = Field(default="DE", pattern="^[A-Z]{2}$")
 
 
 class City(CamelModel):
@@ -268,14 +270,20 @@ async def _owned(repo: CatalogRepository, listing_id: str, user: str):
     return row
 
 
+# How many units of a currency make about one euro, for sanity bounds only.
+_MONEY_SCALE = {"SEK": 12, "NOK": 12, "DKK": 8, "PLN": 5, "RON": 5, "CZK": 25, "HUF": 400}
+
+
 def _check_numbers(listing) -> None:
     """Every number a listing carries within sane bounds, so no listing can
     break pricing for others (P-1). Money in minor units."""
-    # ponytail: one table of bounds; per-market caps belong to the market model (GOAL 16).
+    # ponytail: one table of bounds, money scaled roughly to the currency (the
+    # cap is about 10,000 euros an hour); per-market caps with the market config (M-2).
+    money = 1_000_000 * _MONEY_SCALE.get(listing.currency, 1)
     bounds = {
-        "rate_per_hour": (1, 1_000_000),
-        "extra_fee": (0, 1_000_000),
-        "setup_fee": (0, 1_000_000),
+        "rate_per_hour": (1, money),
+        "extra_fee": (0, money),
+        "setup_fee": (0, money),
         "min_hours": (0.5, 24 * 90),
         "max_hours": (0.5, 24 * 90),
         "units_per_hour": (0.001, 1_000_000),
@@ -326,6 +334,7 @@ async def put_me(
         district=body.district,
         business=business,
         adult=bool(body.adult),
+        country=body.country,
     )
     if created:
         await _outbox(request).add(repo.s, PROFILE_CREATED, {"ownerId": owner.id, "district": owner.district})
@@ -445,10 +454,13 @@ async def owner(owner_id: str, repo=Depends(get_read_repo)) -> Owner:
 async def listing_detail(
     listing_id: str, repo=Depends(get_read_repo), p: Principal | None = Depends(optional_principal)
 ) -> ListingDetail:
-    row = await repo.listing_row(listing_id)
-    listing = await repo.listing(listing_id)
-    if not listing.active and (p is None or p.sub != row.owner_id):
+    # The owner sees their own listing while it waits for review, or paused
+    # ("View as a guest", FL-6); nobody else does.
+    row = await repo.listing_row(listing_id, include_held=True)
+    mine = p is not None and p.sub == row.owner_id
+    if (row.held_at is not None or not row.active) and not mine:
         raise NotFound(f"listing {listing_id} not found")
+    listing = to_listing(row)
     saved = (listing_id in await repo.saved_ids(p.sub, {listing_id})) if p else None
     return ListingDetail(
         listing=listing,
@@ -770,8 +782,3 @@ async def handover(listing_id: str, repo=Depends(get_repo)) -> Handover:
     listing removed since, because the booking still happens."""
     row = await repo.listing_row(listing_id, include_deleted=True)
     return Handover(address=row.address, instructions=row.instructions)
-
-
-@internal.get("/owners/{owner_id}", response_model=Owner)
-async def internal_owner(owner_id: str, repo=Depends(get_read_repo)) -> Owner:
-    return await repo.owner(owner_id)

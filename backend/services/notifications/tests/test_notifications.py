@@ -124,7 +124,7 @@ def test_devices_get_pushes_and_gone_ones_are_forgotten():
         assert pusher.sent == []
 
 
-def test_a_chat_message_is_pushed_never_emailed():
+def test_a_chat_message_is_pushed_and_emailed_at_most_every_15_minutes():
     from notifications.push import LogPusher
 
     from cappy_common.events import BOOKING_MESSAGE
@@ -139,10 +139,14 @@ def test_a_chat_message_is_pushed_never_emailed():
             json={"platform": "android", "token": "tok-host-9"},
             headers=issuer.headers("host"),
         )
-        ev = _event(BOOKING_MESSAGE, bookingId="bk_1", senderId="buyer", recipientId="host", title="Table saw")
-        c.portal.call(app.state.dispatcher.handle, ev)
-    assert [t for _, t in pusher.sent] == ["New message: Table saw"]
-    assert mailer.sent == []
+        for _ in range(3):
+            ev = _event(BOOKING_MESSAGE, bookingId="bk_1", senderId="buyer", recipientId="host", title="Table saw")
+            c.portal.call(app.state.dispatcher.handle, ev)
+        other = _event(BOOKING_MESSAGE, bookingId="bk_2", senderId="buyer", recipientId="host", title="Van")
+        c.portal.call(app.state.dispatcher.handle, other)
+    assert [t for _, t in pusher.sent] == ["New message: Table saw"] * 3 + ["New message: Van"]
+    # FL-3: one email per conversation per 15 minutes; another conversation is another email.
+    assert [m.subject for m in mailer.sent] == ["New message: Table saw", "New message: Van"]
 
 
 def test_reports_are_acknowledged_and_decisions_explained(app):
@@ -410,3 +414,32 @@ def test_a_push_token_moves_only_from_the_same_install():
         # The same install, another person signing in: the old endpoint goes first.
         assert c.post("/notifications/devices", json=phone, headers=issuer.headers("buyer")).status_code == 204
         assert pusher.deleted == ["local:ios:tok-shared-p"]
+
+
+def test_a_failed_capture_and_a_dispute_reach_both_sides(app):
+    """FL-2: the owner learns a booking fell through, or is disputed."""
+    sent = _sent(
+        app,
+        _change("payment_failed", by="payments", frm="awaiting_payment", bookingId="bk_a"),
+        _change("payment_failed", by="payments", frm="accepted", bookingId="bk_b"),
+        _change("disputed", by="buyer", frm="active", bookingId="bk_c"),
+    )
+    assert sent == [
+        ("buyer@example.com", "Payment failed: Table saw"),
+        ("buyer@example.com", "Payment failed: Table saw"),
+        ("host@example.com", "Payment failed: Table saw"),
+        ("host@example.com", "A problem was reported: Table saw"),
+        ("buyer@example.com", "We received your report: Table saw"),
+    ]
+
+
+def test_french_readers_are_written_to_in_french_and_everything_is_translated():
+    from notifications.texts import TEXTS, money, render
+
+    assert TEXTS["fr"].keys() == TEXTS["en"].keys() == TEXTS["de"].keys()
+    subject, body = render("requested", "fr-CA", title="Scie", link="x", _deadline="2026-09-26T12:00:00Z")
+    assert subject == "Nouvelle demande\u00a0: Scie" and "sam. 26 sept., 14:00" in body
+    assert money(123456, "cad", "fr-CA") == "1 234,56 $" and money(123456, "usd", "en-US") == "$1,234.56"
+    assert (
+        render("paid", "es-ES", amount="x", booking="b", web="w", _cents=(100, "eur"))[0] == "You have been paid €1.00"
+    )

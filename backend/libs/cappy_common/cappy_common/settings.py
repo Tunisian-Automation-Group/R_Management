@@ -103,6 +103,11 @@ class CommonSettings(BaseSettings):
     # it on their own route.
     max_body_bytes: int = 256_000
 
+    # Who is staff (F-3): the claim in the access token and the value in it.
+    # A list claim (Cognito groups) or a space-separated string (OAuth scopes).
+    staff_claim: str = "cognito:groups"
+    staff_value: str = "admin"
+
     # --- feature flags (cappy_common/flags.py, S-26) --------------------------
     # "name:percent,...". One setting for every service: the gateway hands it
     # to the apps in /api/app-config, and a service that enforces a flag reads

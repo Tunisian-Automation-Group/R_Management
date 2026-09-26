@@ -61,6 +61,7 @@ def quote_for(req: AnyRequirement, listing: AnyListing) -> Quote | None:
     platform_fee = bps(total, PLATFORM_FEE_BPS)
 
     return Quote(
+        currency=listing.currency,
         hours=hours,
         base=base,
         discount=discount,

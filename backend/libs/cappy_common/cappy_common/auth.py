@@ -219,14 +219,22 @@ class StaffMfa:
         return on
 
 
+def is_staff(p: Principal, settings) -> bool:  # noqa: ANN001
+    """Whether the token says staff (before any MFA check)."""
+    claim = p.claims.get(settings.staff_claim)
+    values = claim if isinstance(claim, list) else str(claim or "").split()
+    return settings.staff_value in values
+
+
 async def require_admin(request: Request) -> Principal:
-    """Moderators and support: members of the Cognito group "admin", signed in
-    with MFA wherever staff MFA is required (always when deployed)."""
+    """Moderators and support: the token's staff claim holds the staff value
+    (Cognito: group "admin" in ``cognito:groups``; another identity provider
+    is two settings, F-3), signed in with MFA wherever staff MFA is required
+    (always when deployed)."""
     p = await require_principal(request)
-    groups = p.claims.get("cognito:groups") or []
-    if "admin" not in groups:
-        raise Forbidden("this needs a Cappy staff account")
     settings = request.app.state.settings
+    if not is_staff(p, settings):
+        raise Forbidden("this needs a Cappy staff account")
     if settings.staff_mfa_required:
         mfa: StaffMfa | None = getattr(request.app.state, "staff_mfa", None)
         if mfa is None:

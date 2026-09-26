@@ -10,7 +10,7 @@ from __future__ import annotations
 from datetime import datetime, timedelta
 
 from pydantic import TypeAdapter
-from sqlalchemy import and_, func, or_, select, text
+from sqlalchemy import and_, exists, func, or_, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from cappy_common.errors import NotFound
@@ -54,6 +54,7 @@ def to_booking(row: BookingRow, viewer: str) -> Booking:
         can_start_from=iso_from_datetime(row.window_start - START_EARLY) if row.status == "accepted" else None,
         renter_rating=renter_rating,
         refund_amount=row.refund_amount,
+        currency=row.currency,
         no_show=row.no_show,
     )
 
@@ -93,6 +94,21 @@ def status_event(row: BookingRow, before: str | None, by: str) -> dict:
     }
 
 
+def _owner_sees():
+    """An owner hears of a booking once the card is held (FL-15): not while it
+    awaits payment, nor when its payment failed before they ever saw it. A
+    capture declined after they accepted they do see."""
+    failed_after_accept = exists().where(
+        TransitionRow.booking_id == BookingRow.id,
+        TransitionRow.from_status == "accepted",
+        TransitionRow.to_status == "payment_failed",
+    )
+    return and_(
+        BookingRow.status != "awaiting_payment",
+        or_(BookingRow.status != "payment_failed", failed_after_accept),
+    )
+
+
 class BookingRepository:
     def __init__(self, session: AsyncSession, outbox: Outbox) -> None:
         self.s = session
@@ -109,6 +125,10 @@ class BookingRepository:
         row = await self.s.get(BookingRow, booking_id, with_for_update=lock)
         if not row or viewer not in (row.requester_id, row.owner_id):
             raise NotFound(f"booking {booking_id} not found")
+        if viewer == row.owner_id and viewer != row.requester_id:
+            seen = (await self.s.execute(select(BookingRow.id).where(BookingRow.id == row.id, _owner_sees()))).first()
+            if seen is None:
+                raise NotFound(f"booking {booking_id} not found")
         return row
 
     async def by_idempotency_key(self, requester_id: str, key: str) -> BookingRow | None:
@@ -253,12 +273,14 @@ class BookingRepository:
     ) -> tuple[list[BookingRow], str | None]:
         """Newest first. ``role`` narrows to what the viewer asked for
         (``requester``) or is being asked for (``owner``)."""
+        mine = BookingRow.requester_id == viewer
+        theirs = and_(BookingRow.owner_id == viewer, _owner_sees())
         if role == "requester":
-            q = select(BookingRow).where(BookingRow.requester_id == viewer)
+            q = select(BookingRow).where(mine)
         elif role == "owner":
-            q = select(BookingRow).where(BookingRow.owner_id == viewer)
+            q = select(BookingRow).where(theirs)
         else:
-            q = select(BookingRow).where(or_(BookingRow.requester_id == viewer, BookingRow.owner_id == viewer))
+            q = select(BookingRow).where(or_(mine, theirs))
         key = decode_cursor(cursor)
         if key:
             at = dt_from_iso(key["at"])

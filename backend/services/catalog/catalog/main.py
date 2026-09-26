@@ -4,17 +4,42 @@ from fastapi import FastAPI
 
 from cappy_common.app import create_app
 from cappy_common.auth import TokenVerifier
-from cappy_common.events import BOOKING_RATED, OWNER_RELIABILITY, PAYOUTS_READY, PERSON_FLAGGED, RENTER_RATED
+from cappy_common.events import (
+    BOOKING_RATED,
+    IDENTITY_VERIFIED,
+    OWNER_RELIABILITY,
+    PAYOUTS_READY,
+    PERSON_FLAGGED,
+    RENTER_RATED,
+)
 from cappy_common.runtime import Runtime
 
 from . import moderation
+from .cdn import Cdn, make_cdn
 from .clients import Bookings, HttpBookings, HttpNotifications, HttpPayments, Notifications, Payments
-from .handlers import on_booking_rated, on_owner_reliability, on_payouts_ready, on_person_flagged, on_renter_rated
+from .handlers import (
+    on_booking_rated,
+    on_identity_verified,
+    on_owner_reliability,
+    on_payouts_ready,
+    on_person_flagged,
+    on_renter_rated,
+)
 from .jobs import sweep_orphans
 from .media import MediaStore, make_store
 from .routes import internal, media_router, router
 from .settings import Settings
 from .tables import Base
+
+# What catalog does with each event it subscribes to (infra/platform/data.tf).
+HANDLERS = {
+    BOOKING_RATED: on_booking_rated,
+    PAYOUTS_READY: on_payouts_ready,
+    RENTER_RATED: on_renter_rated,
+    OWNER_RELIABILITY: on_owner_reliability,
+    PERSON_FLAGGED: on_person_flagged,
+    IDENTITY_VERIFIED: on_identity_verified,
+}
 
 
 def build_app(
@@ -25,6 +50,7 @@ def build_app(
     bookings: Bookings | None = None,
     payments: Payments | None = None,
     notifications: Notifications | None = None,
+    cdn: Cdn | None = None,
     verifier: TokenVerifier | None = None,
 ) -> FastAPI:
     async def close(app: FastAPI) -> None:
@@ -35,13 +61,7 @@ def build_app(
     runtime = Runtime(
         settings,
         metadata=Base.metadata,
-        handlers={
-            BOOKING_RATED: on_booking_rated,
-            PAYOUTS_READY: on_payouts_ready,
-            RENTER_RATED: on_renter_rated,
-            OWNER_RELIABILITY: on_owner_reliability,
-            PERSON_FLAGGED: on_person_flagged,
-        },
+        handlers=HANDLERS,
         loops=[sweep_orphans],
         on_stop=close,
     )
@@ -54,6 +74,7 @@ def build_app(
     )
     app.state.verifier = verifier
     app.state.media = media_store or make_store(settings)
+    app.state.cdn = cdn or make_cdn(settings)
     app.state.evidence = evidence_store or make_store(settings, private=True)
     app.state.bookings = bookings or HttpBookings(settings.booking_url, settings.internal_token.get_secret_value())
     app.state.payments = payments or HttpPayments(settings.payments_url, settings.internal_token.get_secret_value())

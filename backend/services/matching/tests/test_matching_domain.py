@@ -401,3 +401,10 @@ def test_a_listing_that_cannot_be_priced_is_no_offer(world, brackets):
     for broken in ({"units_per_hour": 0}, {"setup_fee": -5000}):
         assert quote_for(brackets, batch.model_copy(update=broken)) is None
     assert quote_for(brackets, batch) is not None
+
+
+def test_a_quote_is_in_its_listing_s_currency(world, brackets):
+    """M-3: minor units of the listing's own currency; nothing converted."""
+    batch = next(l for l in world.listings if l.mode == "batch")
+    assert quote_for(brackets, batch).currency == "EUR"
+    assert quote_for(brackets, batch.model_copy(update={"currency": "CAD"})).currency == "CAD"

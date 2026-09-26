@@ -11,11 +11,11 @@ and, retried, the first one's answer.
 from __future__ import annotations
 
 import hashlib
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 
 from fastapi import Header, Request
 from pydantic import BaseModel
-from sqlalchemy import Column, MetaData, String, Table, insert, select
+from sqlalchemy import Column, MetaData, String, Table, delete, insert, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -26,8 +26,12 @@ from .errors import Conflict, Invalid
 IdempotencyKey = Header(default=None, alias="Idempotency-Key", max_length=80)
 
 
+# A retry comes within minutes; a day covers a phone that was off overnight
+# (Stripe keeps its keys 24 h too). Older answers are deleted hourly (D-4).
+KEEP = timedelta(hours=24)
+
+
 def idempotency_table(metadata: MetaData) -> Table:
-    # ponytail: keys are kept forever; a daily delete of rows older than a week when the table gets big.
     return Table(
         "idempotency_keys",
         metadata,
@@ -76,3 +80,15 @@ async def remember(session: AsyncSession, table: Table, who: str, key: str | Non
         )
     except IntegrityError:
         raise Conflict("that request is already being handled; retry in a moment") from None
+
+
+async def expire(session: AsyncSession, table: Table, now: datetime | None = None) -> int:
+    """Answers older than ``KEEP`` go: they held what was created, for the
+    person who created it, and are useless once nobody will retry."""
+    r = await session.execute(delete(table).where(table.c.created_at < (now or datetime.now(UTC)) - KEEP))
+    return r.rowcount or 0
+
+
+async def forget(session: AsyncSession, table: Table, who: str) -> None:
+    """An account deletion: their stored answers go with it."""
+    await session.execute(delete(table).where(table.c.principal == who))

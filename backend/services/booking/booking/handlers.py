@@ -7,6 +7,7 @@ from datetime import UTC, datetime
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from cappy_common import idempotency
 from cappy_common.events import (
     IDENTITY_VERIFIED,
     LISTING_CHANGED,
@@ -24,7 +25,7 @@ from cappy_common.events import (
 from .repository import BookingRepository
 from .settings import Settings
 from .state import SystemAction, system_status
-from .tables import OUTBOX, BlockRow, BookingRow, SuspendedRow, VerifiedRow
+from .tables import IDEMPOTENCY, OUTBOX, BlockRow, BookingRow, SuspendedRow, VerifiedRow
 
 log = logging.getLogger(__name__)
 
@@ -32,6 +33,36 @@ log = logging.getLogger(__name__)
 def answer_deadline(settings: Settings, now: datetime, row: BookingRow) -> datetime:
     """An owner has a day to answer, and never past the window's start."""
     return min(now + settings.answer_within, row.window_start)
+
+
+async def redact_bookings(session: AsyncSession, person: str) -> None:
+    """D-5: a booking row stays (accounting, disputes already closed: deletion
+    waits for open bookings), but what names or locates the person goes. The
+    legally required copy of the owner's identity is the fee invoice
+    (payments). A suspended person's card fingerprint stays, for fraud
+    prevention (S-17, docs/DATA.md)."""
+    from sqlalchemy import or_, select, update
+
+    from .tables import EvidenceRow
+
+    suspended = await session.get(SuspendedRow, person) is not None
+    rows = (
+        await session.execute(
+            select(BookingRow).where(or_(BookingRow.requester_id == person, BookingRow.owner_id == person))
+        )
+    ).scalars()
+    for row in rows:
+        row.handover = None
+        if row.owner_id == person:
+            snap = {k: v for k, v in (row.listing_snapshot or {}).items() if k != "ownerBusiness"}
+            row.listing_snapshot = {**snap, "ownerName": "Former member"}
+            row.decline_reason = row.decline_reason and "[removed: the account was deleted]"
+        if row.requester_id == person:
+            if row.outcome and row.outcome.get("note"):
+                row.outcome = {**row.outcome, "note": None}
+            if not suspended:
+                row.card_fingerprint = None
+    await session.execute(update(EvidenceRow).where(EvidenceRow.by == person).values(photos=[], note=None))
 
 
 def handlers(settings: Settings) -> dict[str, Handler]:
@@ -85,12 +116,16 @@ def handlers(settings: Settings) -> dict[str, Handler]:
             return
         repo = BookingRepository(session, outbox)
         now = datetime.now(UTC)
+        # FL-9: say who removed it; a staff take-down is not the owner's doing.
+        reason = (
+            "The listing was taken down by Cappy"
+            if event.data.get("by") == "staff"
+            else "The listing was removed by its owner"
+        )
         for row in await repo.pending_for_listing(event.data["listingId"]):
             to = system_status("listing_removed", row.status)
             if to:
-                await repo.move(
-                    row, to, "system", now, expires_at=None, decline_reason="The listing was removed by its owner"
-                )
+                await repo.move(row, to, "system", now, expires_at=None, decline_reason=reason)
 
     async def on_suspended(session: AsyncSession, event: Event) -> None:
         from cappy_common.db import insert_or_ignore
@@ -130,6 +165,8 @@ def handlers(settings: Settings) -> dict[str, Handler]:
             .where(MessageRow.sender_id == person)
             .values(body="[removed: the account was deleted]", unmasked=None)
         )
+        await redact_bookings(session, person)
+        await idempotency.forget(session, IDEMPOTENCY, person)
 
     return {
         PROFILE_DELETED: on_profile_deleted,

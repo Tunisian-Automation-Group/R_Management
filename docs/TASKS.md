@@ -377,7 +377,7 @@ Run by a separate verifier on the local stack, 2026-09-26 (00:25–00:50 CEST), 
 - [ ] P-15 [legal] G-1: the English privacy policy omits messages, photos, reports, identity checks and push, and has no CCPA/CPRA, PIPEDA/Law 25 or UK sections — match the German policy; add per-market sections; notice at collection; "we do not sell or share"
 - [ ] P-16 [web] G-1: the two languages of the policy drift apart — render both from one list of categories and recipients, with a test that fails on a mismatch
 - [ ] P-17 [legal] G-2: identity checks are biometric and government-ID data (GDPR Art. 9, CPRA sensitive data, BIPA, CUBI, Québec's CAI declaration) — explicit consent, a published retention schedule, the CAI declaration, and Stripe's role confirmed in the DPA
-- [ ] P-18 [web] G-2: nothing records consent before `verifyIdentity` — a consent screen, with the consent stored against the verification session — web: explicit consent checkbox before the check (web, uncommitted); storing the consent against the verification is backend work, open (backend part, uncommitted: consent: true required, time and version stored)
+- [x] P-18 [web] G-2: nothing records consent before `verifyIdentity` — a consent screen, with the consent stored against the verification session — web: explicit consent checkbox before the check (web, uncommitted); storing the consent against the verification is backend work, open (backend part, uncommitted: consent: true required, time and version stored) (f303350 server, f22f143 web)
 - [ ] P-19 [legal] G-5: US and Canadian data sits in Frankfurt, and EU data goes to the US (CloudFront and WAF, APNs and FCM, Stripe) with no documented safeguards — an ADR on where each market's data lives; a Law 25 s. 17 transfer PIA; transfer impact assessments; name the DPF or SCCs in the policy
 - [ ] P-20 [infra] G-5: WAF sampled requests keep request headers, including bearer tokens, in us-east-1 — turn off `sampled_requests_enabled` on rules that see authenticated traffic, or accept this in writing
 - [ ] P-21 [legal] G-4: no Law 25 or PIPEDA privacy officer, no UK or Swiss representative, no DPO assessment — appoint them and publish them (`VITE_LEGAL_PRIVACY_OFFICER`)
@@ -399,13 +399,13 @@ Run by a separate verifier on the local stack, 2026-09-26 (00:25–00:50 CEST), 
 
 - [ ] M-1 [legal/business] Entity plan: Cappy GmbH serves the EEA, CH and UK. Decide whether and when a US corporation (and later a Canadian subsidiary) with its own Stripe platform serves North America, or whether North America starts on the DE platform via cross-border payouts — https://docs.stripe.com/connect/cross-border-payouts
 - [ ] M-2 [backend] `markets.json` in `cappy_common` (currency, cell, entity, stripePlatform, languages, units, tax regime, reporting, consumer law, fee, min age, status), with a loader, a test that every market is complete, and a copy in the web build — ADR 0013
-- [ ] M-3 [backend] `Money(amount_minor, currency)` in models, quotes, offers and events; no `currency="eur"` (`booking/routes.py:180`) and no `"eur"` column default (`booking/tables.py:50`); minor-unit exponent from ISO 4217 — https://www.iso.org/iso-4217-currency-codes.html
+- [x] M-3 [backend] `Money(amount_minor, currency)` in models, quotes, offers and events; no `currency="eur"` (`booking/routes.py:180`) and no `"eur"` column default (`booking/tables.py:50`); minor-unit exponent from ISO 4217 — https://www.iso.org/iso-4217-currency-codes.html (backend, uncommitted)
 - [x] M-4 [web] `formatMoney(amount, currency)` replaces `formatEur`; the money input takes symbol and separators from `Intl.NumberFormat.formatToParts`; no hard-coded € (`ui.tsx:386`) — https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Intl/NumberFormat/formatToParts — (web, uncommitted) `formatMoney(minor, currency, locale)` with the currency from the data (EUR fallback until M-3), money input symbol from Intl, `formatDistance`/`formatRadius` in mi for US/GB, km elsewhere; locale keeps the device region (en-US, en-CA, fr-CA…)
 - [ ] M-5 [backend] Listings get `country`, `subdivision`, `postal_code`, `time_zone` and a PostGIS `geography(Point)` with a GiST index; search by `ST_DWithin`; districts become labels; migration from districts to points — https://docs.aws.amazon.com/AmazonRDS/latest/AuroraUserGuide/Appendix.PostgreSQL.CommonDBATasks.PostGIS.html
 - [ ] M-6 [backend] Public coordinates snapped to about 500 m; the exact point only in the handover after acceptance (as the address is today) — https://www.airbnb.com/help/article/2874
 - [ ] M-7 [backend]+[infra] Geocoding and autocomplete through Amazon Location Service in each cell; store only `IntendedUse=Storage` results, never autocomplete results — https://docs.aws.amazon.com/location/latest/developerguide/places-intended-use.html
 - [ ] M-8 [web] Structured address form per country from the libaddressinput metadata, replacing the free-text field and the Berlin placeholder (`AddListing.tsx:768`) — https://github.com/google/libaddressinput
-- [ ] M-9 [backend] Stripe accounts created with the owner's `country` on the market's platform (`payments/provider.py:171`); full service agreement; separate charges and transfers stay without `on_behalf_of` — https://docs.stripe.com/connect/service-agreement-types
+- [x] M-9 [backend] Stripe accounts created with the owner's `country` on the market's platform (`payments/provider.py:171`); full service agreement; separate charges and transfers stay without `on_behalf_of` — https://docs.stripe.com/connect/service-agreement-types (backend, uncommitted)
 - [ ] M-10 [backend] A Stripe client per `stripePlatform`; secrets per cell; webhooks per platform — https://docs.stripe.com/connect/charges
 - [ ] M-11 [legal/business] VAT on the fee per owner: domestic, reverse charge (EU B2B), OSS (EU B2C), UK VAT (no threshold for non-established), Swiss MWST (CHF 100k worldwide), GST/HST and QST — https://europa.eu/youreurope/business/taxation/vat/one-stop-shop/index_en.htm
 - [ ] M-12 [backend] The fee's tax becomes a decision per invoice line (rate, scheme, legal note), from Stripe Tax or a rules table; `VAT_BPS = 1900` goes (`payments/invoices.py:30`) — https://docs.stripe.com/tax/tax-for-marketplaces
@@ -446,60 +446,60 @@ Run by a separate verifier on the local stack, 2026-09-26 (00:25–00:50 CEST), 
 ## Data rights (D) — from docs/DATA.md §5.5
 
 Deletion (GDPR Art. 17, CPRA, PIPEDA/Law 25), except what law requires kept:
-- [ ] D-1 [backend] Deleting an account removes the person's photos: S3 objects and `media` rows (`catalog/repository.py` `forget`)
-- [ ] D-2 [backend] Deleted listings lose title, blurb, instructions (door codes), photos and spec, not only the address
-- [ ] D-3 [backend] Reports: reporter id, email and details redacted on deletion and after a retention period (DSA records: keep the decision, not the reporter); included in the reporter's export
-- [ ] D-4 [backend] Idempotency responses expire (24 h) and are deleted with the account (`cappy_common/idempotency.py`)
-- [ ] D-5 [backend] Booking snapshots: owner name and business, hand-over address and instructions, outcome notes, decline reasons, evidence photos and notes redacted on deletion (the booking row itself stays for accounting)
-- [ ] D-6 [backend] Stripe Identity: redact the verification session (`POST /v1/identity/verification_sessions/{id}/redact`) on deletion
-- [ ] D-7 [backend] Push: delete the SNS platform endpoint on unregister, sign-out-everywhere and deletion
-- [ ] D-8 [backend] Analytics lake: add `outcome.note`, moderation `statement` and `person_flagged.details` to P-6's list; a purge path for a person's events or keep only pseudonymous ids
-- [ ] D-9 [infra]+[docs] SES suppression list and invoice retention: document the legal basis; a job that purges invoices after the 10-year period
-- [ ] D-10 [backend] Export completeness: Cognito email and locale; reports filed; moderation decisions about the person; reviews about them; photo files (links); evidence notes; blocks; verified/suspended flags; card fingerprint; invoice recipient fields; refunds and charges; push devices
-- [ ] D-11 [backend] A test that walks every table with a person-id column and fails if deletion or export ignores it (catches the next gap)
+- [x] D-1 [backend] Deleting an account removes the person's photos: S3 objects and `media` rows (`catalog/repository.py` `forget`) (backend, uncommitted)
+- [x] D-2 [backend] Deleted listings lose title, blurb, instructions (door codes), photos and spec, not only the address (backend, uncommitted)
+- [x] D-3 [backend] Reports: reporter id, email and details redacted on deletion and after a retention period (DSA records: keep the decision, not the reporter); included in the reporter's export (backend, uncommitted)
+- [x] D-4 [backend] Idempotency responses expire (24 h) and are deleted with the account (`cappy_common/idempotency.py`) (backend, uncommitted)
+- [x] D-5 [backend] Booking snapshots: owner name and business, hand-over address and instructions, outcome notes, decline reasons, evidence photos and notes redacted on deletion (the booking row itself stays for accounting) (backend, uncommitted)
+- [x] D-6 [backend] Stripe Identity: redact the verification session (`POST /v1/identity/verification_sessions/{id}/redact`) on deletion (backend, uncommitted)
+- [x] D-7 [backend] Push: delete the SNS platform endpoint on unregister, sign-out-everywhere and deletion (backend, uncommitted)
+- [x] D-8 [backend] Analytics lake: add `outcome.note`, moderation `statement` and `person_flagged.details` to P-6's list; a purge path for a person's events or keep only pseudonymous ids (backend, uncommitted)
+- [x] D-9 [infra]+[docs] SES suppression list and invoice retention: document the legal basis; a job that purges invoices after the 10-year period (backend, uncommitted)
+- [x] D-10 [backend] Export completeness: Cognito email and locale; reports filed; moderation decisions about the person; reviews about them; photo files (links); evidence notes; blocks; verified/suspended flags; card fingerprint; invoice recipient fields; refunds and charges; push devices (backend, uncommitted)
+- [x] D-11 [backend] A test that walks every table with a person-id column and fails if deletion or export ignores it (catches the next gap) (backend, uncommitted)
 
 Found alongside:
-- [ ] D-12 [backend] Dead code: events `booking.requested`, `booking.created` never produced; `/internal/people/{p}/bookings` and catalog `/internal/owners/{id}` have no caller — remove or use
-- [ ] D-13 [backend] A test that Terraform subscriptions (`data.tf`), `local/bootstrap.py` and each service's handlers agree
-- [ ] D-14 [infra] An alarm on outbox rows set aside after 20 attempts (today only a log line)
-- [ ] D-15 [docs] ADR 0003 and `events.py` docstring: 12 receives before the DLQ, not 5
+- [x] D-12 [backend] Dead code: events `booking.requested`, `booking.created` never produced; `/internal/people/{p}/bookings` and catalog `/internal/owners/{id}` have no caller — remove or use (backend, uncommitted)
+- [x] D-13 [backend] A test that Terraform subscriptions (`data.tf`), `local/bootstrap.py` and each service's handlers agree (backend, uncommitted)
+- [x] D-14 [infra] An alarm on outbox rows set aside after 20 attempts (today only a log line) (backend, uncommitted)
+- [x] D-15 [docs] ADR 0003 and `events.py` docstring: 12 receives before the DLQ, not 5 (backend, uncommitted)
 - [ ] T-35c [infra] Per-journey burn-rate alarms (slo.md), queue-age thresholds matching the SLIs
 - [ ] M-46 [infra] Second cell in one account: names include the cell (`cappy-<cell>-<env>`), `var.env` allows it; deploy.yml region and ECR per cell; CSP `connect-src` per cell's Cognito
 
 ## Provider seams (F) — from docs/FEATURES.md "No seam today"
 
 So that a feature can move to another third party by adding an adapter, not by editing callers:
-- [ ] F-1 [backend]+[web] Identity verification: an `IdentityProvider` separate from the payment `Provider` (start session, parse webhook → neutral `verified|failed|needs_input`, redact), the web modal chosen by `/payments/config` (today Stripe Identity inside the payment provider, `Listing.tsx` calls Stripe.js)
+- [x] F-1 [backend]+[web] Identity verification: an `IdentityProvider` separate from the payment `Provider` (start session, parse webhook → neutral `verified|failed|needs_input`, redact), the web modal chosen by `/payments/config` (today Stripe Identity inside the payment provider, `Listing.tsx` calls Stripe.js) (backend, uncommitted)
 - [x] F-2 [web] Auth: an `AuthProvider` object behind `web/src/data/auth.ts`'s exports (today all Cognito) (web, uncommitted — web/src/data/cognito.ts)
-- [ ] F-3 [backend]+[web] Staff role claim from settings (`STAFF_CLAIM`, `STAFF_VALUE`), not `cognito:groups` hard-coded
-- [ ] F-4 [backend] `Cdn.purge` interface for take-downs (today CloudFront called directly in `catalog/moderation.py`)
+- [x] F-3 [backend]+[web] Staff role claim from settings (`STAFF_CLAIM`, `STAFF_VALUE`), not `cognito:groups` hard-coded (backend, uncommitted)
+- [x] F-4 [backend] `Cdn.purge` interface for take-downs (today CloudFront called directly in `catalog/moderation.py`) (backend, uncommitted)
 - [ ] F-5 [backend] `SearchIndex` protocol fed by `listing.changed` (today the query sits in `catalog/repository.py`)
 - [ ] F-6 [backend] `Geocoder` interface (with M-5, M-7)
 - [ ] F-7 [backend] `tax_for(owner, market, fee)` per invoice line (with M-12)
 - [ ] F-8 [backend] Payment webhooks parsed into neutral events inside the provider (today `payments/routes.py` handles Stripe-shaped events)
 - [ ] F-9 [web] The card form chosen by `/payments/config.provider` (today Stripe's Payment Element only)
-- [ ] F-10 [backend] Profile `verified` set from a successful ID check (today only seed data sets it; U-32)
+- [x] F-10 [backend] Profile `verified` set from a successful ID check (today only seed data sets it; U-32) (backend, uncommitted)
 
 ## Flow bugs (FL) — from docs/FLOWS.md §23
 
 - [x] FL-1 [web] A retry after a 503 from booking creation must reuse the Idempotency-Key (`Listing.tsx:209` makes a new one after any error; the retry then collides with the person's own `awaiting_payment` booking for 30 min). New key only after a definite 4xx — (web, uncommitted) `useAttemptKey` (domain/attempt.ts, `npm run check:attempt`): key kept on 5xx/timeout/offline, new after success, a 4xx or a changed body; used by bookings, listings, messages, ratings, evidence, reports
-- [ ] FL-2 [backend] Notify both sides of `payment_failed`, `disputed` (owner learns of a dispute), and `active` where useful (`notifications/handlers.py`)
-- [ ] FL-3 [web]+[backend] Messages email toggle: either email messages (digest) or remove the toggle and the "everything also arrives by email" line
+- [x] FL-2 [backend] Notify both sides of `payment_failed`, `disputed` (owner learns of a dispute), and `active` where useful (`notifications/handlers.py`) (backend, uncommitted)
+- [x] FL-3 [web]+[backend] Messages email toggle: either email messages (digest) or remove the toggle and the "everything also arrives by email" line (backend, uncommitted)
 - [x] FL-4 [web] A held listing is announced as waiting for review, not "live"; an edit that re-holds says so (web, uncommitted)
 - [x] FL-5 [web] Admin console: approve held listings (`POST /admin/listings/{id}/approve`) (web, uncommitted)
-- [ ] FL-6 [backend] The owner can open their own held listing (`catalog/routes.py` listing detail)
+- [x] FL-6 [backend] The owner can open their own held listing (`catalog/routes.py` listing detail) (backend, uncommitted)
 - [x] FL-7 [backend]+[web] Message and review reports: "remove the message/review" as an action; "suspend" resolves the author, not the listing owner (`moderation.py _affected_owner`) (web, uncommitted — web part; `remove_content` needs the backend)
 - [x] FL-8 [backend]+[web] A request cancelled before capture shows "the hold is released", not "refunded" (`cancellation.py` refund amount 0 when nothing was charged) (web, uncommitted — web part; relies on the backend leaving refundAmount out when nothing was captured)
-- [ ] FL-9 [backend] Decline reason distinguishes a staff take-down from the owner removing the listing
+- [x] FL-9 [backend] Decline reason distinguishes a staff take-down from the owner removing the listing (backend, uncommitted)
 - [x] FL-10 [web] The report form reachable signed out (`/legal/report`, DSA Art. 16) with a target reference, matching `Legal.tsx` (web, uncommitted)
 - [x] FL-11 [backend]+[web] Deletion that fails half-way: `upsert_profile` must not resurrect a deleted profile; the web retries Cognito `DeleteUser` and never lands in onboarding (web, uncommitted — web part)
 - [x] FL-12 [web] Account deletion copy matches what is deleted (photos: D-1) (web, uncommitted — copy no longer promises photo deletion (D-1))
 - [x] FL-13 [app] Push re-registers for the new account after sign-out/sign-in without restart (`native.ts:91`) (web, uncommitted)
 - [x] FL-14 [web] Starting offline with a stored session shows the app (cached) and refreshes when the network returns, not the sign-in screen (web, uncommitted)
-- [ ] FL-15 [backend] The owner never sees `awaiting_payment` or `payment_failed` bookings
+- [x] FL-15 [backend] The owner never sees `awaiting_payment` or `payment_failed` bookings (backend, uncommitted)
 - [x] FL-16 [web] `payNow` does not show the card form again between Stripe's confirmation and the webhook (poll the booking) (web, uncommitted)
 - [x] FL-17 [web] PushPrime states the real answer deadline (min(24 h, window start)) — (web, uncommitted) says "before the request lapses" (24 h at most, sooner if the booked time starts first)
-- [ ] FL-18 [backend] Messages refused on closed bookings (cancelled, declined, expired, payment_failed; completed after the review window)
+- [x] FL-18 [backend] Messages refused on closed bookings (cancelled, declined, expired, payment_failed; completed after the review window) (backend, uncommitted)
 - [x] FL-19 [app] Payment `return_url` for redirect methods in the shells is a universal/app link on Cappy's domain (with U-7) (web, uncommitted)
 - [ ] FL-20 [docs] ADR 0012: refresh token in Capacitor Preferences (Keychain is U-17), push built — a dated correction
 - [x] FL-21 [app] Release entitlements: real associated domain, `aps-environment` production in the release configuration (web, uncommitted — Release signs with App.release.entitlements (production); domain from CAPPY_DOMAIN)

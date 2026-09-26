@@ -79,3 +79,12 @@ async def on_person_flagged(session: AsyncSession, event: Event) -> None:
 
     d = event.data
     await flag(session, d["personId"], d["reason"], d["details"])
+
+
+async def on_identity_verified(session: AsyncSession, event: Event) -> None:
+    """A passed ID check shows on the profile as "verified" (F-10)."""
+    from .tables import OwnerRow
+
+    row = await session.get(OwnerRow, event.data["personId"], with_for_update=True)
+    if row is not None and row.deleted_at is None:
+        row.verified = True

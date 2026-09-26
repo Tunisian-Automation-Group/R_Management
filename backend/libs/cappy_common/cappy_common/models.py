@@ -132,6 +132,8 @@ class Owner(CamelModel):
     initials: str
     kind: Literal["person", "business"]
     district: str
+    # Where they live (ISO 3166-1 alpha-2): their payout account's country (M-9).
+    country: str = "DE"
     verified: bool
     rating_sum: int
     jobs_done: int
@@ -146,6 +148,12 @@ class Owner(CamelModel):
     # Share of accepted bookings the owner cancelled or did not show up for,
     # over 12 months; None under 5 bookings (too few to mean anything).
     cancellation_rate: float | None = None
+
+
+# What prices can be in (GOAL 16: Europe, the US and Canada), ISO 4217.
+# Amounts are always minor units of the listing's own currency; nothing is
+# converted, and a booking takes its listing's currency (M-3).
+Currency = Literal["EUR", "GBP", "CHF", "SEK", "NOK", "DKK", "PLN", "CZK", "HUF", "RON", "USD", "CAD"]
 
 
 class _ListingBase(CamelModel):
@@ -171,6 +179,8 @@ class _ListingBase(CamelModel):
     # day (8 h) and from a week (40 h) of use. 0 to 50.
     day_discount_pct: int = Field(default=0, ge=0, le=50)
     week_discount_pct: int = Field(default=0, ge=0, le=50)
+    # The currency its prices are in.
+    currency: Currency = "EUR"
 
 
 class WindowListing(_ListingBase):
@@ -238,6 +248,8 @@ AnyRequirement = WindowRequest | BatchRequest
 
 
 class Quote(CamelModel):
+    # Every amount below is in minor units of this currency (the listing's).
+    currency: str = "EUR"
     hours: float
     base: Cents
     # What a duration discount took off the base (already out of `total`).
@@ -351,8 +363,11 @@ class Booking(CamelModel):
     can_start_from: Iso | None = None
     # The owner's rating of the renter (1-5), once given.
     renter_rating: int | None = None
-    # What a cancellation refunded (cents), once cancelled.
+    # What a cancellation refunded (minor units of ``currency``), once cancelled.
     refund_amount: int | None = None
+    # The listing's currency, lowercase ISO 4217 (Stripe's form): every amount
+    # on the booking and its quote is in it (M-3).
+    currency: str = "eur"
     # Who did not turn up, when a no-show ended the booking.
     no_show: Literal["owner", "renter"] | None = None
 

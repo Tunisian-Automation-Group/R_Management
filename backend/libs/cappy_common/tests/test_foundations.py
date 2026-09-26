@@ -16,7 +16,7 @@ from cappy_common.db import Database, new_metadata
 from cappy_common.errors import Unauthorized
 from cappy_common.events import (
     BOOKING_RATED,
-    BOOKING_REQUESTED,
+    BOOKING_STATUS_CHANGED,
     Dispatcher,
     MemoryBroker,
     Outbox,
@@ -318,12 +318,12 @@ async def test_outbox_publishes_only_committed_events(stores):
 
     async with db.transaction() as s:
         await s.execute(insert(things).values(id="kept"))
-        await outbox.add(s, BOOKING_REQUESTED, {"id": "kept"})
+        await outbox.add(s, BOOKING_STATUS_CHANGED, {"id": "kept"})
 
     with pytest.raises(RuntimeError):
         async with db.transaction() as s:
             await s.execute(insert(things).values(id="rolled-back"))
-            await outbox.add(s, BOOKING_REQUESTED, {"id": "rolled-back"})
+            await outbox.add(s, BOOKING_STATUS_CHANGED, {"id": "rolled-back"})
             raise RuntimeError("the change failed")
 
     assert await relay.flush() == 1
@@ -471,3 +471,15 @@ async def test_an_event_carries_the_trace_of_the_request_that_caused_it(stores):
     async with db.transaction() as s:
         untraced = await Outbox(outbox_t, "test").add(s, BOOKING_RATED, {"n": 2})
     assert untraced.trace is None and "trace" not in untraced.to_json()
+
+
+def test_staff_is_whatever_claim_the_settings_name():
+    """F-3: Cognito groups today; another provider's claim is two settings."""
+    from cappy_common.auth import Principal, is_staff
+    from cappy_common.settings import CommonSettings
+
+    cognito = Principal(sub="s", claims={"cognito:groups": ["admin"]})
+    assert is_staff(cognito, CommonSettings()) and not is_staff(Principal(sub="s", claims={}), CommonSettings())
+    other = CommonSettings(staff_claim="scope", staff_value="cappy:staff")
+    assert is_staff(Principal(sub="s", claims={"scope": "openid cappy:staff"}), other)
+    assert not is_staff(cognito, other)

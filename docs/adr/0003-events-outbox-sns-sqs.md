@@ -32,3 +32,12 @@ cache invalidation reaches one replica in N.
 Redis leaves the stack entirely (nothing else needed it; ADR 0001 removes the
 world cache). Events are at-least-once and unordered across types, which every
 consumer is written for.
+
+## Correction (2026-09-26)
+
+Messages are received 12 times, not five, before the dead-letter queue: the
+retry delay is 30 s doubling to 15 minutes, jittered (about 2 hours in all),
+so a provider outage of an hour is ridden out without a redrive
+(`infra/modules/messaging`, resilience F16). An outbox row that fails to
+publish 20 times is set aside and now raises an alarm (`OUTBOX_SET_ASIDE`).
+The decision stands.

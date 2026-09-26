@@ -8,7 +8,8 @@ from cappy_common.runtime import Runtime
 
 from . import invoices
 from .handlers import handlers
-from .jobs import reconcile
+from .identity import IdentityProvider, make_identity
+from .jobs import purge_invoices, reconcile
 from .provider import Provider, make_provider
 from .routes import internal, router
 from .settings import Settings
@@ -16,9 +17,14 @@ from .tables import Base
 
 
 def build_app(
-    settings: Settings, *, provider: Provider | None = None, verifier: TokenVerifier | None = None
+    settings: Settings,
+    *,
+    provider: Provider | None = None,
+    identity: IdentityProvider | None = None,
+    verifier: TokenVerifier | None = None,
 ) -> FastAPI:
     provider = provider or make_provider(settings)
+    identity = identity or make_identity(settings)
 
     async def close(app: FastAPI) -> None:
         await provider.aclose()
@@ -26,13 +32,16 @@ def build_app(
     runtime = Runtime(
         settings,
         metadata=Base.metadata,
-        handlers=handlers(provider, settings.service_name, settings.payouts_on, invoices.issuer_of(settings)),
-        loops=[reconcile],
+        handlers=handlers(
+            provider, settings.service_name, settings.payouts_on, invoices.issuer_of(settings), identity=identity
+        ),
+        loops=[reconcile, purge_invoices],
         on_stop=close,
     )
     app = create_app(settings, title="Cappy payments", lifespan=runtime.lifespan())
     app.state.verifier = verifier
     app.state.provider = provider
+    app.state.identity = identity
     app.include_router(router)
     app.include_router(internal)
     app.include_router(invoices.router)

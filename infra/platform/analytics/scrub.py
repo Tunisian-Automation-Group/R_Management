@@ -64,4 +64,7 @@ if __name__ == "__main__":
     res = handler({"records": [rec, {"recordId": "2", "data": base64.b64encode(b"not json").decode()}]}, None)
     assert [r["result"] for r in res["records"]] == ["Ok", "Dropped"]
     assert b"example.com" not in base64.b64decode(res["records"][0]["data"])
+    # Free text that names or describes people never arrives either (D-8).
+    words = {"outcome": {"note": "Ana was late"}, "statement": "Ana sells stolen tools", "details": "Ana again"}
+    assert keep({"type": "booking.rated", "data": {"bookingId": "bk_1", **words}})["data"] == {"bookingId": "bk_1"}
     print("scrub ok")

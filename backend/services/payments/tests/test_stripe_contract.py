@@ -35,7 +35,7 @@ async def test_the_whole_money_path_is_accepted_by_stripe(stripe_provider):
     charge = await p.capture(intent.id, "bk_1") or "ch_from_real_stripe"
     await p.cancel(intent.id, "bk_2")
     assert (await p.refund(intent.id, "bk_1")).startswith("re_")
-    account = await p.create_account("o1")
+    account = await p.create_account("o1", "CA")
     assert account.startswith("acct_")
     assert (await p.onboarding_link(account, "https://x/done", "https://x/retry")).startswith("http")
     await p.account_status(account)
@@ -44,7 +44,11 @@ async def test_the_whole_money_path_is_accepted_by_stripe(stripe_provider):
 
 
 async def test_identity_sessions_are_accepted_by_stripe(stripe_provider):
-    session_id, _secret = await stripe_provider.verification_session("renter-1")
+    from payments.identity import StripeIdentity
+
+    identity = StripeIdentity("sk_test_123", "whsec_x", os.environ["CAPPY_TEST_STRIPE_MOCK"])
+    session_id = (await identity.start_session("renter-1")).session_id
     # The request shape is what this checks; stripe-mock's fixture has no
     # client secret, which real Stripe always returns for a new session.
     assert session_id.startswith("vs_")
+    await identity.redact(session_id)

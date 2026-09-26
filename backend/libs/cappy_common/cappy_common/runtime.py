@@ -164,6 +164,12 @@ class Runtime:
 
 async def _prune_loop(runtime: Runtime) -> None:
     await prune(runtime.db, runtime.outbox_table, runtime.processed_table)
+    keys = runtime.metadata.tables.get("idempotency_keys") if runtime.metadata is not None else None
+    if keys is not None:
+        from . import idempotency
+
+        async with runtime.db.transaction() as s:
+            await idempotency.expire(s, keys)
     await asyncio.sleep(jittered(3600))
 
 

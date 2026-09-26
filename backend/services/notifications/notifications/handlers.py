@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import hashlib
 import logging
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -27,7 +27,7 @@ from cappy_common.events import (
 
 from .mail import Directory, Email, Mailer
 from .prefs import prefs_of, wanted
-from .push import Pusher
+from .push import Pusher, drop_devices
 from .tables import DeviceRow, InboxRow, PrefsRow
 from .texts import render
 
@@ -71,12 +71,37 @@ def messages(event: Event, web: str) -> list[Message]:
     if to == "accepted" and d.get("from") == "awaiting_payment":
         # Instant book: the owner never saw a request, so they hear of the booking.
         out.append((owner, None, "instant_booked", params))
+    if to == "payment_failed":
+        # The card step failed: only the renter knew. A capture declined at
+        # accept: the owner had said yes, so both hear it is off (FL-2).
+        out.append((requester, None, "payment_failed", params))
+        if d.get("from") == "accepted":
+            out.append((owner, None, "payment_failed", params))
+    if to == "disputed":
+        out += [(owner, None, "disputed_owner", params), (requester, None, "disputed_renter", params)]
     return out
 
 
+MESSAGE_EMAIL_EVERY = timedelta(minutes=15)
+
+
+async def _recently_told(session: AsyncSession, sub: str | None, link: str | None) -> bool:
+    """Whether this conversation already reached them in the last 15 minutes
+    (the inbox holds every message notice it sent)."""
+    from sqlalchemy import select
+
+    if not sub:
+        return False
+    since = datetime.now(UTC) - MESSAGE_EMAIL_EVERY
+    q = select(InboxRow.id).where(
+        InboxRow.user_id == sub, InboxRow.kind == "message", InboxRow.link == link, InboxRow.at > since
+    )
+    return (await session.execute(q.limit(1))).first() is not None
+
+
 def chat_push(event: Event, web: str) -> Message | None:
-    """A new message: pushed to the other side, never emailed (a conversation
-    would fill their inbox)."""
+    """A new message: pushed to the other side, and emailed unless the
+    conversation already emailed them in the last 15 minutes."""
     if event.type != BOOKING_MESSAGE:
         return None
     d = event.data
@@ -98,8 +123,10 @@ def statement_params(d: dict) -> dict[str, str]:
         "statement": sor.get("facts") or d["statement"],
         "ground_en": f"illegal content under {clause}" if law else f"incompatible with our terms ({clause})",
         "ground_de": f"rechtswidrige Inhalte nach {clause}" if law else f"Verstoß gegen unsere Bedingungen ({clause})",
+        "ground_fr": f"contenu illicite au titre de {clause}" if law else f"contraire à nos conditions ({clause})",
         "automated_en": "yes" if auto else "no, by a person",
         "automated_de": "ja" if auto else "nein, von einem Menschen",
+        "automated_fr": "oui" if auto else "non, par une personne",
     }
 
 
@@ -113,7 +140,7 @@ def moderation_mail(event: Event, web: str) -> list[Message]:
         return []
     out: list[Message] = []
     if d.get("affectedId"):
-        key = {"take_down": "taken_down", "suspend": "suspended"}.get(d["action"], "suspended")
+        key = {"take_down": "taken_down", "suspend": "suspended", "remove_content": "content_removed"}[d["action"]]
         out.append((d["affectedId"], None, key, {"web": web, **statement_params(d)}))
     if d.get("reportId") and (d.get("reporterId") or d.get("reporterEmail")):
         key = "report_outcome_none" if d["action"] == "dismiss" else "report_outcome_action"
@@ -150,10 +177,23 @@ def handlers(directory: Directory, mailer: Mailer, web: str, pusher: Pusher | No
                 await deliver(session, event, msg, push=False)
             return
         if (chat := chat_push(event, web)) is not None:
-            await deliver(session, event, chat, email=False)
+            # Pushed every time; emailed at most once a conversation every 15
+            # minutes, so a lively chat is one email, not twenty (FL-3).
+            quiet = not await _recently_told(session, chat[0], _app_path(chat[3], web))
+            await deliver(session, event, chat, email=quiet)
             return
         for msg in messages(event, web):
             await deliver(session, event, msg)
+
+    async def _drop_all(session: AsyncSession, sub: str) -> None:
+        from sqlalchemy import select
+
+        rows = (await session.execute(select(DeviceRow).where(DeviceRow.user_id == sub))).scalars()
+        if pusher is not None:
+            await drop_devices(session, pusher, rows)
+        else:
+            for row in list(rows):
+                await session.delete(row)
 
     async def forget(session: AsyncSession, event: Event) -> None:
         """Account deleted: no more pushes to their devices, and the sign-in
@@ -161,17 +201,16 @@ def handlers(directory: Directory, mailer: Mailer, web: str, pusher: Pusher | No
         from sqlalchemy import delete
 
         await directory.delete_person(event.data["ownerId"])
-        await session.execute(delete(DeviceRow).where(DeviceRow.user_id == event.data["ownerId"]))
+        await _drop_all(session, event.data["ownerId"])
         await session.execute(delete(InboxRow).where(InboxRow.user_id == event.data["ownerId"]))
         await session.execute(delete(PrefsRow).where(PrefsRow.user_id == event.data["ownerId"]))
 
     async def signed_out(session: AsyncSession, event: Event) -> None:
         """Sign out everywhere (catalog took the request): every refresh token
         revoked in Cognito, and no device gets their pushes any more."""
-        from sqlalchemy import delete
 
         await directory.sign_out_everywhere(event.data["personId"])
-        await session.execute(delete(DeviceRow).where(DeviceRow.user_id == event.data["personId"]))
+        await _drop_all(session, event.data["personId"])
 
     return {
         PERSON_SIGNED_OUT: signed_out,
@@ -193,7 +232,7 @@ async def _push(session: AsyncSession, pusher: Pusher, sub: str, title: str, tex
     for device in list(devices):
         if device.endpoint and not await pusher.send(device.endpoint, title, body, link):
             log.info("device of %s is gone; forgetting it", sub)
-            await session.delete(device)
+            await drop_devices(session, pusher, [device])
 
 
 def _app_path(params: dict, web: str) -> str | None:

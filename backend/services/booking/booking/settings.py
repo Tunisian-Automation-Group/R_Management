@@ -31,6 +31,9 @@ class Settings(CommonSettings):
     # total, and for these categories (comma-separated; none today: freight is
     # space on runs already going, nobody drives someone else's van).
     verify_categories: str = ""
+    # ponytail: one threshold in minor units for every currency, so SEK or HUF
+    # bookings ask for the ID check sooner (the safe side). Per currency with
+    # the market config (M-2).
     verify_above_cents: int = 30_000
 
     # Moderate and strict cancellation policies charge for late cancellations;

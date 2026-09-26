@@ -43,13 +43,23 @@ class Issuer:
     time_zone: str = "Europe/Berlin"
     tax_rate_bps: int = 1900
     tax_label: str = "USt"
+    # How long this entity must keep its invoices, counted from the end of the
+    # year of issue; then they are deleted (jobs.purge_invoices_once, D-9).
+    # Germany: 10 (§ 147 AO; BEG IV cut Buchungsbelege to 8 from 2025 — confirm
+    # with the tax adviser, G-B2); Austria 7, Canada 6, most US states 7.
+    retention_years: int = 10
 
 
 GERMANY = Issuer()
 
 
 def issuer_of(settings) -> Issuer:  # noqa: ANN001
-    return Issuer(settings.invoice_time_zone, settings.invoice_tax_rate_bps, settings.invoice_tax_label)
+    return Issuer(
+        settings.invoice_time_zone,
+        settings.invoice_tax_rate_bps,
+        settings.invoice_tax_label,
+        settings.invoice_retention_years,
+    )
 
 
 async def issue(

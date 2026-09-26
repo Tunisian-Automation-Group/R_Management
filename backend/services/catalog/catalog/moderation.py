@@ -19,7 +19,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from cappy_common.app import ApiRouter
 from cappy_common.auth import Principal, optional_principal, require_admin
-from cappy_common.errors import Conflict, Invalid, NotFound, RateLimited
+from cappy_common.errors import ApiError, Conflict, Invalid, NotFound, RateLimited
 from cappy_common.events import MODERATION_DECISION, OWNER_SUSPENDED, REPORT_RECEIVED
 from cappy_common.idempotency import IdempotencyKey, fingerprint, remember, replayed
 from cappy_common.ids import new_id
@@ -28,7 +28,7 @@ from cappy_common.pagination import Page, clamp_limit, decode_cursor, encode_cur
 from cappy_common.runtime import Tx
 from cappy_common.timeutil import dt_from_iso, iso_from_datetime
 
-from .tables import IDEMPOTENCY, ListingRow, ModerationActionRow, OwnerRow, ReportRow
+from .tables import IDEMPOTENCY, ListingRow, ModerationActionRow, OwnerRow, ReportRow, ReviewRow
 
 log = logging.getLogger(__name__)
 public = ApiRouter()
@@ -59,6 +59,7 @@ REDRESS = (
 RESTRICTIONS = {
     "take_down": "The listing was removed and can no longer be seen or booked.",
     "suspend": "The account was suspended: its listings were removed, and it can no longer list or book.",
+    "remove_content": "The message or review was removed; the account is not otherwise restricted.",
 }
 DEFAULT_CLAUSE = "Terms of use: rules for listings and conduct"
 
@@ -98,7 +99,7 @@ class Grounds(CamelModel):
 
 
 class DecisionIn(Grounds):
-    action: str = Field(pattern="^(dismiss|take_down|suspend)$")
+    action: str = Field(pattern="^(dismiss|take_down|suspend|remove_content)$")
 
 
 def statement_of_reasons(action: str, g: Grounds) -> dict | None:
@@ -238,29 +239,18 @@ async def queue(
     return Page(items=[_view(r) for r in rows], next_cursor=nxt)
 
 
-async def purge(request: Request, listing_ids: list[str]) -> None:
-    """Take a removed listing out of the CDN now, not when its cache expires."""
-    import asyncio
-    import time
+async def purge(request: Request, session: AsyncSession, listing_ids: list[str]) -> None:
+    """Take a removed listing's photos off the CDN now (F-4). Since sign-in is
+    required (GOAL 13) no listing page is edge-cached; its photos are, for a
+    year, and an illegal image must not outlive its take-down."""
+    from . import media
 
-    from cappy_common.events import aws_client
-
-    settings = request.app.state.settings
-    if not settings.cdn_distribution_id or not listing_ids:
+    if not listing_ids:
         return
-    paths = [f"/api/listings/{lid}*" for lid in listing_ids[:100]] + ["/api/search*"]
-    try:
-        cf = aws_client("cloudfront", settings)
-        await asyncio.to_thread(
-            cf.create_invalidation,
-            DistributionId=settings.cdn_distribution_id,
-            InvalidationBatch={
-                "Paths": {"Quantity": len(paths), "Items": paths},
-                "CallerReference": f"mod-{time.time_ns()}",
-            },
-        )
-    except Exception as e:  # noqa: BLE001 - the cache expires by itself within minutes anyway
-        log.warning("could not purge the CDN for %s: %s", listing_ids, e)
+    rows = (await session.execute(select(ListingRow.photos).where(ListingRow.id.in_(listing_ids)))).scalars()
+    settings = request.app.state.settings
+    names = {n for photos in rows for url in photos or [] if (n := media.name_from_url(settings, url))}
+    await request.app.state.cdn.purge(sorted(f"/media/{n}" for n in names))
 
 
 async def _removed(request: Request, session: AsyncSession, listing_ids: list[str]) -> None:
@@ -269,8 +259,8 @@ async def _removed(request: Request, session: AsyncSession, listing_ids: list[st
     from cappy_common.events import LISTING_CHANGED
 
     for lid in listing_ids:
-        await _outbox(request).add(session, LISTING_CHANGED, {"listingId": lid, "change": "removed"})
-    await purge(request, listing_ids)
+        await _outbox(request).add(session, LISTING_CHANGED, {"listingId": lid, "change": "removed", "by": "staff"})
+    await purge(request, session, listing_ids)
 
 
 async def _take_down(session: AsyncSession, listing_id: str) -> ListingRow:
@@ -325,13 +315,38 @@ async def _record(
     )
 
 
-async def _affected_owner(session: AsyncSession, target_type: str, target_id: str) -> str | None:
+async def _affected(request: Request, session: AsyncSession, target_type: str, target_id: str) -> str | None:
+    """Whose content it is: the owner of a listing or profile, the author of a
+    review or message (FL-7)."""
     if target_type == "owner":
         return target_id
     if target_type == "listing":
         row = await session.get(ListingRow, target_id)
         return row.owner_id if row else None
+    if target_type == "review":
+        row = await session.get(ReviewRow, target_id)
+        return row.author_id if row else None
+    if target_type == "message":
+        try:
+            return await request.app.state.bookings.message_author(target_id)
+        except ApiError as e:
+            if e.status == 404:
+                return None
+            raise
     return None
+
+
+async def _remove_content(request: Request, session: AsyncSession, target_type: str, target_id: str) -> None:
+    """The words go; the review's rating stays, since the booking happened."""
+    if target_type == "review":
+        row = await session.get(ReviewRow, target_id, with_for_update=True)
+        if row is None:
+            raise NotFound(f"review {target_id} not found")
+        row.text, row.tags = "", []
+    elif target_type == "message":
+        await request.app.state.bookings.remove_message(target_id)
+    else:
+        raise Invalid("only a message or a review is removed this way; take down a listing, suspend an owner")
 
 
 @admin.post("/reports/{report_id}/decide", response_model=Report)
@@ -347,15 +362,17 @@ async def decide(
         raise NotFound(f"report {report_id} not found")
     if r.status != "open":
         raise Conflict(f"this report was already {r.status}")
-    affected = await _affected_owner(session, r.target_type, r.target_id)
+    affected = await _affected(request, session, r.target_type, r.target_id)
     if body.action == "take_down":
         if r.target_type != "listing":
             raise Invalid("only a listing can be taken down; suspend the owner for a profile")
         await _take_down(session, r.target_id)
         await _removed(request, session, [r.target_id])
+    elif body.action == "remove_content":
+        await _remove_content(request, session, r.target_type, r.target_id)
     elif body.action == "suspend":
         if affected is None:
-            raise Invalid("this report does not point at an owner")
+            raise Invalid("this report does not point at anyone who can be suspended")
         _, taken = await _suspend(session, affected)
         await _removed(request, session, taken)
         await _outbox(request).add(session, OWNER_SUSPENDED, {"ownerId": affected})

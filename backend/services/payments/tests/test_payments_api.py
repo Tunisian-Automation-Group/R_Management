@@ -182,7 +182,7 @@ def test_payout_readiness_is_announced_once_per_change(client, app, broker):
 
 
 def test_config_and_onboarding(client, issuer):
-    assert client.get("/payments/config").json() == {"provider": "fake"}
+    assert client.get("/payments/config").json() == {"provider": "fake", "identityProvider": "fake"}
     h = issuer.headers("new-owner")
     assert client.get("/payments/connect/status", headers=h).json()["connected"] is False
     assert client.post("/payments/connect/onboarding", headers=h).json()["url"].endswith("/earn?payments=done")
@@ -341,6 +341,60 @@ def test_a_deleted_profile_loses_its_payout_link(client, app, issuer):
     assert client.get("/payments/connect/status", headers=issuer.headers("leaver")).json()["connected"] is False
 
 
+def test_deletion_erases_the_id_check_at_the_provider_and_the_card_fingerprint(client, app, issuer):
+    from cappy_common.events import PROFILE_DELETED
+
+    h = issuer.headers("renter-1")
+    assert client.post("/payments/identity/session", json={"consent": True}, headers=h).json()["status"] == "verified"
+    _intent(client, requesterId="renter-1")
+
+    async def fingerprint():
+        async with app.state.db.transaction() as s:
+            (await s.get(PaymentRow, "bk_1")).card_fingerprint = "fp_1"
+
+    call(app, fingerprint)
+    ev = Event(
+        id=new_id("ev"), type=PROFILE_DELETED, source="catalog", occurred_at=now_iso(), data={"ownerId": "renter-1"}
+    )
+    assert call(app, app.state.dispatcher.handle, ev)
+    assert app.state.identity.redacted == ["vs_fake_renter-1"]  # D-6
+
+    async def left():
+        async with app.state.db.transaction() as s:
+            return (await s.get(PaymentRow, "bk_1")).card_fingerprint, await s.get(IdentityRow, "renter-1")
+
+    assert call(app, left) == (None, None)
+
+
+def test_payouts_only_where_owners_can_be_paid(client, issuer):
+    h = issuer.headers("abroad")
+    r = client.post("/payments/connect/onboarding", json={"country": "JP"}, headers=h)
+    assert r.status_code == 422 and r.json()["error"]["code"] == "country_unsupported"
+    assert client.post("/payments/connect/onboarding", json={"country": "CA"}, headers=h).status_code == 200
+
+
+def test_another_identity_provider_reports_through_its_own_webhook(client, app, issuer):
+    """F-1: a provider with its own webhook, in neutral words."""
+    from payments.identity import IdentityResult, IdentitySession
+
+    identity = app.state.identity
+    identity.verifies_immediately = False
+
+    async def start(person_id):
+        return IdentitySession("idv_1", url="https://verify.example/idv_1")
+
+    identity.start_session = start
+    identity.parse_webhook = lambda payload, headers: IdentityResult("idv_1", "renter-3", json.loads(payload)["s"])
+    h = issuer.headers("renter-3")
+    started = client.post("/payments/identity/session", json={"consent": True}, headers=h).json()
+    assert started["url"] == "https://verify.example/idv_1" and started["status"] == "pending"
+    assert client.post("/payments/webhooks/identity", content=b'{"s": "needs_input"}').status_code == 200
+    assert client.get("/payments/identity", headers=h).json()["status"] == "requires_input"
+    assert client.post("/payments/webhooks/identity", content=b'{"s": "verified"}').status_code == 200
+    assert client.post("/payments/webhooks/identity", content=b'{"s": "verified"}').json()["duplicate"] is True
+    assert client.get("/payments/identity", headers=h).json()["status"] == "verified"
+
+
 def test_a_chargeback_holds_the_payout(stripe_app, broker):
     from datetime import UTC, datetime
 
@@ -462,13 +516,15 @@ def test_stripe_identity_outcome_comes_by_webhook(stripe_app, issuer, broker):
 
     app, c = stripe_app
 
-    async def session_for(person_id):
-        return "vs_123", "vs_123_secret"
+    from payments.identity import IdentitySession
 
-    app.state.provider.verification_session = session_for
+    async def session_for(person_id):
+        return IdentitySession("vs_123", client_secret="vs_123_secret")
+
+    app.state.identity.start_session = session_for
     h = issuer.headers("renter-2")
     started = c.post("/payments/identity/session", json={"consent": True}, headers=h).json()
-    assert started == {"status": "pending", "clientSecret": "vs_123_secret"}
+    assert started["status"] == "pending" and started["clientSecret"] == "vs_123_secret"
     # An event about some other session carrying the person's id does nothing (P-28).
     body, headers = _signed(
         _event("identity.verification_session.verified", {"id": "vs_other", "metadata": {"personId": "renter-2"}})
@@ -620,3 +676,39 @@ def test_a_late_cancellation_payout_waits_while_payouts_are_off(issuer, broker):
         with pytest.raises(NotReady):
             call(app, app.state.dispatcher.handle, ev)
         assert "transfer" not in [op for op, _ in provider.calls]
+
+
+def test_invoices_are_deleted_once_their_retention_ends(client, app):
+    """D-9: kept from the end of the year of issue for the issuer's period."""
+    from datetime import UTC, datetime
+
+    from payments.jobs import purge_invoices_once
+    from payments.tables import InvoiceRow
+
+    async def seed():
+        async with app.state.db.transaction() as s:
+            for number, year in (("CAP-2026-1", 2026), ("CAP-2027-1", 2027)):
+                s.add(
+                    InvoiceRow(
+                        number=number,
+                        booking_id=f"bk_{year}",
+                        owner_id="o",
+                        net=100,
+                        vat_rate_bps=1900,
+                        vat=19,
+                        gross=119,
+                        currency="eur",
+                        issued_at=datetime(year, 12, 31, 12, tzinfo=UTC),
+                    )
+                )
+
+    async def numbers():
+        from sqlalchemy import select
+
+        async with app.state.db.transaction() as s:
+            return sorted((await s.execute(select(InvoiceRow.number))).scalars())
+
+    call(app, seed)
+    assert call(app, purge_invoices_once, app, datetime(2036, 12, 31, tzinfo=UTC)) == 0  # still within 10 years
+    assert call(app, purge_invoices_once, app, datetime(2037, 1, 1, tzinfo=UTC)) == 1
+    assert call(app, numbers) == ["CAP-2027-1"]

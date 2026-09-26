@@ -53,6 +53,8 @@ class OwnerRow(Base):
     initials: Mapped[str] = mapped_column(String(4))
     kind: Mapped[str] = mapped_column(String(10))
     district: Mapped[str] = mapped_column(String(80), ForeignKey("districts.name"))
+    # Country of residence (M-9), ISO 3166-1 alpha-2.
+    country: Mapped[str] = mapped_column(String(2), default="DE", server_default="DE")
     verified: Mapped[bool] = mapped_column(Boolean, default=False)
     rating_sum: Mapped[int] = mapped_column(Integer, default=0)
     jobs_done: Mapped[int] = mapped_column(Integer, default=0)

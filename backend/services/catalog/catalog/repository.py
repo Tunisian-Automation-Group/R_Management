@@ -15,6 +15,7 @@ from pydantic import TypeAdapter
 from sqlalchemy import Integer, and_, cast, delete, exists, func, insert, or_, select, true, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from cappy_common import idempotency
 from cappy_common.errors import Invalid, NotFound
 from cappy_common.ids import new_id
 from cappy_common.models import (
@@ -30,7 +31,19 @@ from cappy_common.models import (
 from cappy_common.pagination import decode_cursor, encode_cursor
 from cappy_common.timeutil import dt_from_iso, iso_from_datetime
 
-from .tables import DistrictRow, ListingRow, MediaRow, OwnerRow, PayableOwnerRow, ReviewRow, SavedRow, SlotRow
+from .tables import (
+    IDEMPOTENCY,
+    DistrictRow,
+    ListingRow,
+    MediaRow,
+    ModerationActionRow,
+    OwnerRow,
+    PayableOwnerRow,
+    ReportRow,
+    ReviewRow,
+    SavedRow,
+    SlotRow,
+)
 
 _listing = TypeAdapter(Listing)
 
@@ -51,6 +64,10 @@ _BASE_FIELDS = {
 KM_PER_DEG_LAT = 110.574
 
 
+# Far in the past: a photo marked so is swept on the next run (forget).
+EPOCH = datetime(2000, 1, 1, tzinfo=UTC)
+
+
 def _now() -> datetime:
     return datetime.now(UTC)
 
@@ -69,6 +86,7 @@ def to_owner(r: OwnerRow) -> Owner:
         initials=r.initials,
         kind=r.kind,
         district=r.district,
+        country=r.country or "DE",
         verified=r.verified,
         rating_sum=r.rating_sum,
         jobs_done=r.jobs_done,
@@ -173,17 +191,47 @@ class CatalogRepository:
         and their profile keeps only an anonymous shell, so bookings and
         reviews that point at it still make sense to the other side."""
         now = _now()
+        # Their listings' words and photos too (D-2): instructions can hold a
+        # door code. The row stays so reviews and bookings still point at it.
         await self.s.execute(
             update(ListingRow)
-            .where(ListingRow.owner_id == owner_id, ListingRow.deleted_at.is_(None))
-            .values(deleted_at=now, active=False, updated_at=now, address=None)
+            .where(ListingRow.owner_id == owner_id)
+            .values(
+                deleted_at=func.coalesce(ListingRow.deleted_at, now),
+                active=False,
+                updated_at=now,
+                address=None,
+                title="Removed listing",
+                blurb="",
+                instructions="",
+                rules=[],
+                photos=[],
+            )
         )
+        # Every photo they uploaded, listing or hand-over (D-1): the hourly
+        # sweep deletes the files, keeping any another person also holds.
+        await self.s.execute(update(MediaRow).where(MediaRow.owner_id == owner_id).values(used=False, created_at=EPOCH))
+        # Reports they filed keep the case (DSA records), not the reporter (D-3).
+        await self.s.execute(
+            update(ReportRow)
+            .where(ReportRow.reporter_id == owner_id)
+            .values(reporter_id=None, reporter_email=None, details="[removed: the account was deleted]")
+        )
+        await idempotency.forget(self.s, IDEMPOTENCY, owner_id)
         await self.s.execute(delete(SavedRow).where(SavedRow.user_id == owner_id))
         await self.s.execute(delete(PayableOwnerRow).where(PayableOwnerRow.owner_id == owner_id))
         await self.s.execute(
             update(OwnerRow)
             .where(OwnerRow.id == owner_id)
-            .values(name="Former member", initials="—", updated_at=now, deleted_at=now, business=None)
+            .values(
+                name="Former member",
+                initials="—",
+                updated_at=now,
+                deleted_at=now,
+                business=None,
+                verified=False,
+                cancellation_rate=None,
+            )
         )
         await self.s.execute(
             update(ReviewRow)
@@ -197,7 +245,19 @@ class CatalogRepository:
         listings = (await self.s.execute(select(ListingRow).where(ListingRow.owner_id == owner_id))).scalars()
         saved = (await self.s.execute(select(SavedRow).where(SavedRow.user_id == owner_id))).scalars()
         reviews = (await self.s.execute(select(ReviewRow).where(ReviewRow.author_id == owner_id))).scalars()
+        about = (await self.s.execute(select(ReviewRow).where(ReviewRow.owner_id == owner_id).limit(10_000))).scalars()
         media = (await self.s.execute(select(MediaRow).where(MediaRow.owner_id == owner_id))).scalars()
+        filed = (await self.s.execute(select(ReportRow).where(ReportRow.reporter_id == owner_id))).scalars()
+        decided = (
+            await self.s.execute(
+                select(ModerationActionRow).where(
+                    ModerationActionRow.target_id.in_(
+                        select(ListingRow.id).where(ListingRow.owner_id == owner_id).scalar_subquery()
+                    )
+                    | (ModerationActionRow.target_id == owner_id)
+                )
+            )
+        ).scalars()
         return {
             "profile": owner.model_dump(mode="json", by_alias=True) if owner else None,
             "listings": [to_listing(r, private=True).model_dump(mode="json", by_alias=True) for r in listings],
@@ -205,7 +265,34 @@ class CatalogRepository:
             "reviewsWritten": [
                 {"listingId": r.listing_id, "rating": r.rating, "text": r.text, "at": r.at.isoformat()} for r in reviews
             ],
+            "reviewsAboutMe": [
+                {"listingId": r.listing_id, "rating": r.rating, "text": r.text, "at": r.at.isoformat()} for r in about
+            ],
+            # The files themselves: each name is fetched at /media/<name> (D-10).
             "photos": [{"name": r.name, "createdAt": r.created_at.isoformat()} for r in media],
+            "reportsFiled": [
+                {
+                    "targetType": r.target_type,
+                    "targetId": r.target_id,
+                    "reason": r.reason,
+                    "details": r.details,
+                    "email": r.reporter_email,
+                    "status": r.status,
+                    "at": r.created_at.isoformat(),
+                }
+                for r in filed
+            ],
+            "moderationDecisionsAboutMe": [
+                {
+                    "action": a.action,
+                    "targetType": a.target_type,
+                    "targetId": a.target_id,
+                    "statement": a.statement,
+                    "statementOfReasons": a.statement_of_reasons,
+                    "at": a.at.isoformat(),
+                }
+                for a in decided
+            ],
         }
 
     async def set_payable(self, owner_id: str, ready: bool, as_of: datetime) -> None:
@@ -308,6 +395,7 @@ class CatalogRepository:
         district: str,
         business: dict | None = None,
         adult: bool = False,
+        country: str = "DE",
     ) -> tuple[Owner, bool]:
         """Create a person's profile on first use, or update the fields they
         control. A track record is earned, never set: rating and job counts are
@@ -315,9 +403,16 @@ class CatalogRepository:
         the 18+ confirmation; one made before the question keeps its own."""
         now = _now()
         row = await self.s.get(OwnerRow, owner_id, with_for_update=True)
-        if row is None or row.adult_confirmed_at is None:
+        fresh = row is not None and row.deleted_at is not None
+        if row is None or row.adult_confirmed_at is None or fresh:
             if not adult:
                 raise Invalid("Cappy is for people aged 18 or over: confirm your age to continue")
+        if fresh:
+            # The same sign-in after an account deletion (FL-11): a fresh start,
+            # nothing of the old record comes back. A suspension does stay.
+            row.deleted_at, row.verified, row.business, row.cancellation_rate = None, False, None, None
+            row.rating_sum = row.jobs_done = row.on_time_jobs = row.renter_rating_sum = row.renter_jobs = 0
+            row.response_mins, row.joined_year, row.created_at, row.adult_confirmed_at = 60, now.year, now, now
         if row is None:
             row = OwnerRow(
                 business=business,
@@ -327,6 +422,7 @@ class CatalogRepository:
                 initials=initials,
                 kind=kind,
                 district=district,
+                country=country,
                 verified=False,
                 rating_sum=0,
                 jobs_done=0,
@@ -340,10 +436,11 @@ class CatalogRepository:
             await self.s.flush()
             return to_owner(row), True
         row.name, row.initials, row.kind, row.district, row.updated_at = name, initials, kind, district, now
+        row.country = country
         row.business = business
         row.adult_confirmed_at = row.adult_confirmed_at or now
         await self.s.flush()
-        return to_owner(row), False
+        return to_owner(row), fresh
 
     async def apply_renter_rating(self, renter_id: str, quality: int) -> None:
         """Atomic, like apply_outcome. A renter without a profile has no record to move."""

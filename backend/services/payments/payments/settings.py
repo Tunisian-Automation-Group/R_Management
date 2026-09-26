@@ -19,6 +19,9 @@ class Settings(CommonSettings):
     stripe_webhook_secret: SecretStr = SecretStr("")
     # stripe-mock in contract tests (http://localhost:12111). Empty: api.stripe.com.
     stripe_api_base: str = ""
+    # The ID check (identity.py): "stripe" (Stripe Identity) or "fake". Empty
+    # follows PAYMENTS_PROVIDER. Another vendor is a class in identity.py.
+    identity_provider: Literal["", "fake", "stripe"] = ""
     # Where Stripe sends an owner back to after onboarding.
     web_base_url: str = "http://localhost:5173"
     # Kill switch (docs/runbook.md): false holds every payout on its queue
@@ -34,6 +37,7 @@ class Settings(CommonSettings):
     invoice_time_zone: str = "Europe/Berlin"
     invoice_tax_rate_bps: int = 1900
     invoice_tax_label: str = "USt"
+    invoice_retention_years: int = 10
 
     def unsafe_reasons(self) -> list[str]:
         problems = super().unsafe_reasons()
@@ -43,6 +47,8 @@ class Settings(CommonSettings):
             problems.append("PAYMENTS_PROVIDER must be stripe")
         if not self.stripe_secret_key.get_secret_value() or not self.stripe_webhook_secret.get_secret_value():
             problems.append("STRIPE_SECRET_KEY and STRIPE_WEBHOOK_SECRET are required")
+        if self.identity_provider == "fake":
+            problems.append("IDENTITY_PROVIDER must not be fake")
         if not self.stripe_publishable_key:
             problems.append("STRIPE_PUBLISHABLE_KEY is required")
         if "local" in self.legal_company or "Muster" in self.legal_address:

@@ -156,6 +156,35 @@ resource "aws_cloudwatch_metric_alarm" "chargebacks" {
   alarm_actions       = local.alarm_actions
 }
 
+# An outbox row that failed 20 times is set aside: its change committed, its
+# event will not go out on its own (D-14). Republish after fixing the cause:
+# docs/runbook.md "An event was set aside".
+resource "aws_cloudwatch_log_metric_filter" "outbox_set_aside" {
+  for_each       = toset(local.db_services)
+  name           = "${local.name}-${each.key}-outbox-set-aside"
+  log_group_name = aws_cloudwatch_log_group.service[each.key].name
+  pattern        = "\"OUTBOX_SET_ASIDE\""
+  metric_transformation {
+    name      = "OutboxSetAside"
+    namespace = "Cappy/${var.env}"
+    value     = "1"
+  }
+}
+
+resource "aws_cloudwatch_metric_alarm" "outbox_set_aside" {
+  alarm_name          = "${local.name}-outbox-set-aside"
+  alarm_description   = "An event was set aside after 20 failed publishes. See docs/runbook.md"
+  namespace           = "Cappy/${var.env}"
+  metric_name         = "OutboxSetAside"
+  statistic           = "Sum"
+  period              = 300
+  evaluation_periods  = 1
+  threshold           = 0
+  comparison_operator = "GreaterThanThreshold"
+  treat_missing_data  = "notBreaching"
+  alarm_actions       = local.alarm_actions
+}
+
 # --- error-budget burn (docs/slo.md) --------------------------------------------------
 # Availability SLO 99.5% on the API: the budget is 0.5% errors. Page when it
 # burns 14.4x too fast over both 1 h and 5 min (2% of the month's budget in an

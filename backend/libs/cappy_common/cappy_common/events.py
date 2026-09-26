@@ -14,8 +14,9 @@ Why each piece exists (ADR 0003):
   in ``processed_events``, in the same transaction as the handler's own
   writes. A redelivered event finds its id and does nothing.
 * **Failures are never acknowledged.** A handler that raises leaves the
-  message on the queue; SQS redelivers after the visibility timeout, and after
-  five attempts moves it to the dead-letter queue, where an alarm fires.
+  message on the queue; SQS redelivers after the visibility timeout (30 s
+  doubling to 15 min, jittered), and after 12 receives (about 2 h) moves it
+  to the dead-letter queue, where an alarm fires.
 
 Tests and single-process runs use ``memory://``: the same outbox and the same
 idempotent processing, with an in-process broker in place of SNS/SQS.
@@ -49,14 +50,12 @@ _tracer = trace.get_tracer(__name__)
 # --- the catalogue of event types --------------------------------------------
 # One place, so a producer and a consumer cannot disagree on a name. Adding a
 # type means adding it here and to the SNS subscription filter in Terraform.
-BOOKING_REQUESTED = "booking.requested"  # awaiting the owner (payment authorised)
 BOOKING_STATUS_CHANGED = "booking.status_changed"
 BOOKING_RATED = "booking.rated"
 # The owner rated the renter (two-way reviews).
 RENTER_RATED = "booking.renter_rated"
 # A message between the two sides of a booking.
 BOOKING_MESSAGE = "booking.message"
-BOOKING_CREATED = "booking.created"  # awaiting payment authorisation
 PAYMENT_AUTHORISED = "payment.authorised"
 PAYMENT_FAILED = "payment.failed"
 PAYMENT_CAPTURED = "payment.captured"
@@ -86,12 +85,10 @@ PERSON_FLAGGED = "moderation.person_flagged"
 
 ALL_TYPES = frozenset(
     {
-        BOOKING_REQUESTED,
         BOOKING_STATUS_CHANGED,
         BOOKING_RATED,
         RENTER_RATED,
         BOOKING_MESSAGE,
-        BOOKING_CREATED,
         PAYMENT_AUTHORISED,
         PAYMENT_FAILED,
         PAYMENT_CAPTURED,
@@ -278,6 +275,15 @@ class OutboxRelay:
                         .where(self.table.c.id.in_([r.id for r in rows]))
                         .values(attempts=self.table.c.attempts + 1)
                     )
+                    aside = await s2.execute(
+                        select(self.table.c.id, self.table.c.type).where(
+                            self.table.c.id.in_([r.id for r in rows]), self.table.c.attempts >= MAX_ATTEMPTS
+                        )
+                    )
+                    for row in aside:
+                        # The alarm on this word (Terraform: outbox-set-aside) pages:
+                        # the change committed, its event will not go out by itself.
+                        log.error("OUTBOX_SET_ASIDE %s %s after %d attempts", row.id, row.type, MAX_ATTEMPTS)
                 raise
             await s.execute(
                 update(self.table).where(self.table.c.id.in_([r.id for r in rows])).values(sent_at=datetime.now(UTC))
