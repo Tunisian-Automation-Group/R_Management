@@ -65,6 +65,11 @@ class Provider:
 
     async def onboarding_link(self, account_id: str, return_url: str, refresh_url: str) -> str: ...
     async def account_status(self, account_id: str) -> AccountStatus: ...
+    async def account_address(self, account_id: str) -> str | None:
+        """The postal address the payout provider verified for the owner (KYC),
+        one line, for the fee invoice's recipient (§ 14 (4) Nr. 1 UStG)."""
+        return None
+
     def parse_webhook(self, payload: bytes, signature: str) -> dict: ...
     async def aclose(self) -> None: ...
 
@@ -183,6 +188,14 @@ class StripeProvider(Provider):
         a = await self._c.v1.accounts.retrieve_async(account_id)
         return AccountStatus(bool(a.payouts_enabled), bool(a.details_submitted))
 
+    async def account_address(self, account_id: str) -> str | None:
+        a = (await self._c.v1.accounts.retrieve_async(account_id)).to_dict()
+        holder = a.get("company") or a.get("individual") or {}
+        addr = holder.get("address") or {}
+        town = " ".join(filter(None, [addr.get("postal_code"), addr.get("city")]))
+        parts = [addr.get("line1"), addr.get("line2"), town, addr.get("country")]
+        return ", ".join(p for p in parts if p) or None
+
     def parse_webhook(self, payload: bytes, signature: str) -> dict:
         try:
             event = stripe.Webhook.construct_event(payload, signature, self._webhook_secret)
@@ -247,6 +260,10 @@ class FakeProvider(Provider):
 
     async def account_status(self, account_id: str) -> AccountStatus:
         return AccountStatus(True, True)
+
+    async def account_address(self, account_id: str) -> str | None:
+        # Stands in for the address the provider verified; never a real one.
+        return "Musterstraße 1, 10115 Berlin, DE (test)"
 
     def parse_webhook(self, payload: bytes, signature: str) -> dict:
         raise Invalid("the fake provider takes no webhooks")

@@ -409,6 +409,18 @@ def test_once_the_time_has_started_the_buyer_disputes_rather_than_cancels(client
     assert client.post(f"/internal/bookings/{bid}/resolve", json=body, headers=INTERNAL).status_code == 409
 
 
+def test_after_an_early_hand_over_the_renter_can_report_at_once(client, app, issuer):
+    # V4-3: handed over 20 minutes before the booked time, damage found.
+    bid = _requested(client, app, issuer, start_h=40)
+    _do(client, issuer, HOST, bid, "accept")
+    soon = datetime.now(UTC) + timedelta(minutes=20)
+    call(app, _age, app, bid, window_start=soon, window_end=soon + timedelta(hours=2))
+    assert _do(client, issuer, HOST, bid, "start").json()["status"] == "active"
+    assert _do(client, issuer, BUYER, bid, "cancel").status_code == 409, "no refund while the renter holds it"
+    r = _do(client, issuer, BUYER, bid, "dispute", reason="The blade guard is cracked")
+    assert r.json()["status"] == "disputed"
+
+
 def test_a_declined_capture_releases_the_booking(client, app, issuer):
     bid = _requested(client, app, issuer)
     _do(client, issuer, HOST, bid, "accept")
@@ -438,6 +450,18 @@ def test_the_handover_address_is_shared_only_once_accepted(client, app, issuer):
         h = client.get(f"/bookings/{bid}", headers=issuer.headers(who)).json()["handover"]
         assert h["address"].startswith("Tempelhofer Damm") and h["instructions"]
     assert client.get(f"/bookings/{bid}", headers=issuer.headers("stranger")).status_code == 404
+    # V4-9: the owner corrects the address after accepting; the renter sees it.
+    corrected = {"address": "Tempelhofer Damm 7, 12101 Berlin", "instructions": "Side door"}
+    app.state.catalog.handover = lambda _lid: _async(corrected)
+    assert (
+        client.get(f"/bookings/{bid}", headers=issuer.headers(BUYER))
+        .json()["handover"]["address"]
+        .endswith("7, 12101 Berlin")
+    )
+
+
+async def _async(value):  # noqa: ANN001, ANN202
+    return value
 
 
 def test_a_key_reused_for_a_different_request_is_refused(client, issuer):
@@ -683,7 +707,8 @@ def test_export_includes_messages_and_evidence_and_deletion_clears_blocks(client
     assert out["messagesSent"][0]["body"] == "Is the rail included?"
     ev = Event(id=new_id("ev"), type=PROFILE_DELETED, source="catalog", occurred_at=now_iso(), data={"ownerId": BUYER})
     assert call(app, app.state.dispatcher.handle, ev)
-    assert client.get("/me/blocks", headers=issuer.headers(BUYER)).json() == []
+    later = issuer.headers(BUYER, iat=int(time.time()) + 1)  # a sign-in after the deletion
+    assert client.get("/me/blocks", headers=later).json() == []
 
 
 def test_instant_book_confirms_once_the_card_is_held(issuer, broker, payments):

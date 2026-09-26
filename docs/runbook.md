@@ -208,3 +208,18 @@ whether the alarms fired and whether the runbook worked.
 - Every service can publish any event type to the one topic. A compromised
   service could forge events; per-publisher topics (and consumers checking
   which topic a message came from) close that when the threat model needs it.
+
+## Local stack only: what behaves differently
+
+- **Sign out everywhere cannot end other devices locally (GD-4).**
+  cognito-local has no global sign-out, so a refresh token keeps minting new
+  access tokens there. The services still refuse every access token issued
+  before the sign-out (P-24), so the device that signed out, and any other
+  whose token was issued earlier, get 401 at once; another device that
+  refreshes afterwards carries on locally. With real Cognito,
+  `AdminUserGlobalSignOut` revokes the refresh tokens too. Fronting
+  cognito-local with a deny list was judged not worth it for a local-only gap.
+- **Staff MFA is off** (`ADMIN_MFA_REQUIRED`), see Moderation.
+- **Short windows** (`MIN_LEAD_MINUTES=5`, `START_EARLY_MINUTES`,
+  `SWEEP_SECONDS` in `compose.yaml`) so every flow can be walked in minutes;
+  deployed settings refuse them.

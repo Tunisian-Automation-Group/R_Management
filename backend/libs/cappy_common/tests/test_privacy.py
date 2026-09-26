@@ -66,3 +66,19 @@ def test_the_code_does_what_the_register_says(name):
     if entry.exported:
         code = "".join(_source(ref) for ref in EXPORT_CODE[service])
         assert re.search(entry.token, code), f"{name}: the data export leaves out {entry.token}"
+
+
+def test_every_personal_listing_field_goes_with_the_account():
+    """A listing's spec is one JSON column: its personal keys are named in
+    LISTING_SPEC and account deletion uses that list."""
+    from pydantic.alias_generators import to_camel
+
+    from cappy_common.models import BatchListing, WindowListing
+    from cappy_common.privacy import LISTING_SPEC
+
+    looks_personal = re.compile(r"location|postal|address|label|machine|note|phone|email|name")
+    fields = {to_camel(f) for m in (WindowListing, BatchListing) for f in m.model_fields}
+    personal = {f for f in fields if looks_personal.search(f.lower())} - {"title"}
+    assert personal <= set(LISTING_SPEC), f"add to privacy.LISTING_SPEC: {personal - set(LISTING_SPEC)}"
+    assert {"location", "postalCode"} <= set(LISTING_SPEC)
+    assert "LISTING_SPEC" in _source("catalog.repository:CatalogRepository.forget")

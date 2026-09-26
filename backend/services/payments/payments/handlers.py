@@ -47,6 +47,16 @@ class NotReady(RuntimeError):
     (and alarmed on) if it never becomes possible."""
 
 
+async def _address(provider: Provider, account_id: str) -> str | None:
+    """Best effort: an invoice is never held up by the provider being slow;
+    it carries a business address instead, or none (valid under § 33 UStDV)."""
+    try:
+        return await provider.account_address(account_id)
+    except Exception as e:  # noqa: BLE001
+        log.warning("no verified address for %s: %s", account_id, e)
+        return None
+
+
 def handlers(
     provider: Provider,
     service_name: str,
@@ -118,6 +128,7 @@ def handlers(
                     currency=row.currency,
                     about=d,
                     issuer=issuer,
+                    verified_address=await _address(provider, account.account_id),
                 )
         elif to == "completed" and row.status == "captured" and row.chargeback_at is not None:
             log.error("CHARGEBACK hold: not paying out booking %s", row.booking_id)
@@ -145,6 +156,7 @@ def handlers(
                 currency=row.currency,
                 about=d,
                 issuer=issuer,
+                verified_address=await _address(provider, account.account_id),
             )
         elif to == "completed" and row.status in ("created", "authorised"):
             # Completed without an accept (auto-completion of an accepted

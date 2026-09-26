@@ -8,8 +8,9 @@
     cancel: from awaiting_payment, requested or accepted, by either party, and only
             before the window starts. After that the buyer disputes instead.
     start:  from 30 minutes before the window, by either party.
-    dispute: from accepted or active once the window has started, by the buyer. The
-            payout is held until support resolves it (docs/runbook.md).
+    dispute: from accepted once the window has started, or from active at any time
+            (an early hand-over), by the buyer. The payout is held until support
+            resolves it (docs/runbook.md). Cancel is never open from active.
     no_show: from accepted, in the first 2 hours of the window, by either side about
             the other: the booking is cancelled. The owner missing it refunds the
             renter in full; the renter missing it refunds nothing (S-11).

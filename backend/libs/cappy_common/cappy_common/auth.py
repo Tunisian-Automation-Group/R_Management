@@ -170,7 +170,11 @@ async def optional_principal(request: Request) -> Principal | None:
     revocations = getattr(request.app.state, "revocations", None)
     if revocations is not None:
         not_before = await revocations.not_before(principal.sub)
-        if not_before is not None and int(principal.claims.get("iat", 0)) < int(not_before):
+        # `iat` is whole seconds; the revocation is exact. Rounding both down
+        # (as before) let a token issued in the same second as the revocation,
+        # the very one that asked for it, live on for 15 minutes (V4-24). A
+        # token issued later within that second is refused too: sign in again.
+        if not_before is not None and int(principal.claims.get("iat", 0)) < not_before:
             raise Unauthorized("your session has ended; sign in again", code="token_expired")
     request.state.principal = principal
     return principal

@@ -304,6 +304,7 @@ def test_settings_choose_channels_but_contract_emails_always_come():
         assert pusher.sent == []
         assert c.get("/notifications", headers=host).json()["unread"] == 2, "the bell still has everything"
         c.portal.call(app.state.dispatcher.handle, _event(PROFILE_DELETED, ownerId="host"))
+        host = issuer.headers("host", iat=int(time.time()) + 1)  # a new sign-in after the deletion
         assert c.get("/notifications/settings", headers=host).json()["categories"]["bookings"]["email"] is True
 
 
@@ -486,3 +487,19 @@ def test_an_idle_listing_tells_its_owner_where_to_add_time():
     for lang in ("en", "de", "fr"):
         subject, text = render(key, lang, **params)
         assert "Plunge saw" in subject and params["link"] in text
+
+
+def test_times_follow_the_readers_clock():
+    """24 h in German, French and European English; 12 h without a leading
+    zero where English readers use it (V4-19)."""
+    from datetime import UTC, datetime
+
+    from notifications.texts import when
+
+    t = datetime(2026, 9, 26, 15, 5, tzinfo=UTC)  # 17:05 in Berlin
+    assert when(t, "de") == "Sa., 26.09., 17:05 Uhr"
+    assert when(t, "fr").endswith("26 sept., 17:05")
+    assert when(t, "en") == "Sat 26 Sep, 17:05"
+    assert when(t, "en-US", "America/New_York") == "Sat, Sep 26, 11:05 AM"
+    assert when(t, "en-CA", "America/Toronto").endswith("11:05 AM")
+    assert when(datetime(2026, 9, 26, 4, 0, tzinfo=UTC), "en-US", "America/New_York").endswith("12:00 AM")

@@ -71,11 +71,19 @@ async def issue(
     currency: str,
     about: dict | None = None,
     issuer: Issuer = GERMANY,
+    verified_address: str | None = None,
 ) -> InvoiceRow | None:
     """Once per booking (a redelivered event finds the one already issued).
 
     ``about`` is the booking event: what the fee was for, when, and who the
-    owner is. Copied onto the invoice, which never changes once issued (GoBD)."""
+    owner is. Copied onto the invoice, which never changes once issued (GoBD).
+
+    The recipient's address (§ 14 (4) Nr. 1 UStG, V4-7): a trader's business
+    address; otherwise the address the payout provider verified for the
+    owner (``verified_address``, KYC, which Stripe requires of every German
+    individual before payouts). An owner is always paid before invoiced, so
+    it is there in practice; a small invoice without one is still valid
+    under § 33 UStDV (up to €250 gross, no recipient needed)."""
     existing = (
         await session.execute(select(InvoiceRow).where(InvoiceRow.booking_id == booking_id))
     ).scalar_one_or_none()
@@ -108,7 +116,7 @@ async def issue(
         service_start=dt_from_iso(start) if start else None,
         service_end=dt_from_iso(end) if end else None,
         recipient_name=business.get("legalName") or d.get("ownerName"),
-        recipient_address=business.get("address"),
+        recipient_address=business.get("address") or verified_address,
         recipient_vat_id=business.get("vatId"),
     )
     session.add(row)
@@ -195,9 +203,8 @@ async def invoice_page(
         )
         if x
     )
-    # ponytail: a private owner has no address on Cappy. Invoices to
-    # non-traders are voluntary (§ 14 (2) UStG) and most fees are under 250 €
-    # (§ 33 UStDV); a trader always has one (S-4).
+    # A trader's business address (S-4), else the one the payout provider
+    # verified (V4-7); see ``issue``.
     recipient = e(r.recipient_name) + (f"<br>{lines(r.recipient_address)}" if r.recipient_address else "")
     if r.recipient_vat_id:
         recipient += f"<br>USt-IdNr.: {e(r.recipient_vat_id)}"

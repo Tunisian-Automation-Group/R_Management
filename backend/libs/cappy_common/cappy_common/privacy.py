@@ -41,6 +41,18 @@ EXPORT_CODE = {
     "notifications": ("notifications.routes:export_person",),
 }
 
+# A listing's spec (its JSON) is one column holding several things; these
+# keys are about the person and go with the account. "blank" keeps the key
+# (the listing still reads as one), "drop" removes it. Everything else in a
+# spec is numbers and categories. The test fails for a new personal-looking
+# listing field that is not here.
+LISTING_SPEC: dict[str, Literal["blank", "drop"]] = {
+    "extraLabel": "blank",  # free text: what the extra is
+    "machine": "blank",  # free text: which machine
+    "location": "drop",  # the exact point, often a home (M-6)
+    "postalCode": "drop",  # with the point, it narrows to a street
+}
+
 _SESSIONS = "a pseudonymous id and a timestamp that ends older tokens (P-24); nothing else about the person"
 _KEYS = "a stored answer for 24 hours so a retry is safe; it repeats what the export already holds"
 

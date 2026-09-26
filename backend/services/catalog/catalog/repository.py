@@ -32,6 +32,7 @@ from cappy_common.models import (
     snapped,
 )
 from cappy_common.pagination import decode_cursor, encode_cursor
+from cappy_common.privacy import LISTING_SPEC
 from cappy_common.timeutil import dt_from_iso, iso_from_datetime
 
 from . import schedule
@@ -159,10 +160,6 @@ def to_review(r: ReviewRow) -> Review:
     )
 
 
-# Free text inside a listing's spec, cleared when its owner's account goes.
-_SPEC_WORDS = ("extraLabel", "machine")
-
-
 def _spec(l: AnyListing) -> dict:
     data = l.model_dump(mode="json", by_alias=True, exclude_none=True)
     return {k: v for k, v in data.items() if k not in _BASE_FIELDS}
@@ -222,12 +219,19 @@ class CatalogRepository:
                 photos=[],
             )
         )
-        # The spec's own words too (what the extra is, which machine): the
-        # numbers stay so an old booking's listing still reads as one.
+        # The spec's personal parts too (its words, the exact point and postal
+        # code, privacy.LISTING_SPEC): the numbers stay so an old booking's
+        # listing still reads as one.
         for row in (await self.s.execute(select(ListingRow).where(ListingRow.owner_id == owner_id))).scalars():
-            words = {k: "" for k in _SPEC_WORDS if k in (row.spec or {})}
-            if words:
-                row.spec = {**row.spec, **words}
+            spec = dict(row.spec or {})
+            for key, how in LISTING_SPEC.items():
+                if key in spec:
+                    if how == "drop":
+                        del spec[key]
+                    else:
+                        spec[key] = ""
+            if spec != (row.spec or {}):
+                row.spec = spec
         # Every photo they uploaded, listing or hand-over (D-1): the hourly
         # sweep deletes the files, keeping any another person also holds.
         await self.s.execute(update(MediaRow).where(MediaRow.owner_id == owner_id).values(used=False, created_at=EPOCH))
@@ -998,10 +1002,14 @@ class CatalogRepository:
 
     # --- the demo world (ADR 0010: a developer tool, additive only) -------------------------
 
-    async def load_seed(self, world: World) -> dict[str, int]:
+    async def load_seed(self, world: World, addresses: dict[str, str] | None = None) -> dict[str, int]:
         """Insert whatever of the demo world is missing. Never updates, never
         deletes: running it against a database with real data changes nothing
-        that is already there."""
+        that is already there. ``addresses``: hand-over addresses by listing id."""
+        if addresses is None:
+            from cappy_common.fixtures import listing_addresses
+
+            addresses = listing_addresses()
         added = {"districts": 0, "owners": 0, "listings": 0, "slots": 0, "reviews": 0}
         now = _now()
         have = set((await self.s.execute(select(DistrictRow.name))).scalars())
@@ -1036,6 +1044,7 @@ class CatalogRepository:
                         rules=l.rules,
                         photos=l.photos or [],
                         active=l.active,
+                        address=addresses.get(l.id),
                         spec=_spec(l),
                         created_at=now,
                         updated_at=now,

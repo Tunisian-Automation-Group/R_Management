@@ -338,7 +338,8 @@ def test_a_deleted_profile_loses_its_payout_link(client, app, issuer):
         id=new_id("ev"), type=PROFILE_DELETED, source="catalog", occurred_at=now_iso(), data={"ownerId": "leaver"}
     )
     assert call(app, app.state.dispatcher.handle, ev)
-    assert client.get("/payments/connect/status", headers=issuer.headers("leaver")).json()["connected"] is False
+    later = issuer.headers("leaver", iat=int(time.time()) + 1)  # a sign-in after the deletion
+    assert client.get("/payments/connect/status", headers=later).json()["connected"] is False
 
 
 def test_deletion_erases_the_id_check_at_the_provider_and_the_card_fingerprint(client, app, issuer):
@@ -572,6 +573,8 @@ def test_a_payout_issues_one_numbered_fee_invoice(client, app, issuer):
     assert inv["vatRateBps"] == 1900 and inv["net"] == 504
     page = client.get(f"/payments/invoices/{inv['number']}", headers=issuer.headers("host"))
     assert page.status_code == 200 and "Rechnung" in page.text and "6,00 €" in page.text
+    # A person has no business address: the payout provider's verified one (V4-7).
+    assert "10115 Berlin<br>DE (test)" in page.text
     assert client.get(f"/payments/invoices/{inv['number']}", headers=issuer.headers("buyer")).status_code == 404
 
 

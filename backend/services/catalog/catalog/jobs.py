@@ -88,8 +88,41 @@ async def keep_schedules_once(app: FastAPI, now: datetime | None = None) -> int:
     return added
 
 
+async def attribute_decisions_once(app: FastAPI) -> int:
+    """Decisions on messages made before each decision recorded its person
+    (747ed6b): ask booking who wrote the message, so the author's data export
+    finds them. A message booking no longer knows stays unattributed.
+    ponytail: runs hourly until done; drop it once no such rows remain."""
+    from sqlalchemy import select
+
+    from .tables import ModerationActionRow
+
+    async with app.state.db.transaction() as s:
+        rows = (
+            (
+                await s.execute(
+                    select(ModerationActionRow)
+                    .where(ModerationActionRow.target_type == "message", ModerationActionRow.person_id.is_(None))
+                    .limit(100)
+                )
+            )
+            .scalars()
+            .all()
+        )
+        done = 0
+        for row in rows:
+            try:
+                row.person_id = await app.state.bookings.message_author(row.target_id)
+            except Exception as e:  # noqa: BLE001 - booking down or the message gone: next hour, or never
+                log.info("decision %s: no author for message %s (%s)", row.id, row.target_id, e)
+                continue
+            done += row.person_id is not None
+    return done
+
+
 async def sweep_orphans(app: FastAPI) -> None:
     await sweep_orphans_once(app)
     await forget_reporters_once(app)
     await keep_schedules_once(app)
+    await attribute_decisions_once(app)
     await asyncio.sleep(jittered(3600))

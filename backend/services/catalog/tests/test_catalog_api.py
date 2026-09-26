@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import io
+import time
 
 import pytest
 from fastapi.testclient import TestClient
@@ -586,7 +587,9 @@ def test_deleting_an_account_forgets_what_is_theirs(client, app, issuer, booking
     assert client.get(f"/listings/{lid}").status_code == 404
     assert client.get("/search", params={"q": "unique lathe"}).json()["items"] == []
     assert client.get("/owners/user-a").status_code == 404, "gone from public pages"
-    assert client.get("/saved", headers=h).json()["items"] == []
+    assert client.get("/saved", headers=h).status_code == 401, "the old session ended with the account"
+    later = issuer.headers("user-a", iat=int(time.time()) + 1)
+    assert client.get("/saved", headers=later).json()["items"] == []
     flush(app)
     assert [e.data["ownerId"] for e in broker.of_type(PROFILE_DELETED)] == ["user-a"]
     assert client.delete("/me", headers=ANON).status_code == 401
@@ -1044,6 +1047,17 @@ def test_a_business_says_who_it_is_and_renters_see_it(client, issuer):
     assert person.get("business") is None
 
 
+def test_a_form_hears_every_problem_at_once(client, issuer):
+    # V4-20: a short legal name, a short address and a bad VAT ID, one answer.
+    body = {**PERSON, "adult": True, "kind": "business", "business": {"legalName": "A", "address": "x", "vatId": "DE1"}}
+    err = client.put("/me", json=body, headers=issuer.headers("t-2")).json()["error"]
+    assert err["code"] == "invalid" and err["message"]  # older clients still get words
+    assert {f["field"] for f in err["fields"]} == {"business.legalName", "business.address", "business.vatId"}
+    assert "VAT ID" in next(f["message"] for f in err["fields"] if f["field"] == "business.vatId")
+    missing = client.put("/me", json={**PERSON, "adult": True, "kind": "business"}, headers=issuer.headers("t-2"))
+    assert [f["field"] for f in missing.json()["error"]["fields"]] == ["business"]
+
+
 def test_a_person_never_shows_an_address(client, issuer):
     # Even if one is sent, a person has no trader block.
     body = {**PERSON, "adult": True, "business": TRADER}
@@ -1170,6 +1184,12 @@ def test_signing_out_everywhere_ends_every_session_now(client, app, issuer, brok
     fresh = issuer.headers("user-a", iat=int(time.time()) + 1)
     assert client.get("/me", headers=fresh).status_code == 200
     flush(app)
+    # V4-24: a token issued in the same second as the sign-out is ended too
+    # (whole-second iat against the exact revocation time).
+    now = issuer.headers("user-b", iat=int(time.time()))
+    _profile(client, issuer, sub="user-b")
+    assert client.post("/me/sign-out-everywhere", headers=now).status_code == 204
+    assert client.get("/me", headers=now).status_code == 401
     assert [e.data for e in broker.of_type(PERSON_SIGNED_OUT)] == [{"personId": "user-a"}]
     # A handful an hour, then a 429 (P-12).
     for _ in range(4):
@@ -1226,7 +1246,13 @@ def test_deletion_leaves_no_words_photos_or_reports_behind(client, app, issuer):
     photo = client.post("/uploads", files={"file": ("p.png", _png(), "image/png")}, headers=h).json()["url"]
     body = {
         "listing": _window_listing(
-            title="Ada's lathe", instructions="Door code 4711", photos=[photo], extraLabel="Ada's own chisels"
+            title="Ada's lathe",
+            instructions="Door code 4711",
+            photos=[photo],
+            extraLabel="Ada's own chisels",
+            location={"lat": 52.49871, "lng": 13.41912},
+            country="DE",
+            postalCode="10999",
         ),
         "slots": [_slot()],
     }
@@ -1256,6 +1282,7 @@ def test_deletion_leaves_no_words_photos_or_reports_behind(client, app, issuer):
     assert (owner.name, owner.verified, owner.business) == ("Former member", False, None)
     assert reports == [] and keys == []
     assert listing.spec["extraLabel"] == "" and listing.spec["ratePerHour"] > 0, "the spec's words, not its numbers"
+    assert "location" not in listing.spec and "postalCode" not in listing.spec, "the exact point is often a home"
     purged: list[str] = []
 
     class Edge:
@@ -1356,6 +1383,7 @@ def test_signing_up_again_after_deletion_is_a_fresh_start(client, app, issuer):
 
     _run(app, had_a_record)
     assert client.delete("/me", headers=h).status_code == 204
+    h = issuer.headers("user-a", iat=int(time.time()) + 1)  # signed up again, later
     assert client.get("/me", headers=h).json().get("owner") is None, "onboarding again"
     again = {"name": "Ada L", "kind": "person", "district": "Kreuzberg"}
     assert client.put("/me", json=again, headers=h).status_code == 422, "18+ asked again"
@@ -1503,3 +1531,49 @@ def test_a_point_must_be_in_its_district(client, issuer):
     assert r.status_code == 422 and r.json()["error"]["code"] == "location_outside_district"
     bad = _window_listing(location={"lat": 95, "lng": 13})
     assert client.post("/listings", json={"listing": bad}, headers=issuer.headers("user-a")).status_code == 422
+
+
+def test_the_demo_world_has_hand_over_addresses_and_trader_details(client, issuer):
+    # V4-10: a seeded listing can be edited and booked without inventing an
+    # address; V4-16: a seeded business names who the contract is with.
+    [view] = [
+        v
+        for v in client.get("/me/listings", headers=issuer.headers("o1")).json()["items"]
+        if v["listing"]["id"] == "l9"
+    ]
+    assert view["address"].endswith("12099 Berlin")
+    business = client.get("/owners/b10").json()["business"]
+    assert business["legalName"] == "Havelspedition GmbH" and business["vatId"].startswith("DE")
+    public = client.get("/listings/l9").json()
+    assert "Tempelhofer" not in str(public), "private until accepted"
+
+
+def test_older_decisions_on_messages_find_their_author(client, app):
+    # Recorded before decisions carried their person (747ed6b).
+    from datetime import UTC, datetime
+
+    from catalog.jobs import attribute_decisions_once
+    from catalog.tables import ModerationActionRow
+
+    async def old():
+        async with app.state.db.transaction() as s:
+            s.add(
+                ModerationActionRow(
+                    id="ma_old",
+                    actor_id="staff",
+                    action="remove_content",
+                    target_type="message",
+                    target_id="msg_1",
+                    statement="s",
+                    at=datetime.now(UTC),
+                )
+            )
+
+    async def who():
+        async with app.state.db.transaction() as s:
+            return (await s.get(ModerationActionRow, "ma_old")).person_id
+
+    _run(app, old)
+    assert _run(app, lambda: attribute_decisions_once(app)) == 1
+    assert _run(app, who) == "user-b"
+    assert _run(app, lambda: attribute_decisions_once(app)) == 0, "done once"

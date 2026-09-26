@@ -247,14 +247,23 @@ _MOIS = ["janv.", "févr.", "mars", "avr.", "mai", "juin", "juil.", "août", "se
 _MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
 
 
+# English readers whose region writes the 12-hour clock (the app sends its
+# BCP 47 locale, e.g. en-US); everyone else reads 24-hour time.
+_TWELVE_HOUR = {"us", "ca"}
+
+
 def when(t: datetime, locale: str | None, zone: str = DEFAULT_TIME_ZONE) -> str:
-    """Sat 26 Sep, 14:00 · Sa., 26.09., 14:00 Uhr"""
+    """Sat 26 Sep, 14:00 · Sat, Sep 26, 2:00 PM (en-US/en-CA) · Sa., 26.09., 14:00 Uhr"""
     t, lang = t.astimezone(ZoneInfo(zone)), language(locale)
     day = _DAYS[lang][t.weekday()]
     if lang == "de":
         return f"{day}, {t:%d.%m.}, {t:%H:%M} Uhr"
     if lang == "fr":
         return f"{day} {t.day} {_MOIS[t.month - 1]}, {t:%H:%M}"
+    region = (locale or "").lower().replace("_", "-").partition("-")[2][:2]
+    if region in _TWELVE_HOUR:
+        hour = t.hour % 12 or 12
+        return f"{day}, {_MONTHS[t.month - 1]} {t.day}, {hour}:{t:%M} {'AM' if t.hour < 12 else 'PM'}"
     return f"{day} {t.day} {_MONTHS[t.month - 1]}, {t:%H:%M}"
 
 

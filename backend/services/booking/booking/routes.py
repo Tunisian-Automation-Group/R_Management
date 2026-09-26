@@ -109,12 +109,18 @@ async def get_booking(
     p: Principal = Depends(require_principal),
 ) -> Booking:
     row = await repo.visible(booking_id, p.sub)
-    if row.handover is None and row.status in SHOWS_HANDOVER:
+    # While the booking is still to happen, the hand-over is read live, so an
+    # address the owner adds or corrects after accepting reaches the renter
+    # (V4-9). Once it is over, the last copy stands (it is what was used).
+    if row.status in SHOWS_HANDOVER and (row.handover is None or row.status in LIVE_HANDOVER):
         try:
             row.handover = await request.app.state.catalog.handover(row.listing_id)
-        except Exception as e:  # noqa: BLE001 - the booking still shows; the address comes next time
+        except Exception as e:  # noqa: BLE001 - the booking still shows, with the last copy if any
             log.warning("no hand-over details for %s yet: %s", row.id, e)
     return to_booking(row, p.sub)
+
+
+LIVE_HANDOVER = frozenset({"accepted", "active"})
 
 
 # --- creating --------------------------------------------------------------------------
@@ -304,7 +310,11 @@ async def _transition(
         # Once the window has begun the machine may already be in use: a full
         # refund is no longer automatic. The buyer reports a problem instead.
         raise Conflict("the booked time has started; report a problem instead of cancelling")
-    if action == "dispute" and not started:
+    # Handed over early (V4-3): whoever holds the thing now can report what
+    # they found at once. A cancel stays closed from `active` on purpose: the
+    # renter has the item, so a refund must not happen without staff; the
+    # dispute holds the payout until they decide, which is the safe side.
+    if action == "dispute" and not started and row.status != "active":
         raise Conflict("nothing to report before the booked time; cancel instead")
     early = timedelta(minutes=request.app.state.settings.start_early_minutes)
     if action == "start" and now < row.window_start - early:  # the same rule as Booking.canStartFrom

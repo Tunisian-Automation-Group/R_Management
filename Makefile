@@ -11,7 +11,8 @@ up: ## Build and start the whole stack, then load the demo world
 	docker compose up -d --build --wait
 	cp .local/web.env web/.env.development.local
 	$(MAKE) seed-demo
-	@echo "API: http://localhost:8000/api   web: cd web && npm run dev   demo: host@demo.cappy.local / buyer@demo.cappy.local, Demo-pass-123!"
+	@echo "API: http://localhost:8000/api   web: cd web && npm run dev"
+	@echo "demo (local only, password Demo-pass-123!): host@, host2@, buyer@, staff@demo.cappy.local; how to test everything: docs/GUIDE.md"
 
 down: ## Stop the stack (keeps data)
 	docker compose down
@@ -69,10 +70,13 @@ openapi: ## Regenerate docs/api/*.json from the services' code
 
 .PHONY: openapi
 
+bench: ## Candidate and text search at 100k listings on the local Postgres (docs/bench.md)
+	$(BACKEND) uv run python services/catalog/bench/candidates.py 100000
+
 load: ## Sustained concurrent use of the running stack: no errors, no double booking
 	$(BACKEND) uv run python ../local/load.py 50 60
 
-.PHONY: load
+.PHONY: load bench
 
 load-spike: ## 10x the arrival rate for 60 s: shedding may answer 503, nothing else fails
 	$(BACKEND) uv run python ../local/load.py spike 30 60

@@ -7,7 +7,7 @@ import re
 from datetime import UTC, datetime, timedelta
 
 from fastapi import Depends, Query, Request, Response, UploadFile, status
-from pydantic import Field, TypeAdapter, ValidationError
+from pydantic import Field, TypeAdapter, ValidationError, ValidationInfo, field_validator
 from pydantic.alias_generators import to_camel as camel
 
 from cappy_common.app import ApiRouter
@@ -116,10 +116,16 @@ class BusinessIn(CamelModel):
     register_number: str | None = Field(default=None, max_length=60)
     vat_id: str | None = Field(default=None, max_length=20)
 
-    def normalised(self) -> dict:
-        vat = re.sub(r"[\s.-]", "", self.vat_id or "").upper() or None
+    @field_validator("vat_id")
+    @classmethod
+    def _vat(cls, v: str | None) -> str | None:
+        vat = re.sub(r"[\s.-]", "", v or "").upper() or None
         if vat is not None and not (re.fullmatch(r"DE\d{9}", vat) if vat.startswith("DE") else EU_VAT.fullmatch(vat)):
-            raise Invalid("that VAT ID does not look right: a German one is DE and 9 digits")
+            raise ValueError("that VAT ID does not look right: a German one is DE and 9 digits")
+        return vat
+
+    def normalised(self) -> dict:
+        vat = self.vat_id
         return {
             "legalName": self.legal_name.strip(),
             "address": self.address.strip(),
@@ -133,11 +139,21 @@ class ProfileIn(CamelModel):
     kind: str = Field(pattern=r"^(person|business)$")
     district: str = Field(max_length=80)
     # Required for a business: who renters contract with.
-    business: BusinessIn | None = None
+    business: BusinessIn | None = Field(default=None, validate_default=True)
     # Required when the profile is created: Cappy is for adults (the terms).
     adult: bool | None = None
     # Country of residence, ISO 3166-1 alpha-2 (payouts are set up there, M-9).
     country: str = Field(default="DE", pattern="^[A-Z]{2}$")
+
+    @field_validator("business")
+    @classmethod
+    def _business_says_who_it_is(cls, v: BusinessIn | None, info: ValidationInfo) -> BusinessIn | None:
+        # Checked with the other fields, so the form hears every problem at once.
+        if info.data.get("kind") == "business" and v is None:
+            raise ValueError(
+                "a business says who it is: legal name and address (and register number and VAT ID if it has them)"
+            )
+        return v
 
 
 class City(CamelModel):
@@ -340,10 +356,8 @@ async def put_me(
     Idempotent: calling it twice with the same body is one profile."""
     where = live_market(body.country)
     if not await repo.has_district(body.district):
-        raise Invalid(f"unknown district: {body.district}")
-    if body.kind == "business" and body.business is None:
         raise Invalid(
-            "a business says who it is: legal name and address (and register number and VAT ID if it has them)"
+            f"unknown district: {body.district}", fields=[{"field": "district", "message": "unknown district"}]
         )
     business = body.business.normalised() if body.kind == "business" and body.business else None
     name = body.name.strip()

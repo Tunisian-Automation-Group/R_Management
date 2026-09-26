@@ -17,11 +17,20 @@ class ApiError(Exception):
     code = "internal"
 
     def __init__(
-        self, message: str, *, status: int | None = None, code: str | None = None, details: object | None = None
+        self,
+        message: str,
+        *,
+        status: int | None = None,
+        code: str | None = None,
+        details: object | None = None,
+        fields: list[dict] | None = None,
     ):
         super().__init__(message)
         self.message = message
         self.details = details
+        # Every problem with the form at once, [{field, message}], so a client
+        # can mark each field (V4-20); `message` stays for older clients.
+        self.fields = fields
         if status is not None:
             self.status = status
         if code is not None:
@@ -75,10 +84,12 @@ class Unavailable(ApiError):
     code = "unavailable"
 
 
-def error_body(code: str, message: str, details: object | None = None) -> dict:
+def error_body(code: str, message: str, details: object | None = None, fields: list[dict] | None = None) -> dict:
     body: dict = {"error": {"code": code, "message": message}}
     if details is not None:
         body["error"]["details"] = details
+    if fields:
+        body["error"]["fields"] = fields
     return body
 
 
@@ -88,15 +99,18 @@ def install_error_handlers(app: FastAPI) -> None:
         # A 503 says when to come back, so clients spread their retries out.
         headers = {"Retry-After": "2"} if exc.status == 503 else None
         return JSONResponse(
-            status_code=exc.status, content=error_body(exc.code, exc.message, exc.details), headers=headers
+            status_code=exc.status,
+            content=error_body(exc.code, exc.message, exc.details, exc.fields),
+            headers=headers,
         )
 
     @app.exception_handler(RequestValidationError)
     async def _validation(_: Request, exc: RequestValidationError) -> JSONResponse:
-        return JSONResponse(
-            status_code=422,
-            content=error_body("invalid", "request did not validate", _serialisable(exc.errors())),
-        )
+        errors = _serialisable(exc.errors())
+        fields = _fields(errors)
+        # The first problem in words, for clients that show only `message`.
+        message = f"{fields[0]['field']}: {fields[0]['message']}" if fields else "request did not validate"
+        return JSONResponse(status_code=422, content=error_body("invalid", message, errors, fields))
 
     @app.exception_handler(StarletteHTTPException)
     async def _http(_: Request, exc: StarletteHTTPException) -> JSONResponse:
@@ -126,4 +140,15 @@ def _serialisable(errors: list) -> list:
         if isinstance(e.get("ctx"), dict):
             e["ctx"] = {k: str(v) if isinstance(v, Exception) else v for k, v in e["ctx"].items()}
         out.append(e)
+    return out
+
+
+def _fields(errors: list) -> list[dict]:
+    """``[{field: "business.vatId", message}]`` from pydantic's errors: the
+    path inside the body, in the API's own (camelCase) names."""
+    out = []
+    for e in errors:
+        loc = [str(p) for p in e.get("loc", ()) if p not in ("body", "query", "path")]
+        msg = str(e.get("msg", "invalid")).removeprefix("Value error, ")
+        out.append({"field": ".".join(loc), "message": msg})
     return out

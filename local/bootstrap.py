@@ -62,8 +62,9 @@ DEMO_PASSWORD = "Demo-pass-123!"
 DEMO = {
     "host": ("host@demo.cappy.local", "o1"),
     "buyer": ("buyer@demo.cappy.local", None),
-    # A Swiss host (CHF) with new-owner listings, made through the API by
-    # local/demo_profiles.py: one instant book, a van, one held for review (GD-5).
+    # A second, new German host (EUR) whose listings are made through the API
+    # by local/demo_profiles.py: one instant book, a van, one held for review
+    # (GD-5). Not Swiss: the demo world has no Swiss places to list in yet.
     "host2": ("host2@demo.cappy.local", None),
     # A moderator, for the admin console (member of the "admin" group).
     "staff": ("staff@demo.cappy.local", None),
