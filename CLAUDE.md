@@ -7,7 +7,10 @@ Read these first, every session:
 2. **[`docs/PLAN.md`](docs/PLAN.md)** — the living plan. Pick up the first
    unfinished step. Tick steps with the commit that did them; add, drop or
    reorder steps as needed and record why in its change log.
-3. **[`docs/adr/`](docs/adr/)** — why the system is built the way it is.
+3. **[`docs/DEVELOPMENT-LOOP.md`](docs/DEVELOPMENT-LOOP.md)** — how we keep
+   developing with agents: the round, the roles and their rules, prompt
+   template, pacing, and where we stopped.
+4. **[`docs/adr/`](docs/adr/)** — why the system is built the way it is.
    Changing a decision means a new ADR, not a silent edit.
 
 ## Living docs — keep them true
@@ -45,7 +48,8 @@ Light is the default theme; dark is opt-in.
 ## Rules
 
 - Work on the `prod-readiness` branch. Commit as the repo's configured identity
-  (tunisian-automation). **Never push** unless the user says so.
+  (`tag`, the tunisian-automation noreply address). **Never push** unless the
+  user says so; the owner pushed `prod-readiness` on 2026-09-27.
 - Secrets never enter the repository: LocalStack auth token, Stripe keys and
   anything else live in the untracked `.env` (see `.env.example`).
 - Every commit leaves `make test` green. New behaviour comes with tests.

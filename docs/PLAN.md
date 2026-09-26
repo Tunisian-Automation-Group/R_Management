@@ -9,55 +9,13 @@ Branch: `prod-readiness`. Commits as tunisian-automation. Not pushed.
 Status: `[x]` done (with the commit that did it) · `[~]` in progress ·
 `[ ]` not started · `[-]` dropped (with the reason).
 
-## Resume here (2026-09-27)
+## Resume here (end of 2026-09-27)
 
-**How a day runs** (GOAL 15; the user's words: "continue again tomorrow doing
-exactly the same thing"). Each round:
-1. research agents study the big apps, law and security and add tasks to
-   [`TASKS.md`](TASKS.md), with their sources in `docs/research/`;
-2. one backend fork and one web fork build in parallel. Each owns its
-   files, commits nothing and never stashes. I commit after `make test`
-   and every web `check:*` pass, chaining with `&&` so a red suite can't
-   commit;
-3. an independent verifier checks the web version (desktop) and the app
-   version (390 px) in Chrome, signing in only with the demo buttons;
-4. a docs-sync agent brings the five living docs up to date (CLAUDE.md
-   "Living docs");
-5. a UI/UX agent reviews both versions against best-in-class apps and adds
-   UX tasks (GOAL 18);
-6. the readiness scoreboard [`READINESS.md`](READINESS.md) is re-scored
-   (GOAL 17). The loop ends when every technical blocker on it is met.
-
-Nothing is ever pushed or applied to real AWS (GOAL 12). Markets are all
-of Europe, the US and Canada (GOAL 16, ADR 0013).
-
-**Where things stand:** verification rounds 4 to 7 are done and fixed
-(V4-*, V5-*, V6-*, V7-* in TASKS); M-2 (markets as configuration) and the
-first step of M-5/M-6 (listing points) are built; `READINESS.md` says
-NO-GO, with its technical blockers as R2-* tasks.
-
-**Next, in order:**
-1. Verification round 8 (R2-11) and its fixes, then round 9, until a round
-   finds nothing.
-2. The open technical readiness blockers in `READINESS.md` ("Blockers for
-   GO"), then the UX-* tasks marked P0.
-3. Re-score `READINESS.md` after every round.
-
-**Waiting on the owner** (business and legal, not code):
-- G-B1: insurance. It blocks S-8 and S-9, damage claims and deposits.
-- G-B2 to G-B4: counsel on the withdrawal right per category and on the
-  policies; the DPAs and DPIA; the BZSt/DAC7 registration.
-- M-1: the North America legal entity and Stripe platform. M-11: VAT and
-  sales tax on the fee per market, with a tax adviser.
-- P-13, P-15, P-17, P-19, P-21, P-29, P-30: the privacy programme per
-  jurisdiction (breach procedure, policies, biometric consent, transfers,
-  privacy officer and representatives, CPRA process).
-- The GitHub environments need `LEGAL`, `AWS_IMAGES_ROLE_ARN` and so on
-  before any deploy (runbook step 2). The first real AWS apply is the
-  owner's call.
-- Rotate the LocalStack and GitHub tokens that were pasted in chat, purge
-  the `Capacity_Exchange_*.pptx` decks from git history, and consider
-  making the repository private.
+Read [`DEVELOPMENT-LOOP.md`](DEVELOPMENT-LOOP.md): it has the round, the agent
+roles and rules, and §6 "Where we stopped" with the next round in order (the
+visual build VD-3..VD-12, the docs sync, verification round 10 and UX round 3,
+a readiness re-score, the Stripe test-mode walk with the owner's go-ahead) and
+what waits on the owner.
 
 ## Phase 0 — Understand and decide
 - [x] Read every service, the frontend's data layer, compose and docs

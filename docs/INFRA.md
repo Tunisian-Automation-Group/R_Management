@@ -16,7 +16,17 @@ committed. The reasons behind them are in the ADRs, mainly
 > when applied".
 
 References are `path:line` in the committed tree. Last synced with the code
-as of `0a74b1c` (`174028c` to `0a74b1c`): account security
+as of `969bef8` (`e2f6bea` to `969bef8`, plus `bed48cd`, which landed just
+before the last sync and was not in it): a rollback that swaps only the
+services' images (`rollback` input, Terraform and migrations from `main`'s
+head) with migrations kept expand-only by a test, the SNS topic conditions
+(`aws:SourceAccount` on the alarms and tickets topics, only the three
+publishers on the event topic), a prod plan that **fails** without a pager
+unless `allow_no_pager`, `check:release` in CI's web job, the cost estimate
+in [`INFRA-cost.md`](INFRA-cost.md), and backup retention and the restore's
+deletion replay (`e50a24a`, runbook and `retention.md`). The other commits
+of the round are web and docs only. The sync before, as of `0a74b1c`
+(`174028c` to `0a74b1c`), covered: account security
 (`security.tf`: CloudTrail, GuardDuty, Security Hub, root-use and IAM-change
 alarms), backups and budgets (`backup.tf`: AWS Backup into a locked vault,
 a monthly budget, cost anomaly detection), two alarm severities (a
@@ -170,13 +180,14 @@ us-east-1 WAF ACL colliding. Below, `cappy-<env>` in a name reads
 | `apps` | `{}` (Apple team id, Android release SHA-256, App Store and Play URLs, all `""`; since `faebae7`) | GitHub environment variable `APPS` (JSON), as `TF_VAR_apps` | same | 113 |
 | `monthly_budget_usd` | `1000` (since `faebae7`, R2-4) | default | `4000` | 124 |
 | `account_security` | `true`: CloudTrail, GuardDuty, Security Hub in this account (since `faebae7`, P-14); off only when the organisation runs them centrally | default | default | 130 |
-| `pager_endpoint` | `""`, sensitive: the pager's SNS HTTPS integration URL (since `faebae7`, R2-6) | GitHub environment secret `PAGER_ENDPOINT`, as `TF_VAR_pager_endpoint` | same; a prod plan warns without it (`check "prod_has_a_pager"`, `observability.tf:37-42`) | 136 |
-| `feature_flags` | `""` | GitHub environment variable `FEATURE_FLAGS`, as `TF_VAR_feature_flags` | same | 143 |
-| `bot_control` | `false` | default | `true` | 149 |
-| `cognito_threat_protection` | `false` | default | `true` | 155 |
-| `push_app_arns` | `{ ios = "", android = "" }` | default | default (set once the store apps exist) | 161 |
+| `pager_endpoint` | `""`, sensitive: the pager's SNS HTTPS integration URL (since `faebae7`, R2-6) | GitHub environment secret `PAGER_ENDPOINT`, as `TF_VAR_pager_endpoint` | same; since `bed48cd` a prod plan **fails** without it unless `allow_no_pager` (a `precondition`, `observability.tf:15-20`; before, a `check` block warned) | 142 |
+| `allow_no_pager` | `false` (since `bed48cd`, R2-23): lets a prod apply go ahead without a pager, only on purpose | GitHub environment variable `ALLOW_NO_PAGER`, as `TF_VAR_allow_no_pager` | same | 136 |
+| `feature_flags` | `""` | GitHub environment variable `FEATURE_FLAGS`, as `TF_VAR_feature_flags` | same | 149 |
+| `bot_control` | `false` | default | `true` | 155 |
+| `cognito_threat_protection` | `false` | default | `true` | 161 |
+| `push_app_arns` | `{ ios = "", android = "" }` | default | default (set once the store apps exist) | 167 |
 
-Env overrides: `infra/envs/staging/main.tf:62-130`, `infra/envs/prod/main.tf:62-129`.
+Env overrides: `infra/envs/staging/main.tf:62-138`, `infra/envs/prod/main.tf:62-137`.
 
 `scale` (cpu units / MiB / min tasks / max tasks):
 
@@ -224,39 +235,45 @@ adding a service starts there.
   goes to catalog and `booking.dispute_offer` to notifications; since
   `22b5e0f`, `booking.notice` (how a dispute or a late-return claim ended)
   goes to notifications.
+- **Who may publish** (since `bed48cd`, P-9): `aws_sns_topic_policy.events_publishers`
+  (`:20-38`) denies `sns:Publish` on the event topic to every principal but
+  the task roles of the services in `local.publishes` (catalog, booking,
+  payments), so a leaked role elsewhere cannot forge `payment.authorised` or
+  `booking.status_changed`. Reads and subscriptions in the account still go
+  through IAM.
 - **Database services** (`:5`): catalog, booking, payments, notifications.
   Matching and the gateway have no database.
-- DB subnet group on the private subnets (`:20-23`); security group allowing
-  5432 only from the tasks' security group (`:25-36`).
+- DB subnet group on the private subnets (`:40-43`); security group allowing
+  5432 only from the tasks' security group (`:45-56`).
 - Parameter group `aurora-postgresql16` with `rds.force_ssl = 1` and
-  `log_min_duration_statement = 500` ms (`:43-54`).
-- **Cluster** `cappy-<env>` (`:56-80`): Aurora PostgreSQL 16.6, Serverless v2
+  `log_min_duration_statement = 500` ms (`:63-74`).
+- **Cluster** `cappy-<env>` (`:76-100`): Aurora PostgreSQL 16.6, Serverless v2
   (`db_min_acu`..`db_max_acu`), storage encrypted, backups 14 days in prod and
   3 in staging, window 02:00-03:00 UTC, deletion protection and a final
   snapshot in prod only, Postgres logs exported to CloudWatch.
-- **Instances** (`:82-93`): `db_instances` × `db.serverless`, all promotion
+- **Instances** (`:102-113`): `db_instances` × `db.serverless`, all promotion
   tier 1 so readers scale with the writer and a failover lands on a warm one;
   Performance Insights on.
 - **Secrets** (Secrets Manager):
   - `cappy-<env>/<svc>/database-url` per database service, writer endpoint,
-    `ssl=verify-full` (`:110`; `ssl=require` before `7444e37`, P-11: the
+    `ssl=verify-full` (`:130`; `ssl=require` before `7444e37`, P-11: the
     certificate is now checked against the RDS CA bundle baked into the
     image, `backend/Dockerfile:17-20`); the per-service password is
-    `random_password.db_service` (`:95-99`).
+    `random_password.db_service` (`:115-119`).
   - `cappy-<env>/<svc>/database-read-url` for catalog and booking, the reader
-    endpoint (`:115-127`).
-  - `cappy-<env>/database-admin-url`, seen only by the migrate task (`:129-136`).
+    endpoint (`:138-147`).
+  - `cappy-<env>/database-admin-url`, seen only by the migrate task (`:149-156`).
   - `cappy-<env>/internal-token/<svc>`, one per service except the gateway,
     holding `<svc>:<48 random characters>` for its own `/internal/*` calls
-    (`:150-165`, P-10). Who may call whom is `local.internal_callers`
-    (`:140-147`): catalog ← matching, booking; matching ← booking; booking ←
+    (`:170-185`, P-10). Who may call whom is `local.internal_callers`
+    (`:160-167`): catalog ← matching, booking; matching ← booking; booking ←
     matching, catalog; payments ← booking, catalog; notifications ← catalog.
     A callee gets only the sha256 of each caller's token (`INTERNAL_CALLERS`,
     `ecs.tf:71-74`), never the token.
   - `cappy-<env>/stripe`, an empty secret; its value is put in by hand
-    (`:169-171`, runbook "First deploy" step 4).
-- **Connection budget check** (`:173-191`), see [§6](#6-capacity-and-cost).
-- **Replica lag alarm**: `AuroraReplicaLag` above 1 s for 5 minutes (`:193-206`).
+    (`:189-191`, runbook "First deploy" step 4).
+- **Connection budget check** (`:193-211`), see [§6](#6-capacity-and-cost).
+- **Replica lag alarm**: `AuroraReplicaLag` above 1 s for 5 minutes (`:213-226`).
 
 ### `infra/platform/identity.tf`: Cognito (ADR 0002)
 
@@ -461,9 +478,12 @@ See [§5 Alarms](#alarms). Since `faebae7` (R2-6) two SNS topics, one per
 severity: `cappy-<env>-alarms` pages, `cappy-<env>-tickets` is looked at in
 working hours (`:9-16`). Both have an email subscription to `alarm_email`
 (`:17-28`); the pages topic also gets an HTTPS subscription to
-`pager_endpoint` when it is set (`:29-35`), and a `check` block warns on a
-prod plan without one (`:37-42`). `local.alarm_actions` and
-`local.ticket_actions` point alarms at the two (`:44-47`).
+`pager_endpoint` when it is set (`:39-45`). Since `bed48cd` (R2-23) a
+`precondition` on the alarms topic **fails** a prod plan without a pager
+(`:12-20`), unless `allow_no_pager = true` says it is on purpose (a
+rehearsal before on-call exists); before, a `check` block only warned.
+`local.alarm_actions` and `local.ticket_actions` point alarms at the two
+(`:47-50`).
 
 ### `infra/platform/security.tf`: account detection (since `faebae7`, P-14)
 
@@ -477,12 +497,14 @@ All behind `account_security` (count 0 when off, `:6-8`):
   `/cappy/<env>/cloudtrail`, kept 90 days (`:65-91`).
 - **GuardDuty** detector, findings every 15 minutes (`:105-109`); findings of
   severity 7 and above go to the pages topic through an EventBridge rule
-  (`:123-137`, topic policy `:139-163`).
+  (`:123-137`, topic policy `:139-169`; since `bed48cd`, R2-23, CloudWatch may
+  publish only with this account as `aws:SourceAccount`, and EventBridge only
+  from this account's GuardDuty rule, `aws:SourceArn`).
 - **Security Hub** with AWS Foundational Security Best Practices (`:111-119`).
 - Two metric filters on the trail's log group and their alarms
   (`Cappy/Security`): `root-used` (the root user doing anything; pages) and
   `iam-changed` (policy attachments, inline policies, new access keys; a
-  ticket, since deploys change IAM on purpose) (`:165-199`).
+  ticket, since deploys change IAM on purpose) (`:171-205`).
 
 ### `infra/platform/backup.tf`: backups and budgets (since `faebae7`)
 
@@ -495,11 +517,12 @@ All behind `account_security` (count 0 when off, `:6-8`):
   (EventBridge, `:71-84`).
 - **Budget** (R2-4): `cappy-<env>-monthly`, `monthly_budget_usd` filtered on
   the `env` cost allocation tag (activated once in Billing, runbook step 1);
-  a ticket at 80 % of the forecast and at 100 % of the actual (`:112-141`).
+  a ticket at 80 % of the forecast and at 100 % of the actual (`:115-144`).
 - **Cost anomaly detection**: a per-service monitor and an immediate
   subscription for anomalies of $50 or more, to the tickets topic
-  (`:143-164`). The tickets topic's policy lets CloudWatch, EventBridge,
-  Budgets and cost alerts publish (`:86-110`).
+  (`:146-167`). The tickets topic's policy lets CloudWatch, EventBridge,
+  Budgets and cost alerts publish (`:86-113`), since `bed48cd` (R2-23) only
+  with this account as `aws:SourceAccount`.
 
 ### `infra/platform/synthetics.tf` and `canary/`
 
@@ -520,7 +543,8 @@ and since `faebae7` (R2-1) `VITE_RELEASE=1`, the operator's identity from
 the tax number without one), `_REGISTER`) and the store values from `apps`
 (`VITE_APPLE_TEAM_ID`, `VITE_ANDROID_SHA256`, `VITE_APP_STORE_URL`,
 `VITE_PLAY_STORE_URL`). `VITE_RELEASE=1` switches on the web build's
-release guard (`web/vite.config.ts`, `releaseProblems`): the build fails when
+release guard (`releaseProblems`, since `bed48cd` in `web/release.ts`, which
+`web/vite.config.ts` imports and `npm run check:release` tests in CI): the build fails when
 the company, address or email is empty, the email is not an address, the
 Android fingerprint is not 32 colon-separated hex bytes (or all zeros), or
 the Apple team id is not 10 characters. Without an Apple team id or Android
@@ -532,14 +556,15 @@ placeholder would verify nothing). The env roots expose every output as
 
 Each sets the backend, the two providers (cell region and us-east-1), takes
 `image_tag`, `zone_id`, `alarm_email`, `switches`, `legal`, `feature_flags`,
-and since `faebae7` `apps` and `pager_endpoint` (`:83-99`) as variables, and
+since `faebae7` `apps` and `pager_endpoint`, and since `bed48cd`
+`allow_no_pager` (default `false`) (`:83-107`) as variables, and
 calls `../../platform` with the sizes in the tables above. Prod additionally
 turns on `cognito_threat_protection` and `bot_control`
-(`infra/envs/prod/main.tf:105`, `:125`) and sets `monthly_budget_usd = 4000`
-(`:128`). CD sets `legal`, `apps`, `switches` and `feature_flags` from the
-GitHub environment's variables `LEGAL`, `APPS`, `SWITCHES` and
-`FEATURE_FLAGS`, and `pager_endpoint` from the secret `PAGER_ENDPOINT`
-(`TF_VAR_*`, `.github/workflows/deploy.yml:106-111`); the env roots'
+(`infra/envs/prod/main.tf:112`, `:133`) and sets `monthly_budget_usd = 4000`
+(`:136`). CD sets `legal`, `apps`, `switches`, `feature_flags` and
+`allow_no_pager` from the GitHub environment's variables `LEGAL`, `APPS`,
+`SWITCHES`, `FEATURE_FLAGS` and `ALLOW_NO_PAGER`, and `pager_endpoint` from
+the secret `PAGER_ENDPOINT` (`TF_VAR_*`, `.github/workflows/deploy.yml:118-123`); the env roots'
 comments say so, with an example of each value. A local apply passes the
 same values with `-var` or a tfvars file.
 
@@ -784,20 +809,25 @@ Pull requests get no AWS access (`ci.yml` has only `contents: read`).
 `.github/workflows/deploy.yml`: since `faebae7` (R2-8) a release is a commit
 whose `ci` run passed on `main`. A **completed `ci` run on `main`**
 (`workflow_run`) deploys it to staging; prod, or a rollback, is
-`workflow_dispatch` with `env` and an optional `release` sha (empty = the
-latest on `main`) (`:7-23`). What is deployed is `TAG` = the `release`
-input, else the commit CI just passed, else the workflow's sha (`:35`), and
-every job checks out that sha. One deploy per environment at a time, never
+`workflow_dispatch` with `env`, an optional `release` sha (empty = the
+latest on `main`) and, since `bed48cd` (R2-19), a `rollback` flag
+(`:7-27`). What is deployed is `TAG` = the `release` input, else the commit
+CI just passed, else the workflow's sha (`:39`); the images and the web
+build come from `TAG`. Terraform and the migrations come from `INFRA_REF`
+(`:40-47`): the same sha, except with `rollback: true`, when it is `main`'s
+head, so an old release never runs its own Terraform (it would destroy newer
+resources, the locked backup vault among them) nor its own migrations
+(Alembic would not know the newer revision). One deploy per environment at a time, never
 cancelled midway. Workflow permissions default to `contents: read`; each job
 asks for `id-token` only if it needs AWS.
 
 | Job | AWS | What it does | Lines |
 |---|---|---|---|
-| `gate` | **none** | Runs only on `main` and only when the triggering CI run succeeded; asks the GitHub API for a successful `ci.yml` run on `main` for `TAG` and fails without one, so a red or untested sha never deploys | 38-51 |
-| `images` | images role (ECR push only) | Needs `gate`. Builds each service image with buildx and pushes `cappy/<svc>:<sha>`, skipping tags that already exist (tags are immutable, so a rollback builds nothing) | 53-88 |
-| `deploy` | deploy role | Terraform only, plus the AWS CLI. Reads the region and cell (`AWS_REGION`, `CELL`) and `legal`, `apps`, `switches`, `feature_flags` from the GitHub environment's variables `LEGAL`, `APPS`, `SWITCHES` and `FEATURE_FLAGS`, and `pager_endpoint` from the secret `PAGER_ENDPOINT`, as `TF_VAR_*` (`:100-110`; `SWITCHES` defaults to all on, `APPS` to `{}`) and stops at once if `LEGAL` is unset (`:120-121`). `terraform init` uses the cell's own state key for a cell other than `eu`. Then registers the migrate task definitions (targeted apply), runs every migrate task and fails if any exits non-zero, then a full apply, waits for services to be stable and checks each runs the task definition this deploy registered with rollout `COMPLETED` (a rolled-back service fails the job); outputs the public web config | 90-177 |
-| `web` | **none** | Writes the web config to `web/.env.production.local` as a dotenv file Vite reads (each value JSON-quoted, so addresses with spaces and commas survive; before `faebae7` an `export $(…)` broke them), then `npm ci --ignore-scripts && npm run build`; the config carries `VITE_RELEASE=1`, so the release guard applies; uploads `web/dist` | 179-199 |
-| `publish` | deploy role | Syncs the build to the web bucket **without `--delete`** (since `faebae7`, R2-9): hashed assets `immutable` for a year, and an asset under `assets/` is removed only when it is both absent from this build and older than 30 days, so a tab opened before the release still finds its lazy chunks (`:238-247`); `index.html`, `sw.js`, `registerSW.js`, `manifest.webmanifest` `no-cache`; `.well-known` deep-link files, when built, as JSON, 5 min; invalidates the entry points, then smoke-tests the URL: `/` 200, `/api/categories` 200, `/api/internal/busy` 404, `/api/bookings` 401 | 201-265 |
+| `gate` | **none** | Runs only on `main` and only when the triggering CI run succeeded; asks the GitHub API for a successful `ci.yml` run on `main` for `TAG` and fails without one, so a red or untested sha never deploys | 50-63 |
+| `images` | images role (ECR push only) | Needs `gate`. Builds each service image with buildx and pushes `cappy/<svc>:<sha>`, skipping tags that already exist (tags are immutable, so a rollback builds nothing) | 65-100 |
+| `deploy` | deploy role | Terraform only, plus the AWS CLI; checks out `INFRA_REF`. Reads the region and cell (`AWS_REGION`, `CELL`) and `legal`, `apps`, `switches`, `feature_flags`, `allow_no_pager` from the GitHub environment's variables `LEGAL`, `APPS`, `SWITCHES`, `FEATURE_FLAGS` and `ALLOW_NO_PAGER`, and `pager_endpoint` from the secret `PAGER_ENDPOINT`, as `TF_VAR_*` (`:116-123`; `SWITCHES` defaults to all on, `APPS` to `{}`, `ALLOW_NO_PAGER` to `false`) and stops at once if `LEGAL` is unset (`:133-134`). `terraform init` uses the cell's own state key for a cell other than `eu`. Then, except on a rollback (`:144-167`), registers the migrate task definitions (targeted apply) and runs every migrate task, failing if any exits non-zero; then a full apply with `image_tag = TAG`, waits for services to be stable and checks each runs the task definition this deploy registered with rollout `COMPLETED` (a rolled-back service fails the job); outputs the public web config | 102-192 |
+| `web` | **none** | Checks out `TAG` (a rollback builds the old release's web app). Writes the web config to `web/.env.production.local` as a dotenv file Vite reads (each value JSON-quoted, so addresses with spaces and commas survive; before `faebae7` an `export $(…)` broke them), then `npm ci --ignore-scripts && npm run build`; the config carries `VITE_RELEASE=1`, so the release guard applies; uploads `web/dist` | 194-214 |
+| `publish` | deploy role | Checks out `INFRA_REF`. Syncs the build to the web bucket **without `--delete`** (since `faebae7`, R2-9): hashed assets `immutable` for a year, and an asset under `assets/` is removed only when it is both absent from this build and older than 30 days, so a tab opened before the release still finds its lazy chunks (`:250-262`); `index.html`, `sw.js`, `registerSW.js`, `manifest.webmanifest` `no-cache`; `.well-known` deep-link files, when built, as JSON, 5 min; invalidates the entry points, then smoke-tests the URL: `/` 200, `/api/categories` 200, `/api/internal/busy` 404, `/api/bookings` 401 | 216-280 |
 
 Third-party code (package installs, image builds) never runs holding the
 deploy role (P-2, `bootstrap/main.tf:62-65`).
@@ -912,34 +942,37 @@ Two severities since `faebae7` (R2-6; runbook "Severity and on-call"): a
 **page** goes to `cappy-<env>-alarms` (mail to `alarm_email`, and the pager
 when `pager_endpoint` is set); a **ticket** goes to `cappy-<env>-tickets`
 (mail only). Before `faebae7` everything went to the one alarms topic.
+Since `bed48cd` (R2-23) a prod plan fails without `pager_endpoint` unless
+`allow_no_pager = true` (`observability.tf:12-20`), and both topics accept
+alarms and rules from this account only (`aws:SourceAccount`).
 
 | Alarm | Condition | Severity | Where |
 |---|---|---|---|
-| `api-5xx-rate` | ALB target 5xx above 2 % of requests, 2 of 3 minutes | page | `observability.tf:49-86` |
-| `api-p99-latency` | ALB `TargetResponseTime` p99 above 1.5 s, 3 of 5 minutes | ticket | `:88-103` |
-| `<svc>-dead-letters` | any message in a DLQ | page | `:105-119` |
-| `<svc>-queue-age` | oldest message older than the queue's SLI for 5 minutes: payments 900 s, notifications 600 s (T-35c; `slo.md`), catalog and booking 300 s | ticket | `:121-137` |
-| `db-cpu` | Aurora CPU above 80 % for 10 minutes | ticket | `:139-150` |
-| `db-at-max-capacity` | `ServerlessDatabaseCapacity` at 90 % of `db_max_acu` for 15 minutes | ticket | `:152-164` |
-| `chargeback` | a `CHARGEBACK` line in the payments log (metric filter): a chargeback opened, or one was lost | ticket | `:167-190` |
-| `outbox-set-aside` | an `OUTBOX_SET_ASIDE` line in any database service's log: an event failed to publish 20 times and will not go out by itself (metric filter per service, D-14; the relay logs it at `cappy_common/events.py:278-286`) | ticket | `:195-219` |
-| `replica-lag` | reader more than 1 s behind for 5 minutes | ticket | `data.tf:193-206` |
+| `api-5xx-rate` | ALB target 5xx above 2 % of requests, 2 of 3 minutes | page | `observability.tf:52-89` |
+| `api-p99-latency` | ALB `TargetResponseTime` p99 above 1.5 s, 3 of 5 minutes | ticket | `:91-106` |
+| `<svc>-dead-letters` | any message in a DLQ | page | `:108-122` |
+| `<svc>-queue-age` | oldest message older than the queue's SLI for 5 minutes: payments 900 s, notifications 600 s (T-35c; `slo.md`), catalog and booking 300 s | ticket | `:124-140` |
+| `db-cpu` | Aurora CPU above 80 % for 10 minutes | ticket | `:142-153` |
+| `db-at-max-capacity` | `ServerlessDatabaseCapacity` at 90 % of `db_max_acu` for 15 minutes | ticket | `:155-167` |
+| `chargeback` | a `CHARGEBACK` line in the payments log (metric filter): a chargeback opened, or one was lost | ticket | `:170-193` |
+| `outbox-set-aside` | an `OUTBOX_SET_ASIDE` line in any database service's log: an event failed to publish 20 times and will not go out by itself (metric filter per service, D-14; the relay logs it at `cappy_common/events.py:278-286`) | ticket | `:198-222` |
+| `replica-lag` | reader more than 1 s behind for 5 minutes | ticket | `data.tf:213-226` |
 | `ses-bounce-rate`, `ses-complaint-rate` | above 2 % / 0.05 % | ticket | `email.tf:54-80` |
 | `canary-failing` | canary success below 100 % for two runs, missing data breaches | page | `synthetics.tf:66-80` |
-| `slo-burning-fast` (composite) | burn 14.4× over 1 h **and** 5 min | page | `observability.tf:271-277` |
-| `slo-burning` (composite) | burn 6× over 6 h **and** 30 min | ticket | `:279-284` |
-| `slo-<journey>-burning-fast`, `slo-<journey>-burning` (composites; journeys `browse`, `book`, `answer`) | per journey, the same page and ticket pairs (T-35c) | page / ticket | `:292-378` |
-| `root-used` (since `faebae7`, P-14) | any root-user action in CloudTrail (metric filter `Cappy/Security`) | page | `security.tf:165-199` |
-| `iam-changed` (since `faebae7`) | a policy attached or put, a policy version or access key created (deploys do this on purpose) | ticket | `security.tf:165-199` |
+| `slo-burning-fast` (composite) | burn 14.4× over 1 h **and** 5 min | page | `observability.tf:274-280` |
+| `slo-burning` (composite) | burn 6× over 6 h **and** 30 min | ticket | `:282-287` |
+| `slo-<journey>-burning-fast`, `slo-<journey>-burning` (composites; journeys `browse`, `book`, `answer`) | per journey, the same page and ticket pairs (T-35c) | page / ticket | `:295-381` |
+| `root-used` (since `faebae7`, P-14) | any root-user action in CloudTrail (metric filter `Cappy/Security`) | page | `security.tf:171-205` |
+| `iam-changed` (since `faebae7`) | a policy attached or put, a policy version or access key created (deploys do this on purpose) | ticket | `security.tf:171-205` |
 | GuardDuty finding, severity 7+ (since `faebae7`) | EventBridge rule to the pages topic | page | `security.tf:123-137` |
 | Backup job failed, aborted or expired (since `faebae7`) | EventBridge rule | ticket | `backup.tf:72-84` |
-| Budget: forecast above 80 %, actual above 100 % (since `faebae7`, R2-4) | `aws_budgets_budget` notifications | ticket | `backup.tf:112-141` |
-| Cost anomaly of $50 or more (since `faebae7`) | Cost Explorer anomaly subscription, immediate | ticket | `backup.tf:143-164` |
+| Budget: forecast above 80 %, actual above 100 % (since `faebae7`, R2-4) | `aws_budgets_budget` notifications | ticket | `backup.tf:115-144` |
+| Cost anomaly of $50 or more (since `faebae7`) | Cost Explorer anomaly subscription, immediate | ticket | `backup.tf:146-167` |
 
 **SLO burn alarms.** The Terraform implements one API-wide availability
-objective, 99.5 % (budget 0.5 % of requests as 5xx, `observability.tf:226-234`).
+objective, 99.5 % (budget 0.5 % of requests as 5xx, `observability.tf:229-237`).
 Four metric alarms compute the 5xx share over 5 min, 1 h, 30 min and 6 h
-(`:236-269`) with thresholds 7.2 % (14.4 × 0.5 %) and 3 % (6 × 0.5 %); the two
+(`:239-272`) with thresholds 7.2 % (14.4 × 0.5 %) and 3 % (6 × 0.5 %); the two
 composites pair them, Google SRE workbook style.
 
 **Per-journey burn alarms** (since `7444e37`, T-35c). Each gateway access
@@ -948,10 +981,10 @@ log line names its journey (`cappy_common/observability.py` `journey`:
 /matches`; `book` for `POST /bookings`; `answer` for accept and decline).
 Two log metric filters per journey on the gateway's log group count every
 request and the bad ones (`Cappy/<env>` `JourneyRequests-<j>` and
-`JourneyBad-<j>`, `:304-328`): bad is a 5xx, and for browse also slower than
-800 ms. Budgets 0.5 % (browse) and 0.1 % (book, answer) (`:292-302`), the
-same four windows and factors as the API-wide alarms (`:330-361`), paired
-into a page and a ticket composite per journey (`:363-378`). The two event
+`JourneyBad-<j>`, `:307-331`): bad is a 5xx, and for browse also slower than
+800 ms. Budgets 0.5 % (browse) and 0.1 % (book, answer) (`:295-305`), the
+same four windows and factors as the API-wide alarms (`:333-364`), paired
+into a page and a ticket composite per journey (`:366-381`). The two event
 journeys ([`slo.md`](slo.md): money within 15 minutes, mail within 10) are
 alarmed on queue age at those thresholds. First look for each alarm:
 runbook "Alarms".
@@ -1000,8 +1033,8 @@ example `ACCEPTING_BOOKINGS: "false"` on booking) and `docker compose up -d`.
 ### Backups and restore
 
 - Aurora continuous backups: 14 days in prod, 3 in staging, so any second in
-  that window can be restored (`data.tf:68`). Deletion protection and a final
-  snapshot in prod (`:71-73`).
+  that window can be restored (`data.tf:88`). Deletion protection and a final
+  snapshot in prod (`:91-93`).
 - Media bucket versioning, old versions kept 30 days (`storage.tf:31-51`).
 - Terraform state versioned (`bootstrap/main.tf:29-34`).
 - Since `faebae7` (R2-5), **AWS Backup** copies the Aurora cluster and the
@@ -1015,7 +1048,16 @@ example `ACCEPTING_BOOKINGS: "false"` on booking) and `docker compose up -d`.
 - Restore procedure (point-in-time to a new cluster, then copy back or
   repoint the `database-url` secrets; or restore a recovery point from the
   vault when the cluster itself is gone): runbook "Restoring the database".
+  Since `e50a24a` its step 3: before anyone uses restored data, publish
+  again every `profile.deleted` event since the restore point (from the
+  damaged cluster's outbox tables or the analytics lake), so every service
+  forgets those people again, idempotently; only then point traffic at it.
   It has never been rehearsed.
+- **Locked backups and erasure** (since `e50a24a`, `docs/retention.md`
+  "Backups"): recovery points cannot be deleted early by anyone, so a deleted
+  person's rows and photos stay in them until they expire (35 days daily, at
+  most a year monthly in prod). They are never restored into the live system
+  without that replay; the privacy notice must say so.
 
 ### Deploy and rollback
 
@@ -1028,13 +1070,18 @@ example `ACCEPTING_BOOKINGS: "false"` on booking) and `docker compose up -d`.
   checks, and the deployment alarms (`api-5xx-rate`, `slo-burn-page_short`)
   if users' errors rise during the roll (`ecs.tf:341-354`). The deploy job
   then fails because the primary deployment is not the new task definition.
-- **Manual rollback**: Actions → deploy → Run workflow with the environment
-  and `release:` the previous release's sha (since `faebae7`). Its images
-  already exist, so the `images` job skips the build and only Terraform and
-  the roll run (minutes). Or apply the env root with `-var
-  image_tag=<previous sha>`. The database is not rolled back (see
-  Migrations). The web app's previous hashed assets stay in the bucket for
-  30 days, so open tabs keep working across a release and a rollback.
+- **Manual rollback** (since `bed48cd`, R2-19): Actions → deploy → Run
+  workflow with the environment, `release:` the previous release's sha **and
+  `rollback: true`**. Only the services' images (and the web build) change:
+  Terraform comes from `main`'s head, no migrate task runs and the database
+  stays where it is. Its images already exist, so the `images` job skips the
+  build (minutes). Deploying an older sha *without* `rollback` runs that
+  sha's own migrations and Terraform and stops safely at the migrate step.
+  Or apply the env root from `main` with `-var image_tag=<previous sha>`.
+  When the bad release migrated data the old code cannot read, or a contract
+  step went out, fix forward on `main` instead (the kill switches hold the
+  damage meanwhile). The web app's previous hashed assets stay in the bucket
+  for 30 days, so open tabs keep working across a release and a rollback.
 - A failed migration stops the deploy before any service rolls (runbook
   "A deploy failed").
 
@@ -1044,13 +1091,21 @@ Each database service has its own migrations, run by
 `python -m cappy_common.migrations <svc>` with `ADMIN_DATABASE_URL`
 (creates the database and role, sets its password) and `DATABASE_URL`
 (`ecs.tf:453-480`). CD runs them as one-off Fargate tasks before rolling the
-services (`deploy.yml:131-153`); locally `local/run.sh:12-14` runs them at
-container start. Old code keeps running against the new schema until the roll
-completes, and a rollback runs the previous release against the newer
-schema, so migrations are expand-then-contract (runbook "Releasing and
-rolling back": add nullable columns and write both, backfill in a later
-release, drop one release after that; a migration that drops data is its own
-release, after a restore rehearsal).
+services (`deploy.yml:144-167`), never on a rollback; locally
+`local/run.sh:12-14` runs them at container start. Old code keeps running
+against the new schema until the roll completes, and a rollback runs the
+previous release against the newer schema, so migrations **only expand**
+(runbook "Releasing and rolling back": add nullable columns or columns with
+defaults and write both, backfill in a later release, contract at least one
+release after the last code that read it; that release cannot be rolled
+back past). Since `bed48cd` a test enforces it:
+`backend/libs/cappy_common/tests/test_migrations_expand_only.py` (in `make
+test`, so in CI) parses every `upgrade()` and refuses `drop_column`,
+`drop_table`, `rename_table` and a renaming `alter_column` unless the
+migration carries `# contract: <release that stopped using it>`.
+`downgrade()` may drop. Settings follow the same rule: a release may add an
+environment variable with a default, never require one the previous release
+lacks.
 
 ---
 
@@ -1060,7 +1115,7 @@ release, after a restore rehearsal).
 
 Aurora Serverless v2's `max_connections` is fixed by the **maximum** ACU,
 and ECS autoscaling is how it runs out (resilience F24). A Terraform `check`
-block (`data.tf:173-191`) computes:
+block (`data.tf:193-211`) computes:
 
 - per task 15 connections (pool 5 + overflow 10), twice for catalog and
   booking (writer and reader), times each service's task maximum, times 2
@@ -1090,8 +1145,15 @@ gateway sheds above 400 in-flight requests and 200 per upstream
 
 ### Main cost drivers
 
-The code and docs state only three prices; for everything else see AWS pricing
-for the region. The quantities below come from the Terraform.
+The quantities below come from the Terraform. Since `bed48cd` (R2-4)
+[`INFRA-cost.md`](INFRA-cost.md) estimates prod in the EU cell at **about
+$1,550 a month at launch** (20,000 monthly active members; approximate
+on-demand Frankfurt list prices, not a quote): Aurora ≈ $420, Cognito Plus
+≈ $400, Fargate ≈ $240, NAT ≈ $120, then WAF, the private CA, CloudWatch,
+GuardDuty and smaller lines; a fixed floor of about $350 whatever the
+traffic, and Cognito Plus the line that grows fastest. Staging is roughly a
+quarter of prod. It is to be checked in the AWS Pricing Calculator before
+the first apply and replaced by the bill after the first month.
 
 | Driver | Prod quantity | Staging quantity | Stated price |
 |---|---|---|---|
@@ -1109,9 +1171,10 @@ for the region. The quantities below come from the Terraform.
 | SES, SNS, SQS, Firehose, the analytics scrub Lambda, S3, X-Ray | per use | per use | see AWS pricing |
 
 **Budgets** (since `faebae7`, R2-4): `monthly_budget_usd`, $1,000 by default
-(staging) and $4,000 in prod (`infra/envs/prod/main.tf:126-128`: Aurora with
+(staging) and $4,000 in prod (`infra/envs/prod/main.tf:134-136`: Aurora with
 a reader, 3 NATs, Cognito Plus, Bot Control, the private CA at launch
-traffic; raise it with real numbers). A forecast above 80 % or an actual
+traffic; `INFRA-cost.md` puts launch at about $1,550, so it leaves room for
+a busy month and staging; raise it with real numbers). A forecast above 80 % or an actual
 above 100 % opens a ticket, and so does a cost anomaly of $50 or more.
 
 Levers already in the code: one NAT in staging (`variables.tf:35-39`), the S3
@@ -1154,15 +1217,21 @@ and `LOCALSTACK_AUTH_TOKEN` in `.env` (compose refuses to start without it,
 | `load-soak` | An hour at a steady rate; connections, memory and queue ages stay flat | 87-88 |
 
 The web dev server is `cd web && npm run dev` (Vite; it proxies `/api` to the
-gateway, `web/vite.config.ts:13`, `:89`).
+gateway, `web/vite.config.ts:14-16`, `:106-107`).
 
 CI's `web` job does more than `make web` (since `44a5520`,
-`.github/workflows/ci.yml:49-72`): `npm ci --ignore-scripts` (no package
+`.github/workflows/ci.yml:49-73`): `npm ci --ignore-scripts` (no package
 install scripts run), `npm audit`, `npx tsc --noEmit -p .`, the build, then
 `check:size`, `check:i18n`, `check:flags`, `check:attempt`, `check:a11y`,
 `check:money` (since `73610c4`), `check:contrast` (since `0a74b1c`: every
 text colour token on the backgrounds it is used on, light and dark, WCAG AA,
-`web/scripts/check-contrast.ts`) and `check:tokens` (since `7051660`: no
+`web/scripts/check-contrast.ts`; since `a2ed987` translucent colours are
+measured over their background, 70 pairs), `check:release` (since
+`bed48cd`, R2-21: the release guard, `releaseProblems` in `web/release.ts`,
+refuses a `VITE_RELEASE=1` build without the operator's company, address or
+a well-formed contact email, or with a malformed or all-zero Android
+SHA-256 or Apple team id; `web/scripts/check-release.ts`) and
+`check:tokens` (since `7051660`: no
 literal text size, radius, hex or rgb colour, named Tailwind colour or
 inline font size outside `theme.css`; the counts in
 `web/scripts/tokens-allowlist.json` may only go down), each failing the job
@@ -1260,7 +1329,7 @@ agents included. In practice:
 - **Adding a cell or environment**: section 3's table, and move the North
   America cell from "planned" to what it is once M-21 lands.
 - **Anything that costs money** (a NAT, a managed rule group, a tier):
-  section 6.
+  section 6, and its line in [`INFRA-cost.md`](INFRA-cost.md).
 - **Never mark something applied that was only validated.** Nothing is
   applied to real AWS (GOAL 12); LocalStack is the only apply.
 - A decision that changes why the infrastructure is shaped this way needs a
