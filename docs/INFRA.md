@@ -16,11 +16,15 @@ committed. The reasons behind them are in the ADRs, mainly
 > when applied".
 
 References are `path:line` in the committed tree. Last synced with the code
-as of `2257182` (`42c777c` and `2257182`: `make bench`, `make up` listing
-every demo account, the runbook's "Local stack only" section, the second demo
-host's comment, `VITE_CAPPY_USER` gone from `web/.env.example`). Neither
-commit adds an AWS resource or a cost. The sync before covered `747ed6b` and
-`61b15b8`.
+as of `4e86866` (`7444e37` to `4e86866`): TLS on every hop inside the VPC
+(P-11: Service Connect TLS from a private CA, HTTPS from the ALB to the
+gateway, Aurora `verify-full`), dependency audits in CI and Dependabot plus
+an audited ECS Exec (P-32), per-journey burn alarms and SLI queue-age
+thresholds (T-35c), the cell in every name and a region and cell per deploy
+environment (M-46), booking's `cognito-idp:ListUsers`, the `staff.action`,
+`booking.dispute_offer` and `booking.notice` subscriptions, and `make confirm
+LEAD=1`. The private CA is a new cost ([§6](#main-cost-drivers)). The sync
+before covered `42c777c` and `2257182`.
 
 Contents: [1 Overview](#1-overview) · [2 Terraform, file by file](#2-terraform-file-by-file) ·
 [3 Environments and cells](#3-environments-and-cells) · [4 Security](#4-security) ·
@@ -55,7 +59,7 @@ One cell (today: EU, eu-central-1) is one copy of `infra/platform`:
    +------------- VPC 10.40.0.0/16, 3 AZs, private subnets --------+-------------+
    |                     |                 v                       |             |
    |                     |          gateway (ECS Fargate)          |             |
-   |                     |                 | Service Connect http://<svc>:8000   |
+   |                     |                 | Service Connect (TLS) <svc>:8000    |
    |                     |   +-------------+------+----------+--------------+    |
    |                     +-- catalog   matching   booking   payments   notifications
    |                          |   \               |   \       |    \          |   \
@@ -108,8 +112,12 @@ WAF (`infra/platform/versions.tf:4`; wired in `infra/envs/staging/main.tf:27-33`
 CI pins Terraform 1.12.2 (`.github/workflows/ci.yml:84`). State locking is
 S3-native (`use_lockfile = true`, `infra/envs/prod/main.tf:9`).
 
-All names start with `local.name = "cappy-${var.env}"` (`infra/platform/network.tf:6`).
-Default tags `app`, `env`, `managed_by` come from the env roots' providers
+All names start with `local.name = "cappy-${var.cell}-${var.env}"`
+(`infra/platform/network.tf:6`; since `7444e37`, M-46: before, `cappy-<env>`),
+so two cells can share an account without their IAM roles, buckets, Lambda or
+us-east-1 WAF ACL colliding. Below, `cappy-<env>` in a name reads
+`cappy-<cell>-<env>` (`cappy-eu-prod` today). Default tags `app`, `env`,
+`cell`, `managed_by` come from the env roots' providers
 (`infra/envs/prod/main.tf:19-24`).
 
 ### `infra/platform/variables.tf`: the inputs
@@ -117,30 +125,31 @@ Default tags `app`, `env`, `managed_by` come from the env roots' providers
 | Variable | Default | Staging | Prod | Line |
 |---|---|---|---|---|
 | `env` | (required; `staging` or `prod` only) | `staging` | `prod` | 1 |
-| `region` | `eu-central-1` | default | default | 10 |
-| `domain` | (required) | `staging.cappy.app` | `cappy.app` | 15 |
-| `zone_id` | (required) | `-var zone_id` from GitHub `vars.ZONE_ID` | same | 20 |
-| `image_tag` | (required) | commit sha from CD | same | 25 |
-| `az_count` | `3` | default | default | 30 |
-| `nat_gateways` | `1` | `1` | `3` | 35 |
-| `db_min_acu` | `0.5` | `0.5` | `1` | 41 |
-| `db_max_acu` | `16` | `4` | `64` | 46 |
-| `db_instances` | `2` (writer + reader) | `1` | `2` | 51 |
-| `scale` | see below | smaller map | default | 57-73 |
-| `alarm_email` | (required) | `vars.ALARM_EMAIL` | same | 75 |
-| `waf_rate_limit` | `2000` per 5 min per IP | default | default | 80 |
-| `switches` | all `true` | GitHub environment variable `SWITCHES` (JSON; all on when unset), as `TF_VAR_switches` | same | 86 |
-| `legal` | (required: company, address, VAT ID, tax number) | GitHub environment variable `LEGAL` (JSON), as `TF_VAR_legal` | same | 96 |
-| `feature_flags` | `""` | GitHub environment variable `FEATURE_FLAGS`, as `TF_VAR_feature_flags` | same | 101 |
-| `bot_control` | `false` | default | `true` | 107 |
-| `cognito_threat_protection` | `false` | default | `true` | 113 |
-| `push_app_arns` | `{ ios = "", android = "" }` | default | default (set once the store apps exist) | 119 |
+| `region` | `eu-central-1` | the env root's `var.region` (default `eu-central-1`; CD sets `TF_VAR_region` from the GitHub environment's `AWS_REGION`, since `7444e37`) | same | 10 |
+| `cell` | `eu` (`eu` or `na` only, as in `markets.json`) | the env root's `var.cell` (default `eu`; CD sets `TF_VAR_cell` from the environment's `CELL`, since `7444e37`, M-46) | same | 18 |
+| `domain` | (required) | `staging.cappy.app` | `cappy.app` | 27 |
+| `zone_id` | (required) | `-var zone_id` from GitHub `vars.ZONE_ID` | same | 32 |
+| `image_tag` | (required) | commit sha from CD | same | 37 |
+| `az_count` | `3` | default | default | 42 |
+| `nat_gateways` | `1` | `1` | `3` | 47 |
+| `db_min_acu` | `0.5` | `0.5` | `1` | 53 |
+| `db_max_acu` | `16` | `4` | `64` | 58 |
+| `db_instances` | `2` (writer + reader) | `1` | `2` | 63 |
+| `scale` | see below | smaller map | default | 69-85 |
+| `alarm_email` | (required) | `vars.ALARM_EMAIL` | same | 87 |
+| `waf_rate_limit` | `2000` per 5 min per IP | default | default | 92 |
+| `switches` | all `true` | GitHub environment variable `SWITCHES` (JSON; all on when unset), as `TF_VAR_switches` | same | 98 |
+| `legal` | (required: company, address, VAT ID, tax number) | GitHub environment variable `LEGAL` (JSON), as `TF_VAR_legal` | same | 108 |
+| `feature_flags` | `""` | GitHub environment variable `FEATURE_FLAGS`, as `TF_VAR_feature_flags` | same | 113 |
+| `bot_control` | `false` | default | `true` | 119 |
+| `cognito_threat_protection` | `false` | default | `true` | 125 |
+| `push_app_arns` | `{ ios = "", android = "" }` | default | default (set once the store apps exist) | 131 |
 
 Env overrides: `infra/envs/staging/main.tf:65-90`, `infra/envs/prod/main.tf:65-86`.
 
 `scale` (cpu units / MiB / min tasks / max tasks):
 
-| Service | Default = prod (`variables.tf:65-72`) | Staging (`envs/staging/main.tf:82-89`) |
+| Service | Default = prod (`variables.tf:77-84`) | Staging (`envs/staging/main.tf:82-89`) |
 |---|---|---|
 | gateway | 512 / 1024 / 2 / 20 | 256 / 512 / 1 / 4 |
 | catalog | 512 / 1024 / 2 / 20 | 256 / 512 / 1 / 4 |
@@ -171,15 +180,19 @@ adding a service starts there.
 
 - **Consumers** (`:6-11`): which event types each service's queue receives.
   Passed to `module "messaging"` (`:14-18`). The same map is copied into
-  `infra/localstack/main.tf:27-32`, `infra/localstack/check.py:13-42` and
-  `local/bootstrap.py:30-59`. Since `235eeaa` a test keeps them in step
+  `infra/localstack/main.tf:27-32`, `infra/localstack/check.py:13-46` and
+  `local/bootstrap.py:30-63`. Since `235eeaa` a test keeps them in step
   (`backend/libs/cappy_common/tests/test_subscriptions.py`, D-13): the four
   copies must be equal, and each service must handle every type it receives
   (sign-out and deletion are handled by every runtime) and receive every type
   it handles. `person.signed_out` goes to booking, payments and
   notifications; `payment.identity_verified` goes to booking and, since
   `235eeaa`, catalog (the profile's `verified`); `listing.idle` (catalog's
-  "no free time next week", since `61b15b8`) goes to notifications.
+  "no free time next week", since `61b15b8`) goes to notifications. Since
+  `7444e37`, `staff.action` (booking's staff actions, for the one audit log)
+  goes to catalog and `booking.dispute_offer` to notifications; since
+  `22b5e0f`, `booking.notice` (how a dispute or a late-return claim ended)
+  goes to notifications.
 - **Database services** (`:5`): catalog, booking, payments, notifications.
   Matching and the gateway have no database.
 - DB subnet group on the private subnets (`:20-23`); security group allowing
@@ -195,7 +208,9 @@ adding a service starts there.
   Performance Insights on.
 - **Secrets** (Secrets Manager):
   - `cappy-<env>/<svc>/database-url` per database service, writer endpoint,
-    `ssl=require` (`:102-111`); the per-service password is
+    `ssl=verify-full` (`:110`; `ssl=require` before `7444e37`, P-11: the
+    certificate is now checked against the RDS CA bundle baked into the
+    image, `backend/Dockerfile:17-20`); the per-service password is
     `random_password.db_service` (`:95-99`).
   - `cappy-<env>/<svc>/database-read-url` for catalog and booking, the reader
     endpoint (`:115-127`).
@@ -235,12 +250,20 @@ adding a service starts there.
   Cognito is unreachable still verifies tokens (resilience F5). This is also
   why a `terraform plan` needs network access to Cognito.
 - **Group** `admin` for staff (`:116-120`); membership is granted by hand.
+  There is **no** `admin-lead` group in Terraform: the services read a lead
+  as the staff claim also holding `admin-lead` (`STAFF_LEAD_VALUE`,
+  `cappy_common/settings.py`, since `7444e37`, H-6), and `docs/runbook.md`
+  says leads are that group, so a deployed pool needs it created by hand
+  (locally `make confirm … LEAD=1` creates it).
 - **Cognito WAF** (`:124-180`), see [§4](#waf).
 
 ### `infra/platform/ecs.tf`: compute
 
 - **Cluster** `cappy-<env>` with Container Insights `enhanced` and a Service
-  Connect namespace (`:91-104`).
+  Connect namespace (`:93-115`). Since `7444e37` (P-32) ECS Exec sessions are
+  logged (`execute_command_configuration`, `logging = "OVERRIDE"`, `:102-111`)
+  to their own log group `/ecs/cappy-<env>/exec`, kept 365 days
+  (`:117-120`); CloudTrail records who opened each session.
 - **ECR** `cappy/<service>` per service: immutable tags, scan on push,
   force-delete outside prod (`:106-114`); keep the last 50 images (`:116-127`).
 - **Log groups** `/cappy/<env>/<service>` and `/cappy/<env>/migrate`,
@@ -276,7 +299,10 @@ adding a service starts there.
   **alarm-based rollback** on `api-5xx-rate` and the fast burn alarm
   (`:350-354`). Service Connect: every service is a client; catalog,
   matching, booking, payments and notifications are also servers at
-  `http://<name>:8000` (`:11`, `:356-368`). Only the gateway is registered
+  `http://<name>:8000` (`:11`, `:357-410`). Since `7444e37` (P-11) Service
+  Connect speaks **TLS** between the proxies, with short-lived certificates
+  from the private CA in `tls.tf` (`tls {}`, `:400-407`); the code still
+  calls `http://<name>:8000` on its own proxy. Only the gateway is registered
   with the ALB target group (`:370-377`). Autoscaling owns `desired_count`
   after the first apply (`:379-382`).
 - **Autoscaling** (`:385-449`): each service between `min` and `max`;
@@ -287,7 +313,27 @@ adding a service starts there.
   256 CPU / 512 MiB, the service's own image running
   `python -m cappy_common.migrations <svc>` with `DATABASE_URL` and
   `ADMIN_DATABASE_URL`.
+- The gateway's container gets `TLS_SELF_SIGNED=true` (`:40`): the image's
+  start command then makes a key and self-signed certificate in `/tmp/tls`
+  (`python -m cappy_common.selfsigned`) and uvicorn serves HTTPS
+  (`backend/Dockerfile:25-27`); its health check calls
+  `https://localhost:8000/healthz` without verifying (`ecs.tf:319`).
 - IAM roles, security groups: see [§4](#4-security).
+
+### `infra/platform/tls.tf`: encryption inside the VPC (P-11, since `7444e37`)
+
+- A private CA `aws_acmpca_certificate_authority.internal`, ROOT, in
+  `SHORT_LIVED_CERTIFICATE` mode, EC P-256, subject `cappy-<env>.internal`,
+  7-day permanent deletion window (`:15-27`), with its self-signed root
+  certificate (10 years) installed (`:29-45`).
+- A KMS key for Service Connect to keep each task's private key encrypted,
+  rotation on (`:47-51`).
+- A role `cappy-<env>-service-connect-tls` that ECS assumes, with the managed
+  `AmazonECSInfrastructureRolePolicyForServiceConnectTransportLayerSecurity`
+  (`:53-71`).
+- The ALB-to-gateway leg does not use this CA: the gateway's certificate is
+  self-signed and the ALB encrypts without verifying it, as AWS documents for
+  targets.
 
 ### `infra/platform/edge.tf`: CloudFront, WAF, ALB (ADR 0008)
 
@@ -299,7 +345,8 @@ adding a service starts there.
   group admits 443 only from the CloudFront origin-facing managed prefix list
   and sends only to the tasks on 8000 (`:59-82`).
 - **Target group** for the gateway, IP targets, health check `/readyz`
-  every 10 s, 20 s deregistration delay (`:94-108`).
+  every 10 s, 20 s deregistration delay (`:94-110`). Protocol **HTTPS**
+  for traffic and health checks since `7444e37` (P-11; HTTP before).
 - **Listener** 443 with `ELBSecurityPolicy-TLS13-1-2-2021-06`; the default
   action is a fixed 403 (`:110-124`). Only requests carrying the
   `X-Origin-Secret` header (a 40-character random value, `:9-12`) are
@@ -536,20 +583,20 @@ Service per cell), M-22 (the app picks the cell) and M-45 (per-cell CD and
 dashboards) in [`TASKS.md`](TASKS.md). Like everything else it would be
 validated and applied to LocalStack only.
 
-What the committed Terraform would need for it (found while writing this; not
-yet in any task beyond M-21 and M-45):
+What the committed Terraform has for it, and still needs:
 
-- `var.env` accepts only `staging` or `prod` (`infra/platform/variables.tf:4-7`)
-  and every name is `cappy-<env>` (`network.tf:6`). A second prod cell in the
-  **same account** would collide on globally named resources: IAM roles
-  (`cappy-prod-<svc>-task`, `ecs.tf:231-235`; `cappy-prod-analytics-scrub`,
-  `analytics.tf:93-99`), the Lambda function name (`analytics.tf:107`), S3
-  buckets (`storage.tf:6-12`, `analytics.tf:6`, `synthetics.tf:9`) and the us-east-1 WAF ACL name
-  (`edge.tf:158`). Names need a cell component, or the cell needs its own
-  account.
-- The deploy workflow hard-codes `AWS_REGION: eu-central-1`
-  (`.github/workflows/deploy.yml:25`) and pushes images to one registry; ECR
-  is regional, so the NA cell needs its own push or ECR replication.
+- Since `7444e37` (M-46) every name carries the cell, `cappy-<cell>-<env>`
+  (`network.tf:6`, `var.cell` `eu` or `na`, `variables.tf:18-25`), so a
+  second cell in the same account no longer collides on IAM roles, the
+  Lambda, S3 buckets or the us-east-1 WAF ACL. The deploy workflow reads the
+  region and cell from the GitHub environment's `AWS_REGION` and `CELL`
+  variables (defaults `eu-central-1`, `eu`; `.github/workflows/deploy.yml:37-40`,
+  `:78-81`, `:178-181`), passes them as `TF_VAR_region` and `TF_VAR_cell`, and
+  a cell other than `eu` gets its own state key `<cell>/<env>/terraform.tfstate`
+  (`:102`, `:199`); `eu` keeps the first key.
+- Still missing: an env root for the NA cell (M-21), and images: the workflow
+  pushes to one registry and ECR is regional, so the NA cell needs its own
+  push or ECR replication.
 - The CSP's `connect-src` allows only this cell's Cognito endpoint
   (`edge.tf:413`). One web bundle serving both cells (ADR 0013) needs both
   Cognito regions and both API hosts in it, and the per-cell CloudFront and
@@ -572,7 +619,10 @@ yet in any task beyond M-21 and M-45):
   (`ecs.tf:143-157`). Egress is open to `0.0.0.0/0` (`ecs.tf:159-163`),
   needed for Stripe, Cognito, SES and the AWS APIs through the NAT.
 - **Database**: 5432 only from the tasks' security group (`data.tf:30-36`);
-  TLS forced (`data.tf:46-49`) and `ssl=require` in every URL.
+  TLS forced (`data.tf:46-49`) and `ssl=verify-full` in every URL (since
+  `7444e37`; `PGSSLROOTCERT` is the RDS global bundle in the image).
+- **Inside the VPC** (since `7444e37`, P-11, `tls.tf`): Service Connect TLS
+  between tasks, HTTPS from the ALB to the gateway.
 - `/internal/*` routes between services carry `X-Internal-Token`, the
   calling service's own token; the callee checks its hash against the
   callers it allows (`backend/libs/cappy_common/cappy_common/auth.py:242-261`,
@@ -590,24 +640,27 @@ Every service has two roles (`ecs.tf:165-260`):
   `secretsmanager:GetSecretValue` on exactly the secrets that service is given
   (`ecs.tf:190-204`), so each service reads only its own internal token. The
   migrate role reads the admin URL and the service URLs.
-- **Task role** `cappy-<env>-<svc>-task`: X-Ray write (`:237-241`), ECS Exec
-  channels (`:257`), and:
+- **Task role** `cappy-<env>-<svc>-task`: X-Ray write (`:261-265`), ECS Exec
+  channels and, since `7444e37`, writing the ECS Exec session log
+  (`logs:DescribeLogGroups`, and `CreateLogStream`/`PutLogEvents` on
+  `/ecs/cappy-<env>/exec` only, `:280-286`), and:
 
 | Service | Its code may | Line |
 |---|---|---|
-| gateway | nothing else | 212 |
-| matching | nothing else | 213 |
-| catalog | `s3:Put/Get/DeleteObject` on `media/*` and `private/*` of the media bucket; `cloudfront:CreateInvalidation` on this distribution; `cognito-idp:AdminGetUser` on this pool (staff MFA check, P-3); `sns:Publish` on the event topic; consume its queue | 214-218, 250-255 |
-| booking | `cognito-idp:AdminGetUser` on this pool (staff MFA check for dispute resolution and evidence); `sns:Publish` on the event topic; consume its queue | 219, 250-255 |
-| payments | `sns:Publish` on the event topic; consume its queue | 220, 250-255 |
-| notifications | `ses:SendEmail`/`SendRawEmail` only from `no-reply@<domain>`; `cognito-idp:AdminGetUser`, `ListUsers`, `AdminUserGlobalSignOut`, `AdminDeleteUser` on this pool; `sns:CreatePlatformEndpoint` on the push apps and publish/manage/delete `endpoint/*` (never the event topic); consume its queue | 221-227 |
+| gateway | nothing else | 232 |
+| matching | nothing else | 233 |
+| catalog | `s3:Put/Get/DeleteObject` on `media/*` and `private/*` of the media bucket; `cloudfront:CreateInvalidation` on this distribution; `cognito-idp:AdminGetUser` on this pool (staff MFA check, P-3); `sns:Publish` on the event topic; consume its queue | 234-238, 267-279 |
+| booking | `cognito-idp:AdminGetUser` on this pool (staff MFA check for the staff tools and evidence); since `7444e37`, `cognito-idp:ListUsers` on this pool (the staff case view finds a member by email, H-9); `sns:Publish` on the event topic; consume its queue | 239-243, 267-279 |
+| payments | `sns:Publish` on the event topic; consume its queue | 244, 267-279 |
+| notifications | `ses:SendEmail`/`SendRawEmail` only from `no-reply@<domain>`; `cognito-idp:AdminGetUser`, `ListUsers`, `AdminUserGlobalSignOut`, `AdminDeleteUser` on this pool; `sns:CreatePlatformEndpoint` on the push apps and publish/manage/delete `endpoint/*` (never the event topic); consume its queue | 245-252 |
 
 "Consume" is `sqs:ReceiveMessage`, `DeleteMessage`, `ChangeMessageVisibility`,
-`GetQueueAttributes` on that service's queue only (`ecs.tf:251-255`).
+`GetQueueAttributes` on that service's queue only (`ecs.tf:267-279`).
 Notifications does not publish events. Before the push apps exist,
 `CreatePlatformEndpoint` is scoped to any `app/*` in the account (`ecs.tf:8`).
 
-Other roles: Firehose may only write the analytics bucket and invoke the
+Other roles: `cappy-<env>-service-connect-tls`, assumed by ECS, holds only
+the managed Service Connect TLS policy (`tls.tf:63-71`); Firehose may only write the analytics bucket and invoke the
 scrub Lambda (`analytics.tf:45-59`); the scrub Lambda may only write its logs
 (`analytics.tf:93-104`); SNS may only put records to that stream
 (`analytics.tf:117-131`); the canary role writes its bucket, logs,
@@ -641,12 +694,22 @@ a time, never cancelled midway (`:20-22`). Workflow permissions default to
 | Job | AWS | What it does | Lines |
 |---|---|---|---|
 | `images` | images role (ECR push only) | Builds each service image with buildx and pushes `cappy/<svc>:<sha>`, skipping tags that already exist (tags are immutable) | 30-59 |
-| `deploy` | deploy role | Terraform only, plus the AWS CLI. Reads `legal`, `switches` and `feature_flags` from the GitHub environment's variables `LEGAL`, `SWITCHES` and `FEATURE_FLAGS` as `TF_VAR_*` (`:71-74`; `SWITCHES` defaults to all on) and stops at once if `LEGAL` is unset (`:83-84`). Then registers the migrate task definitions (targeted apply), runs every migrate task and fails if any exits non-zero, then a full apply, waits for services to be stable and checks each runs the task definition this deploy registered with rollout `COMPLETED` (a rolled-back service fails the job); outputs the public web config | 61-139 |
+| `deploy` | deploy role | Terraform only, plus the AWS CLI. Reads the region and cell (`AWS_REGION`, `CELL`, since `7444e37`; also set on `images` and `publish`) and `legal`, `switches` and `feature_flags` from the GitHub environment's variables `LEGAL`, `SWITCHES` and `FEATURE_FLAGS` as `TF_VAR_*` (`:76-84`; `SWITCHES` defaults to all on) and stops at once if `LEGAL` is unset (`:93-94`). `terraform init` uses the cell's own state key for a cell other than `eu` (`:102`). Then registers the migrate task definitions (targeted apply), runs every migrate task and fails if any exits non-zero, then a full apply, waits for services to be stable and checks each runs the task definition this deploy registered with rollout `COMPLETED` (a rolled-back service fails the job); outputs the public web config | 61-139 |
 | `web` | **none** | `npm ci --ignore-scripts && npm run build` with the web config; uploads `web/dist` | 141-158 |
 | `publish` | deploy role | Syncs the build to the web bucket (hashed assets `immutable` for a year; `index.html`, `sw.js`, `registerSW.js`, `manifest.webmanifest` `no-cache`; `.well-known` deep-link files as JSON, 5 min), invalidates the entry points, then smoke-tests the URL: `/` 200, `/api/categories` 200, `/api/internal/busy` 404, `/api/bookings` 401 | 160-208 |
 
 Third-party code (package installs, image builds) never runs holding the
 deploy role (P-2, `bootstrap/main.tf:62-65`).
+
+**Dependency audits** (since `7444e37`, P-32). CI's backend job exports the
+locked third-party packages and runs `pip-audit --strict` on them
+(`.github/workflows/ci.yml:37-40`); the web job runs `npm audit --omit=dev
+--audit-level=high` (`:60`), so what ships to browsers and phones fails the
+build on a high advisory. `.github/dependabot.yml` proposes weekly updates
+as pull requests for GitHub Actions (grouped), the `uv` workspace in
+`/backend`, npm in `/web` and the Docker base image in `/backend`, at most 5
+open per ecosystem. Actions stay pinned to tags (their commit SHAs could not
+be resolved offline when this was set up).
 
 ### WAF
 
@@ -715,10 +778,14 @@ never get AWS credentials. Rotation: runbook "Everyday operations".
 
 ### Encryption
 
-- In transit: CloudFront `TLSv1.2_2021` to viewers (`edge.tf:567`), TLS 1.2
-  to the ALB origin (`:470`), the ALB on a TLS 1.3/1.2 policy (`:114`),
-  Postgres `rds.force_ssl` (`data.tf:46-49`). Inside the VPC, Service Connect
-  calls are plain HTTP on 8000 between tasks.
+- In transit: CloudFront `TLSv1.2_2021` to viewers, TLS 1.2 to the ALB
+  origin (`edge.tf:471-472`), the ALB on a TLS 1.3/1.2 policy, and since
+  `7444e37` (P-11) every hop inside the VPC too: HTTPS from the ALB to the
+  gateway (a self-signed certificate made at task start, not verified by the
+  ALB; `edge.tf:98`, `:103`), Service Connect TLS between tasks with
+  certificates from the private CA (`ecs.tf:400-407`, `tls.tf`), and Postgres
+  `rds.force_ssl` (`data.tf:46-49`) with `sslmode=verify-full` against the RDS
+  CA bundle (`data.tf:110`, `:126`, `:135`; `backend/Dockerfile:17-20`).
 - At rest: Aurora `storage_encrypted` (default key, `data.tf:67`); SNS with
   `alias/aws/sns` (`messaging/main.tf:26`); SQS SSE (`:33`, `:42`); Secrets
   Manager (its default key); the state bucket SSE-KMS
@@ -738,7 +805,7 @@ All go to the `cappy-<env>-alarms` topic and `alarm_email`.
 | `api-5xx-rate` | ALB target 5xx above 2 % of requests, 2 of 3 minutes | `observability.tf:18-55` |
 | `api-p99-latency` | ALB `TargetResponseTime` p99 above 1.5 s, 3 of 5 minutes | `:57-72` |
 | `<svc>-dead-letters` | any message in a DLQ | `:74-88` |
-| `<svc>-queue-age` | oldest message older than 300 s for 5 minutes | `:90-104` |
+| `<svc>-queue-age` | oldest message older than the queue's SLI for 5 minutes: payments 900 s, notifications 600 s (since `7444e37`, T-35c; `slo.md`), catalog and booking 300 s | `:90-106` |
 | `db-cpu` | Aurora CPU above 80 % for 10 minutes | `:106-117` |
 | `db-at-max-capacity` | `ServerlessDatabaseCapacity` at 90 % of `db_max_acu` for 15 minutes | `:119-131` |
 | `chargeback` | a `CHARGEBACK` line in the payments log (metric filter) | `:134-157` |
@@ -746,17 +813,29 @@ All go to the `cappy-<env>-alarms` topic and `alarm_email`.
 | `replica-lag` | reader more than 1 s behind for 5 minutes | `data.tf:193-206` |
 | `ses-bounce-rate`, `ses-complaint-rate` | above 2 % / 0.05 % | `email.tf:54-80` |
 | `canary-failing` | canary success below 100 % for two runs, missing data breaches | `synthetics.tf:66-80` |
-| `slo-burning-fast` (composite) | page: burn 14.4× over 1 h **and** 5 min | `observability.tf:238-244` |
-| `slo-burning` (composite) | ticket: burn 6× over 6 h **and** 30 min | `:246-251` |
+| `slo-burning-fast` (composite) | page: burn 14.4× over 1 h **and** 5 min | `observability.tf:240-246` |
+| `slo-burning` (composite) | ticket: burn 6× over 6 h **and** 30 min | `:248-253` |
+| `slo-<journey>-burning-fast`, `slo-<journey>-burning` (composites; journeys `browse`, `book`, `answer`) | per journey, the same page and ticket pairs (since `7444e37`, T-35c) | `:261-347` |
 
 **SLO burn alarms.** The Terraform implements one API-wide availability
 objective, 99.5 % (budget 0.5 % of requests as 5xx, `observability.tf:188-201`).
 Four metric alarms compute the 5xx share over 5 min, 1 h, 30 min and 6 h
 (`:203-236`) with thresholds 7.2 % (14.4 × 0.5 %) and 3 % (6 × 0.5 %); the two
-composites pair them, Google SRE workbook style. The per-journey objectives
-in [`slo.md`](slo.md) (browse under 800 ms at 99.5 %, book and owner answers
-at 99.9 %, money within 15 minutes at 99.95 %) are not yet separate alarms.
-First look for each alarm: runbook "Alarms".
+composites pair them, Google SRE workbook style.
+
+**Per-journey burn alarms** (since `7444e37`, T-35c). Each gateway access
+log line names its journey (`cappy_common/observability.py` `journey`:
+`browse` for search, browse, a listing, its offers and reviews and `POST
+/matches`; `book` for `POST /bookings`; `answer` for accept and decline).
+Two log metric filters per journey on the gateway's log group count every
+request and the bad ones (`Cappy/<env>` `JourneyRequests-<j>` and
+`JourneyBad-<j>`, `:273-297`): bad is a 5xx, and for browse also slower than
+800 ms. Budgets 0.5 % (browse) and 0.1 % (book, answer) (`:262-266`), the
+same four windows and factors as the API-wide alarms (`:299-330`), paired
+into a page and a ticket composite per journey (`:332-347`). The two event
+journeys ([`slo.md`](slo.md): money within 15 minutes, mail within 10) are
+alarmed on queue age at those thresholds. First look for each alarm:
+runbook "Alarms".
 
 ### The canary
 
@@ -872,7 +951,7 @@ gateway sheds above 400 in-flight requests and 200 per upstream
 
 ### Main cost drivers
 
-The code and docs state only two prices; for everything else see AWS pricing
+The code and docs state only three prices; for everything else see AWS pricing
 for the region. The quantities below come from the Terraform.
 
 | Driver | Prod quantity | Staging quantity | Stated price |
@@ -884,7 +963,8 @@ for the region. The quantities below come from the Terraform.
 | WAF | 2 web ACLs, 5-6 rules at the edge, 2 at Cognito, per request | 2 ACLs | Bot Control "about $10/month + $1 per million requests" (`variables.tf:108`), prod only |
 | Cognito | monthly active users; Plus tier in prod | Essentials | Plus "about $0.02 per monthly active user" (`variables.tf:114`); `TASKS.md` T-06 puts that at about $20k/month at 1M users |
 | ALB | 1, plus LCUs | 1 | see AWS pricing |
-| CloudWatch | logs (90 days prod), Container Insights enhanced, ~20 alarms, canary runs (8,640 a month at one per 5 minutes) | logs 14 days | see AWS pricing |
+| CloudWatch | logs (90 days prod; the ECS Exec session log a year), Container Insights enhanced, ~40 alarms since the per-journey burn alarms (`7444e37`: 12 metric alarms and 6 composites more) and 6 more log metric filters, canary runs (8,640 a month at one per 5 minutes) | logs 14 days | see AWS pricing |
+| AWS Private CA (since `7444e37`, P-11) | 1 CA in short-lived-certificate mode, plus a KMS key | same | "~$50 a month" for the short-lived mode (`tls.tf:12-13`) |
 | SES, SNS, SQS, Firehose, the analytics scrub Lambda, S3, X-Ray | per use | per use | see AWS pricing |
 
 Levers already in the code: one NAT in staging (`variables.tf:35-39`), the S3
@@ -911,7 +991,7 @@ and `LOCALSTACK_AUTH_TOKEN` in `.env` (compose refuses to start without it,
 | `logs` | Follows the six services' logs | 24 |
 | `seed-demo` | Loads the demo world (additive; refuses outside local and staging), creates the demo buyer, second host and staff profiles and the second host's three listings through the API (`local/demo_profiles.py`), and with real Stripe gives demo owners verified test accounts | 27-34 |
 | `codes` | The last 20 sign-up and reset codes from cognito-local's log, each with the email it went to (since `61b15b8`) | 36-37 |
-| `confirm` | `make confirm EMAIL=… [ADMIN=1]`: marks a local account's email verified, confirms it if unconfirmed, and with `ADMIN=1` adds it to the `admin` group (`local/confirm.py`, cognito-local on :9229 only; since `61b15b8`) | 39-40 |
+| `confirm` | `make confirm EMAIL=… [ADMIN=1] [LEAD=1]`: marks a local account's email verified, confirms it if unconfirmed, with `ADMIN=1` adds it to the `admin` group, and with `LEAD=1` (since `22b5e0f`) to `admin` and `admin-lead`, creating a group that does not exist yet (`local/confirm.py`, cognito-local on :9229 only; since `61b15b8`) | 39-40 |
 | `test` | ruff check, ruff format check, pytest; no Docker | 42-43 |
 | `test-pg` | pytest including the Postgres tests, against the compose Postgres on 5433 | 45-46 |
 | `test-stripe` | Starts stripe-mock on 12111 and runs the Stripe contract tests | 48-50 |
@@ -950,14 +1030,14 @@ inside the compose network, as in AWS.
 
 ### Demo accounts
 
-Created by `local/bootstrap.py:62-71` (`DEMO`), with verified emails; `make
+Created by `local/bootstrap.py:65-74` (`DEMO`), with verified emails; `make
 up` prints all four with the password (since `42c777c`), which is also in that
 file.
 
 | Role | Email |
 |---|---|
 | Host (the seeded owner `o1`, one listing) | `host@demo.cappy.local` |
-| Second host (since `61b15b8`, GD-5): a new German owner (EUR; not Swiss, because the demo world has no Swiss places yet) in Neukölln, whose three listings `local/demo_profiles.py` makes through the API: an instant-book workshop, a freight (batch) van run, and a studio above the market's review threshold, which is held on a fresh stack until staff approve it; all on weekly schedules | `host2@demo.cappy.local` |
+| Second host (since `61b15b8`, GD-5): a new German owner (EUR) in Neukölln, whose three listings `local/demo_profiles.py` makes through the API: an instant-book workshop (open every day 08:00-22:00 since `22b5e0f`), a freight (batch) van run (at most 2 pallets a booking), and a studio above the market's review threshold, which is held on a fresh stack until staff approve it; all on weekly schedules. The seed has had Swiss and Austrian places and owners since `7444e37` (a CHF listing in Zürich, no sign-in) | `host2@demo.cappy.local` |
 | Buyer | `buyer@demo.cappy.local` |
 | Staff (in the `admin` group, for the admin console) | `staff@demo.cappy.local` |
 
@@ -992,7 +1072,14 @@ cognito-local has no MFA.
 - Booking's `START_EARLY_MINUTES` is huge locally so the e2e can hand over
   at once, and matching's `MIN_LEAD_MINUTES` is 5; deployed, the defaults
   hold and settings refuse the local values (`compose.yaml:92`, `:104`).
-- `make test-pg` and `make e2e` need `make up` first.
+- Only notifications (and the one-shot bootstrap) get `COGNITO_ENDPOINT_URL`
+  in `compose.yaml`; since `7444e37` booking also calls Cognito (`ListUsers`,
+  the staff case search by email), and without that setting its client goes
+  to LocalStack, which has no Cognito here, so that search fails locally.
+- `make test-pg` and `make e2e` need `make up` first. Since `32338dd` the
+  e2e signs up a second buyer of its own (`rival-<run>@example.com`) and
+  deletes it at the end, so it no longer changes the demo buyer's home or
+  uses up their daily booking limit.
 
 ---
 
