@@ -140,3 +140,18 @@ What this adds:
     (UX-n), and its criteria are part of the readiness score: visual
     design, motion and feedback, native feel, accessibility, perceived
     speed.
+
+## The brief, extended (2026-09-27, verbatim)
+
+> every little detail in the UI needs to be perfect, install skills if the agent needs to to know how much spacing between things how the colours work together and so on
+
+> also regarding the UI agent we need to make it super beatiful too with the effect and new apple mirror screen ui and it needs to be really good looking so pass that to the agent so it knows now it looks functional but does not attract, the agent can look at how instagram or uber or airbnb or twitter or all these famous apps look like and inspire from all of them, and can find all pictures about them from internet
+
+What this adds:
+
+19. **Beautiful, not just functional.** Every detail follows the cappy-ui
+    rulebook (`.claude/skills/cappy-ui/SKILL.md`), and the app has an art
+    direction worthy of the best consumer apps (Instagram, Uber, Airbnb, X),
+    with Apple's Liquid Glass on the navigation and controls layer, rich
+    motion and a first-class dark theme. A visual design lead owns it
+    (`docs/research/2026-10-visual-direction.md`).
