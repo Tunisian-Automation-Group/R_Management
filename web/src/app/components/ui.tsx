@@ -66,7 +66,7 @@ export function Button({
     sm: 'tap min-h-[34px] px-3.5 text-label font-semibold gap-1.5',
   }
   const cls = `press inline-flex items-center justify-center rounded-[var(--radius-control)] ${sizes[size]} ${variants[variant]} ${TR}
-        disabled:pointer-events-none disabled:opacity-30 ${block ? 'w-full' : ''} ${className}`
+        disabled:pointer-events-none disabled:border-transparent disabled:bg-[var(--disabled-bg)] disabled:text-[var(--ink-4)] disabled:shadow-none ${block ? 'w-full' : ''} ${className}`
   const inner = (
     <>
       {icon && <Icon name={icon} size={size === 'lg' ? 19 : 17} strokeWidth={2} />}
@@ -605,7 +605,7 @@ export function Sheet({
           if (leaving && e.target === e.currentTarget) setMounted(false)
         }}
         className={`${leaving ? (wide ? 'anim-dialog-out' : 'anim-sheet-out') : wide ? 'anim-dialog' : 'anim-sheet'}
-          glass relative flex w-full max-w-[540px] flex-col shadow-[var(--shadow-sheet)]
+          glass sheet-pane relative flex w-full max-w-[540px] flex-col shadow-[var(--shadow-sheet)]
           ${detent === 'medium' ? 'max-h-[55dvh]' : 'max-h-[88dvh]'}
           rounded-t-[var(--sheet-radius)] md:max-h-[85dvh] md:rounded-[var(--sheet-radius)]`}
         style={{

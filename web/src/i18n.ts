@@ -119,6 +119,15 @@ export function t(en: string, params?: Record<string, string | number>): string 
   return text.replace(/\{(\w+)\}/g, (m: string, k: string) => (k in params ? String(params[k]) : m))
 }
 
+/** A tab-bar label: a language may give a shorter word for the 64 px cell
+ *  under the key "<English>|tab" (French « Locations » for Bookings); anything
+ *  else is the ordinary translation. ponytail: one context, add more when a
+ *  second place needs its own word. */
+export function tTab(en: string): string {
+  const short = catalogues[current]?.[`${en}|tab`]
+  return short ? (PSEUDO ? pseudo(short) : short) : t(en)
+}
+
 /** One or many: `plural(n, '{n} day', '{n} days')`, both translated. The
  *  language's own rule decides: French says "0 jour", English "0 days". */
 export const plural = (n: number, one: string, many: string): string =>

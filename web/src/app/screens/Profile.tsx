@@ -28,7 +28,7 @@ import { CountrySelect } from '../components/CountrySelect.tsx'
 import { DistrictSelect } from '../components/DistrictSelect.tsx'
 import { accessToken, deleteAccount, endSession, signOut, useAuthReady, useSession } from '../../data/auth.ts'
 import { SignedOut } from '../components/SignedOut.tsx'
-import { AppearanceSwitch, LanguageSwitch, Screen, SectionHead } from '../components/AppShell.tsx'
+import { AppearanceSwitch, LanguageSwitch, Screen, SectionHead, ThemeToggle } from '../components/AppShell.tsx'
 import { Icon } from '../components/Icon.tsx'
 import { Photo, SaveButton } from '../components/Photo.tsx'
 import { Avatar, Button, Card, Field, Input, Row, Segmented, Sheet, Skeleton } from '../components/ui.tsx'
@@ -54,7 +54,7 @@ export function Profile() {
 
   if (!authReady || (session && me.isPending)) {
     return (
-      <Screen title={t('You')}>
+      <Screen title={t('You')} action={<ThemeToggle className="grid md:hidden" />}>
         <Skeleton className="h-[136px] rounded-[var(--radius-card)]" />
         <Skeleton className="mt-3 h-[200px] rounded-[var(--radius-card)]" />
       </Screen>
@@ -63,7 +63,7 @@ export function Profile() {
 
   if (!session || !me.data?.owner) {
     return (
-      <Screen title={t('You')}>
+      <Screen title={t('You')} action={<ThemeToggle className="grid md:hidden" />}>
         <SignedOut what={t('see your profile, saved listings and record')} next="/profile" />
       </Screen>
     )
@@ -84,7 +84,7 @@ export function Profile() {
   const shortlist = saved.data?.items ?? []
 
   return (
-    <Screen title={t('You')}>
+    <Screen title={t('You')} action={<ThemeToggle className="grid md:hidden" />}>
       <Card className="p-5">
         <div className="flex items-center gap-4">
           <Avatar initials={you.initials} size={56} />
@@ -102,6 +102,24 @@ export function Profile() {
           <Stat label={t('Spent')} value={formatMoney(spent, currency)} />
         </div>
       </Card>
+
+      {/* Preferences first (UX-48): how the app looks and speaks, before the
+          record and the essays. */}
+      <section>
+        <SectionHead title={t('Preferences')} className="mt-7" />
+        <Card className="space-y-5 p-5">
+          <div>
+            <p className="t-label mb-2">{t('Appearance')}</p>
+            <AppearanceSwitch />
+            <p className="t-sm mt-3 text-[var(--ink-3)]">{t('Light is the default. System follows your phone or computer. Saved on this device only.')}</p>
+          </div>
+          <div>
+            <p className="t-label mb-2">{t('Language')}</p>
+            <LanguageSwitch />
+          </div>
+        </Card>
+      </section>
+
 
       {/* The shortlist. Hearting something only helps if there is somewhere to
           come back to it. */}
@@ -165,7 +183,7 @@ export function Profile() {
         <Card className="p-5">
           <p className="t-sm text-[var(--ink-2)]">
             {t('Signed in as')}{' '}
-            <span className="font-semibold text-[var(--ink)]">{session.email}</span>
+            <span className="font-semibold break-all text-[var(--ink)]">{session.email}</span>
             {' '}{t('on this device. Signing out keeps everything you listed and booked.')}
           </p>
           <Button className="mt-4" variant="secondary" onClick={() =>
@@ -243,21 +261,6 @@ export function Profile() {
             <Link to="/help">{t('Help and answers')}</Link>
             <Link to="/help/safety">{t('How we keep you safe')}</Link>
           </nav>
-        </Card>
-      </section>
-
-      <section>
-        <SectionHead title={t('Language')} className="mt-7" />
-        <Card className="p-5">
-          <LanguageSwitch />
-        </Card>
-      </section>
-
-      <section>
-        <SectionHead title={t('Appearance')} className="mt-7" />
-        <Card className="p-5">
-          <AppearanceSwitch />
-          <p className="t-sm mt-3 text-[var(--ink-3)]">{t('System follows your phone or computer. Saved on this device only.')}</p>
         </Card>
       </section>
 

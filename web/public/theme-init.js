@@ -2,9 +2,10 @@
 // CSP's script-src 'self' allows it): sets data-theme so a dark phone never
 // flashes a white page. theme.ts keeps it in step afterwards (UX-36).
 ;(function () {
-  var pref = 'system'
+  // Light unless the person chose Dark or System.
+  var pref = 'light'
   try {
-    pref = localStorage.getItem('cappy.theme.v1') || 'system'
+    pref = localStorage.getItem('cappy.theme.v1') || 'light'
   } catch (e) {}
   var dark = pref === 'dark' || (pref === 'system' && matchMedia('(prefers-color-scheme: dark)').matches)
   document.documentElement.dataset.theme = dark ? 'dark' : 'light'

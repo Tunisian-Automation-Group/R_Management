@@ -47,6 +47,8 @@ export type IconName =
   | 'heart'
   | 'bell'
   | 'chat'
+  | 'sun'
+  | 'moon'
 
 const shapes: Record<IconName, ReactNode> = {
   drill: (
@@ -130,6 +132,13 @@ const shapes: Record<IconName, ReactNode> = {
   chat: (
     <path d="M5 5.5h14a1.5 1.5 0 0 1 1.5 1.5v8.5A1.5 1.5 0 0 1 19 17h-8l-4.5 3.5V17H5a1.5 1.5 0 0 1-1.5-1.5V7A1.5 1.5 0 0 1 5 5.5z" />
   ),
+  sun: (
+    <>
+      <circle cx="12" cy="12" r="4" />
+      <path d="M12 2.8v2.2M12 19v2.2M2.8 12h2.2M19 12h2.2M5.5 5.5l1.6 1.6M16.9 16.9l1.6 1.6M5.5 18.5l1.6-1.6M16.9 7.1l1.6-1.6" />
+    </>
+  ),
+  moon: <path d="M19.5 14.6A7.8 7.8 0 1 1 9.4 4.5a6.4 6.4 0 0 0 10.1 10.1z" />,
   bell: (
     <>
       <path d="M6 16.5V11a6 6 0 0 1 12 0v5.5l1.5 1.8h-15z" />

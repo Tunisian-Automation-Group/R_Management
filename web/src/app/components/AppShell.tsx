@@ -1,11 +1,12 @@
-import { useEffect, useRef, useState, type ReactNode } from 'react'
+import { useEffect, useRef, useState, type ReactNode, type RefObject } from 'react'
 import { NavLink, useLocation } from 'react-router-dom'
 import { useSession } from '../../data/auth.ts'
+import { useToast } from '../store.tsx'
 import { Icon, type IconName } from './Icon.tsx'
 import { useBack } from '../nav.ts'
-import { LANGS, lang, locale, setLang, t } from '../../i18n.ts'
+import { LANGS, lang, locale, setLang, t, tTab } from '../../i18n.ts'
 import { updateLocale } from '../../data/auth.ts'
-import { setAppearance, useAppearance, type Appearance } from '../theme.ts'
+import { setAppearance, toggleTheme, useAppearance, useDark, type Appearance } from '../theme.ts'
 
 type Tab = { to: string; label: string; icon: IconName; badge?: number }
 
@@ -19,11 +20,10 @@ type Tab = { to: string; label: string; icon: IconName; badge?: number }
  * A neighbour with a drill is not running one, and a mode you can be in
  * without noticing is a mode you get lost in.
  *
- * On a phone it floats as a glass capsule rather than sitting as a ruled bar on
- * the bottom edge. The earlier objection to a capsule was that chrome hovering
- * over the content draws attention to itself, and with an opaque bar that was
- * true. Glass inverts it: the content shows through, so the dock reads as a lens
- * over the page rather than a second surface competing with it.
+ * On a phone it is an opaque bar on the bottom edge, a hairline above it and
+ * the home indicator's inset inside it (Material 3's navigation bar, Airbnb,
+ * Vinted). It used to float as a glass capsule; content showed through and
+ * collided with its labels, which read as broken rather than as a lens.
  *
  * On a desktop it is a top bar, because that is what a website is. The previous
  * left rail was a phone dock turned on its side: it kept the app's furniture at
@@ -42,26 +42,29 @@ export function Dock({ badges }: { badges: Record<string, number> }) {
     // The sticky bars, the offline bar and toasts measure from --dock-h.
     document.documentElement.dataset.dock = detail ? 'hidden' : 'shown'
   }, [detail])
+  const nav = useRef<HTMLElement>(null)
+  useHideOnScroll(nav, detail)
   const tabs: Tab[] = [
     { to: '/', label: t('Explore'), icon: 'search' },
-    { to: '/bookings', label: t('Bookings'), icon: 'ticket', badge: badges['/bookings'] },
+    { to: '/bookings', label: tTab('Bookings'), icon: 'ticket', badge: badges['/bookings'] },
     // Conversations across bookings, unread counted by the server (UX-12).
-    { to: '/inbox', label: t('Inbox'), icon: 'chat', badge: badges['/inbox'] },
+    { to: '/inbox', label: tTab('Inbox'), icon: 'chat', badge: badges['/inbox'] },
     { to: '/earn', label: t('Earn'), icon: 'wallet', badge: badges['/earn'] },
-    { to: '/profile', label: t('You'), icon: 'user', badge: badges['/notifications'] },
+    // No badge on You: the bell keeps its own count (UX-46).
+    { to: '/profile', label: t('You'), icon: 'user' },
   ]
 
   return (
     <nav
+      ref={nav}
       aria-label={t('Main')}
-      className={`glass fixed z-40 shadow-[var(--glass-shadow-raised)] ${detail ? 'max-md:hidden' : ''}
-        max-md:bottom-0 max-md:left-1/2 max-md:w-[calc(100%-32px)] max-md:max-w-[420px]
-        max-md:-translate-x-1/2 max-md:rounded-[var(--radius-l)]
-        md:inset-x-0 md:top-0 md:h-[var(--header-h)]`}
+      className={`glass dock fixed z-40 ${detail ? 'max-md:hidden' : ''}
+        max-md:inset-x-0 max-md:bottom-0
+        md:inset-x-0 md:top-0 md:h-[var(--header-h)] md:shadow-[var(--glass-shadow-raised)]`}
       style={{ viewTransitionName: 'dock' }}
     >
       <div
-        className="mx-auto flex h-[56px] items-stretch px-1
+        className="mx-auto flex h-[var(--dock-bar-h)] max-w-[var(--dock-row)] items-stretch px-[var(--dock-gutter)]
           md:h-full md:max-w-[1180px] md:items-center md:gap-8 md:px-8"
       >
         {/* The wordmark belongs in the header on a website, so Browse drops its
@@ -74,30 +77,17 @@ export function Dock({ badges }: { badges: Record<string, number> }) {
           Cappy
         </NavLink>
 
+        {/* Five destinations and nothing else, as Material 3's navigation bar
+            and the large marketplace apps (Airbnb, Vinted, Instagram) do on a
+            phone. Listing something lives on Earn, where the supply side is,
+            not as a sixth, louder button in the bar. */}
         <ul className="flex flex-1 items-stretch md:items-center md:gap-1">
-          {tabs.slice(0, 2).map((tab) => (
-            <TabItem key={tab.to} tab={tab} big={big} />
-          ))}
-
-          {/* On a phone, listing something is the supply side's whole job, so it
-              stays one tap away in the middle of the dock. On a desktop it is the
-              header's primary action and moves to the right, where a website
-              puts one. */}
-          <li className="flex shrink-0 items-center px-2 md:hidden">
-            <NavLink
-              to="/earn/new"
-              aria-label={t('List capacity you own')}
-              className="grid h-[40px] w-[44px] place-items-center rounded-full bg-[var(--accent)] text-[var(--on-accent)]
-                shadow-[var(--shadow-float)] transition-colors duration-[var(--dur-short)] hover:bg-[var(--accent-hover)]"
-            >
-              <Icon name="plus" size={19} strokeWidth={2.4} />
-            </NavLink>
-          </li>
-
-          {tabs.slice(2).map((tab) => (
+          {tabs.map((tab) => (
             <TabItem key={tab.to} tab={tab} big={big} />
           ))}
         </ul>
+
+        <ThemeToggle className="hidden md:grid" />
 
         <NavLink
           to="/notifications"
@@ -129,6 +119,72 @@ export function Dock({ badges }: { badges: Record<string, number> }) {
       </div>
     </nav>
   )
+}
+
+/** One tap, Light → Dark → System (UX-48), said in a toast; tapping again
+ *  undoes it. The full setting is the first section of You. */
+export function ThemeToggle({ className = '' }: { className?: string }) {
+  const dark = useDark()
+  const toast = useToast()
+  const label = dark ? t('Switch to light mode') : t('Switch to dark mode')
+  const names: Record<Appearance, string> = { light: t('Light'), dark: t('Dark'), system: t('System') }
+  return (
+    <button
+      type="button"
+      onClick={() => toast(t('Appearance: {mode}', { mode: names[toggleTheme()] }))}
+      aria-label={label}
+      title={label}
+      className={`h-11 w-11 shrink-0 place-items-center rounded-full text-[var(--ink-2)]
+        transition-colors duration-[var(--dur-short)] hover:bg-[var(--sunken)] hover:text-[var(--ink)] ${className || 'grid'}`}
+    >
+      <Icon name={dark ? 'sun' : 'moon'} size={20} strokeWidth={1.8} />
+    </button>
+  )
+}
+
+/** Hide on scroll (UX-46, iOS 26's minimise simplified): after 48 px of
+ *  scrolling down, past the first screen, the bar slides away; any scroll up
+ *  of 8 px, the top of the page, or focus inside it brings it back. CSS keeps
+ *  it in place under reduced motion. */
+function useHideOnScroll(nav: RefObject<HTMLElement | null>, detail: boolean) {
+  useEffect(() => {
+    const el = nav.current
+    if (!el || detail) return
+    let anchor = scrollY
+    let away = false
+    const set = (next: boolean) => {
+      if (next === away) return
+      away = next
+      el.dataset.scrolled = next ? 'away' : ''
+    }
+    const onScroll = () => {
+      const y = scrollY
+      if (y <= 0) {
+        set(false)
+        anchor = 0
+      } else if (y > anchor) {
+        // Going down: hide once 48 px past where the downward run began, and
+        // never within the first screen height.
+        if (away) anchor = y
+        else if (y - anchor >= 48 && y > innerHeight) {
+          set(true)
+          anchor = y
+        }
+      } else if (!away) anchor = y
+      else if (anchor - y >= 8) {
+        set(false)
+        anchor = y
+      }
+    }
+    const onFocus = () => set(false)
+    addEventListener('scroll', onScroll, { passive: true })
+    el.addEventListener('focusin', onFocus)
+    return () => {
+      removeEventListener('scroll', onScroll)
+      el.removeEventListener('focusin', onFocus)
+      set(false)
+    }
+  }, [nav, detail])
 }
 
 /** Large text (200 %, Dynamic Type): four labels do not fit a phone's dock, so
@@ -163,42 +219,46 @@ function TabItem({ tab, big }: { tab: Tab; big: boolean }) {
         to={tab.to}
         end={tab.to === '/'}
         className={({ isActive }) =>
-          // The label is capped at 14 px and truncates: four labels in a 390 px dock
-          // overlapped at 200 % text (V4-12); the link's name stays whole for screen readers.
-          `relative flex h-full min-h-[56px] min-w-0 flex-col items-center justify-center gap-[3px] text-[min(0.6562rem,14px)]
-           transition-colors duration-[var(--dur-short)]
+          // The label is capped at 14 px and truncates: labels overlapped at 200 %
+          // text (V4-12); the link's name stays whole for screen readers.
+          `group relative flex h-full min-h-[var(--dock-bar-h)] min-w-0 flex-col items-center justify-center gap-1
+           text-[length:var(--dock-label-size)] leading-[var(--dock-label-line)] transition-colors duration-[var(--dur-short)]
            md:min-h-0 md:flex-row md:gap-3 md:rounded-full md:px-3.5 md:py-2 md:text-body
            ${
              isActive
-               ? 'font-semibold text-[var(--ink)]'
-               : 'font-medium text-[var(--ink-4)] hover:text-[var(--ink-2)]'
+               ? 'font-semibold text-[var(--ink)] md:bg-[var(--dock-active)]'
+               : 'font-medium text-[var(--dock-ink)] hover:text-[var(--ink)]'
            }`
         }
       >
         {({ isActive }) => (
           <>
-            {/* A capsule has no top edge to rule, so the active tab is marked
-                by a lozenge sitting behind the icon instead. */}
-            {isActive && (
-              <span
-                aria-hidden="true"
-                className="absolute inset-x-2 inset-y-1.5 -z-10 rounded-[var(--radius-m)] bg-[var(--sunken)]
-                  md:inset-0 md:rounded-full"
-              />
-            )}
-            <span className="relative grid h-[21px] w-[21px] place-items-center">
-              <Icon name={tab.icon} size={19} strokeWidth={isActive ? 2 : 1.7} />
-              {tab.badge ? (
-                <span
-                  aria-hidden="true"
-                  // On the icon's corner, clear of the label beside it on a desktop (V5-29).
-                  className="tnum absolute -right-2 -top-1 grid h-[15px] min-w-[15px] place-items-center rounded-[var(--radius-xs)] bg-[var(--badge)] px-1 text-caption font-bold text-[var(--on-badge)] md:-right-1.5 md:-top-2"
-                >
-                  {tab.badge}
-                </span>
-              ) : null}
+            {/* Material 3's active indicator: a pill behind the icon only, the
+                label under it in the strong ink. */}
+            <span
+              className={`relative grid h-[var(--dock-pill-h)] w-[var(--dock-pill-w)] shrink-0 place-items-center rounded-full transition-colors duration-[var(--dur-short)]
+                md:h-auto md:w-auto md:bg-transparent
+                ${isActive ? 'dock-pill-in bg-[var(--dock-active)] text-[var(--dock-active-ink)]' : 'group-hover:bg-[var(--sunken)]'}`}
+            >
+              <span className="relative grid h-[var(--dock-icon)] w-[var(--dock-icon)] place-items-center">
+                {/* The filled variant when active (HIG: "prefer filled"). */}
+                <Icon name={tab.icon} size={24} strokeWidth={1.75} duotone={isActive} />
+                {tab.badge ? (
+                  <span
+                    aria-hidden="true"
+                    // The icon's top-right corner at (−4, −4), ringed in the bar's
+                    // colour so it reads as sitting on top, never clipped (cappy-ui §4).
+                    className="tnum absolute right-[var(--dock-badge-off)] top-[var(--dock-badge-off)] grid h-[var(--dock-badge)] min-w-[var(--dock-badge)] place-items-center rounded-full bg-[var(--badge)] px-[var(--dock-badge-pad)] text-[length:var(--dock-badge-text)] font-bold leading-none text-[var(--on-badge)]
+                      ring-2 ring-[var(--dock-bg)] md:ring-0"
+                  >
+                    {tab.badge > 9 ? '9+' : tab.badge}
+                  </span>
+                ) : null}
+              </span>
             </span>
-            <span className={big ? 'sr-only md:not-sr-only' : 'block max-w-full truncate px-0.5'}>{tab.label}</span>
+            {/* Never truncated (UX-46): the labels fit at 12 px in EN, DE and FR
+                down to 360; at 200 % text the bar shows icons only. */}
+            <span className={big ? 'sr-only md:not-sr-only' : 'dock-label block whitespace-nowrap'}>{tab.label}</span>
             {tab.badge ? <span className="sr-only">, {t('{n} needing attention', { n: tab.badge })}</span> : null}
           </>
         )}
@@ -274,7 +334,7 @@ export function Screen({
       className={`anim-screen min-h-dvh ${tone === 'surface' ? 'bg-[var(--surface)]' : ''}`}
       style={{
         paddingTop: 'var(--header-h)',
-        paddingBottom: `calc(var(--dock-h) + ${footer ? 96 : 40}px)`,
+        paddingBottom: `calc(var(--dock-h) + ${footer ? 96 : 16}px)`,
       }}
     >
       {/* 560px is a phone column. 1120px is a page. The old 760px was neither,
@@ -310,12 +370,12 @@ export function Screen({
                   </div>
                 )}
                 {eyebrow && <p className="t-label mb-2">{eyebrow}</p>}
-                <div className="flex items-start justify-between gap-4">
+                <div className="flex flex-wrap items-start justify-between gap-x-4 gap-y-3">
                   <div className="min-w-0">
                     {title && <h1 className="t-h1 text-balance">{title}</h1>}
                     {sub && <p className="t-body mt-2 max-w-[46ch] text-[var(--ink-3)]">{sub}</p>}
                   </div>
-                  {action && <div className="shrink-0 pt-1">{action}</div>}
+                  {action && <div className="max-w-full shrink-0 pt-1">{action}</div>}
                 </div>
               </header>
             )}
@@ -402,8 +462,9 @@ function SiteFooter() {
           <p className="t-sm mt-2 text-[var(--ink-3)]">
             {t('Buy the hours, not the thing. One capacity network: making, moving and the kit to do it with.')}
           </p>
-          <div className="mt-5">
+          <div className="mt-5 flex flex-wrap items-center gap-3">
             <LanguageSwitch />
+            <AppearanceSwitch />
           </div>
         </div>
         {/* Signed out, the product is not there to link to (GOAL 13). */}
@@ -476,7 +537,7 @@ export function LanguageSwitch() {
             void setLang(o.value).then(() => updateLocale(locale()))
           }}
           className={`rounded-full px-3 py-1.5 text-label font-semibold transition-colors duration-[var(--dur-short)] ${
-            current === o.value ? 'bg-[var(--field)] text-[var(--on-field)]' : 'text-[var(--ink-3)] hover:text-[var(--ink)]'
+            current === o.value ? 'bg-[var(--segment-on)] text-[var(--on-segment)]' : 'text-[var(--ink-3)] hover:text-[var(--ink)]'
           }`}
         >
           {o.label}
@@ -490,9 +551,9 @@ export function LanguageSwitch() {
 export function AppearanceSwitch() {
   const current = useAppearance()
   const options: { value: Appearance; label: string }[] = [
-    { value: 'system', label: t('System') },
     { value: 'light', label: t('Light') },
     { value: 'dark', label: t('Dark') },
+    { value: 'system', label: t('System') },
   ]
   return (
     <div role="group" aria-label={t('Appearance')} className="inline-flex max-w-full flex-wrap rounded-[var(--radius-l)] border border-[var(--line)] p-0.5">
@@ -503,7 +564,7 @@ export function AppearanceSwitch() {
           aria-pressed={current === o.value}
           onClick={() => setAppearance(o.value)}
           className={`rounded-full px-3 py-1.5 text-label font-semibold transition-colors duration-[var(--dur-short)] ${
-            current === o.value ? 'bg-[var(--field)] text-[var(--on-field)]' : 'text-[var(--ink-3)] hover:text-[var(--ink)]'
+            current === o.value ? 'bg-[var(--segment-on)] text-[var(--on-segment)]' : 'text-[var(--ink-3)] hover:text-[var(--ink)]'
           }`}
         >
           {o.label}
