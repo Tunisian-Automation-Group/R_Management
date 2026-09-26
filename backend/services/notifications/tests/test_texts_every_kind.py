@@ -57,6 +57,22 @@ def test_no_english_is_left_and_french_is_typeset(kind):
         assert m.start() > 0 and bare[m.start() - 1] == want, f"{kind}/fr: wrong space before {m.group()!r}"
 
 
+# One word for each side, the same in the app (web/scripts/check-i18n.ts):
+# "vermietende / mietende Person"; "le propriétaire" / "la personne locataire".
+OFF_TERMS = {
+    "de": re.compile(r"mietende[n]? Seite"),
+    "fr": re.compile(r"personne propriétaire|qui loue|\b(?:le|au|du|un) locataire\b", re.I),
+}
+
+
+@pytest.mark.parametrize("kind", KINDS)
+def test_both_sides_are_named_the_way_the_app_names_them(kind):
+    params = _params(kind)
+    for lang, off in OFF_TERMS.items():
+        text = " ".join(render(kind, lang, **params))
+        assert not off.search(text), f"{kind}/{lang}: {off.search(text).group()!r}"
+
+
 def test_server_words_reach_readers_in_their_language():
     reason = "The listing was taken down by Cappy."
     for lang in ("de", "fr"):
@@ -129,3 +145,36 @@ def test_peoples_own_words_are_quoted_as_written_in_french():
     assert "Broken: sorry!" in declined and "sorry!." not in declined and "Motif :" in declined, declined
     _, ours = render("declined", "fr", title="Saw", link="L", _reason="The listing was taken down by Cappy")
     assert "retirée par Cappy." in ours
+
+
+def test_the_owner_hears_who_asked_and_the_renter_where_to_go():
+    """V7-23: a request names the renter to the owner; the confirmation tells
+    the renter where the hand-over is, postal code included."""
+    from notifications.handlers import messages
+
+    from cappy_common.events import BOOKING_STATUS_CHANGED, Event
+
+    def change(**data) -> Event:
+        return Event(
+            id="ev1", type=BOOKING_STATUS_CHANGED, source="booking", occurred_at="2026-10-01T08:00:00Z", data=data
+        )
+
+    base = {
+        "bookingId": "bk1", "requesterId": "r", "ownerId": "o", "title": "Saw", "amount": 1500,
+        "currency": "EUR", "windowStart": "2026-10-03T08:00:00Z", "expiresAt": "2026-10-02T08:00:00Z",
+        "renterName": "Rae R.",
+    }  # fmt: skip
+    ask = change(**base, **{"from": "awaiting_payment", "to": "requested", "by": "r"})
+    [(to, _, kind, params)] = messages(ask, "W")
+    assert (to, kind) == ("o", "requested")
+    for lang in LANGS:
+        assert render(kind, lang, **params)[1].startswith("Rae R."), lang
+    handover = {"address": "Teststraße 1, Berlin", "postalCode": "12099"}
+    ok = change(**base, **{"from": "requested", "to": "accepted", "by": "o", "handover": handover})
+    [(to, _, kind, params)] = messages(ok, "W")
+    assert (to, kind) == ("r", "accepted")
+    for lang in LANGS:
+        assert "Teststraße 1, Berlin, 12099" in render(kind, lang, **params)[1], lang
+    # A notice stored before (no name, no address) still reads as it did.
+    assert render("requested", "de", title="Saw", link="L", _deadline=None)[1].startswith("Jemand")
+    assert "in der App" in render("accepted", "de", title="Saw", link="L")[1]

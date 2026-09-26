@@ -438,11 +438,13 @@ class Booking(CamelModel):
     extends_id: str | None = None
     # Where the money stands (V7-2, V7-3), minor units of ``currency``:
     # what the card was charged, what went back, the owner's share of the
-    # rest, and what has actually reached the owner.
+    # rest, and what has actually reached the owner. ``paid_out`` only where
+    # payments said so (the detail): a list cannot know whether a payout was
+    # held (payouts off, a chargeback), so it leaves it out rather than guess.
     charged: int = 0
     refunded: int = 0
     owner_share: int = 0
-    paid_out: int = 0
+    paid_out: int | None = None
 
 
 class World(CamelModel):

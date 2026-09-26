@@ -822,9 +822,13 @@ made, and "Answer {when}, or the request lapses".
 3. Payments **captures** the card and publishes `payment.captured`.
 4. The renter gets "Confirmed: {title}" (email, whatever the settings, plus
    push and bell); since `1cb2d67` (V7-23) the title carries the booked
-   start, and the text says "You paid {amount}. The hand-over address is in
-   the app." The owner's "New request" mail likewise names the start and
-   "for {amount}"; an extension's is "Extension request: {title}".
+   start, and the text says "You paid {amount}. Hand-over: {address,
+   postal code}. The instructions are in the app." (the address since D-26,
+   from the hand-over the accept reads fresh). The owner's "New request"
+   mail names the renter ("Rae R. wants to book …", D-26), the start and
+   "for {amount}"; an extension's is "Extension request: {title}", naming
+   the renter too, and an instant booking's "… was booked instantly by
+   {name}".
 5. Both sides now see **Getting in**: the hand-over address and instructions,
    fetched from the catalog (`SHOWS_HANDOVER` = `accepted`, `active`,
    `completed`, `disputed`). Since `42c777c` (V4-9) they are read afresh on
@@ -1698,9 +1702,9 @@ Profile screen under **Notifications**.
 
 | Booking change | To | Text key | Email | Push | Bell |
 |---|---|---|---|---|---|
-| to `requested` | owner | "New request: {title}, {start}", "Someone wants to book … for {amount}. Answer by {deadline}" (start and amount since `1cb2d67`) | per setting | per setting | yes |
+| to `requested` | owner | "New request: {title}, {start}", "{renter} wants to book … for {amount}. Answer by {deadline}" (start and amount since `1cb2d67`, the renter's name since D-26) | per setting | per setting | yes |
 | to `requested`, an extension (since `1cb2d67`) | owner | "Extension request: …", "Your renter wants to extend their booking: … for {amount}" | per setting | per setting | yes |
-| to `accepted` | renter | "Confirmed: {title}, {start}", "… is confirmed. You paid {amount}. The hand-over address is in the app." (since `1cb2d67`) | **always** | per setting | yes |
+| to `accepted` | renter | "Confirmed: {title}, {start}", "… is confirmed. You paid {amount}. Hand-over: {address, postal code}." (since `1cb2d67`; the address since D-26) | **always** | per setting | yes |
 | instant book (`awaiting_payment` to `accepted`) | owner | "New booking: … booked instantly" | **always** | per setting | yes |
 | to `declined` | renter | "Declined: … Nothing was charged." and "Reason: …" (since `22b5e0f`; in the bell too since `1cb2d67`) | **always** | per setting | yes |
 | an extension cancelled with its booking (since `1cb2d67`, V7-12) | renter; owner | "Extension cancelled: …", "You get {amount} back to your card."; "The renter gets everything back ({amount})." | **always** | per setting | yes |
@@ -2204,33 +2208,22 @@ Found in the `9107ad2` pass (no task yet):
 
 Found in the `1cb2d67` pass (no task yet unless named):
 
-- **Report refusals read in English again.** `73610c4` (V7-18) translates
-  "we already have your reports from today; we will be in touch" through
-  `MESSAGE_TEXT`, keyed on that exact lower-case sentence; `1cb2d67` then
-  changed the server's sentence to "We already have your reports from
-  today; we will be in touch." with the code `reports_today`, and "This
-  has been reported many times today…" got `reported_enough`. Neither code
-  is in `CODE_TEXT` and neither new sentence is in the catalogues, so the
-  4th report shows the server's English sentence in German and French too.
-- **The queue's labels go unused.** `GET /admin/reports` sends
-  `targetLabel` and `targetText` since `1cb2d67`, but the console looks the
-  names up itself (`TargetName`, `Admin.tsx`) and never shows a review's
-  text; a person whose profile it cannot read shows as the first 8
-  characters of the id although `targetLabel` has the name.
-- **`paidOut` on booking lists.** Lists reckon `paidOut` as the owner's
-  share once a booking is completed or cancelled (`money_of`), even while
-  payouts are switched off, waiting for the owner's account or held by a
-  chargeback; only `GET /api/bookings/{id}` has payments' real figure. The
-  web does not read these fields (it uses its own `moved()`), so nothing
-  shows it yet.
-- **Two German role words.** The app says "die vermietende / mietende
-  Seite" since `73610c4`; the emails say "die vermietende / mietende
-  Person".
-- **V7-23 in part.** Request and confirmation mails name the start and the
-  price, but not the renter's name or the hand-over address ("The hand-over
-  address is in the app."). V7-30 (a German host's "Confirmed" mail in
-  English, an older tab's locale winning) is open.
-
+- ~~**Report refusals read in English again.**~~ Fixed in `d4a458a`:
+  `reports_today` and `reported_enough` are in `CODE_TEXT`, in English,
+  German and French.
+- ~~**The queue's labels go unused.**~~ Fixed in `d4a458a`: the console names
+  the target from `targetLabel` and the Decide sheet quotes `targetText`.
+- ~~**`paidOut` on booking lists.**~~ Fixed (D-24): lists leave `paidOut`
+  out, because only payments knows whether a payout was held; the detail
+  carries payments' real figure.
+- ~~**Two German role words.**~~ Fixed (D-25): "die vermietende / mietende
+  Person" in the app and the emails alike, and "le propriétaire / la
+  personne locataire" in French; `check:i18n` and the texts test refuse the
+  other terms.
+- ~~**V7-23 in part.**~~ Fixed (D-26): the owner's request, extension and
+  instant-booking mails name the renter; the renter's confirmation gives
+  the hand-over address with its postal code. ~~V7-30~~ fixed in `d4a458a`
+  (the language follows across tabs).
 ---
 
 ## 24. How to keep this file true

@@ -67,14 +67,14 @@ def to_booking(row: BookingRow, viewer: str) -> Booking:
 
 
 CAPTURED = frozenset({"accepted", "active", "completed", "disputed"})
-SETTLED = frozenset({"completed", "cancelled"})
 
 
 def money_of(row: BookingRow) -> dict[str, int]:
     """The money of a booking from its own facts, the way payments moves it
     (payments/handlers.py): charged at accept; a cancelled booking was charged
     only if it recorded a refund; the owner gets their share of what was kept.
-    The detail view overlays payments' real figures (``payments_money``)."""
+    What reached the owner is payments' to say: the detail view overlays its
+    real figures (``payments_money``), a list leaves ``paid_out`` out."""
     charged = (
         row.amount if row.status in CAPTURED or (row.status == "cancelled" and row.refund_amount is not None) else 0
     )
@@ -85,7 +85,6 @@ def money_of(row: BookingRow) -> dict[str, int]:
         "charged": charged,
         "refunded": refunded,
         "owner_share": share,
-        "paid_out": share if row.status in SETTLED else 0,
     }
 
 
@@ -132,6 +131,8 @@ def status_event(row: BookingRow, before: str | None, by: str) -> dict:
         "listingId": row.listing_id,
         "title": row.listing_snapshot["title"],
         "ownerName": row.listing_snapshot.get("ownerName"),
+        # Who asked, for the owner's mails (V7-23).
+        "renterName": row.listing_snapshot.get("renterName"),
         "ownerBusiness": row.listing_snapshot.get("ownerBusiness"),
         "amount": row.amount,
         "currency": row.currency,
@@ -147,6 +148,10 @@ def status_event(row: BookingRow, before: str | None, by: str) -> dict:
         "expiresAt": iso_from_datetime(row.expires_at) if row.expires_at else None,
         # Times in what people are told read in the listing's zone.
         "timeZone": (row.listing_snapshot or {}).get("timeZone") or market_of_currency(row.currency).time_zone,
+        # Where to go, only once it is agreed (V7-23; SHOWS_HANDOVER).
+        "handover": {k: row.handover.get(k) for k in ("address", "postalCode")}
+        if row.status == "accepted" and row.handover
+        else None,
     }
 
 

@@ -58,6 +58,9 @@ async def redact_bookings(session: AsyncSession, person: str) -> None:
             row.listing_snapshot = {**snap, "ownerName": "Former member"}
             row.decline_reason = row.decline_reason and "[removed: the account was deleted]"
         if row.requester_id == person:
+            snap = row.listing_snapshot or {}
+            if "renterName" in snap:
+                row.listing_snapshot = {k: v for k, v in snap.items() if k != "renterName"}
             if row.outcome and row.outcome.get("note"):
                 row.outcome = {**row.outcome, "note": None}
             if not suspended:

@@ -48,6 +48,10 @@ class Catalog:
     async def handover(self, listing_id: str) -> dict:
         raise NotImplementedError
 
+    async def name_of(self, person: str) -> str | None:
+        """The name a person goes by, for the owner's mails (V7-23)."""
+        raise NotImplementedError
+
     async def keep_evidence(self, owner_id: str, urls: list[str]) -> None:
         """Refuses photos that are not the person's own uploads."""
         raise NotImplementedError
@@ -66,6 +70,9 @@ class HttpCatalog(Catalog):
 
     async def handover(self, listing_id: str) -> dict:
         return await self._c.get(f"/internal/listings/{quote(listing_id, safe='')}/handover")
+
+    async def name_of(self, person: str) -> str | None:
+        return (await self._c.get(f"/internal/people/{quote(person, safe='')}/name")).get("name")
 
     async def keep_evidence(self, owner_id: str, urls: list[str]) -> None:
         await self._c.post("/internal/media/evidence", json={"ownerId": owner_id, "urls": urls})

@@ -86,6 +86,9 @@ class FakeCatalog:
     async def handover(self, listing_id):  # noqa: ANN001
         return {"address": "Tempelhofer Damm 1, 12101 Berlin", "instructions": "Ring the workshop bell"}
 
+    async def name_of(self, person):  # noqa: ANN001
+        return f"Name of {person}"
+
     async def keep_evidence(self, owner_id, urls):  # noqa: ANN001
         from cappy_common.errors import Invalid
 
@@ -1097,3 +1100,13 @@ def test_a_booking_is_in_its_listing_s_currency(issuer, broker, payments):
         b = c.post("/bookings", json=_body(), headers=issuer.headers(BUYER)).json()["booking"]
         assert b["currency"] == "CAD", "ISO 4217 uppercase, like the listing and quote"
         assert payments.currencies[-1] == "CAD", "and paid in it (the Stripe adapter lowercases)"
+
+
+def test_mails_can_say_who_asked_and_where_to_go(client, app, issuer, broker):
+    """V7-23: the request tells the owner who asked; the hand-over rides only
+    on the acceptance, never before."""
+    bid = _accepted(client, app, issuer)
+    changes = [c for c in _events(app, broker, BOOKING_STATUS_CHANGED) if c["bookingId"] == bid]
+    assert all(c["renterName"] == f"Name of {BUYER}" for c in changes)
+    assert [c["handover"] is not None for c in changes] == [False, False, True], "only once accepted"
+    assert changes[-1]["handover"]["address"] == "Tempelhofer Damm 1, 12101 Berlin"

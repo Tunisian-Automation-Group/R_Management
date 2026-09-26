@@ -103,6 +103,15 @@ def messages(event: Event, web: str) -> list[Message]:
         params["_cents"] = (d["amount"], d.get("currency") or "EUR")
         if d.get("windowStart"):
             params["_start"] = d["windowStart"]
+    if d.get("renterName"):
+        # The owner hears who asked (V7-23).
+        params["_renter"] = d["renterName"]
+    handover = d.get("handover") or {}
+    if d["to"] == "accepted" and handover.get("address"):
+        # The renter's confirmation says where to go (V7-23).
+        code = handover.get("postalCode")
+        address = handover["address"]
+        params["_address"] = f"{address}, {code}" if code and code not in address else address
     if d["to"] == "requested":
         params["_deadline"] = d.get("expiresAt")
         if d.get("timeZone"):

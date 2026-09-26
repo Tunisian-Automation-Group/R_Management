@@ -20,6 +20,15 @@ const prose = (s: string) =>
 const typo = Object.entries(FR).filter(([, tr]) => /[^ ]:|[^ ;?!][;?!]/.test(prose(tr)))
 for (const [en, tr] of typo) console.error(`fr: typography (U+00A0 before ":", U+202F before ; ? !):\n  en: ${en}\n  fr: ${tr}`)
 failed ||= typo.length > 0
+// One word for each side, the same as the server's emails
+// (test_texts_every_kind.py): "vermietende / mietende Person",
+// "le propriétaire" / "la personne locataire".
+const offTerms = { de: /mietende[n]? Seite/, fr: /personne propriétaire|qui loue|\b(?:le|au|du|un) locataire\b/i }
+for (const [name, cat] of [['de', DE], ['fr', FR]] as const) {
+  const off = Object.entries(cat).filter(([, tr]) => offTerms[name].test(tr))
+  for (const [en, tr] of off) console.error(`${name}: name the two sides the agreed way:\n  en: ${en}\n  ${name}: ${tr}`)
+  failed ||= off.length > 0
+}
 const onlyDe = Object.keys(DE).filter((k) => !(k in FR))
 const onlyFr = Object.keys(FR).filter((k) => !(k in DE))
 for (const k of onlyDe) console.error(`missing in fr: ${k}`)

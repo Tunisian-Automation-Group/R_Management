@@ -87,7 +87,7 @@ const ARTICLES: Record<string, Article> = {
       ],
       fr: [
         'Publiez une annonce sous Revenus\u00a0: ce que c’est, où, le prix à l’heure et quand c’est libre, selon un rythme hebdomadaire ou des dates précises. Vous décidez de chaque demande, sauf si vous activez la réservation instantanée.',
-        'Les versements passent par Stripe vers votre compte bancaire. Configurez-les une fois sous Revenus\u00a0; vous êtes payé après chaque réservation terminée. Les frais de Cappy sont inclus dans le prix payé par le locataire.',
+        'Les versements passent par Stripe vers votre compte bancaire. Configurez-les une fois sous Revenus\u00a0; vous êtes payé après chaque réservation terminée. Les frais de Cappy sont inclus dans le prix payé par la personne locataire.',
         'Une demande sans réponse expire après 24\u00a0heures. Une fois que vous avez répondu à quelques-unes, votre annonce indique en combien de temps vous répondez d’habitude.',
       ],
     },
@@ -167,7 +167,7 @@ const ARTICLES: Record<string, Article> = {
         'Bewertungen erscheinen gemeinsam, sobald beide bewertet haben oder 14 Tage nach der Buchung, damit niemand als Antwort auf den anderen bewertet.',
       ],
       fr: [
-        'Après une réservation terminée, les deux parties s’évaluent\u00a0: le locataire évalue l’annonce, le propriétaire évalue le locataire.',
+        'Après une réservation terminée, les deux parties s’évaluent\u00a0: la personne locataire évalue l’annonce, le propriétaire évalue la personne locataire.',
         'Les évaluations sont publiées ensemble, dès que les deux ont évalué ou 14\u00a0jours après la réservation, pour que personne n’évalue en réponse à l’autre.',
       ],
     },

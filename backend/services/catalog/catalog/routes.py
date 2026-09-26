@@ -870,6 +870,14 @@ async def evidence_photo(name: str, request: Request) -> Response:
     return Response(data, media_type="image/webp", headers={"Cache-Control": "private, no-store"})
 
 
+@internal.get("/people/{person}/name")
+async def person_name(person: str, repo=Depends(get_repo)) -> dict:
+    """The name a person goes by, for booking to tell an owner who asked
+    (V7-23). Nothing for someone without a profile, or gone."""
+    owner = await repo.find_owner(person)
+    return {"name": owner.name if owner else None}
+
+
 @internal.get("/listings/{listing_id}/handover", response_model=Handover)
 async def handover(listing_id: str, repo=Depends(get_repo)) -> Handover:
     """For booking to give the two sides of an accepted booking. Works for a

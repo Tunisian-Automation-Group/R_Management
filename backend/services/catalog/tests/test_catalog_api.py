@@ -1774,3 +1774,12 @@ def test_a_weekly_window_already_under_way_is_cut_not_dropped():
     [(start, end)] = windows(sat, datetime(2026, 9, 26, 8, 34, 12, tzinfo=UTC), night)
     assert (start, end) == (datetime(2026, 9, 26, 8, 45, tzinfo=UTC), datetime(2026, 9, 26, 14, tzinfo=UTC))
     assert windows(sat, datetime(2026, 9, 26, 13, 50, tzinfo=UTC), night) == []
+
+
+def test_booking_can_learn_the_name_a_renter_goes_by(client, issuer):
+    """V7-23: the owner's mails say who asked; nothing for a stranger."""
+    _profile(client, issuer)
+    assert client.get("/internal/people/user-a/name").status_code in (401, 403)
+    name = client.get("/internal/people/user-a/name", headers=INTERNAL).json()["name"]
+    assert name, name
+    assert client.get("/internal/people/nobody/name", headers=INTERNAL).json() == {"name": None}

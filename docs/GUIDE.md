@@ -451,11 +451,15 @@ Use a fresh Incognito window (so the app thinks this is a first visit).
       "Cappy removed this listing" ("The listing was removed", "Cappy
       stopped this request"), not "{name} could not take this one"; the
       "Reason: …" line stays under it.
-- [ ] German names people neutrally since `73610c4` (V7-25): on a request,
-      the booking page and the case form, **Expect** "die vermietende
-      Seite" / "die mietende Seite" (for example "Wartet auf die Annahme
-      durch die vermietende Seite", "Neu auf Cappy"), never "der Anbieter"
-      or "der Mieter".
+- [ ] German names people neutrally (V7-25), the same in the app and the
+      emails (D-25): on a request, the booking page and the case form,
+      **Expect** "die vermietende Person" / "die mietende Person" (for
+      example "Wartet auf die Annahme durch die vermietende Person", "Neu
+      auf Cappy"), never "der Anbieter", "der Mieter" or "die … Seite". In
+      French: "le propriétaire" / "la personne locataire".
+- [ ] Open the app in two tabs and switch the language in one. **Expect**
+      (since `d4a458a`, V7-30) the other tab follows, and the next email
+      comes in that language.
 - [ ] Open **Help** and the legal pages (privacy, terms, withdrawal,
       ranking, reporting, accessibility, account deletion) in French.
       **Expect:** French text since `2257182` (the Impressum stays German),
@@ -634,7 +638,7 @@ Use two windows: buyer and host.
       or the request lapses".
 - [ ] Host: **Accept**. **Expect:** "Accepted. … has been told". Buyer:
       "Confirmed" (bell and email); since `1cb2d67` the email names the start
-      and says "You paid €…. The hand-over address is in the app." Both now see **Getting in**: the hand-over
+      and says "You paid €…. Hand-over: <address, postal code>. The instructions are in the app." (D-26). Both now see **Getting in**: the hand-over
       address (for the plunge saw "Tempelhofer Damm 22, 12099 Berlin") and
       instructions, and for a listing with a postal code or a point, the
       postal code after the address and **Open in a map** (since
@@ -1022,8 +1026,8 @@ Austria, CHF 95 in Switzerland.
       danger, call 112 first" (your country's number since `2257182`).
 - [ ] Send 4 reports with the same email in one day. **Expect:** the 4th is
       refused: "We already have your reports from today; we will be in
-      touch." (429 `reports_today` since `1cb2d67`; in English only for
-      now, see the note in [FLOWS §23](FLOWS.md#23-known-gaps-between-code-ui-and-docs)).
+      touch." (429 `reports_today` since `1cb2d67`), in your language
+      since `d4a458a`.
 - [ ] Staff then sees each report in the console queue (script 19).
 
 ### 19. The admin console
@@ -1038,10 +1042,11 @@ reports queue, held listings, **Act directly** and the **Audit log**.
 - [ ] **Reports**: the open queue, oldest first. **Expect** (since
       `73610c4`, V7-19) each target by name: "Fraud or a scam · Person Nadia
       Brandt", "Unsafe · Listing Festool TS 55…" (a listing links to its
-      staff view), a message or review by a short id; never a raw
-      `d0ae1f5d-…`. Open one, **Decide on this report**. **Expect** (V7-26)
-      the sheet opens with what was reported: the reason, the target by
-      name and the reporter's words. Try a statement shorter than 20
+      staff view), named from the server's `targetLabel` since `d4a458a`;
+      never a raw `d0ae1f5d-…`. Open one, **Decide on this report**.
+      **Expect** (V7-26) the sheet opens with what was reported: the reason,
+      the target by name, the reporter's words, and for a review the
+      review's own text. Try a statement shorter than 20
       characters. **Expect:** you cannot decide.
 - [ ] Pick **Take down**, type a statement, close the sheet without deciding,
       and open **Decide** on another report. **Expect:** it opens fresh, at
@@ -1247,8 +1252,8 @@ limit is €2 500.
       minute adds no second line, since `ad9dee9`, and since `1cb2d67`
       within 60 s of the last read, so deciding the case, whose refetch may
       cross the minute, adds no second "Opened a case" either, V7-13). In
-      German the outcomes read neutrally ("Der mietenden Seite alles
-      erstatten", since `73610c4`, V7-25).
+      German the outcomes read neutrally ("Der mietenden Person alles
+      erstatten", V7-25, D-25).
 
 **Within the limit: settled at once.**
 

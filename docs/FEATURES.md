@@ -821,15 +821,17 @@ system completes it 48 hours after the end.
     `repository.py:97-110`, used by `visible` and the list; since `235eeaa`,
     FL-15).
   - **Money on every booking** (since `1cb2d67`, V7-2/V7-3): every booking
-    answer carries `charged`, `refunded`, `ownerShare` and `paidOut` in minor
-    units (`cappy_common/models.py` `Booking`). The list works them out from
-    the booking's own facts (`money_of`, `booking/repository.py`: charged at
+    answer carries `charged`, `refunded` and `ownerShare` in minor units
+    (`cappy_common/models.py` `Booking`). The list works them out from the
+    booking's own facts (`money_of`, `booking/repository.py`: charged at
     accept, a cancelled booking only if it recorded a refund, the owner's
-    share of what was kept, paid out once completed or cancelled);
-    `GET /api/bookings/{id}` overlays payments' real figures from
-    `/internal/bookings/{id}/payment` (`payments_money`), and keeps its own
-    reckoning when payments does not answer. The web works the same out in
-    `moved()` (`web/src/domain/pricing.ts`, since `73610c4`, checked by
+    share of what was kept). `paidOut` is only on `GET /api/bookings/{id}`,
+    which overlays payments' real figures from
+    `/internal/bookings/{id}/payment` (`payments_money`): a list cannot know
+    whether a payout was held (payouts off, a chargeback), so it leaves it
+    out rather than guess (D-24). The web renders the server's figures
+    (`moved()`, `web/src/domain/pricing.ts`, since `d4a458a`, falls back to
+    the booking's status only for an older answer; checked by
     `npm run check:money`, in CI): **What you agreed** on the booking page
     shows the charge, a `−` refund line, the fee and the owner's share of
     what stayed, "Refunded" when everything came back and "Nothing: hold
@@ -1801,9 +1803,8 @@ email. Every report is acknowledged by email.
   `reports_today` ("We already have your reports from today; we will be in
   touch.", the anonymous per-email cap) and 429 `reported_enough` ("This has
   been reported many times today; it is already being looked at."). The
-  web has no text for either code yet, and its `MESSAGE_TEXT` entry keys on
-  the old lower-case sentence, so both read in English in every language
-  (FLOWS §23).
+  web reads both codes in `CODE_TEXT`, in English, German and French
+  (`d4a458a`).
 - **Provider:** none. No CAPTCHA.
 - **Limits:** anonymous addresses are still not confirmed; the receipt mail is
   kept on purpose (DSA Art. 16(4)) and bounded by the per-address cap.
@@ -1845,12 +1846,11 @@ reasons. Both sides are told, and every action is audited.
   in the statement is always what staff say.
 - **Names, not ids** (since `1cb2d67`/`73610c4`, V7-19/V7-26): the queue's
   items carry `targetLabel` (an owner's name, a listing's title) and, for a
-  review, `targetText` (`_labelled`, `moderation.py`). The console shows the
-  reported person or listing by name (`TargetName` in `Admin.tsx`, from its
-  own profile and staff listing reads; messages and reviews keep a short
-  id), a listing report links to the staff view `/admin/listing/{id}`, and
-  the decision sheet opens with what was reported (reason, target, the
-  reporter's details).
+  review, `targetText` (`_labelled`, `moderation.py`). The console names the
+  target from `targetLabel` (`d4a458a`; no lookups of its own), a listing
+  report links to the staff view `/admin/listing/{id}`, and the decision
+  sheet opens with what was reported (reason, target, the reporter's
+  details) and quotes a reported review's `targetText`.
 - **Console:** for a message or review report it offers **Remove the
   message / review** and **Suspend the author** (`Admin.tsx:33-42`, `:334`),
   which the server accepts since `235eeaa` (they answered 422 before). It
@@ -2164,7 +2164,8 @@ reason and a date.
   left out), and since `73610c4` (V7-9) over the French prose of the legal
   pages in `Legal.tsx` too, which were fixed to narrow spaces. Since
   `73610c4` the German catalogue names people neutrally ("die vermietende
-  Seite", "die mietende Seite", "Neu auf Cappy") instead of "der Anbieter"
+  Person", "die mietende Person", the emails' words too since D-25; "Neu auf
+  Cappy") instead of "der Anbieter"
   and "der Mieter" (V7-25). Dev builds
   stretch every string with `?pseudo=1` (U-28). Emails, pushes and the bell
   have French since `235eeaa`; since `2257182` so do the legal pages

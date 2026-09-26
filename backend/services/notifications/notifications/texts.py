@@ -18,15 +18,15 @@ TEXTS: dict[str, dict[str, tuple[str, str]]] = {
         ),
         "requested": (
             "New request: {title}",
-            "Someone wants to book {title}{for_amount}. Answer by {deadline}, or the request lapses.\n\n{link}",
+            "{who} wants to book {title}{for_amount}. Answer by {deadline}, or the request lapses.\n\n{link}",
         ),
         "requested_extension": (
             "Extension request: {title}",
-            "Your renter wants to extend their booking: {title}{for_amount}. Answer by {deadline}, or the request lapses.\n\n{link}",
+            "Your renter{by_name} wants to extend their booking: {title}{for_amount}. Answer by {deadline}, or the request lapses.\n\n{link}",
         ),
         "accepted": (
             "Confirmed: {title}",
-            "Your booking of {title} is confirmed.{paid} The hand-over address is in the app.\n\n{link}",
+            "Your booking of {title} is confirmed.{paid}{where}\n\n{link}",
         ),
         # An extension ends with the booking it extends (V6-22, V7-12).
         "extension_cancelled_renter": (
@@ -39,7 +39,7 @@ TEXTS: dict[str, dict[str, tuple[str, str]]] = {
         ),
         "instant_booked": (
             "New booking: {title}",
-            "{title} was booked instantly. The details are in the app.\n\n{link}",
+            "{title} was booked instantly{by_whom}. The details are in the app.\n\n{link}",
         ),
         "declined": (
             "Declined: {title}",
@@ -163,15 +163,15 @@ TEXTS: dict[str, dict[str, tuple[str, str]]] = {
         ),
         "requested": (
             "Neue Anfrage: {title}",
-            "Jemand möchte {title}{for_amount} buchen. Bitte antworte bis {deadline}, sonst verfällt die Anfrage.\n\n{link}",
+            "{who} möchte {title}{for_amount} buchen. Bitte antworte bis {deadline}, sonst verfällt die Anfrage.\n\n{link}",
         ),
         "requested_extension": (
             "Verlängerungsanfrage: {title}",
-            "Die mietende Person möchte ihre Buchung verlängern: {title}{for_amount}. Bitte antworte bis {deadline}, sonst verfällt die Anfrage.\n\n{link}",
+            "Die mietende Person{by_name} möchte ihre Buchung verlängern: {title}{for_amount}. Bitte antworte bis {deadline}, sonst verfällt die Anfrage.\n\n{link}",
         ),
         "accepted": (
             "Bestätigt: {title}",
-            "Deine Buchung von {title} ist bestätigt.{paid} Die Übergabeadresse findest du in der App.\n\n{link}",
+            "Deine Buchung von {title} ist bestätigt.{paid}{where}\n\n{link}",
         ),
         "extension_cancelled_renter": (
             "Verlängerung storniert: {title}",
@@ -183,7 +183,7 @@ TEXTS: dict[str, dict[str, tuple[str, str]]] = {
         ),
         "instant_booked": (
             "Neue Buchung: {title}",
-            "{title} wurde sofort gebucht. Alle Details findest du in der App.\n\n{link}",
+            "{title} wurde sofort gebucht{by_whom}. Alle Details findest du in der App.\n\n{link}",
         ),
         "declined": (
             "Abgelehnt: {title}",
@@ -311,15 +311,15 @@ TEXTS: dict[str, dict[str, tuple[str, str]]] = {
         ),
         "requested": (
             "Nouvelle demande : {title}",
-            "Quelqu’un souhaite réserver {title}{for_amount}. Répondez avant {deadline}, sinon la demande expire.\n\n{link}",
+            "{who} souhaite réserver {title}{for_amount}. Répondez avant {deadline}, sinon la demande expire.\n\n{link}",
         ),
         "requested_extension": (
             "Demande de prolongation : {title}",
-            "La personne locataire souhaite prolonger sa réservation : {title}{for_amount}. Répondez avant {deadline}, sinon la demande expire.\n\n{link}",
+            "La personne locataire{by_name} souhaite prolonger sa réservation : {title}{for_amount}. Répondez avant {deadline}, sinon la demande expire.\n\n{link}",
         ),
         "accepted": (
             "Confirmé : {title}",
-            "Votre réservation de {title} est confirmée.{paid} L’adresse de remise est dans l’application.\n\n{link}",
+            "Votre réservation de {title} est confirmée.{paid}{where}\n\n{link}",
         ),
         "extension_cancelled_renter": (
             "Prolongation annulée : {title}",
@@ -331,7 +331,7 @@ TEXTS: dict[str, dict[str, tuple[str, str]]] = {
         ),
         "instant_booked": (
             "Nouvelle réservation : {title}",
-            "{title} a été réservé instantanément. Tous les détails sont dans l’application.\n\n{link}",
+            "{title} a été réservé instantanément{by_whom}. Tous les détails sont dans l’application.\n\n{link}",
         ),
         "declined": (
             "Refusée : {title}",
@@ -339,12 +339,12 @@ TEXTS: dict[str, dict[str, tuple[str, str]]] = {
         ),
         "cancelled": ("Annulée : {title}", "La réservation de {title} a été annulée.\n\n{link}"),
         "owner_cancelled": (
-            "Annulée par la personne propriétaire : {title}",
-            "La personne propriétaire a annulé votre réservation de {title}. Vous récupérez {amount} sur votre carte.\n\n{link}",
+            "Annulée par le propriétaire : {title}",
+            "Le propriétaire a annulé votre réservation de {title}. Vous récupérez {amount} sur votre carte.\n\n{link}",
         ),
         "no_show_owner_renter": (
             "Remboursée : {title}",
-            "Vous avez signalé l’absence de la personne propriétaire pour {title}. La réservation est annulée et vous récupérez le prix complet ({amount}).\n\n{link}",
+            "Vous avez signalé l’absence du propriétaire pour {title}. La réservation est annulée et vous récupérez le prix complet ({amount}).\n\n{link}",
         ),
         "no_show_owner_owner": (
             "Absence signalée : {title}",
@@ -355,8 +355,8 @@ TEXTS: dict[str, dict[str, tuple[str, str]]] = {
             "Vous avez signalé l’absence de la personne locataire pour {title}. La réservation est annulée et le montant vous est versé comme pour une annulation tardive : rien n’est remboursé.\n\n{link}",
         ),
         "no_show_renter_renter": (
-            "Absence signalée par la personne propriétaire : {title}",
-            "La personne propriétaire a signalé votre absence pour {title}. La réservation est annulée et rien n’est remboursé. En cas d’erreur, dites-le-nous via l’aide de la réservation.\n\n{link}",
+            "Absence signalée par le propriétaire : {title}",
+            "Le propriétaire a signalé votre absence pour {title}. La réservation est annulée et rien n’est remboursé. En cas d’erreur, dites-le-nous via l’aide de la réservation.\n\n{link}",
         ),
         "expired": (
             "Expirée : {title}",
@@ -413,7 +413,7 @@ TEXTS: dict[str, dict[str, tuple[str, str]]] = {
         ),
         "dispute_partial": (
             "Réglé : {title}",
-            "{how_fr} {amount} sont remboursés à la personne locataire, et le reste est versé à la personne propriétaire.{note}\n\n{link}",
+            "{how_fr} {amount} sont remboursés à la personne locataire, et le reste est versé au propriétaire.{note}\n\n{link}",
         ),
         "dispute_refunded_renter": (
             "Réglé : {title}",
@@ -421,11 +421,11 @@ TEXTS: dict[str, dict[str, tuple[str, str]]] = {
         ),
         "dispute_partial_renter": (
             "Réglé : {title}",
-            "{how_fr} vous récupérez {amount} sur votre carte, et le reste est versé à la personne propriétaire.{note}\n\n{link}",
+            "{how_fr} vous récupérez {amount} sur votre carte, et le reste est versé au propriétaire.{note}\n\n{link}",
         ),
         "dispute_owner_paid_renter": (
             "Réglé : {title}",
-            "{how_fr} le montant complet est versé à la personne propriétaire et rien ne vous est remboursé.{note}\n\n{link}",
+            "{how_fr} le montant complet est versé au propriétaire et rien ne vous est remboursé.{note}\n\n{link}",
         ),
         "dispute_owner_paid": (
             "Réglé : {title}",
@@ -437,11 +437,11 @@ TEXTS: dict[str, dict[str, tuple[str, str]]] = {
         ),
         "claim_filed": (
             "Un retour tardif a été signalé : {title}",
-            "La personne propriétaire signale que {title} a été rendu en retard et demande {amount}. Rien n’est prélevé : nous examinons la demande et vous communiquerons notre décision. Si vous voyez les choses autrement, dites-le dans la conversation.\n\n{link}",
+            "Le propriétaire signale que {title} a été rendu en retard et demande {amount}. Rien n’est prélevé : nous examinons la demande et vous communiquerons notre décision. Si vous voyez les choses autrement, dites-le dans la conversation.\n\n{link}",
         ),
         "claim_confirmed": (
             "Retour tardif : notre décision concernant {title}",
-            "Nous avons examiné le retour tardif et l’avons confirmé : {amount} sont dus à la personne propriétaire. Nous vous recontacterons au sujet du paiement.\n\n{link}",
+            "Nous avons examiné le retour tardif et l’avons confirmé : {amount} sont dus au propriétaire. Nous vous recontacterons au sujet du paiement.\n\n{link}",
         ),
         "claim_rejected": (
             "Retour tardif : notre décision concernant {title}",
@@ -505,6 +505,19 @@ _REASON = {"en": "Reason: ", "de": "Grund: ", "fr": "Motif\u00a0: "}
 _FOR = {"en": " for {}", "de": " für {}", "fr": " pour {}"}
 _PAID = {"en": " You paid {}.", "de": " Du hast {} bezahlt.", "fr": " Vous avez payé {}."}
 _NOTE = {"en": "From Cappy's team: ", "de": "Vom Cappy-Team: ", "fr": "De l\u2019équipe Cappy\u00a0: "}
+# Who asked, and where to go (V7-23); the old wording where a notice has neither.
+_SOMEONE = {"en": "Someone", "de": "Jemand", "fr": "Quelqu\u2019un"}
+_BY = {"en": " by {}", "de": " von {}", "fr": " par {}"}
+_WHERE = {
+    "en": " Hand-over: {}. The instructions are in the app.",
+    "de": " Übergabe: {}. Die Hinweise findest du in der App.",
+    "fr": " Remise\u00a0: {}. Les consignes sont dans l\u2019application.",
+}
+_WHERE_APP = {
+    "en": " The hand-over address is in the app.",
+    "de": " Die Übergabeadresse findest du in der App.",
+    "fr": " L\u2019adresse de remise est dans l\u2019application.",
+}
 
 
 def phrase(text: str, lang: str) -> str:
@@ -557,6 +570,12 @@ def render(key: str, locale: str | None, **params) -> tuple[str, str]:
     paid = params.get("amount")
     params.setdefault("for_amount", _FOR[lang].format(paid) if paid else "")
     params.setdefault("paid", _PAID[lang].format(paid) if paid else "")
+    name = params.pop("_renter", None)
+    params["who"] = quoted(name) if name else _SOMEONE[lang]
+    params["by_name"] = f" ({quoted(name)})" if name else ""
+    params["by_whom"] = _BY[lang].format(quoted(name)) if name else ""
+    address = params.pop("_address", None)
+    params["where"] = _WHERE[lang].format(quoted(address)) if address else _WHERE_APP[lang]
     zone = params.pop("_tz", None) or DEFAULT_TIME_ZONE
     if "_start" in params:
         params["title"] = f"{params['title']}, {when(dt_from_iso(params.pop('_start')), locale, zone)}"

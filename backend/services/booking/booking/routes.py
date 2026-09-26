@@ -192,6 +192,11 @@ async def create(
         if needs_id and await s.get(VerifiedRow, p.sub) is None:
             raise Forbidden("verify your identity once before booking this", code="verification_required")
 
+    # Who asks, for the owner's mails, and where it happens, for the renter's
+    # confirmation (V7-23): an instant booking is accepted moments from now,
+    # so this copy is fresh; an owner's accept refreshes it (_transition).
+    renter_name = await _best_effort(app.state.catalog.name_of(p.sub), "renter name")
+    handover = await _best_effort(app.state.catalog.handover(view.listing.id), "hand-over")
     now = _now()
     m = view.match
     row = BookingRow(
@@ -216,6 +221,7 @@ async def create(
             "district": view.listing.district,
             "category": view.listing.category,
             "ownerName": view.owner.name,
+            **({"renterName": renter_name} if renter_name else {}),
             # A trader's identity, for the fee invoice (§ 14 UStG) and the renter.
             **({"ownerBusiness": view.owner.business.model_dump(by_alias=True)} if view.owner.business else {}),
             "instantBook": view.listing.instant_book,
@@ -228,6 +234,8 @@ async def create(
         idempotency_key=idempotency_key,
         request_hash=fingerprint,
         extends_id=extends,
+        # Held, never shown before acceptance (SHOWS_HANDOVER).
+        handover=handover,
     )
     try:
         async with db.transaction() as s:
@@ -322,6 +330,15 @@ async def _with_payment(request: Request, row: BookingRow, viewer: str) -> Booki
 # --- people moving a booking along ---------------------------------------------------------
 
 
+async def _best_effort(call, what: str):  # noqa: ANN001, ANN202
+    """A detail for people's mails that must never stop a booking."""
+    try:
+        return await call
+    except Exception as e:  # noqa: BLE001
+        log.warning("no %s for the booking yet: %s", what, e)
+        return None
+
+
 async def _transition(
     request: Request, repo: BookingRepository, booking_id: str, action: Action, user: str, **fields: object
 ) -> Booking:
@@ -331,6 +348,11 @@ async def _transition(
         # The sweep has not got to it yet, but it has lapsed all the same.
         raise Conflict("this request has lapsed")
     to = next_status(action, row.status, user, row.requester_id, row.owner_id)
+    if to == "accepted":
+        # The confirmation tells the renter where to go (V7-23): the address as
+        # it is now, which the owner may have added since the request (V4-9).
+        fresh = await _best_effort(request.app.state.catalog.handover(row.listing_id), "hand-over")
+        row.handover = fresh or row.handover
     started = now >= row.window_start
     if action == "cancel" and started:
         # Once the window has begun the machine may already be in use: a full

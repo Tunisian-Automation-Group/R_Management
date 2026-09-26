@@ -166,13 +166,14 @@ def test_a_bookings_money_follows_the_payment_rules():
     def row(status, refund=None):
         return SimpleNamespace(status=status, amount=1500, refund_amount=refund, match=quote)
 
-    assert money_of(row("requested")) == {"charged": 0, "refunded": 0, "owner_share": 0, "paid_out": 0}
-    assert money_of(row("cancelled")) == {"charged": 0, "refunded": 0, "owner_share": 0, "paid_out": 0}, "hold released"
+    assert money_of(row("requested")) == {"charged": 0, "refunded": 0, "owner_share": 0}
+    assert money_of(row("cancelled")) == {"charged": 0, "refunded": 0, "owner_share": 0}, "hold released"
     # A renter no-show: charged, nothing back, the owner paid in full.
-    assert money_of(row("cancelled", 0)) == {"charged": 1500, "refunded": 0, "owner_share": 1275, "paid_out": 1275}
+    assert money_of(row("cancelled", 0)) == {"charged": 1500, "refunded": 0, "owner_share": 1275}
     # Settled by agreement at 700 back: the owner's share of the 800 kept.
-    assert money_of(row("completed", 700)) == {"charged": 1500, "refunded": 700, "owner_share": 680, "paid_out": 680}
-    assert money_of(row("active"))["paid_out"] == 0, "not paid before it is over"
+    assert money_of(row("completed", 700)) == {"charged": 1500, "refunded": 700, "owner_share": 680}
+    # Whether it reached the owner only payments knows (payouts off, held).
+    assert "paid_out" not in money_of(row("completed")), "a list never claims a payout"
     real = {"captured": 800, "refunded": 0, "paidOut": 680, "ownerNet": 680, "amount": 800}
     assert payments_money(real) == {"charged": 800, "refunded": 0, "owner_share": 680, "paid_out": 680}
     assert payments_money({"status": "captured"}) == {}
