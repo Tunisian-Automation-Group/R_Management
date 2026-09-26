@@ -32,7 +32,7 @@ import { messageOf, useToast } from '../store.tsx'
 import { Screen, SectionHead } from '../components/AppShell.tsx'
 import { Banner, Button, Card, Check, Field, Input, Row, Segmented, Select, Sheet, Textarea } from '../components/ui.tsx'
 import { ago, range, when } from '../format.ts'
-import { t } from '../../i18n.ts'
+import { plural, t } from '../../i18n.ts'
 
 const STATUS_LABEL: Record<string, string> = {
   awaiting_payment: 'Waiting for payment',
@@ -210,10 +210,11 @@ function CaseCard({ c }: { c: CaseRow }) {
         <Person id={c.requesterId} /> → <Person id={c.ownerId} /> · {t('changed {when}', { when: ago(c.updatedAt) })}
       </p>
       <div className="mt-2 flex flex-wrap gap-2 text-[0.8125rem] font-semibold">
-        {c.dispute?.escalatedAt && <span className="text-[var(--danger)]">{t('Escalated to staff')}</span>}
-        {c.dispute?.offer && <span className="text-[var(--ink-2)]">{t('Offer on the table: {amount}', { amount: formatMoney(c.dispute.offer.refundAmount, c.currency) })}</span>}
+        {c.status === 'disputed' && c.dispute?.escalatedAt && <span className="text-[var(--danger)]">{t('Escalated to staff')}</span>}
+        {/* Only while it is still open: a settled case has no offer on the table (V6-8). */}
+        {c.status === 'disputed' && c.dispute?.offer && <span className="text-[var(--ink-2)]">{t('Offer on the table: {amount}', { amount: formatMoney(c.dispute.offer.refundAmount, c.currency) })}</span>}
         {c.pendingApproval && <span className="text-[var(--warn)]">{t('Waiting for approval')}</span>}
-        {c.openClaims > 0 && <span className="text-[var(--warn)]">{t('{n} open claims', { n: c.openClaims })}</span>}
+        {c.openClaims > 0 && <span className="text-[var(--warn)]">{plural(c.openClaims, '{n} open claim', '{n} open claims')}</span>}
       </div>
     </Card>
   )
@@ -269,6 +270,10 @@ export function Approvals() {
           {items.map((r) => (
             <li key={r.id}>
               <Card className="p-4">
+                <p className="t-sm text-[var(--ink-3)]">
+                  {r.title ?? r.bookingId}
+                  {r.ownerName ? ` · ${r.ownerName}` : ''}
+                </p>
                 <p className="text-[0.9375rem] font-semibold">
                   {t(OUTCOME_LABEL[r.outcome])}
                   {r.refundAmount ? ` · ${formatMoney(r.refundAmount, r.currency)}` : ''}
@@ -332,6 +337,7 @@ const ACTION_LABEL: Record<string, string> = {
   propose_resolution: 'Proposed a refund',
   approve_resolution: 'Approved a refund',
   reject_resolution: 'Rejected a refund',
+  withdraw_resolution: 'Withdrew a refund proposal',
   confirm_claim: 'Confirmed a claim',
   reject_claim: 'Rejected a claim',
   read_case: 'Opened a case',
@@ -422,6 +428,37 @@ function AuditPage({
   )
 }
 
+/** A booking action in words (V6-9): the listing, the outcome, the money, the
+ *  reason, then staff's own note. Other actions show the server's statement. */
+function auditText(a: AuditEntry): string {
+  const d = a.details
+  // Rows from before V6 answer `details: {}`: read their old machine line instead.
+  if (!d || Object.keys(d).length === 0) return legacyAuditText(a.statement)
+  const parts = [
+    d.listingTitle,
+    d.outcome ? t(OUTCOME_LABEL[d.outcome]) : '',
+    d.amount ? formatMoney(d.amount, d.currency ?? 'EUR') : '',
+    d.reasonCode ? reasonLabel(d.reasonCode) : '',
+    d.claimKind === 'late_return' ? t('Late return') : '',
+  ].filter(Boolean)
+  const head = parts.join(' · ')
+  return a.statement ? (head ? `${head}. ${a.statement}` : a.statement) : head
+}
+
+/** Rows written before `details` (V6-9) kept booking's machine lines:
+ *  "<outcome> <minor> <CUR> (<reason>) <note>", "withdrew rs_…", "opened the case view". */
+function legacyAuditText(statement: string): string {
+  const m = /^(refund_buyer|partial|pay_owner) (\d+) ([A-Za-z]{3}) \((\w+)\)\s*([\s\S]*)$/.exec(statement)
+  if (m) {
+    const [, outcome, minor, cur, reason, note] = m
+    const head = [t(OUTCOME_LABEL[outcome as ResolveOutcome]), Number(minor) > 0 ? formatMoney(Number(minor), cur) : '', reasonLabel(reason)].filter(Boolean).join(' · ')
+    return note ? `${head}. ${note}` : head
+  }
+  if (/^(approved|rejected|withdrew) rs_\w+$/.test(statement) || statement === 'opened the case view') return ''
+  if (statement === 'late_return') return t('Late return')
+  return statement ? t(statement) : ''
+}
+
 function AuditLine({ a, me }: { a: AuditEntry; me?: string }) {
   const bookingLink = a.targetType === 'booking' ? `/admin/case/${a.targetId}` : null
   return (
@@ -440,8 +477,9 @@ function AuditLine({ a, me }: { a: AuditEntry; me?: string }) {
         {a.actorId === me ? t('by you') : t('by {who}', { who: staff(a.actorId, me) })} · {ago(a.at)}
         {a.reportId ? ` · ${t('report {id}', { id: a.reportId })}` : ''}
       </p>
-      {/* The server's own statements ("Checked and approved") in the reader's language (V5-18). */}
-      {a.statement && <p className="t-sm mt-1 text-[var(--ink-2)]">{t(a.statement)}</p>}
+      {/* The server's own statements ("Checked and approved") in the reader's language (V5-18), and
+          its machine lines ("partial 1500 EUR (damage) …") in words (V6-9). */}
+      {auditText(a) && <p className="t-sm mt-1 text-[var(--ink-2)]">{auditText(a)}</p>}
     </li>
   )
 }
@@ -452,7 +490,8 @@ function AuditLine({ a, me }: { a: AuditEntry; me?: string }) {
 export function AdminCase() {
   const { id = '' } = useParams()
   const session = useSession()
-  const kase = useQuery({ queryKey: ['adminCase', id], queryFn: () => getCase(id), enabled: Boolean(session?.staff) })
+  // Every fetch is an audited opening (H-7): refetch on purpose, not on focus or remount (V6-9).
+  const kase = useQuery({ queryKey: ['adminCase', id], queryFn: () => getCase(id), enabled: Boolean(session?.staff), staleTime: 5 * 60_000, refetchOnWindowFocus: false })
   if (!session?.staff)
     return (
       <Screen back="/admin" title={t('Case')}>
@@ -473,6 +512,7 @@ export function AdminCase() {
   const cur = b.currency ?? 'EUR'
   const title = b.listing?.title ?? b.match.listingId
   const me = session.sub
+  const pendingOne = c.resolutions.find((r) => r.status === 'pending_approval')
   return (
     <Screen back="/admin" title={title}>
       <p className="t-sm -mt-2 mb-5 text-[var(--ink-3)]">
@@ -486,7 +526,7 @@ export function AdminCase() {
       {c.dispute && b.status === 'disputed' && (
         <Banner
           tone={c.dispute.escalatedAt ? 'danger' : 'warn'}
-          title={c.dispute.escalatedAt ? t('Escalated: the parties did not agree in 72 hours') : t('In dispute')}
+          title={c.dispute.escalatedAt ? t('Escalated: the parties did not agree in time') : t('In dispute')}
           body={`${t('Reported by {who} {when}: {reason}', { who: c.dispute.openedBy === c.requesterId ? t('the renter') : t('the owner'), when: ago(c.dispute.openedAt), reason: c.dispute.reason })}${
             c.dispute.offer
               ? ` ${t('Offer on the table: {amount}, from the {side}.', {
@@ -504,11 +544,27 @@ export function AdminCase() {
         <Row label={t('Owner')} value={<Person id={c.ownerId} />} />
       </Card>
 
-      {b.status === 'disputed' && <ResolveForm bookingId={b.id} amount={b.match.quote.total} currency={cur} />}
+      {/* One decision at a time (V6-10): while a proposal waits, it stands in for the form. */}
+      {b.status === 'disputed' &&
+        (pendingOne ? (
+          <Card className="mt-4 p-5">
+            <h2 className="t-label mb-2">{t('Decide')}</h2>
+            <p className="t-sm text-[var(--ink-2)]">
+              {t('A proposal is waiting for a second staff member: {what}. Nothing else can be decided until it is approved, rejected or withdrawn.', {
+                what: [t(OUTCOME_LABEL[pendingOne.outcome]), pendingOne.refundAmount ? formatMoney(pendingOne.refundAmount, pendingOne.currency) : ''].filter(Boolean).join(' · '),
+              })}
+            </p>
+            <div className="mt-3">
+              <WithdrawButton r={pendingOne} />
+            </div>
+          </Card>
+        ) : (
+          <ResolveForm bookingId={b.id} amount={b.match.quote.total} currency={cur} />
+        ))}
 
       {c.resolutions.length > 0 && (
         <>
-          <SectionHead title={t('Refund decisions')} className="mt-7" />
+          <SectionHead title={t('Decisions')} className="mt-7" />
           <Card className="space-y-3 p-5">
             {c.resolutions.map((r) => (
               <div key={r.id} className="border-b border-[var(--line)] pb-3 last:border-0 last:pb-0">
@@ -761,7 +817,7 @@ export function AdminListing() {
         </p>
       </Screen>
     )
-  const { detail, state, holdReason, heldAt } = q.data
+  const { detail, state, holdReason, heldAt, handover, reviews } = q.data
   // A hold for where it is (V5-1) is lifted by the owner moving it, never by approval.
   const approvable = state === 'held' && !holdReason
   const approve = async () => {
@@ -790,5 +846,8 @@ export function AdminListing() {
       }
     />
   )
-  return <Listing preview={{ detail, banner }} />
+  const address = [handover?.address, handover?.postalCode].filter(Boolean).join(', ') || undefined
+  // Availability only for what could be booked: live, or held for a price check (not for where it is).
+  const bookable = state === 'live' || (state === 'held' && !holdReason)
+  return <Listing preview={{ detail, banner, address, reviews, bookable }} />
 }

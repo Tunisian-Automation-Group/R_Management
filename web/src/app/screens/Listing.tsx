@@ -2,7 +2,7 @@ import { lazy, Suspense, useMemo, useRef, useState, useEffect, type ReactNode } 
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { NotFound } from './NotFound.tsx'
 import { useQueryClient } from '@tanstack/react-query'
-import type { Offer, Requirement } from '../../domain/types.ts'
+import type { Offer, Requirement, Review } from '../../domain/types.ts'
 import { isWindow, rating } from '../../domain/types.ts'
 import { category, durationLabel } from '../../domain/categories.ts'
 import { distanceKm, trackRecord } from '../../domain/match.ts'
@@ -58,7 +58,7 @@ const QUANTITY_STEPS = [10, 25, 50, 100, 250, 500, 1000]
 
 /** The listing page. With `preview`, a read-only staff view of a listing the
  *  public cannot see (held, hidden, taken down): no booking, a banner on top. */
-export function Listing({ preview }: { preview?: { detail: ListingDetail; banner: ReactNode } } = {}) {
+export function Listing({ preview }: { preview?: { detail: ListingDetail; banner: ReactNode; address?: string; reviews?: Review[]; bookable: boolean } } = {}) {
   const { id } = useParams()
   const [params] = useSearchParams()
   const nav = useNavigate()
@@ -69,7 +69,10 @@ export function Listing({ preview }: { preview?: { detail: ListingDetail; banner
   const fetched = useListing(preview ? undefined : id)
   const detail = preview ? { data: preview.detail, isPending: false } : fetched
   const districts = useDistricts()
-  const reviews = useReviews(id)
+  // A staff preview asks staff's own endpoints (held listings included) and gets
+  // the reviews with the listing (V6-2).
+  const memberReviews = useReviews(preview ? undefined : id)
+  const reviews = preview ? { data: { items: preview.reviews ?? [] } } : memberReviews
   const payments = usePaymentsConfig()
   const paidPolicies = useGlobalFlag('paidCancellationPolicies')
 
@@ -152,10 +155,10 @@ export function Listing({ preview }: { preview?: { detail: ListingDetail; banner
 
   // The server prices it and says how many hours it takes; offers are the starts
   // that fit that many hours around what is already booked.
-  const quoted = useQuote(listing?.id, requirement)
+  const quoted = useQuote(preview && !preview.bookable ? undefined : listing?.id, requirement, Boolean(preview))
   const quote = quoted.data?.quote ?? null
   const needed = quote?.hours ?? null
-  const offersQ = useOffers(listing?.id, needed)
+  const offersQ = useOffers(preview && !preview.bookable ? undefined : listing?.id, needed, Boolean(preview))
   const offers = needed === null ? [] : (offersQ.data ?? [])
 
   // Pre-select whatever brought them here: the slot from the results list, else
@@ -441,9 +444,10 @@ export function Listing({ preview }: { preview?: { detail: ListingDetail; banner
             )}
           </div>
           {/* The owner across all their listings, labelled so it is not read as this listing's. */}
-          <span className="shrink-0 text-right">
+          {/* Allowed to shrink and wrap: at 200 % text in French it pushed the page sideways (V6-7). */}
+          <span className="min-w-0 max-w-[45%] text-right">
             <Stars value={stars} count={owner.jobsDone} />
-            <span className="t-sm block text-[var(--ink-4)]">{t('all their jobs')}</span>
+            <span className="t-sm block break-words text-[var(--ink-4)]">{t('all their jobs')}</span>
           </span>
         </div>
         {/* Measured, never assumed (H-1): nothing is said before 3 requests. */}
@@ -465,10 +469,12 @@ export function Listing({ preview }: { preview?: { detail: ListingDetail; banner
             <TraderNote business={owner.business} />
           </div>
         )}
-        <div className="mt-3 flex flex-wrap gap-1 border-t border-[var(--line)] pt-3">
-          <ReportButton targetType="owner" targetId={owner.id} />
-          {ME && ME !== owner.id && <BlockButton sub={owner.id} name={first} />}
-        </div>
+        {!preview && (
+          <div className="mt-3 flex flex-wrap gap-1 border-t border-[var(--line)] pt-3">
+            <ReportButton targetType="owner" targetId={owner.id} />
+            {ME && ME !== owner.id && <BlockButton sub={owner.id} name={first} />}
+          </div>
+        )}
       </Card>
 
       {/* ------------------------------------------------------- capacity */}
@@ -477,117 +483,132 @@ export function Listing({ preview }: { preview?: { detail: ListingDetail; banner
         <CapacityBar slots={slots} booked={selected} intent="buy" showLegend />
       </Card>
 
-      {/* --------------------------------------------------------- amount */}
-      <SectionHead
-        title={isWindow(listing) ? t('How long do you need it?') : t('How many {unit}?', { unit: meta.unitNoun ?? '' })}
-        className="mt-7"
-      />
-      <div className="flex flex-wrap gap-2">
-        {isWindow(listing)
-          ? [...new Set([listing.minHours, ...(meta.quickHours ?? [1, 2, 4])])]
-              .filter((h) => h >= listing.minHours && h <= listing.maxHours)
-              .sort((a, b) => a - b)
-              .map((h) => (
+      {preview?.address && (
+        <>
+          <SectionHead title={t('Hand-over address')} className="mt-7" />
+          <Card className="p-5">
+            <p className="text-[0.9375rem] text-[var(--ink-2)]">{preview.address}</p>
+          </Card>
+        </>
+      )}
+      {/* A listing nobody can book (hidden, paused, taken down) shows no availability to staff either (V6-2). */}
+      {(!preview || preview.bookable) && (
+        <>
+        {/* --------------------------------------------------------- amount */}
+        <SectionHead
+          title={isWindow(listing) ? t('How long do you need it?') : t('How many {unit}?', { unit: meta.unitNoun ?? '' })}
+          className="mt-7"
+        />
+        <div className="flex flex-wrap gap-2">
+          {isWindow(listing)
+            ? // The duration being priced is always one of the chips, and selected (V6-3).
+              [...new Set([listing.minHours, ...(meta.quickHours ?? [1, 2, 4]), ...(hours ? [hours] : [])])]
+                .filter((h) => h >= listing.minHours && h <= listing.maxHours)
+                .sort((a, b) => a - b)
+                .map((h) => (
+                  <Chip
+                    key={h}
+                    selected={hours === h}
+                    onClick={() => {
+                      setHours(h)
+                      setPicked(null)
+                    }}
+                  >
+                    {durationLabel(h)}
+                  </Chip>
+                ))
+            : quantities.map((q) => (
                 <Chip
-                  key={h}
-                  selected={hours === h}
+                  key={q}
+                  selected={quantity === q}
                   onClick={() => {
-                    setHours(h)
+                    setQuantity(q)
                     setPicked(null)
                   }}
                 >
-                  {durationLabel(h)}
+                  {q}
                 </Chip>
-              ))
-          : quantities.map((q) => (
-              <Chip
-                key={q}
-                selected={quantity === q}
-                onClick={() => {
-                  setQuantity(q)
-                  setPicked(null)
-                }}
-              >
-                {q}
-              </Chip>
-            ))}
-      </div>
-      {!isWindow(listing) && needed !== null && (
-        <p className="t-sm mt-3 text-[var(--ink-4)]">
-          {freight
-            ? t('{n} {unit} take about {duration}, including {setup} to load.', { n: quantity, unit: meta.unitNoun ?? '', duration: durationLabel(needed), setup: durationLabel(listing.setupHours) })
-            : t('{n} {unit} is about {duration} on this machine, including {setup} of setup.', { n: quantity, unit: meta.unitNoun ?? '', duration: durationLabel(needed), setup: durationLabel(listing.setupHours) })}
-        </p>
-      )}
+              ))}
+        </div>
+        {!isWindow(listing) && needed !== null && (
+          <p className="t-sm mt-3 text-[var(--ink-4)]">
+            {freight
+              ? t('{n} {unit} take about {duration}, including {setup} to load.', { n: quantity, unit: meta.unitNoun ?? '', duration: durationLabel(needed), setup: durationLabel(listing.setupHours) })
+              : t('{n} {unit} is about {duration} on this machine, including {setup} of setup.', { n: quantity, unit: meta.unitNoun ?? '', duration: durationLabel(needed), setup: durationLabel(listing.setupHours) })}
+          </p>
+        )}
 
-      {/* ----------------------------------------------------- start time */}
-      <SectionHead title={t('Pick a start')} className="mt-7" />
-      {offers.length === 0 ? (
-        <Card className="p-1">
-          <EmptyState
-            icon="calendar"
-            title={t('Nothing free that long')}
-            body={
-              isWindow(listing)
-                ? t('{name} has no {duration} gap in the next four weeks. A shorter booking may fit.', { name: first, duration: durationLabel(hours) })
-                : t('{n} {unit} needs {duration} and no gap that long is open. Try a smaller batch.', { n: quantity, unit: meta.unitNoun ?? '', duration: needed ? durationLabel(needed) : t('more time') })
-            }
-            action={
-              isWindow(listing) ? (
-                <Button variant="secondary" onClick={() => setHours(listing.minHours)}>
-                  {t('Try {what}', { what: durationLabel(listing.minHours) })}
-                </Button>
-              ) : maxFit && maxFit < quantity ? (
-                <Button variant="secondary" onClick={() => setQuantity(maxFit)}>
-                  {t('Try {what}', { what: `${maxFit} ${meta.unitNoun}` })}
-                </Button>
-              ) : undefined
-            }
-          />
-        </Card>
-      ) : (
-        (() => {
-          // Day first, then time. Every half-hour of every free day as its own
-          // button was thirty-odd choices before anyone could press Request. A
-          // day is one tap and already lands on its earliest start, so the
-          // common case (soonest, whatever day suits) is a single decision.
-          const days = Object.entries(byDay).slice(0, 7)
-          const active =
-            dayPick ?? (selected ? day(selected.start) : days[0]?.[0]) ?? days[0]?.[0]
-          const times = byDay[active] ?? []
-          return (
-            <div>
-              <div className="rail pb-1 md:m-0 md:flex-wrap md:p-0">
-                {days.map(([label, group]) => (
-                  <Chip
-                    key={label}
-                    selected={label === active}
-                    onClick={() => {
-                      setDayPick(label)
-                      setPicked(group[0])
-                    }}
-                  >
-                    {/* First letter only: `capitalize` made every word a capital, "Mar. 29 Sept." (V4-21). */}
-                    <span className="inline-block first-letter:uppercase">{label}</span>
-                  </Chip>
-                ))}
+        {/* ----------------------------------------------------- start time */}
+        <SectionHead title={t('Pick a start')} className="mt-7" />
+        {offers.length === 0 ? (
+          <Card className="p-1">
+            <EmptyState
+              icon="calendar"
+              title={t('Nothing free that long')}
+              body={
+                isWindow(listing)
+                  ? t('{name} has no {duration} gap in the next four weeks. A shorter booking may fit.', { name: first, duration: durationLabel(hours) })
+                  : t('{n} {unit} needs {duration} and no gap that long is open. Try a smaller batch.', { n: quantity, unit: meta.unitNoun ?? '', duration: needed ? durationLabel(needed) : t('more time') })
+              }
+              action={
+                isWindow(listing) ? (
+                  <Button variant="secondary" onClick={() => setHours(listing.minHours)}>
+                    {t('Try {what}', { what: durationLabel(listing.minHours) })}
+                  </Button>
+                ) : maxFit && maxFit < quantity ? (
+                  <Button variant="secondary" onClick={() => setQuantity(maxFit)}>
+                    {t('Try {what}', { what: `${maxFit} ${meta.unitNoun}` })}
+                  </Button>
+                ) : undefined
+              }
+            />
+          </Card>
+        ) : (
+          (() => {
+            // Day first, then time. Every half-hour of every free day as its own
+            // button was thirty-odd choices before anyone could press Request. A
+            // day is one tap and already lands on its earliest start, so the
+            // common case (soonest, whatever day suits) is a single decision.
+            // Two weeks of days in the rail, so next weekend can be picked (V6-23).
+          const days = Object.entries(byDay).slice(0, 14)
+            const active =
+              dayPick ?? (selected ? day(selected.start) : days[0]?.[0]) ?? days[0]?.[0]
+            const times = byDay[active] ?? []
+            return (
+              <div>
+                <div className="rail pb-1 md:m-0 md:flex-wrap md:p-0">
+                  {days.map(([label, group]) => (
+                    <Chip
+                      key={label}
+                      selected={label === active}
+                      onClick={() => {
+                        setDayPick(label)
+                        setPicked(group[0])
+                      }}
+                    >
+                      {/* First letter only: `capitalize` made every word a capital, "Mar. 29 Sept." (V4-21). */}
+                      <span className="inline-block first-letter:uppercase">{label}</span>
+                    </Chip>
+                  ))}
+                </div>
+                <div className="mt-4 flex flex-wrap gap-2">
+                  {/* Every start, not the first twelve: 18:00 must be bookable too (V5-9). */}
+                  {times.map((o) => (
+                    <Chip
+                      key={o.start}
+                      selected={selected?.start === o.start}
+                      onClick={() => setPicked(o)}
+                      ariaLabel={t('Start {when}', { when: range(o.start, o.end) })}
+                    >
+                      <span className="tnum">{time(o.start)}</span>
+                    </Chip>
+                  ))}
+                </div>
               </div>
-              <div className="mt-4 flex flex-wrap gap-2">
-                {/* Every start, not the first twelve: 18:00 must be bookable too (V5-9). */}
-                {times.map((o) => (
-                  <Chip
-                    key={o.start}
-                    selected={selected?.start === o.start}
-                    onClick={() => setPicked(o)}
-                    ariaLabel={t('Start {when}', { when: range(o.start, o.end) })}
-                  >
-                    <span className="tnum">{time(o.start)}</span>
-                  </Chip>
-                ))}
-              </div>
-            </div>
-          )
-        })()
+            )
+          })()
+        )}
+        </>
       )}
 
       {/* ---------------------------------------------------------- price */}
@@ -714,6 +735,7 @@ export function Listing({ preview }: { preview?: { detail: ListingDetail; banner
                 alt=""
                 categoryId={listing.category}
                 aspect={1}
+                thumb
                 className="w-[52px] shrink-0 rounded-[14px]"
               />
               <div className="min-w-0">

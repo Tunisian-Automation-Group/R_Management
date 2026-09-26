@@ -22,6 +22,7 @@ import type {
   Outcome,
   Owner,
   Business,
+  LatLng,
   Quote,
   Requirement,
   Review,
@@ -176,9 +177,13 @@ async function read<T>(res: Response): Promise<T> {
             : // Every field that failed at once, not one per try (V4-20).
               err?.fields?.length
               ? err.fields.map((f) => t(f.message)).join(' ')
-              : // The server speaks English; the catalogue translates what it knows.
-                err?.message
-                ? t(err.message)
+              : // Matching's blockers are built on the fly ("not feasible: minimum booking is 2 h"):
+                // one translated sentence instead of raw English (V6-4).
+                err?.message?.startsWith('not feasible')
+                ? t('That does not fit this listing. Pick a length or amount it takes.')
+                : // The server speaks English; the catalogue translates what it knows.
+                  err?.message
+                  ? t(err.message)
                 : t('Something went wrong ({status}). Try again.', { status: res.status }),
       res.status,
       err?.code ?? 'error',
@@ -341,18 +346,20 @@ export const useReviews = (id: string | undefined) =>
     enabled: Boolean(id),
   })
 
-export const useQuote = (listingId: string | undefined, requirement: Requirement | null) =>
+export const useQuote = (listingId: string | undefined, requirement: Requirement | null, staff = false) =>
   useQuery({
-    queryKey: ['quote', listingId, requirement],
-    queryFn: () => post<QuoteOut>('/quote', { requirement, listingId }),
+    queryKey: ['quote', listingId, requirement, staff],
+    queryFn: () => (staff ? getAdminQuote(listingId!, requirement!) : post<QuoteOut>('/quote', { requirement, listingId })),
     enabled: Boolean(listingId && requirement),
     placeholderData: keepPreviousData,
   })
 
-export const useOffers = (listingId: string | undefined, hours: number | null) =>
+export const useOffers = (listingId: string | undefined, hours: number | null, staff = false) =>
   useQuery({
-    queryKey: ['offers', listingId, hours],
-    queryFn: () => get<Offer[]>(`/listings/${listingId}/offers${qs({ hours: hours ?? undefined, limit: 120 })}`),
+    queryKey: ['offers', listingId, hours, staff],
+    // At most 28 starts a day, so the day chips reach weeks ahead instead of stopping after 4 or 5 days (V6-23).
+    queryFn: () =>
+      staff ? getAdminOffers(listingId!, hours!) : get<Offer[]>(`/listings/${listingId}/offers${qs({ hours: hours ?? undefined, limit: 500, perDay: 28 })}`),
     enabled: Boolean(listingId && hours),
     placeholderData: keepPreviousData,
   })
@@ -849,6 +856,8 @@ export type AuditEntry = {
   at: string
   personId?: string
   requestId?: string
+  /** Booking actions (V6-9): what the machine line used to say, as data. */
+  details?: { bookingId?: string; listingTitle?: string; currency?: string; amount?: number; outcome?: ResolveOutcome; reasonCode?: ReasonCode; resolutionId?: string; claimKind?: string; claimId?: string }
 }
 export const getAdminReports = (status: Report['status'], cursor?: string) =>
   get<Page<Report>>(`/admin/reports${qs({ status, cursor })}`)
@@ -858,7 +867,19 @@ export const getHeldListings = () => get<HeldListing[]>('/admin/listings/held')
 export const approveListing = (id: string) => post<void>(`/admin/listings/${id}/approve`)
 export type ListingState = 'live' | 'held' | 'paused' | 'taken_down' | 'deleted'
 /** Any listing as staff see it, whatever its state (V5-4): the public detail plus why it is not public. */
-export type AdminListing = { detail: ListingDetail; state: ListingState; holdReason?: HoldReason; heldAt?: string }
+/** Staff see where it is handed over and its reviews (V6-2). */
+export type AdminListing = {
+  detail: ListingDetail
+  state: ListingState
+  holdReason?: HoldReason
+  heldAt?: string
+  handover?: { address?: string; instructions: string; location?: LatLng; postalCode?: string }
+  reviews?: Review[]
+}
+/** Staff's own offers and quotes, held listings included (V6-2). */
+export const getAdminOffers = (id: string, hours: number) =>
+  get<Offer[]>(`/admin/listings/${encodeURIComponent(id)}/offers${qs({ hours, limit: 500, perDay: 28 })}`)
+export const getAdminQuote = (listingId: string, requirement: Requirement) => post<QuoteOut>('/admin/quote', { listingId, requirement })
 export const getAdminListing = (id: string) => get<AdminListing>(`/admin/listings/${encodeURIComponent(id)}`)
 export type Decision = 'dismiss' | 'take_down' | 'suspend' | 'remove_content'
 export const decideReport = (id: string, action: Decision, statement: string, g: Grounds) =>
@@ -895,6 +916,11 @@ export type Resolution = {
   approvedBy?: string
   createdAt: string
   decidedAt?: string
+  /** In the approvals queue (V6-10). */
+  title?: string
+  requesterId?: string
+  ownerId?: string
+  ownerName?: string
 }
 export type Dispute = {
   bookingId: string
@@ -906,6 +932,11 @@ export type Dispute = {
   offer?: { refundAmount: number; by: string; at: string }
   currency: string
   amount: number
+  /** Once settled (V6-1). */
+  outcome?: ResolveOutcome
+  refunded?: number
+  settledBy?: 'staff' | 'agreement'
+  staffNote?: string
 }
 export type Claim = {
   id: string

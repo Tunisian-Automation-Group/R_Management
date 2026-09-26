@@ -514,6 +514,14 @@ function Detail({
         />
       ) : null}
 
+      {booking.extendsId && (
+        <p className="t-sm mt-3 text-[var(--ink-3)]">
+          <Link className="underline" to={`/bookings/${booking.extendsId}`}>
+            {t('This extends your booking before it.')}
+          </Link>
+        </p>
+      )}
+
       {/* A report that was decided says how (V5-7): upheld or not, and the money. */}
       {(booking.status === 'completed' || booking.status === 'cancelled') && <DisputeDecided booking={booking} asOwner={asOwner} />}
 
@@ -660,6 +668,7 @@ function Detail({
           on the photos it was about (V4-22). */}
       <div ref={evidenceRef} tabIndex={-1} className="outline-none">
         <EvidencePanel
+          asOwner={asOwner}
           bookingId={booking.id}
           status={booking.status}
           otherName={asOwner ? buyer : first}
@@ -896,7 +905,7 @@ function Detail({
               setDeclining(false)
             }}
           >
-            {t('Decline')}
+            {t('Send decline')}
           </Button>
         }
       >

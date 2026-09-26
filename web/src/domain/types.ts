@@ -333,6 +333,8 @@ export type Booking = {
   renterRating?: number
   /** Cents refunded when it was cancelled. */
   refundAmount?: Cents
+  /** Set when this booking extends another (S-12, V6-22). */
+  extendsId?: string
   /** Who did not turn up, when a no-show ended it (S-11). */
   noShow?: 'owner' | 'renter'
   /** ISO 4217: what the card is charged in (M-3). */

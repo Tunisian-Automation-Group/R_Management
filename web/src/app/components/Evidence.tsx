@@ -35,7 +35,9 @@ export function EvidencePanel({
   otherName,
   prompt,
   onPromptClosed,
+  asOwner = false,
 }: {
+  asOwner?: boolean
   bookingId: string
   status: BookingStatus
   otherName: string
@@ -132,7 +134,10 @@ export function EvidencePanel({
         </p>
       ) : (
         <p className="t-sm mb-3 text-[var(--ink-3)]">
-          {t('Found damage or a problem? Report it before the booking is marked complete, at the latest 48 hours after it ends.')}
+          {/* Only the renter reports a problem; the owner's recourse is the photos and help (V6-13). */}
+          {asOwner
+            ? t('Found damage? Take photos when it comes back: Cappy looks at them first if you get help with this booking.')
+            : t('Found damage or a problem? Report it before the booking is marked complete, at the latest 48 hours after it ends.')}
         </p>
       )}
       {items.length > 0 && (

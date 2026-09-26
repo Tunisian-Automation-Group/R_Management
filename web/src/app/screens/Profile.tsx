@@ -546,7 +546,7 @@ function SignOutEverywhere() {
         }
       >
         <p className="t-body pb-3 text-[var(--ink-2)]">
-          {t('Every phone, tablet and browser signed in to your account is signed out within an hour, and stops getting notifications at once. Use it if a device is lost or someone else knows your password.')}
+          {t('Every phone, tablet and browser signed in to your account is signed out at once and stops getting notifications. Use it if a device is lost or someone else knows your password.')}
         </p>
       </Sheet>
     </>

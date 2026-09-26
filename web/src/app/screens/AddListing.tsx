@@ -868,7 +868,11 @@ function ListingForm({ edit }: { edit?: repo.ListingView }) {
               <Input id="f-max-qty" inputMode="numeric" className="tnum" value={maxQuantity} onChange={(e) => setMaxQuantity(e.target.value.replace(/\D/g, '').slice(0, 6))} />
             </Field>
 
-            <Field label={t('Setup time')} hint={t('Hours to get a job going, before the first part.')} htmlFor="f-setup-hours">
+            <Field
+              label={categoryId === 'freight' ? t('Loading time') : t('Setup time')}
+              hint={categoryId === 'freight' ? t('Hours to load and secure the goods before you drive.') : t('Hours to get a job going, before the first part.')}
+              htmlFor="f-setup-hours"
+            >
               <Input
                 id="f-setup-hours"
                 inputMode="decimal"
@@ -947,7 +951,11 @@ function ListingForm({ edit }: { edit?: repo.ListingView }) {
         </Field>
 
         {isBatch ? (
-          <Field label={t('Setup fee')} hint={t('Charged once per job, for programming and fixturing.')} htmlFor="f-setup">
+          <Field
+            label={categoryId === 'freight' ? t('Loading fee') : t('Setup fee')}
+            hint={categoryId === 'freight' ? t('Charged once per trip, for loading.') : t('Charged once per job, for programming and fixturing.')}
+            htmlFor="f-setup"
+          >
             <MoneyInput id="f-setup" cents={setupFee} onCents={setSetupFee} suffix={t('per job')} currency={cur} />
           </Field>
         ) : (

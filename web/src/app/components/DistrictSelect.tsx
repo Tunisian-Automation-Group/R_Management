@@ -8,19 +8,24 @@ export function DistrictSelect({
   districts,
   ...rest
 }: InputHTMLAttributes<HTMLSelectElement> & { districts: Record<string, District> }) {
-  const byMetro = new Map<string, string[]>()
-  for (const d of Object.values(districts)) byMetro.set(d.metro, [...(byMetro.get(d.metro) ?? []), d.name])
+  const byMetro = new Map<string, District[]>()
+  for (const d of Object.values(districts)) byMetro.set(d.metro, [...(byMetro.get(d.metro) ?? []), d])
+  // The chosen option is all a closed picker shows: "Flon (Lausanne)", not a bare
+  // "Flon" nobody outside Lausanne places (V6-16). Berlin's own districts need no suffix.
+  const label = (d: District) => (d.name.includes(d.city) || (d.city === d.metro && byMetro.get(d.metro)!.length > 1) ? d.name : `${d.name} (${d.city})`)
   return (
     <Select {...rest}>
       {[...byMetro.entries()]
         .sort(([a], [b]) => a.localeCompare(b))
         .map(([metro, names]) => (
           <optgroup key={metro} label={metro}>
-            {names.sort().map((n) => (
-              <option key={n} value={n}>
-                {n}
-              </option>
-            ))}
+            {names
+              .sort((a, b) => a.name.localeCompare(b.name))
+              .map((d) => (
+                <option key={d.name} value={d.name}>
+                  {label(d)}
+                </option>
+              ))}
           </optgroup>
         ))}
     </Select>

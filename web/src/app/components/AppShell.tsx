@@ -31,6 +31,7 @@ type Tab = { to: string; label: string; icon: IconName; badge?: number }
  * the place a browser has trained everyone to look.
  */
 export function Dock({ badges }: { badges: Record<string, number> }) {
+  const big = useLargeText()
   const tabs: Tab[] = [
     { to: '/', label: t('Explore'), icon: 'search' },
     { to: '/bookings', label: t('Bookings'), icon: 'ticket', badge: badges['/bookings'] },
@@ -63,7 +64,7 @@ export function Dock({ badges }: { badges: Record<string, number> }) {
 
         <ul className="flex flex-1 items-stretch md:items-center md:gap-1">
           {tabs.slice(0, 2).map((tab) => (
-            <TabItem key={tab.to} tab={tab} />
+            <TabItem key={tab.to} tab={tab} big={big} />
           ))}
 
           {/* On a phone, listing something is the supply side's whole job, so it
@@ -82,7 +83,7 @@ export function Dock({ badges }: { badges: Record<string, number> }) {
           </li>
 
           {tabs.slice(2).map((tab) => (
-            <TabItem key={tab.to} tab={tab} />
+            <TabItem key={tab.to} tab={tab} big={big} />
           ))}
         </ul>
 
@@ -124,15 +125,26 @@ function useLargeText(): boolean {
   const read = () => typeof document !== 'undefined' && parseFloat(getComputedStyle(document.documentElement).fontSize) >= 24
   const [big, setBig] = useState(read)
   useEffect(() => {
+    // A 1rem probe: its size follows the root font, so a text-size change after
+    // the first render (Dynamic Type, a browser zoom of text) is seen too (V6-7).
+    const probe = document.createElement('span')
+    probe.setAttribute('aria-hidden', 'true')
+    probe.style.cssText = 'position:absolute;visibility:hidden;width:1rem;height:0;pointer-events:none'
+    document.body.appendChild(probe)
     const on = () => setBig(read())
+    const watch = new ResizeObserver(on)
+    watch.observe(probe)
     window.addEventListener('resize', on)
-    return () => window.removeEventListener('resize', on)
+    return () => {
+      watch.disconnect()
+      window.removeEventListener('resize', on)
+      probe.remove()
+    }
   }, [])
   return big
 }
 
-function TabItem({ tab }: { tab: Tab }) {
-  const big = useLargeText()
+function TabItem({ tab, big }: { tab: Tab; big: boolean }) {
   return (
     <li className="min-w-0 flex-1 md:flex-none">
       <NavLink

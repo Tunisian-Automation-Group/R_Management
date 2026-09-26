@@ -160,9 +160,10 @@ export function Browse() {
           <form
             role="search"
             onSubmit={(e) => {
-              // Results are live; Enter just puts the keyboard away.
+              // Results are live; Enter just puts a touch keyboard away. With a
+              // mouse and keyboard, focus stays in the field (V6-20).
               e.preventDefault()
-              ;(document.activeElement as HTMLElement | null)?.blur()
+              if (matchMedia('(pointer: coarse)').matches) (document.activeElement as HTMLElement | null)?.blur()
             }}
           >
           <input

@@ -10,13 +10,14 @@ import {
   useAttemptKey,
   useClaims,
   useDispute,
+  useListing,
 } from '../../data/repo.ts'
-import type { Booking } from '../../domain/types.ts'
+import { isWindow, type Booking } from '../../domain/types.ts'
 import { formatMoney, minorPerMajor } from '../../domain/money.ts'
 import { durationLabel } from '../../domain/categories.ts'
 import { messageOf, useToast } from '../store.tsx'
 import { Banner, Button, Card, Chip, Field, Input, Row, Sheet, Textarea } from './ui.tsx'
-import { relative } from '../format.ts'
+import { day, relative, time } from '../format.ts'
 import { useOnline } from './Offline.tsx'
 import { t } from '../../i18n.ts'
 
@@ -27,7 +28,7 @@ const toMinor = (text: string, currency: string): number | null => {
 
 /**
  * The two sides settle a dispute themselves (S-21): either offers what goes
- * back to the renter, the other accepts it or counters within 72 hours, after
+ * back to the renter, the other accepts it or counters before the deadline, after
  * which Cappy's staff decide.
  */
 export function DisputeOffers({ booking, asOwner, otherName }: { booking: Booking; asOwner: boolean; otherName: string }) {
@@ -54,7 +55,7 @@ export function DisputeOffers({ booking, asOwner, otherName }: { booking: Bookin
     setBusy(true)
     try {
       await offerRefund(booking.id, typed)
-      toast(t('Offer sent. {name} has 72 hours to answer', { name: otherName }))
+      toast(t('Offer sent. {name} can answer until {when}', { name: otherName, when: `${day(d.respondBy)} ${time(d.respondBy)}` }))
       setOffering(false)
       setAmount('')
     } catch (err) {
@@ -84,10 +85,10 @@ export function DisputeOffers({ booking, asOwner, otherName }: { booking: Bookin
     <Card className="mt-3 p-5">
       <h2 className="t-label mb-2">{t('Settle it between you')}</h2>
       {d.escalatedAt ? (
-        <p className="t-sm text-[var(--ink-2)]">{t('You did not agree within 72 hours, so Cappy’s staff decide now. You can still agree on an offer until then.')}</p>
+        <p className="t-sm text-[var(--ink-2)]">{t('You did not agree in time, so Cappy’s staff decide now. You can still agree on an offer until then.')}</p>
       ) : (
         <p className="t-sm text-[var(--ink-2)]">
-          {t('Agree on what goes back to the renter, and it is settled at once. Otherwise Cappy decides {when}.', { when: relative(d.respondBy) })}
+          {t('Agree on what goes back to the renter, and it is settled at once. Otherwise Cappy decides {when}.', { when: relative(d.respondBy).replace(/\.$/, '') })}
         </p>
       )}
       {d.offer && (
@@ -98,7 +99,7 @@ export function DisputeOffers({ booking, asOwner, otherName }: { booking: Bookin
             strong
           />
           <p className="t-sm text-[var(--ink-3)]">
-            {t('Of {total}. The owner is paid the rest.', { total: formatMoney(d.amount, cur) })} {mine ? t('Waiting for {name}.', { name: otherName }) : ''}
+            {asOwner ? t('Of {total}. You are paid the rest.', { total: formatMoney(d.amount, cur) }) : t('Of {total}. The owner is paid the rest.', { total: formatMoney(d.amount, cur) })} {mine ? t('Waiting for {name}.', { name: otherName }) : ''}
           </p>
           {!mine && (
             <Button className="mt-3" disabled={busy || !online} onClick={() => void accept()}>
@@ -125,7 +126,7 @@ export function DisputeOffers({ booking, asOwner, otherName }: { booking: Bookin
             label={asOwner ? t('You give back') : t('You get back')}
             htmlFor={`${id}-amount`}
             error={amount && bad ? t('Between nothing and {total}.', { total: formatMoney(d.amount, cur) }) : undefined}
-            hint={t('Of {total}. The owner is paid the rest.', { total: formatMoney(d.amount, cur) })}
+            hint={asOwner ? t('Of {total}. You are paid the rest.', { total: formatMoney(d.amount, cur) }) : t('Of {total}. The owner is paid the rest.', { total: formatMoney(d.amount, cur) })}
           >
             <Input id={`${id}-amount`} inputMode="decimal" value={amount} invalid={Boolean(amount && bad)} onChange={(e) => setAmount(e.target.value)} />
           </Field>
@@ -139,8 +140,9 @@ export function DisputeOffers({ booking, asOwner, otherName }: { booking: Bookin
 export function DisputeDecided({ booking, asOwner }: { booking: Booking; asOwner: boolean }) {
   const dispute = useDispute(booking.id, true)
   if (!dispute.data) return null
+  const d = dispute.data
   const cur = booking.currency
-  const refund = booking.refundAmount ?? 0
+  const refund = d.refunded ?? booking.refundAmount ?? 0
   const amount = formatMoney(refund, cur)
   const full = booking.status === 'cancelled'
   const body = asOwner
@@ -156,7 +158,21 @@ export function DisputeDecided({ booking, asOwner }: { booking: Booking; asOwner
         : t('It was decided in the owner’s favour, so the owner is paid. If you disagree, get help with this booking.')
   return (
     <div className="mt-3">
-      <Banner tone={refund ? 'success' : 'warn'} title={t('The reported problem was decided')} body={body} />
+      <Banner
+        tone={refund ? 'success' : 'warn'}
+        title={d.settledBy === 'agreement' ? t('You agreed on the reported problem') : t('The reported problem was decided')}
+        body={
+          <>
+            {body}
+            {/* Why Cappy decided, in staff's own words (V6-1). */}
+            {d.staffNote && (
+              <span className="mt-2 block">
+                {t('From Cappy’s team: {note}', { note: d.staffNote })}
+              </span>
+            )}
+          </>
+        }
+      />
     </div>
   )
 }
@@ -169,10 +185,16 @@ export function Extend({ booking }: { booking: Booking }) {
   const toast = useToast()
   const online = useOnline()
   const [open, setOpen] = useState(false)
-  const [hours, setHours] = useState(1)
+  const [chosen, setHours] = useState<number | null>(null)
   const [busy, setBusy] = useState(false)
   const attempt = useAttemptKey()
   const on = (booking.status === 'accepted' || booking.status === 'active') && booking.requirement.mode === 'window'
+  // Only lengths the listing takes (V6-4): never below its minimum, never above its maximum.
+  const listing = useListing(on ? booking.match.listingId : undefined).data?.listing
+  const min = listing && isWindow(listing) ? listing.minHours : 1
+  const max = listing && isWindow(listing) ? listing.maxHours : Infinity
+  const options = [...new Set([min, ...EXTEND_HOURS])].filter((h) => h >= min && h <= max).sort((a, b) => a - b)
+  const hours = chosen ?? options[0] ?? min
   if (!on || Date.now() >= Date.parse(booking.match.end)) return null
   const extend = async () => {
     setBusy(true)
@@ -209,7 +231,7 @@ export function Extend({ booking }: { booking: Booking }) {
         }
       >
         <div className="flex flex-wrap gap-2 pb-3">
-          {EXTEND_HOURS.map((h) => (
+          {options.map((h) => (
             <Chip key={h} selected={h === hours} onClick={() => setHours(h)}>
               {durationLabel(h)}
             </Chip>
