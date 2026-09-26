@@ -62,7 +62,7 @@ resource "aws_cloudwatch_metric_alarm" "ses_bounce_rate" {
   threshold           = 0.02
   comparison_operator = "GreaterThanThreshold"
   treat_missing_data  = "notBreaching"
-  alarm_actions       = local.alarm_actions
+  alarm_actions       = local.ticket_actions
 }
 
 resource "aws_cloudwatch_metric_alarm" "ses_complaint_rate" {
@@ -76,5 +76,5 @@ resource "aws_cloudwatch_metric_alarm" "ses_complaint_rate" {
   threshold           = 0.0005
   comparison_operator = "GreaterThanThreshold"
   treat_missing_data  = "notBreaching"
-  alarm_actions       = local.alarm_actions
+  alarm_actions       = local.ticket_actions
 }

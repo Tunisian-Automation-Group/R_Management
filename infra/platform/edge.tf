@@ -406,14 +406,20 @@ resource "aws_cloudfront_response_headers_policy" "security" {
       override = true
       content_security_policy = join("; ", [
         "default-src 'self'",
-        "script-src 'self' https://js.stripe.com",
+        # Stripe.js as Stripe's security guide lists it (docs.stripe.com/
+        # security/guide, CSP): *.js.stripe.com lets it start cross-origin
+        # frames; hooks.stripe.com for 3D Secure; link.com for Link, which the
+        # Payment Element offers when it is on for the account. Identity's
+        # modal is served from js.stripe.com. No maps.googleapis.com: that is
+        # only for the Address Element with our own Maps key, which we do not use.
+        "script-src 'self' https://js.stripe.com https://*.js.stripe.com",
         # Fonts are self-hosted (P-26). 'unsafe-inline' stays for style
         # attributes React sets; scripts never get it.
         "style-src 'self' 'unsafe-inline'",
         # Unsplash only for the demo world's photos, which never reach prod (ADR 0010).
-        "img-src 'self' data: blob: https://*.stripe.com${var.env == "prod" ? "" : " https://images.unsplash.com"}",
-        "connect-src 'self' https://cognito-idp.${var.region}.amazonaws.com https://api.stripe.com",
-        "frame-src https://js.stripe.com https://hooks.stripe.com",
+        "img-src 'self' data: blob: https://*.stripe.com https://*.link.com${var.env == "prod" ? "" : " https://images.unsplash.com"}",
+        "connect-src 'self' https://cognito-idp.${var.region}.amazonaws.com https://api.stripe.com https://link.com https://*.link.com",
+        "frame-src https://js.stripe.com https://*.js.stripe.com https://hooks.stripe.com https://link.com https://*.link.com",
         "font-src 'self' data:",
         "object-src 'none'",
         "base-uri 'self'",

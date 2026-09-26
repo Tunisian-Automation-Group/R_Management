@@ -17,6 +17,7 @@ idempotency key, Stripe returns the first result, and the row catches up.
 
 from __future__ import annotations
 
+import json
 import logging
 from datetime import UTC, datetime
 
@@ -58,6 +59,38 @@ async def _address(provider: Provider, account_id: str) -> str | None:
     except Exception as e:  # noqa: BLE001
         log.warning("no verified address for %s: %s", account_id, e)
         return None
+
+
+async def pay_out(
+    session: AsyncSession, provider: Provider, outbox: Outbox, issuer: Issuer, row: PaymentRow, d: dict
+) -> None:
+    """The owner's share of a completed booking, and the fee invoice. From the
+    completion event, or later from a won chargeback that held it (R2-3)."""
+    account = await session.get(ConnectAccountRow, row.owner_id)
+    if account is None or not row.charge_id:
+        raise NotReady(f"cannot pay out {row.booking_id}: no connected account or charge")
+    row.transfer_id = await provider.transfer(
+        booking_id=row.booking_id,
+        amount=row.owner_net,
+        currency=row.currency,
+        account_id=account.account_id,
+        charge_id=row.charge_id,
+    )
+    row.status = "transferred"
+    row.paid_out_amount = row.owner_net
+    facts = {"bookingId": row.booking_id, "ownerId": row.owner_id, "requesterId": row.requester_id}
+    about = {k: d[k] for k in ("title", "windowStart", "timeZone") if d.get(k)}
+    await outbox.add(session, PAYOUT_SENT, {**facts, **about, "amount": row.owner_net, "currency": row.currency})
+    await issue(
+        session,
+        booking_id=row.booking_id,
+        owner_id=row.owner_id,
+        fee_gross=row.amount - row.owner_net,
+        currency=row.currency,
+        about=d,
+        issuer=issuer,
+        verified_address=await _address(provider, account.account_id),
+    )
 
 
 def handlers(
@@ -143,36 +176,13 @@ def handlers(
                     verified_address=await _address(provider, account.account_id),
                 )
         elif to == "completed" and row.status == "captured" and row.chargeback_at is not None:
+            # Kept, not dropped: a won chargeback pays this out (R2-3).
             log.error("CHARGEBACK hold: not paying out booking %s", row.booking_id)
-            return
+            row.held_payout = json.dumps(d)
         elif to == "completed" and row.status == "captured":
             if not payouts_on:
                 raise NotReady(f"payouts are switched off; {row.booking_id} waits")
-            account = await session.get(ConnectAccountRow, row.owner_id)
-            if account is None or not row.charge_id:
-                raise NotReady(f"cannot pay out {row.booking_id}: no connected account or charge")
-            row.transfer_id = await provider.transfer(
-                booking_id=row.booking_id,
-                amount=row.owner_net,
-                currency=row.currency,
-                account_id=account.account_id,
-                charge_id=row.charge_id,
-            )
-            row.status = "transferred"
-            row.paid_out_amount = row.owner_net
-            await outbox.add(
-                session, PAYOUT_SENT, {**facts, **about, "amount": row.owner_net, "currency": row.currency}
-            )
-            await issue(
-                session,
-                booking_id=row.booking_id,
-                owner_id=row.owner_id,
-                fee_gross=row.amount - row.owner_net,
-                currency=row.currency,
-                about=d,
-                issuer=issuer,
-                verified_address=await _address(provider, account.account_id),
-            )
+            await pay_out(session, provider, outbox, issuer, row, d)
         elif to == "completed" and row.status in ("created", "authorised"):
             # Completed without an accept (auto-completion of an accepted
             # booking always follows a capture): out of order; try again later.

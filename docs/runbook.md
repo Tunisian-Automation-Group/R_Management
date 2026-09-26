@@ -6,16 +6,29 @@
    `cd infra/bootstrap && terraform init && terraform apply -var github_repo=<owner>/<repo>`.
    This creates the state bucket and the GitHub OIDC roles `deploy-staging` and
    `deploy-prod`, which only the deploy workflow running from `main`, inside
-   that GitHub environment, can assume.
+   that GitHub environment, can assume. In Billing, activate the `env` tag as
+   a cost allocation tag, so each environment's budget sees its own spend
+   (R2-4).
 2. **GitHub**: create the environments `staging` and `prod`, and require a
    reviewer on `prod`. In each environment set these variables:
    - `AWS_DEPLOY_ROLE_ARN`, from the bootstrap output (`deploy-<env>`)
    - `AWS_IMAGES_ROLE_ARN`, from the bootstrap output (`images-<env>`): image builds push with it and can do nothing else; the web app is built with no AWS access (P-2)
    - `ZONE_ID`, the Route 53 hosted zone of the domain
    - `ALARM_EMAIL`
-   - `LEGAL`, the operator on invoices, as JSON:
-     `{"company":"…","address":"…","vat_id":"…","tax_number":"…"}`. Deploys stop without it.
+   - `LEGAL`, the operator on invoices and in the app's Impressum, privacy
+     policy and DSA contact point, as JSON:
+     `{"company":"…","address":"…","email":"…","vat_id":"…","tax_number":"…","register":"…"}`.
+     Deploys stop without it, and the web build refuses to build without the
+     company, address and email (R2-1).
+   - `APPS` (once the store apps ship): `{"apple_team_id":"…","android_sha256":"AB:CD:…","app_store_url":"…","play_store_url":"…"}`.
+     Without it no app-link files are published (a placeholder would verify nothing).
    - `SWITCHES` and `FEATURE_FLAGS` (optional; see "Kill switches")
+
+   And this environment **secret**:
+   - `PAGER_ENDPOINT`: the pager's SNS HTTPS integration URL (PagerDuty,
+     Opsgenie, or an Incident Manager response plan). Page-level alarms go
+     there as well as to `ALARM_EMAIL`; a prod plan warns without it
+     (see "Severity and on-call").
 
    Add the `LOCALSTACK_AUTH_TOKEN` repository secret so CI runs the e2e.
 3. **DNS**: the domain in `infra/envs/<env>/main.tf` must live in that hosted zone.
@@ -28,7 +41,7 @@
    ```
    In the Stripe dashboard, add a webhook endpoint
    `https://<domain>/api/payments/webhooks/stripe` for the events
-   `payment_intent.amount_capturable_updated`, `account.updated`, `charge.dispute.created`, `identity.verification_session.verified` and `identity.verification_session.requires_input`. Enable
+   `payment_intent.amount_capturable_updated`, `account.updated`, `charge.dispute.created`, `charge.dispute.updated`, `charge.dispute.closed`, `charge.dispute.funds_withdrawn`, `charge.dispute.funds_reinstated`, `identity.verification_session.verified` and `identity.verification_session.requires_input`. Enable
    Connect with Express accounts, and Stripe Identity.
 5. **Push notifications** (once, when the store apps are ready): create two SNS
    platform applications, APNs with the Apple push key (`.p8`, key id, team id)
@@ -38,6 +51,29 @@
    addresses that aren't verified. DKIM, SPF and DMARC records are created by
    Terraform.
 7. Run the `deploy` workflow.
+
+## Releasing and rolling back
+
+A release is a commit on `main` whose `ci` run passed (R2-8). A green CI run
+on `main` deploys it to staging by itself; the `deploy` workflow's first job
+refuses any sha without a successful `ci` run.
+
+- **Prod**: Actions → deploy → Run workflow, `env: prod`, `release:` the sha
+  staging runs (empty means the latest on `main`). The prod environment asks
+  a reviewer.
+- **Rollback**: the same, with the previous release's sha. Its images
+  already exist in ECR, so only Terraform and the roll run (minutes). The
+  database is not rolled back: every migration is **expand/contract**, so the
+  previous release runs against the newer schema:
+  1. *expand*: add columns and tables, nullable or with defaults; the code
+     writes both old and new;
+  2. *migrate*: backfill in a later release;
+  3. *contract*: drop what nothing reads any more, one release after that.
+
+  A migration that cannot be undone this way (dropping data) is its own
+  release, after a restore rehearsal.
+- **Web**: the previous release's hashed files stay published for 30 days
+  (R2-9), so tabs opened before a deploy keep working.
 
 ## A deploy failed
 
@@ -59,6 +95,87 @@
 | `outbox-set-aside` | A service could not publish an event 20 times (SNS down or refusing it); the change is committed, its event is not sent. Find `OUTBOX_SET_ASIDE <id> <type>` in the service's logs, fix the cause, then send it again: `UPDATE outbox SET attempts = 0 WHERE id = '<id>' AND sent_at IS NULL;` in that service's database (the relay picks it up within seconds). |
 | `<service>-queue-age` | The consumer is down or too slow. Check the service is running and its logs. |
 | `db-cpu`, `db-at-max-capacity` | Raise `db_max_acu`; find the slow queries in Performance Insights. |
+
+## Severity and on-call
+
+| Severity | What | Goes to | Answer |
+|---|---|---|---|
+| **SEV1** | Everyone or money: the site is down, bookings or payments fail for many, a data breach, a security incident | Page (pager + mail) | At once, day or night; incident commander named in 15 min |
+| **SEV2** | Part of the service or some people: one journey failing, payouts or mail stuck, the error budget burning fast | Page | Within 30 min |
+| **SEV3** | Degraded but working: slow, capacity near its limit, a slow budget burn, email reputation | Ticket (mail) | Next working day |
+
+Page-level alarms (topic `…-alarms`): `api-5xx-rate`, `<service>-dead-letters`,
+the canary, the fast burn-rate and per-journey page alarms, root-account use
+and high GuardDuty findings. Everything else is a ticket (topic `…-tickets`).
+
+**On-call** (the owner names the rota; one primary and one secondary, a week
+each, handed over in writing):
+- keep the pager on and a laptop within 15 minutes; acknowledge within 5;
+- for SEV1/SEV2, name an **incident commander** (the first responder until
+  handed over), open an incident record from
+  [`incidents/TEMPLATE.md`](incidents/TEMPLATE.md), and post updates every 30
+  minutes where the team sees them;
+- mitigate first (kill switch, rollback, scale), then find the cause;
+- every SEV1 and SEV2, and every burn of more than half an SLO's monthly
+  budget (`slo.md`), gets a blameless postmortem within 5 working days,
+  from [`incidents/POSTMORTEM.md`](incidents/POSTMORTEM.md).
+
+## Security or personal-data incident (a breach)
+
+A breach is any loss of confidentiality, integrity or availability of
+personal data: a leaked export, a wrong person seeing a booking, a stolen
+credential, a lost backup, ransomware. Treat a suspected one as real until
+shown otherwise.
+
+1. **Contain** (SEV1): rotate the exposed credential, revoke sessions
+   (`POST /api/me/sign-out-everywhere` for affected people; Cognito
+   `AdminUserGlobalSignOut` in bulk), switch off the affected feature, block at
+   the WAF. Keep the evidence: CloudTrail (object-locked, a year), the
+   service logs, GuardDuty findings. Do not delete anything.
+2. **Record it** in the incident register at once, from
+   [`incidents/TEMPLATE.md`](incidents/TEMPLATE.md): the time you became
+   aware starts every clock below.
+3. **Assess** with the privacy lead: whose data, which categories (ID
+   checks and messages are high risk), how many people, which countries,
+   and whether it is likely to harm them.
+4. **Notify**, by the rule that applies (counsel confirms each case):
+
+   | Law | Who | When |
+   |---|---|---|
+   | GDPR Art. 33 (EU, and UK GDPR) | The lead supervisory authority (Germany: the Berlin commissioner for an establishment there), unless it is unlikely to be a risk | Within **72 hours** of becoming aware; late ones say why |
+   | GDPR Art. 34 | The people affected | Without undue delay, when the risk to them is high |
+   | Switzerland (revFADP Art. 24) | The FDPIC | As soon as possible, when the risk is high |
+   | Canada, PIPEDA | The Privacy Commissioner and the people affected | As soon as feasible, for a real risk of significant harm; keep a record of every breach for 24 months |
+   | Québec, Law 25 | The CAI and the people affected | Promptly, for a risk of serious injury; keep a register of every incident |
+   | US states | The people affected, some attorneys general | By each state's law, often 30–60 days; counsel lists the states |
+   | Stripe, Apple, Google | Each, if their data or keys are involved | By their terms |
+
+5. **Tell processors and partners** whose data it was (the DPA terms), and
+   **write the postmortem**. Keep the register entry for at least 5 years.
+
+## A chargeback
+
+A card holder disputed a charge with their bank. With separate charges and
+transfers the platform carries it (R2-3). Payments follows every
+`charge.dispute.*` event from Stripe:
+
+- **Opened**: the owner's payout is held (a completed booking's payout is
+  kept, not dropped), and a `chargeback` ticket opens.
+- **Staff answer it** before the evidence deadline: `GET
+  /api/admin/payments/chargebacks` lists the open ones, soonest deadline
+  first. Gather the booking's case (`/admin/case/<booking>`): the timeline,
+  the hand-over photos (signed links), the messages, the renter's
+  confirmation. Then `POST /api/admin/payments/<booking>/dispute-evidence
+  {"text": "…", "links": ["…"]}` sends it to Stripe and is audited.
+  ponytail: text and links only; attach photos as files in the Stripe
+  dashboard until uploading them is built.
+- **Won** (or a warning the bank closed): the hold ends and a held payout is
+  paid out, with its invoice.
+- **Lost**: the money went back to the card holder. An owner already paid
+  gives their share back through a transfer reversal; if their Stripe
+  balance cannot cover it, the chargeback list shows `ownerOwes`, and it is
+  taken from their next payout per the terms (counsel confirms the clause).
+  Repeated losses on one owner or renter go to moderation.
 
 ## A buyer reported a problem (disputed booking)
 
@@ -192,6 +309,12 @@ the `FEATURE_FLAGS` variable, e.g. `newcheckout:5`, then 25, 50, 100, each follo
 The apps read them from `/api/app-config` (cached up to 5 minutes).
 
 ## Restoring the database (rehearse this every quarter)
+
+Two sources: Aurora's point-in-time restore (to any second in the last 14
+days in prod), below; and AWS Backup's daily and monthly recovery points in
+the vault `cappy-<cell>-<env>-vault` (R2-5), which no role in the account can
+delete, for when the cluster itself is gone (Backup console → Protected
+resources → Restore).
 
 Aurora keeps continuous backups (14 days in prod), so any second in that
 window can be restored.

@@ -242,7 +242,10 @@ locals {
       # The staff case view finds a member by email (H-9).
       { Effect = "Allow", Action = "cognito-idp:ListUsers", Resource = aws_cognito_user_pool.main.arn },
     ]
-    payments = []
+    # The staff MFA check on its chargeback routes (R2-3).
+    payments = [
+      { Effect = "Allow", Action = ["cognito-idp:AdminGetUser"], Resource = aws_cognito_user_pool.main.arn },
+    ]
     notifications = [
       { Effect = "Allow", Action = ["ses:SendEmail", "ses:SendRawEmail"], Resource = "*", Condition = { StringEquals = { "ses:FromAddress" = "no-reply@${var.domain}" } } },
       { Effect = "Allow", Action = ["cognito-idp:AdminGetUser", "cognito-idp:ListUsers", "cognito-idp:AdminUserGlobalSignOut", "cognito-idp:AdminDeleteUser"], Resource = aws_cognito_user_pool.main.arn },

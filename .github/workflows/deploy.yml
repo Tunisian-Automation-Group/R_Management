@@ -1,9 +1,13 @@
 name: deploy
 
-# main -> staging automatically; prod by hand (and the prod GitHub
-# environment requires a reviewer). The same image sha goes to both.
+# A release is a commit whose `ci` run passed on main (R2-8): a green CI run
+# on main deploys it to staging; prod, or a rollback, is a manual run naming
+# the release. The same image sha goes everywhere, and the prod GitHub
+# environment requires a reviewer.
 on:
-  push:
+  workflow_run:
+    workflows: [ci]
+    types: [completed]
     branches: [main]
   workflow_dispatch:
     inputs:
@@ -12,6 +16,10 @@ on:
         type: choice
         options: [staging, prod]
         default: staging
+      release:
+        description: Commit sha to deploy (empty = the latest on main). A rollback is the previous release's sha; its images already exist, so it takes minutes.
+        type: string
+        default: ""
 
 # Each job asks for AWS (id-token) only if it needs it; see P-2.
 permissions:
@@ -23,12 +31,27 @@ concurrency:
 
 env:
   ENV: ${{ inputs.env || 'staging' }}
-  TAG: ${{ github.sha }}
+  # What is deployed: the named release, the commit CI just passed, or main.
+  TAG: ${{ inputs.release || github.event.workflow_run.head_sha || github.sha }}
 
 jobs:
+  gate:
+    # Only main is ever deployed (the AWS roles also refuse any other ref), and
+    # only a commit whose ci run succeeded: a red CI run never deploys, and a
+    # manual run for an untested sha stops here.
+    if: github.ref == 'refs/heads/main' && (github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success')
+    runs-on: ubuntu-latest
+    permissions: { contents: read, actions: read }
+    steps:
+      - name: The release passed CI on main
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          ok=$(gh api "repos/${{ github.repository }}/actions/workflows/ci.yml/runs?branch=main&head_sha=$TAG&status=success" --jq '.total_count')
+          [ "$ok" -gt 0 ] || { echo "$TAG has no successful ci run on main: not deploying it"; exit 1; }
+
   images:
-    # Only main is ever deployed (the AWS roles also refuse any other ref).
-    if: github.ref == 'refs/heads/main'
+    needs: gate
     runs-on: ubuntu-latest
     environment: ${{ inputs.env || 'staging' }}
     permissions: { contents: read, id-token: write }
@@ -40,6 +63,7 @@ jobs:
       TF_VAR_cell: ${{ vars.CELL || 'eu' }}
     steps:
       - uses: actions/checkout@v5
+        with: { ref: "${{ env.TAG }}" }
 
       # Image builds install third-party packages: they get a role that can
       # only push to ECR, never the deploy role.
@@ -80,10 +104,13 @@ jobs:
       TF_VAR_region: ${{ vars.AWS_REGION || 'eu-central-1' }}
       TF_VAR_cell: ${{ vars.CELL || 'eu' }}
       TF_VAR_legal: ${{ vars.LEGAL }}
+      TF_VAR_apps: ${{ vars.APPS || '{}' }}
+      TF_VAR_pager_endpoint: ${{ secrets.PAGER_ENDPOINT }}
       TF_VAR_switches: ${{ vars.SWITCHES || '{"bookings":true,"payouts":true,"listings":true}' }}
       TF_VAR_feature_flags: ${{ vars.FEATURE_FLAGS }}
     steps:
       - uses: actions/checkout@v5
+        with: { ref: "${{ env.TAG }}" }
 
       - uses: aws-actions/configure-aws-credentials@v5
         with:
@@ -156,14 +183,17 @@ jobs:
     permissions: { contents: read }
     steps:
       - uses: actions/checkout@v5
+        with: { ref: "${{ env.TAG }}" }
       - uses: actions/setup-node@v5
         with: { node-version: 22, cache: npm, cache-dependency-path: web/package-lock.json }
       - name: Build the web app
         working-directory: web
         env:
           WEB_CONFIG: ${{ needs.deploy.outputs.web_config }}
+        # A dotenv file Vite reads by itself: values with spaces and commas
+        # (addresses) survive, which `export $(...)` did not.
         run: |
-          export $(echo "$WEB_CONFIG" | jq -r 'to_entries[] | "\(.key)=\(.value)"')
+          echo "$WEB_CONFIG" | jq -r 'to_entries[] | "\(.key)=\(.value | @json)"' > .env.production.local
           npm ci --ignore-scripts && npm run build
       - uses: actions/upload-artifact@v4
         with: { name: web-dist, path: web/dist, include-hidden-files: true, retention-days: 7 }
@@ -181,6 +211,7 @@ jobs:
       TF_VAR_cell: ${{ vars.CELL || 'eu' }}
     steps:
       - uses: actions/checkout@v5
+        with: { ref: "${{ env.TAG }}" }
 
       - uses: actions/download-artifact@v4
         with: { name: web-dist, path: web/dist }
@@ -204,8 +235,16 @@ jobs:
           out=$(terraform output -json platform)
           bucket=$(echo "$out" | jq -r .web_bucket)
           # Hashed assets forever; the entry points never, or clients miss releases.
-          aws s3 sync ../../../web/dist "s3://$bucket" --delete --cache-control "public,max-age=31536000,immutable" \
+          # No --delete (R2-9): a tab opened before this release still asks for
+          # the previous release's lazy chunks, so they stay until they are
+          # both gone from this build and older than 30 days.
+          aws s3 sync ../../../web/dist "s3://$bucket" --cache-control "public,max-age=31536000,immutable" \
             --exclude index.html --exclude sw.js --exclude registerSW.js --exclude manifest.webmanifest
+          (cd ../../../web/dist && find assets -type f) | sort > /tmp/current
+          cutoff=$(date -u -d '30 days ago' +%Y-%m-%dT%H:%M:%S)
+          aws s3api list-objects-v2 --bucket "$bucket" --prefix assets/ \
+            --query "Contents[?LastModified<'$cutoff'].Key" --output text | tr '\t' '\n' | grep -v '^None$' | sort > /tmp/old || true
+          comm -23 /tmp/old /tmp/current | while read -r key; do aws s3 rm "s3://$bucket/$key"; done
           for f in index.html sw.js registerSW.js manifest.webmanifest; do
             [ -f "../../../web/dist/$f" ] && aws s3 cp "../../../web/dist/$f" "s3://$bucket/$f" --cache-control "no-cache"
           done

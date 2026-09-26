@@ -1,8 +1,17 @@
 # Alarms on what a person would be paged for: users seeing errors or slowness,
 # events stuck in a dead-letter queue, and the database running hot.
 
+# Two severities (R2-6, runbook "Severity"): a page wakes the on-call now
+# (users see errors, money is stuck, the site is down); a ticket is looked at
+# in working hours. Both reach the alarm mailbox; pages also reach the pager
+# the owner picks (PagerDuty, Opsgenie or Incident Manager take an SNS HTTPS
+# subscription), set through var.pager_endpoint.
 resource "aws_sns_topic" "alarms" {
   name = "${local.name}-alarms"
+}
+
+resource "aws_sns_topic" "tickets" {
+  name = "${local.name}-tickets"
 }
 
 resource "aws_sns_topic_subscription" "alarms_email" {
@@ -11,8 +20,30 @@ resource "aws_sns_topic_subscription" "alarms_email" {
   endpoint  = var.alarm_email
 }
 
+resource "aws_sns_topic_subscription" "tickets_email" {
+  topic_arn = aws_sns_topic.tickets.arn
+  protocol  = "email"
+  endpoint  = var.alarm_email
+}
+
+resource "aws_sns_topic_subscription" "pager" {
+  count                  = var.pager_endpoint == "" ? 0 : 1
+  topic_arn              = aws_sns_topic.alarms.arn
+  protocol               = "https"
+  endpoint               = var.pager_endpoint
+  endpoint_auto_confirms = true
+}
+
+check "prod_has_a_pager" {
+  assert {
+    condition     = var.env != "prod" || var.pager_endpoint != ""
+    error_message = "prod pages nobody: set pager_endpoint (the PAGER_ENDPOINT environment variable) to the pager's SNS HTTPS integration URL."
+  }
+}
+
 locals {
-  alarm_actions = [aws_sns_topic.alarms.arn]
+  alarm_actions  = [aws_sns_topic.alarms.arn]
+  ticket_actions = [aws_sns_topic.tickets.arn]
 }
 
 resource "aws_cloudwatch_metric_alarm" "api_5xx_rate" {
@@ -67,8 +98,8 @@ resource "aws_cloudwatch_metric_alarm" "api_latency" {
   threshold           = 1.5
   comparison_operator = "GreaterThanThreshold"
   treat_missing_data  = "notBreaching"
-  alarm_actions       = local.alarm_actions
-  ok_actions          = local.alarm_actions
+  alarm_actions       = local.ticket_actions
+  ok_actions          = local.ticket_actions
 }
 
 resource "aws_cloudwatch_metric_alarm" "dlq" {
@@ -102,7 +133,7 @@ resource "aws_cloudwatch_metric_alarm" "queue_age" {
   threshold           = lookup({ payments = 900, notifications = 600 }, each.key, 300)
   comparison_operator = "GreaterThanThreshold"
   treat_missing_data  = "notBreaching"
-  alarm_actions       = local.alarm_actions
+  alarm_actions       = local.ticket_actions
 }
 
 resource "aws_cloudwatch_metric_alarm" "db_cpu" {
@@ -115,7 +146,7 @@ resource "aws_cloudwatch_metric_alarm" "db_cpu" {
   evaluation_periods  = 10
   threshold           = 80
   comparison_operator = "GreaterThanThreshold"
-  alarm_actions       = local.alarm_actions
+  alarm_actions       = local.ticket_actions
 }
 
 resource "aws_cloudwatch_metric_alarm" "db_capacity" {
@@ -129,7 +160,7 @@ resource "aws_cloudwatch_metric_alarm" "db_capacity" {
   evaluation_periods  = 3
   threshold           = var.db_max_acu * 0.9
   comparison_operator = "GreaterThanOrEqualToThreshold"
-  alarm_actions       = local.alarm_actions
+  alarm_actions       = local.ticket_actions
 }
 
 # A chargeback holds a payout and needs a person (docs/runbook.md).
@@ -155,7 +186,7 @@ resource "aws_cloudwatch_metric_alarm" "chargebacks" {
   threshold           = 0
   comparison_operator = "GreaterThanThreshold"
   treat_missing_data  = "notBreaching"
-  alarm_actions       = local.alarm_actions
+  alarm_actions       = local.ticket_actions
 }
 
 # An outbox row that failed 20 times is set aside: its change committed, its
@@ -184,7 +215,7 @@ resource "aws_cloudwatch_metric_alarm" "outbox_set_aside" {
   threshold           = 0
   comparison_operator = "GreaterThanThreshold"
   treat_missing_data  = "notBreaching"
-  alarm_actions       = local.alarm_actions
+  alarm_actions       = local.ticket_actions
 }
 
 # --- error-budget burn (docs/slo.md) --------------------------------------------------
@@ -249,7 +280,7 @@ resource "aws_cloudwatch_composite_alarm" "burn_ticket" {
   alarm_name        = "${local.name}-slo-burning"
   alarm_description = "The API is spending its monthly error budget 6x too fast. Look today."
   alarm_rule        = "ALARM(${aws_cloudwatch_metric_alarm.burn["ticket_long"].alarm_name}) AND ALARM(${aws_cloudwatch_metric_alarm.burn["ticket_short"].alarm_name})"
-  alarm_actions     = local.alarm_actions
+  alarm_actions     = local.ticket_actions
 }
 
 # --- per-journey error budgets (docs/slo.md, T-35c) ----------------------------------
@@ -343,5 +374,5 @@ resource "aws_cloudwatch_composite_alarm" "journey_ticket" {
   alarm_name        = "${local.name}-slo-${each.key}-burning"
   alarm_description = "The ${each.key} journey is spending its error budget 6x too fast (docs/slo.md). Look today."
   alarm_rule        = "ALARM(${aws_cloudwatch_metric_alarm.journey_burn["${each.key}-ticket_long"].alarm_name}) AND ALARM(${aws_cloudwatch_metric_alarm.journey_burn["${each.key}-ticket_short"].alarm_name})"
-  alarm_actions     = local.alarm_actions
+  alarm_actions     = local.ticket_actions
 }

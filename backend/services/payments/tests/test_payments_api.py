@@ -799,3 +799,122 @@ def test_the_fee_invoice_follows_the_readers_typography(client, app, issuer):
     assert "USt 19 %" in de
     for text in (fr, us, de):
         assert "USt-IdNr." in text and "Steuernummer" in text, "both of the issuer's lines"
+
+
+# --- the chargeback lifecycle (R2-3) ------------------------------------------------------
+
+
+class _Chargebacks(_StripeShaped):
+    """Stripe-shaped, with the money calls recorded instead of sent."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.calls: list[tuple] = []
+        self.reversal_fails = False
+
+    async def transfer(self, *, booking_id, amount, currency, account_id, charge_id) -> str:  # noqa: ANN001
+        self.calls.append(("transfer", booking_id, amount))
+        return f"tr_{booking_id}"
+
+    async def reverse_transfer(self, transfer_id: str, amount: int, booking_id: str) -> str:
+        if self.reversal_fails:
+            raise RuntimeError("insufficient funds in the connected account")
+        self.calls.append(("reverse", transfer_id, amount))
+        return f"trr_{booking_id}"
+
+    async def submit_dispute_evidence(self, dispute_id: str, text: str) -> None:
+        self.calls.append(("evidence", dispute_id, text))
+
+    async def account_address(self, account_id: str) -> str | None:
+        return None
+
+
+@pytest.fixture()
+def chargebacks(issuer, broker):
+    provider = _Chargebacks()
+    app = build_app(_settings(payments_provider="stripe"), provider=provider, verifier=issuer.verifier())
+    with TestClient(app) as c:
+        app.state._portal = c.portal
+        yield app, c, provider
+
+
+def _paid(app, booking_id: str, charge: str, **row):
+    from datetime import UTC, datetime
+
+    async def go():
+        async with app.state.db.transaction() as s:
+            now = datetime.now(UTC)
+            if await s.get(ConnectAccountRow, "host") is None:
+                s.add(ConnectAccountRow(owner_id="host", account_id="acct_1", payouts_enabled=True, updated_at=now))
+            s.add(
+                PaymentRow(
+                    booking_id=booking_id,
+                    intent_id=f"pi_{booking_id}",
+                    requester_id="buyer",
+                    owner_id="host",
+                    amount=4600,
+                    owner_net=4000,
+                    currency="EUR",
+                    status=row.pop("status", "captured"),
+                    charge_id=charge,
+                    created_at=now,
+                    updated_at=now,
+                    **row,
+                )
+            )
+
+    call(app, go)
+
+
+def _dispute(c, kind: str, charge: str, status: str, due: int | None = None) -> None:
+    obj = {"id": f"dp_{charge}", "object": "dispute", "charge": charge, "status": status}
+    if due:
+        obj["evidence_details"] = {"due_by": due}
+    body, headers = _signed(_event(kind, obj))
+    assert c.post("/payments/webhooks/stripe", content=body, headers=headers).status_code == 200
+
+
+def test_a_won_chargeback_pays_out_what_it_held(chargebacks, issuer):
+    app, c, provider = chargebacks
+    _paid(app, "bk_w", "ch_w")
+    _dispute(c, "charge.dispute.created", "ch_w", "needs_response", due=int(time.time()) + 7 * 86400)
+    assert _status(app, "bk_w", "completed")
+    held = call(app, _payment, app, "bk_w")
+    assert held.status == "captured" and held.held_payout and held.dispute_due_at is not None
+    # Staff see it, with its deadline, and answer it; the answer is audited.
+    staff = {"Authorization": f"Bearer {issuer.token('staff-1', **{'cognito:groups': ['admin']})}"}
+    [cb] = c.get("/admin/payments/chargebacks", headers=staff).json()
+    assert cb["bookingId"] == "bk_w" and cb["status"] == "needs_response" and cb["evidenceDueAt"]
+    assert c.get("/admin/payments/chargebacks", headers=issuer.headers("buyer")).status_code == 403
+    r = c.post(
+        "/admin/payments/bk_w/dispute-evidence",
+        json={"text": "Handed over on time, photos at both ends.", "links": ["https://cappy.app/b/bk_w"]},
+        headers=staff,
+    )
+    assert r.status_code == 204 and provider.calls[-1][0] == "evidence"
+    call(app, app.state.relay.flush)
+    # Won: the owner is paid what they would have been, once.
+    _dispute(c, "charge.dispute.closed", "ch_w", "won")
+    p = call(app, _payment, app, "bk_w")
+    assert p.status == "transferred" and p.chargeback_at is None and p.held_payout is None
+    assert [x for x in provider.calls if x[0] == "transfer"] == [("transfer", "bk_w", 4000)]
+    _dispute(c, "charge.dispute.closed", "ch_w", "won")
+    assert len([x for x in provider.calls if x[0] == "transfer"]) == 1
+    assert c.post("/admin/payments/bk_w/dispute-evidence", json={"text": "x" * 30}, headers=staff).status_code == 409
+
+
+def test_a_lost_chargeback_takes_the_payout_back_or_records_the_debt(chargebacks):
+    app, c, provider = chargebacks
+    _paid(app, "bk_l", "ch_l", status="transferred", transfer_id="tr_bk_l", paid_out_amount=4000)
+    _dispute(c, "charge.dispute.created", "ch_l", "needs_response")
+    _dispute(c, "charge.dispute.closed", "ch_l", "lost")
+    p = call(app, _payment, app, "bk_l")
+    assert p.status == "charged_back" and p.recovered_amount == 4000 and p.owner_owes == 0
+    assert ("reverse", "tr_bk_l", 4000) in provider.calls
+    # When the owner's balance cannot cover it, the debt is recorded, not lost.
+    provider.reversal_fails = True
+    _paid(app, "bk_o", "ch_o", status="transferred", transfer_id="tr_bk_o", paid_out_amount=4000)
+    _dispute(c, "charge.dispute.created", "ch_o", "needs_response")
+    _dispute(c, "charge.dispute.closed", "ch_o", "lost")
+    p = call(app, _payment, app, "bk_o")
+    assert p.status == "charged_back" and p.owner_owes == 4000 and p.recovered_amount == 0

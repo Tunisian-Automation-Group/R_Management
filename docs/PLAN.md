@@ -9,7 +9,7 @@ Branch: `prod-readiness`. Commits as tunisian-automation. Not pushed.
 Status: `[x]` done (with the commit that did it) · `[~]` in progress ·
 `[ ]` not started · `[-]` dropped (with the reason).
 
-## Resume here (end of 2026-09-26)
+## Resume here (2026-09-27)
 
 **How a day runs** (GOAL 15; the user's words: "continue again tomorrow doing
 exactly the same thing"). Each round:
@@ -21,58 +21,27 @@ exactly the same thing"). Each round:
    commit;
 3. an independent verifier checks the web version (desktop) and the app
    version (390 px) in Chrome, signing in only with the demo buttons;
-4. a docs-sync agent brings FEATURES, INFRA, FLOWS and DATA up to date
-   (CLAUDE.md "Living docs").
+4. a docs-sync agent brings the five living docs up to date (CLAUDE.md
+   "Living docs");
+5. a UI/UX agent reviews both versions against best-in-class apps and adds
+   UX tasks (GOAL 18);
+6. the readiness scoreboard [`READINESS.md`](READINESS.md) is re-scored
+   (GOAL 17). The loop ends when every technical blocker on it is met.
 
 Nothing is ever pushed or applied to real AWS (GOAL 12). Markets are all
 of Europe, the US and Canada (GOAL 16, ADR 0013).
 
-**Start tomorrow with:**
-1. `make up`, then `make e2e`, to prove the stack from clean.
-2. **Verification round 4** on both versions, in EN, DE and FR, as buyer,
-   host and staff. It covers everything built since round 3:
-   - 18+, business identity, no-shows, good faith;
-   - private evidence, the ID-check consent, the staff console approving
-     held listings and removing content;
-   - the public report form, the offline start, `/pay/return`, currency
-     formatting and French.
-3. **The web follow-ups the last backend round (235eeaa) created.** They're
-   in FLOWS.md §23:
-   - `conversation_closed`;
-   - the `charged` flag in the cancel sheet;
-   - the new decline reason, in DE and FR;
-   - the "messages are not emailed" copy;
-   - the country at payout onboarding;
-   - `identityProvider` driving the ID-check UI;
-   - booking currency lowercase vs quote currency uppercase.
-   Also from the last docs sync:
-   - "Everything also arrives by email" is no longer true for messages;
-   - after a staff refund the booking says "nothing was charged";
-   - the `delete_me` docstring is stale;
-   - export still lacks the ID-check consent and gives hand-over photos
-     as `evidence:` references;
-   - CloudFront copies of a deleted person's photos aren't purged, and a
-     listing's `spec` survives deletion;
-   - the inbox has no retention;
-   - the ID-check and held-listing thresholds are one number for every
-     currency (M-2);
-   - the gateway forwards only `stripe-signature`, which another ID
-     vendor's webhook would need changed.
-4. **The next build tasks, in order:**
-   - M-2: the market configuration, which the thresholds and ranking marked
-     `ponytail` still need;
-   - M-5 to M-8: places as geo points instead of Berlin districts;
-   - U-17: the Keychain and Keystore;
-   - the open technical P items: P-5 CSP in the shells, P-11 TLS inside the
-     VPC, P-31 app hardening, P-32 scanning and pinning;
-   - the S items: S-12 late return, S-17 bank fingerprints, S-20 duplicate
-     photos, S-21 dispute offers, S-23 web vitals, S-27 review prompt,
-     S-28 review-collusion signals;
-   - T-35c per-journey burn alarms; M-46 names per cell;
-   - pruning `revoked_sessions` and `rate_hits`.
-5. **A fresh research pass** on what nobody has looked at yet: seller
-   onboarding and listing-quality benchmarks, search relevance, support
-   tooling, and pricing and fee transparency across markets.
+**Where things stand:** verification rounds 4 to 7 are done and fixed
+(V4-*, V5-*, V6-*, V7-* in TASKS); M-2 (markets as configuration) and the
+first step of M-5/M-6 (listing points) are built; `READINESS.md` says
+NO-GO, with its technical blockers as R2-* tasks.
+
+**Next, in order:**
+1. Verification round 8 (R2-11) and its fixes, then round 9, until a round
+   finds nothing.
+2. The open technical readiness blockers in `READINESS.md` ("Blockers for
+   GO"), then the UX-* tasks marked P0.
+3. Re-score `READINESS.md` after every round.
 
 **Waiting on the owner** (business and legal, not code):
 - G-B1: insurance. It blocks S-8 and S-9, damage claims and deposits.
@@ -240,8 +209,9 @@ of Europe, the US and Canada (GOAL 16, ADR 0013).
 - [x] Data rights: deletion and export complete, with a test that walks every table (235eeaa)
 - [x] Living docs: FEATURES, INFRA, FLOWS, DATA (1928895..1216719), kept in sync each round
 - [x] Markets: research and ADR 0013 (0472163); currency per listing, the owner's country, French (db417ca, f42a4ef, 235eeaa)
-- [ ] Verification round 4 on both versions (tomorrow)
-- [ ] Market configuration and places as geo points (M-2, M-5..M-8)
+- [x] Verification rounds 4–7 on both versions, each fixed (829ae45, 6663198, 4d465be, 6c2f2ec)
+- [x] Market configuration (M-2, 747ed6b); listing points snapped to 500 m (M-5/M-6 first step, 61b15b8)
+- [ ] Geocoding and address forms (M-7, M-8); verification until a clean round (R2-11); READINESS GO
 
 ## Definition of done
 

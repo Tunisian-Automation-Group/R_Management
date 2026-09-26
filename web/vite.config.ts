@@ -19,7 +19,8 @@ const proxy = {
  * The files that let https://<domain>/listing/… open in the store apps instead
  * of the browser (Universal Links, App Links). Written at build time from
  * VITE_APPLE_TEAM_ID and VITE_ANDROID_SHA256 (the release signing certificate,
- * colon-separated hex); unset, they carry placeholders and verify nothing.
+ * colon-separated hex). Without them no file is published at all: a
+ * placeholder would verify nothing and read as broken to the stores (R2-1).
  */
 function appLinks(): Plugin {
   let env: Record<string, string> = {}
@@ -29,27 +30,64 @@ function appLinks(): Plugin {
       env = config.env
     },
     generateBundle() {
-      const team = env.VITE_APPLE_TEAM_ID || 'TEAMID'
-      const sha = env.VITE_ANDROID_SHA256 || '00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00'
-      const apple = {
-        applinks: {
-          details: [
-            {
-              appIDs: [`${team}.app.cappy`],
-              components: [{ '/': '/listing/*' }, { '/': '/bookings/*' }, { '/': '/earn*' }, { '/': '/pay/*' }],
-            },
-          ],
-        },
+      const team = env.VITE_APPLE_TEAM_ID?.trim()
+      const sha = env.VITE_ANDROID_SHA256?.trim()
+      if (team) {
+        const apple = {
+          applinks: {
+            details: [
+              {
+                appIDs: [`${team}.app.cappy`],
+                components: [{ '/': '/listing/*' }, { '/': '/bookings/*' }, { '/': '/earn*' }, { '/': '/pay/*' }],
+              },
+            ],
+          },
+        }
+        // No extension on Apple's file: it is fetched by that exact path, as application/json.
+        this.emitFile({ type: 'asset', fileName: '.well-known/apple-app-site-association', source: JSON.stringify(apple) })
       }
-      const android = [
-        {
-          relation: ['delegate_permission/common.handle_all_urls'],
-          target: { namespace: 'android_app', package_name: 'app.cappy', sha256_cert_fingerprints: [sha] },
-        },
-      ]
-      // No extension on Apple's file: it is fetched by that exact path, as application/json.
-      this.emitFile({ type: 'asset', fileName: '.well-known/apple-app-site-association', source: JSON.stringify(apple) })
-      this.emitFile({ type: 'asset', fileName: '.well-known/assetlinks.json', source: JSON.stringify(android) })
+      if (sha) {
+        const android = [
+          {
+            relation: ['delegate_permission/common.handle_all_urls'],
+            target: { namespace: 'android_app', package_name: 'app.cappy', sha256_cert_fingerprints: [sha] },
+          },
+        ]
+        this.emitFile({ type: 'asset', fileName: '.well-known/assetlinks.json', source: JSON.stringify(android) })
+      }
+    },
+  }
+}
+
+/**
+ * A release build (VITE_RELEASE=1, set by the deploy) refuses to build
+ * without what the law and the stores need on screen: the operator's
+ * company, address and contact (Impressum, privacy, DSA contact point), and
+ * well-formed app-link values when given. Local and CI builds leave it unset.
+ */
+export function releaseProblems(env: Record<string, string | undefined>): string[] {
+  if (env.VITE_RELEASE !== '1') return []
+  const problems: string[] = []
+  for (const key of ['VITE_LEGAL_COMPANY', 'VITE_LEGAL_ADDRESS', 'VITE_LEGAL_EMAIL']) {
+    if (!env[key]?.trim()) problems.push(`${key} is empty`)
+  }
+  const email = env.VITE_LEGAL_EMAIL?.trim()
+  if (email && !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) problems.push('VITE_LEGAL_EMAIL is not an email address')
+  const sha = env.VITE_ANDROID_SHA256?.trim()
+  if (sha && (!/^([0-9A-F]{2}:){31}[0-9A-F]{2}$/i.test(sha) || /^(00:){31}00$/.test(sha))) {
+    problems.push('VITE_ANDROID_SHA256 is not a real SHA-256 fingerprint (32 colon-separated hex bytes)')
+  }
+  const team = env.VITE_APPLE_TEAM_ID?.trim()
+  if (team && !/^[A-Z0-9]{10}$/.test(team)) problems.push('VITE_APPLE_TEAM_ID is not a 10-character team id')
+  return problems
+}
+
+function releaseGuard(): Plugin {
+  return {
+    name: 'cappy-release-guard',
+    configResolved(config) {
+      const problems = releaseProblems(config.env)
+      if (problems.length) throw new Error(`Release build refused:\n  - ${problems.join('\n  - ')}`)
     },
   }
 }
@@ -61,6 +99,7 @@ export default defineConfig({
     react(),
     tailwind(),
     appLinks(),
+    releaseGuard(),
     VitePWA({
       registerType: 'autoUpdate',
       includeAssets: ['apple-touch-icon.png'],

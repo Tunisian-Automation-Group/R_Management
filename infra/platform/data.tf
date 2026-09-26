@@ -202,5 +202,5 @@ resource "aws_cloudwatch_metric_alarm" "replica_lag" {
   threshold           = 1000
   comparison_operator = "GreaterThanThreshold"
   treat_missing_data  = "notBreaching"
-  alarm_actions       = local.alarm_actions
+  alarm_actions       = local.ticket_actions
 }

@@ -11,7 +11,7 @@ from .handlers import handlers
 from .identity import IdentityProvider, make_identity
 from .jobs import purge_invoices, reconcile
 from .provider import Provider, make_provider
-from .routes import internal, router
+from .routes import admin, internal, router
 from .settings import Settings
 from .tables import Base
 
@@ -44,6 +44,7 @@ def build_app(
     app.state.identity = identity
     app.include_router(router)
     app.include_router(internal)
+    app.include_router(admin)
     app.include_router(invoices.router)
     return app
 

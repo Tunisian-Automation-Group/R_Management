@@ -106,8 +106,38 @@ variable "switches" {
 }
 
 variable "legal" {
-  description = "The operator's identity for fee invoices (§ 14 UStG): legal name, address (comma-separated lines), VAT ID and/or tax number. Payments refuses to start without it."
-  type        = object({ company = string, address = string, vat_id = string, tax_number = string })
+  description = "The operator's identity for fee invoices (§ 14 UStG) and the Impressum, privacy policy and DSA contact point in the app: legal name, address (comma-separated lines), contact email, VAT ID and/or tax number, commercial register entry. Payments refuses to start without it; a release web build refuses to build without company, address and email."
+  type        = object({ company = string, address = string, email = string, vat_id = string, tax_number = string, register = optional(string, "") })
+}
+
+variable "apps" {
+  description = "The store apps, for deep links and the update screen: Apple team id, the Android release signing SHA-256 (colon hex), the store URLs. Empty until the apps ship; a web-only launch leaves them empty and publishes no app-link files"
+  type = object({
+    apple_team_id  = optional(string, "")
+    android_sha256 = optional(string, "")
+    app_store_url  = optional(string, "")
+    play_store_url = optional(string, "")
+  })
+  default = {}
+}
+
+variable "monthly_budget_usd" {
+  description = "The environment's monthly AWS budget in USD: forecast above 80% and actual above 100% open a ticket (backup.tf, R2-4)"
+  type        = number
+  default     = 1000
+}
+
+variable "account_security" {
+  description = "CloudTrail (multi-region, validated, object-locked), GuardDuty and Security Hub for this account (security.tf). Turn off only when the AWS organisation already runs them for every account"
+  type        = bool
+  default     = true
+}
+
+variable "pager_endpoint" {
+  description = "The pager's SNS HTTPS integration URL (PagerDuty, Opsgenie, or an Incident Manager response plan's endpoint): page-level alarms go there as well as to alarm_email. A prod plan warns without it (check prod_has_a_pager)"
+  type        = string
+  default     = ""
+  sensitive   = true
 }
 
 variable "feature_flags" {

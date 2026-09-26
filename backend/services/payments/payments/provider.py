@@ -71,6 +71,14 @@ class Provider:
         return None
 
     def parse_webhook(self, payload: bytes, signature: str) -> dict: ...
+    async def submit_dispute_evidence(self, dispute_id: str, text: str) -> None:
+        """Answer a chargeback with the booking's story (R2-3)."""
+        ...
+
+    async def reverse_transfer(self, transfer_id: str, amount: int, booking_id: str) -> str:
+        """Take a payout back from the owner's account (a lost chargeback)."""
+        ...
+
     async def aclose(self) -> None: ...
 
 
@@ -161,6 +169,19 @@ class StripeProvider(Provider):
             {"idempotency_key": f"transfer-{booking_id}"},
         )
         return t.id
+
+    async def submit_dispute_evidence(self, dispute_id: str, text: str) -> None:
+        # ponytail: text only (Stripe's uncategorized_text); uploading photos
+        # through Stripe's Files API as uncategorized_file comes when staff ask.
+        await self._c.v1.disputes.update_async(
+            dispute_id, {"evidence": {"uncategorized_text": text[:20000]}, "submit": True}
+        )
+
+    async def reverse_transfer(self, transfer_id: str, amount: int, booking_id: str) -> str:
+        r = await self._c.v1.transfers.reversals.create_async(
+            transfer_id, {"amount": amount}, {"idempotency_key": f"reversal-{booking_id}"}
+        )
+        return r.id
 
     async def create_account(self, owner_id: str, country: str = "DE") -> str:
         a = await self._c.v1.accounts.create_async(
@@ -254,6 +275,13 @@ class FakeProvider(Provider):
 
     async def create_account(self, owner_id: str, country: str = "DE") -> str:
         return f"{FAKE_ACCOUNT_PREFIX}{owner_id}"[:80]
+
+    async def submit_dispute_evidence(self, dispute_id: str, text: str) -> None:
+        self._call("dispute_evidence", dispute_id)
+
+    async def reverse_transfer(self, transfer_id: str, amount: int, booking_id: str) -> str:
+        self._call("reverse_transfer", booking_id)
+        return f"trr_fake_{booking_id}"
 
     async def onboarding_link(self, account_id: str, return_url: str, refresh_url: str) -> str:
         return return_url

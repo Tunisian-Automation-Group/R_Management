@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from sqlalchemy import Boolean, Integer, String
+from sqlalchemy import Boolean, Integer, String, Text
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
 from cappy_common.db import UtcDateTime, new_metadata
@@ -41,6 +41,18 @@ class PaymentRow(Base):
     # The card holder disputed the charge with their bank (a chargeback).
     # While set, the owner is not paid out; support settles it.
     chargeback_at: Mapped[datetime | None] = mapped_column(UtcDateTime, nullable=True)
+    # The chargeback as the provider reports it (R2-3): its id, status
+    # (needs_response, under_review, won, lost, ...) and the evidence deadline.
+    dispute_id: Mapped[str | None] = mapped_column(String(80), nullable=True)
+    dispute_status: Mapped[str | None] = mapped_column(String(30), nullable=True)
+    dispute_due_at: Mapped[datetime | None] = mapped_column(UtcDateTime, nullable=True)
+    # The completion a chargeback held back (its event data, JSON): paid out
+    # as it would have been if the chargeback is won.
+    held_payout: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # A lost chargeback after the owner was paid: what came back from the
+    # owner's account (a transfer reversal), and what is still owed.
+    recovered_amount: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
+    owner_owes: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
     # Stripe's fingerprint of the card (the same for the same card on any
     # account): booking links it to suspended accounts (S-17).
     card_fingerprint: Mapped[str | None] = mapped_column(String(64), nullable=True)

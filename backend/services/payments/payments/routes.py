@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import logging
 from datetime import UTC, datetime
 
@@ -12,15 +13,17 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from cappy_common.app import ApiRouter
-from cappy_common.auth import Principal, require_internal, require_principal
+from cappy_common.auth import Principal, require_admin, require_internal, require_principal
 from cappy_common.db import insert_or_ignore
 from cappy_common.errors import Conflict, Invalid, NotFound, Unavailable
-from cappy_common.events import IDENTITY_VERIFIED, PAYMENT_AUTHORISED, PAYOUTS_READY
+from cappy_common.events import IDENTITY_VERIFIED, PAYMENT_AUTHORISED, PAYOUTS_READY, STAFF_ACTION
 from cappy_common.markets import markets
 from cappy_common.models import CamelModel, Iso
 from cappy_common.runtime import Tx
 from cappy_common.timeutil import iso_from_datetime
 
+from . import invoices
+from .handlers import pay_out
 from .identity import IdentityResult, stripe_result
 from .provider import FAKE_ACCOUNT_PREFIX, Provider
 from .tables import PROCESSED, ConnectAccountRow, IdentityRow, PaymentRow
@@ -28,6 +31,7 @@ from .tables import PROCESSED, ConnectAccountRow, IdentityRow, PaymentRow
 log = logging.getLogger(__name__)
 router = ApiRouter(prefix="/payments")
 internal = ApiRouter(prefix="/internal", dependencies=[Depends(require_internal)])
+admin = ApiRouter(prefix="/admin/payments")
 
 
 def _now() -> datetime:
@@ -482,17 +486,154 @@ async def stripe_webhook(request: Request, session: AsyncSession = Tx) -> dict:
     elif (result := stripe_result(event)) is not None:
         # Stripe sends ID-check events to this same endpoint.
         await _identity_result(request, session, result)
-    elif kind == "charge.dispute.created":
-        q = select(PaymentRow).where(PaymentRow.charge_id == obj["charge"]).with_for_update()
-        row = (await session.execute(q)).scalar_one_or_none()
-        if row is not None and row.chargeback_at is None:
-            row.chargeback_at = _now()
-            row.updated_at = row.chargeback_at
-            # The alarm on this line (Terraform: chargebacks) pages support.
-            log.error("CHARGEBACK on booking %s (dispute %s); payout held", row.booking_id, obj.get("id"))
+    elif kind.startswith("charge.dispute."):
+        await _chargeback(request, session, kind, obj)
     else:
         log.info("ignoring stripe event %s", kind)
     return {"received": True}
+
+
+# Won, or a warning the bank closed: the hold ends. Lost: the money went back
+# to the card holder, and with separate charges and transfers the platform
+# carries it unless the owner's payout is recovered.
+DISPUTE_RELEASED = ("won", "warning_closed")
+
+
+async def _chargeback(request: Request, session: AsyncSession, kind: str, obj: dict) -> None:
+    """Every charge.dispute.* event (R2-3, runbook "A chargeback"). Stripe
+    sends them out of order, so each one records the dispute's own status."""
+    q = select(PaymentRow).where(PaymentRow.charge_id == obj.get("charge")).with_for_update()
+    row = (await session.execute(q)).scalar_one_or_none()
+    if row is None:
+        return
+    now = _now()
+    row.dispute_id = obj.get("id") or row.dispute_id
+    row.dispute_status = (obj.get("status") or row.dispute_status or "")[:30] or None
+    due = (obj.get("evidence_details") or {}).get("due_by")
+    if due:
+        row.dispute_due_at = datetime.fromtimestamp(int(due), UTC)
+    row.updated_at = now
+    status = obj.get("status")
+    if kind == "charge.dispute.closed" or status in (*DISPUTE_RELEASED, "lost"):
+        if status in DISPUTE_RELEASED and row.chargeback_at is not None:
+            row.chargeback_at = None
+            log.warning("chargeback on %s ended (%s): hold released", row.booking_id, status)
+            if row.held_payout and row.status == "captured":
+                held, row.held_payout = json.loads(row.held_payout), None
+                settings = request.app.state.settings
+                await pay_out(
+                    session, _provider(request), request.app.state.outbox, invoices.issuer_of(settings), row, held
+                )
+        elif status == "lost" and row.status != "charged_back":
+            await _chargeback_lost(request, row)
+        return
+    if row.chargeback_at is None:
+        row.chargeback_at = now
+        # The alarm on this line (Terraform: chargebacks) opens a ticket.
+        log.error("CHARGEBACK on booking %s (dispute %s); payout held", row.booking_id, row.dispute_id)
+
+
+async def _chargeback_lost(request: Request, row: PaymentRow) -> None:
+    """The card holder has the money back. An owner already paid gives their
+    share back through a transfer reversal; what their balance cannot cover
+    is recorded as owed and taken from the next payout, per the terms."""
+    row.status = "charged_back"
+    row.held_payout = None
+    if row.transfer_id and row.paid_out_amount > row.recovered_amount:
+        due = row.paid_out_amount - row.recovered_amount
+        try:
+            await _provider(request).reverse_transfer(row.transfer_id, due, row.booking_id)
+            row.recovered_amount += due
+        except Exception as e:  # noqa: BLE001 - any provider failure means we are still owed
+            row.owner_owes = due
+            log.error("CHARGEBACK LOST on %s: %s could not be recovered from the owner: %s", row.booking_id, due, e)
+            return
+    log.error("CHARGEBACK LOST on booking %s: recovered %s", row.booking_id, row.recovered_amount)
+
+
+# --- staff: chargebacks ----------------------------------------------------------------
+
+
+class Chargeback(CamelModel):
+    booking_id: str
+    dispute_id: str | None
+    status: str | None
+    evidence_due_at: Iso | None
+    amount: int
+    currency: str
+    paid_out: int
+    recovered: int
+    owner_owes: int
+
+
+@admin.get("/chargebacks", response_model=list[Chargeback])
+async def chargebacks(session: AsyncSession = Tx, staff: Principal = Depends(require_admin)) -> list[Chargeback]:
+    """Open chargebacks first, soonest evidence deadline first; then the lost
+    ones still owed by an owner."""
+    rows = (
+        await session.execute(
+            select(PaymentRow)
+            .where(PaymentRow.dispute_id.is_not(None))
+            .where(PaymentRow.chargeback_at.is_not(None) | (PaymentRow.owner_owes > 0))
+            .order_by(PaymentRow.dispute_due_at.asc().nulls_last())
+            .limit(200)
+        )
+    ).scalars()
+    return [
+        Chargeback(
+            booking_id=r.booking_id,
+            dispute_id=r.dispute_id,
+            status=r.dispute_status,
+            evidence_due_at=iso_from_datetime(r.dispute_due_at) if r.dispute_due_at else None,
+            amount=r.amount,
+            currency=r.currency,
+            paid_out=r.paid_out_amount,
+            recovered=r.recovered_amount,
+            owner_owes=r.owner_owes,
+        )
+        for r in rows
+    ]
+
+
+class EvidenceIn(CamelModel):
+    text: str = Field(min_length=20, max_length=20000)
+    links: list[str] = Field(default_factory=list, max_length=20)
+
+
+@admin.post("/{booking_id}/dispute-evidence", status_code=204)
+async def dispute_evidence(
+    booking_id: str,
+    body: EvidenceIn,
+    request: Request,
+    session: AsyncSession = Tx,
+    staff: Principal = Depends(require_admin),
+) -> None:
+    """Staff answer a chargeback with the booking's trail: what happened, the
+    hand-over photos, the messages (runbook "A chargeback")."""
+    row = await session.get(PaymentRow, booking_id, with_for_update=True)
+    if row is None or not row.dispute_id:
+        raise NotFound("no chargeback on this booking")
+    if row.chargeback_at is None:
+        raise Conflict("this chargeback is closed")
+    text = body.text + ("\n\nEvidence:\n" + "\n".join(body.links) if body.links else "")
+    await _provider(request).submit_dispute_evidence(row.dispute_id, text)
+    row.dispute_status = "under_review"
+    row.updated_at = _now()
+    await request.app.state.outbox.add(
+        session,
+        STAFF_ACTION,
+        {
+            "actorId": staff.sub,
+            "action": "submit_chargeback_evidence",
+            "targetType": "booking",
+            "targetId": booking_id,
+            "personId": row.owner_id,
+            "reason": "",
+            "details": {"bookingId": booking_id, "currency": row.currency, "amount": row.amount},
+            "service": "payments",
+            "at": iso_from_datetime(row.updated_at),
+        },
+    )
 
 
 @router.post("/webhooks/identity", status_code=200)

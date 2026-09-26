@@ -65,9 +65,10 @@ variable "switches" {
 }
 
 # The operator on fee invoices (§ 14 UStG). Set by the GitHub environment
-# variable LEGAL (TF_VAR_legal): {"company":"…","address":"…","vat_id":"…","tax_number":""}
+# variable LEGAL (TF_VAR_legal):
+# {"company":"…","address":"…","email":"…","vat_id":"…","tax_number":"","register":"…"}
 variable "legal" {
-  type = object({ company = string, address = string, vat_id = string, tax_number = string })
+  type = object({ company = string, address = string, email = string, vat_id = string, tax_number = string, register = optional(string, "") })
 }
 
 # Feature flags (S-26). Set by the GitHub environment variable FEATURE_FLAGS
@@ -77,6 +78,26 @@ variable "feature_flags" {
   default = ""
 }
 
+# The store apps (TF_VAR_apps from the APPS variable), once they ship:
+# {"apple_team_id":"…","android_sha256":"AB:CD:…","app_store_url":"…","play_store_url":"…"}
+variable "apps" {
+  type = object({
+    apple_team_id  = optional(string, "")
+    android_sha256 = optional(string, "")
+    app_store_url  = optional(string, "")
+    play_store_url = optional(string, "")
+  })
+  default = {}
+}
+
+# The pager's SNS HTTPS integration URL (TF_VAR_pager_endpoint from the
+# PAGER_ENDPOINT secret). A prod plan warns loudly without one (check block).
+variable "pager_endpoint" {
+  type      = string
+  default   = ""
+  sensitive = true
+}
+
 module "platform" {
   source = "../../platform"
   # Real money moves through these accounts: threat protection (compromised
@@ -84,9 +105,11 @@ module "platform" {
   cognito_threat_protection = true
   providers                 = { aws = aws, aws.us_east_1 = aws.us_east_1 }
 
-  switches      = var.switches
-  feature_flags = var.feature_flags
-  legal         = var.legal
+  switches       = var.switches
+  feature_flags  = var.feature_flags
+  legal          = var.legal
+  apps           = var.apps
+  pager_endpoint = var.pager_endpoint
 
   env          = "prod"
   cell         = var.cell
@@ -100,6 +123,9 @@ module "platform" {
   db_max_acu   = 64
   db_instances = 2
   bot_control  = true
+  # Launch traffic (INFRA §6): Aurora with a reader, 3 NATs, Cognito Plus,
+  # Bot Control, the private CA. Raise with real numbers.
+  monthly_budget_usd = 4000
 }
 
 output "platform" {
