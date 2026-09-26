@@ -95,6 +95,8 @@ const CODE_TEXT: Record<string, () => string> = {
   within_grace: () => t('The first 30 minutes are free, so there is nothing to report.'),
   claim_window: () => t('Late returns are reported within 24 hours after the end.'),
   claim_exists: () => t('A late return is already reported for this booking.'),
+  reports_today: () => t('We already have your reports from today. We will be in touch.'),
+  reported_enough: () => t('This has already been reported enough times. Our team is looking at it.'),
 }
 
 /** Server sentences with no code of their own, in the reader's words and
@@ -842,6 +844,10 @@ export type Report = {
   decision?: string
   statement?: string
   statementOfReasons?: StatementOfReasons
+  /** What is reported, named by the server: a person's name or a listing's title (V7-19). */
+  targetLabel?: string
+  /** The reported words themselves, for a review. */
+  targetText?: string
 }
 export type SystemReason = 'reliability' | 'linked_to_suspended'
 /** DSA Art. 17: what the affected person is told after a take-down or suspension. */

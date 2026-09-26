@@ -10,8 +10,17 @@ export function moved(b: {
   status: string
   noShow?: 'owner' | 'renter'
   refundAmount?: number
+  charged?: number
+  refunded?: number
+  ownerShare?: number
   match: { quote: { total: number } }
 }): { charged: number; refunded: number; fee: number; ownerNet: number } {
+  // The server's reckoning is the truth (1cb2d67: payments' own figures on
+  // the detail, the same rule on lists).
+  if (b.charged !== undefined && b.refunded !== undefined && b.ownerShare !== undefined) {
+    return { charged: b.charged, refunded: b.refunded, fee: b.charged - b.refunded - b.ownerShare, ownerNet: b.ownerShare }
+  }
+  // ponytail: fallback for an answer from before the money fields; delete once no client can meet one.
   const taken =
     ['accepted', 'active', 'completed', 'disputed'].includes(b.status) ||
     b.noShow === 'renter' ||

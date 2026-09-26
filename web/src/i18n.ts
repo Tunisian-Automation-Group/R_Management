@@ -58,17 +58,28 @@ export const locale = (): string => {
   return own || 'de-DE'
 }
 
-export async function setLang(next: Lang): Promise<void> {
+export async function setLang(next: Lang, remember = true): Promise<void> {
   if (next === current) return
   await load(next)
   current = next
-  try {
-    localStorage.setItem(KEY, next)
-  } catch {
-    // Not remembered; still switched for this visit.
+  if (remember) {
+    try {
+      localStorage.setItem(KEY, next)
+    } catch {
+      // Not remembered; still switched for this visit.
+    }
   }
   document.documentElement.lang = next
   listeners.forEach((fn) => fn())
+}
+
+// Every open tab speaks the language last chosen in any of them (V7-30), so
+// an old tab can never send its stale locale to the server again. The storage
+// event fires only in the other tabs; they adopt without writing back.
+if (typeof window !== 'undefined') {
+  window.addEventListener('storage', (e) => {
+    if (e.key === KEY && isLang(e.newValue)) void setLang(e.newValue, false)
+  })
 }
 
 export function useLang(): Lang {

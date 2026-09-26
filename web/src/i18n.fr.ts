@@ -1369,4 +1369,5 @@ export const FR: Record<string, string> = {
   "The listing was removed": "L’annonce a été retirée",
   "The booking this extended was cancelled": "La réservation prolongée a été annulée",
   "Cappy stopped this request": "Cappy a arrêté cette demande",
+  "This has already been reported enough times. Our team is looking at it.": "Ce contenu a déjà été signalé suffisamment de fois. Notre équipe l’examine.",
 }

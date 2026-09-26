@@ -339,6 +339,13 @@ export type Booking = {
   noShow?: 'owner' | 'renter'
   /** ISO 4217: what the card is charged in (M-3). */
   currency?: string
+  /** What moved, in minor units of `currency` (the server's reckoning): charged
+   *  (0 while only held), refunded, the owner's share of what was kept, and
+   *  what has reached the owner so far. */
+  charged?: Cents
+  refunded?: Cents
+  ownerShare?: Cents
+  paidOut?: Cents
 }
 
 export type ListingSnapshot = {

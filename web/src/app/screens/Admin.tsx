@@ -6,7 +6,6 @@ import {
   ApiError,
   approveListing,
   decideReport,
-  getAdminListing,
   getHeldListings,
   getAdminReports,
   reinstateOwner,
@@ -26,7 +25,7 @@ import { SignedOut } from '../components/SignedOut.tsx'
 import { Button, Card, Check, EmptyState, Field, Input, Segmented, Sheet, Textarea } from '../components/ui.tsx'
 import { ago } from '../format.ts'
 import { plural, t } from '../../i18n.ts'
-import { Approvals, AuditLog, Cases, Person } from './AdminCases.tsx'
+import { Approvals, AuditLog, Cases } from './AdminCases.tsx'
 import { holdText } from '../format.ts'
 
 type Status = Report['status']
@@ -112,14 +111,8 @@ function targetLink(r: Report): string | null {
 /** The reported thing by name, not by id (V7-19): a person's name, a
  *  listing's title; messages and reviews keep a short id. */
 function TargetName({ r }: { r: Report }) {
-  const listing = useQuery({
-    queryKey: ['adminListing', r.targetId],
-    queryFn: () => getAdminListing(r.targetId),
-    enabled: r.targetType === 'listing',
-    staleTime: 60_000,
-  })
-  if (r.targetType === 'owner') return <Person id={r.targetId} />
-  if (r.targetType === 'listing') return <>{listing.data?.detail.listing.title ?? r.targetId}</>
+  // The server names the target (V7-19): the person's name or the listing's title.
+  if (r.targetLabel) return <>{r.targetLabel}</>
   return <span className="tnum text-[var(--ink-3)]">{r.targetId.slice(0, 10)}…</span>
 }
 
@@ -387,6 +380,11 @@ function Decide({ report, onClose }: { report: Report | null; onClose: () => voi
             <p className="text-[0.9375rem] font-semibold">
               {t(REASON_LABEL[report.reason] ?? report.reason)} · {targetLabel(report.targetType)} <TargetName r={report} />
             </p>
+            {report.targetText && (
+              <blockquote className="t-sm mt-2 whitespace-pre-wrap border-l-2 border-[var(--line)] pl-3 text-[var(--ink-2)]">
+                {report.targetText}
+              </blockquote>
+            )}
             <p className="t-sm mt-1 whitespace-pre-wrap text-[var(--ink-2)]">{report.details}</p>
           </div>
         )}

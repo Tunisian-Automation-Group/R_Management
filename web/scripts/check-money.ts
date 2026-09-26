@@ -14,4 +14,10 @@ assert.equal(moved({ status: 'declined', ...q(1500) }).charged, 0)
 assert.deepEqual(moved({ status: 'cancelled', refundAmount: 1500, ...q(1500) }), { charged: 1500, refunded: 1500, fee: 0, ownerNet: 0 })
 // A late cancellation that gives nothing back still took the price.
 assert.equal(moved({ status: 'cancelled', refundAmount: 0, ...q(1500) }).charged, 1500)
-console.log('money: charged, refunded and the owner share follow the booking')
+// The server's figures win whenever they are there, whatever the status says.
+assert.deepEqual(
+  moved({ status: 'completed', refundAmount: 700, charged: 1500, refunded: 500, ownerShare: 850, ...q(1500) }),
+  { charged: 1500, refunded: 500, fee: 150, ownerNet: 850 },
+)
+assert.equal(moved({ status: 'accepted', charged: 0, refunded: 0, ownerShare: 0, ...q(1500) }).charged, 0)
+console.log('money: charged, refunded and the owner share follow the server, or the booking when it is silent')

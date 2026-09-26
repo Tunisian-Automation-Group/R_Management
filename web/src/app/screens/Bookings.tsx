@@ -255,7 +255,7 @@ function BookingRow({ booking, hosting, onOpen }: { booking: Booking; hosting: b
 /** The price, or once money came back (a refund, a partial settlement) what
  *  really stayed: the renter's net cost, the owner's share of it (V7-3). */
 function amountOf(b: Booking, hosting: boolean): number {
-  if (b.refundAmount === undefined && b.noShow !== 'renter') return hosting ? b.match.quote.ownerNet : b.match.quote.total
+  if (b.charged === undefined && b.refundAmount === undefined && b.noShow !== 'renter') return hosting ? b.match.quote.ownerNet : b.match.quote.total
   const m = moved(b)
   // Everything back (or nothing taken): the price, as for any ended booking; its status says the rest.
   if (m.charged - m.refunded <= 0) return hosting ? b.match.quote.ownerNet : b.match.quote.total
