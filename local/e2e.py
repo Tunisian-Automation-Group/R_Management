@@ -215,8 +215,11 @@ def main() -> None:
     again = ok(http.post("/bookings", json=body, headers=key), 201)
     booking_id = made["booking"]["id"]
     assert again["booking"]["id"] == booking_id and made["payment"]["clientSecret"]
-    other = sign_in("buyer@demo.cappy.local")
-    ok(http.put("/me", json={"adult": True, "name": "Demo Buyer", "kind": "person", "district": "Mitte"}, headers=other))
+    # A second buyer of its own: the run never depends on, or changes, the
+    # demo accounts testers use (their limits, home, history; V5-26).
+    rival_email = f"rival-{run}@example.com"
+    other = sign_up(rival_email)
+    ok(http.put("/me", json={"adult": True, "name": "Rae Rival", "kind": "person", "district": "Mitte"}, headers=other))
     assert http.post("/bookings", json=body, headers=other).status_code == 409, "the same window twice"
 
     if ok(http.get("/payments/config"))["provider"] == "stripe":
@@ -284,7 +287,8 @@ def main() -> None:
         except idp.exceptions.UserNotFoundException:
             return True
 
-    for address in (email, host_email):
+    assert http.delete("/me", headers=other).status_code == 204
+    for address in (email, host_email, rival_email):
         until(f"{address}'s sign-in to be deleted", lambda a=address: gone(a))
     print("e2e passed")
 
