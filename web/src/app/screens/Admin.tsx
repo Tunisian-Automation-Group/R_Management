@@ -428,9 +428,8 @@ function Held() {
   )
 }
 
-/** A held listing with who is behind it: its owner's name and record (V5-4).
- *  ponytail: title and price only; the listing page is not open to staff while
- *  it is held (catalog listing_detail), so no photos or text until the server allows it. */
+/** A held listing with who is behind it: its owner's name and record (V5-4);
+ *  "Look at it" opens the whole listing in the staff view. */
 function HeldCard({ h, busy, onApprove }: { h: HeldListing; busy: boolean; onApprove: () => void }) {
   const owner = useOwner(h.ownerId)
   return (
@@ -446,6 +445,9 @@ function HeldCard({ h, busy, onApprove }: { h: HeldListing; busy: boolean; onApp
             : h.ownerId}
         </p>
       </div>
+      <Button size="sm" variant="secondary" to={`/admin/listing/${h.id}`}>
+        {t('Look at it')}
+      </Button>
       {/* Held for where it is (V5-1): only moving it to an open market releases it. */}
       {h.holdReason ? (
         <p className="t-sm w-full text-[var(--warn)]">{holdText(h.holdReason)}</p>

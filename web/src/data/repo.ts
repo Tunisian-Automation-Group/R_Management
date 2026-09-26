@@ -85,6 +85,7 @@ const CODE_TEXT: Record<string, () => string> = {
   district_not_in_country: () => t('Pick a district in your own country.'),
   four_eyes: () => t('A second staff member has to approve a refund you proposed.'),
   needs_lead: () => t('This refund is above your limit: a lead has to approve it.'),
+  not_yours: () => t('Only the staff member who proposed it can withdraw it.'),
   approval_pending: () => t('A refund for this booking is already waiting for approval.'),
   invalid_refund: () => t('That refund amount does not fit this booking.'),
   own_offer: () => t('That is your own offer: the other side accepts it.'),
@@ -855,6 +856,10 @@ export type HeldListing = { id: string; ownerId: string; title: string; category
 /** New owners' expensive listings waiting for a look, oldest first (FL-5). */
 export const getHeldListings = () => get<HeldListing[]>('/admin/listings/held')
 export const approveListing = (id: string) => post<void>(`/admin/listings/${id}/approve`)
+export type ListingState = 'live' | 'held' | 'paused' | 'taken_down' | 'deleted'
+/** Any listing as staff see it, whatever its state (V5-4): the public detail plus why it is not public. */
+export type AdminListing = { detail: ListingDetail; state: ListingState; holdReason?: HoldReason; heldAt?: string }
+export const getAdminListing = (id: string) => get<AdminListing>(`/admin/listings/${encodeURIComponent(id)}`)
 export type Decision = 'dismiss' | 'take_down' | 'suspend' | 'remove_content'
 export const decideReport = (id: string, action: Decision, statement: string, g: Grounds) =>
   post<Report>(`/admin/reports/${id}/decide`, { action, statement, ...g })
@@ -886,7 +891,7 @@ export type Resolution = {
   note?: string
   by: string
   role: 'support' | 'lead' | 'parties'
-  status: 'done' | 'pending_approval' | 'rejected'
+  status: 'done' | 'pending_approval' | 'rejected' | 'withdrawn'
   approvedBy?: string
   createdAt: string
   decidedAt?: string
@@ -938,7 +943,7 @@ export type CaseView = {
   booking: Booking
   requesterId: string
   ownerId: string
-  timeline: { fromStatus?: string; toStatus: string; by: string; at: string }[]
+  timeline: { fromStatus?: string; toStatus: string; by: string; actorKind?: 'person' | 'staff' | 'system'; at: string }[]
   messages: { id: string; senderId: string; body: string; at: string; flagged?: boolean }[]
   evidence: Evidence[]
   payment?: {
@@ -968,6 +973,8 @@ export const getPendingResolutions = () => get<Resolution[]>('/admin/resolutions
 export const approveResolution = (id: string, note: string, key?: string) =>
   post<Resolved>(`/admin/resolutions/${id}/approve`, { note }, idem(key))
 export const rejectResolution = (id: string, note: string) => post<Resolution>(`/admin/resolutions/${id}/reject`, { note })
+/** The proposer takes back their own pending proposal; the case can be decided again. */
+export const withdrawResolution = (id: string) => post<Resolution>(`/admin/resolutions/${id}/withdraw`, {})
 export const decideClaim = (id: string, decision: 'confirm' | 'reject', note: string) =>
   post<Claim>(`/admin/claims/${id}/decide`, { decision, note })
 export const getAudit = (f: { target?: string; actor?: string }, cursor?: string) =>

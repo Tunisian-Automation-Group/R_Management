@@ -1,5 +1,6 @@
 import { useId, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
+import { Listing } from './Listing.tsx'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useSession } from '../../data/auth.ts'
 import {
@@ -12,11 +13,15 @@ import {
   getPendingResolutions,
   rejectResolution,
   resolveDispute,
+  withdrawResolution,
+  approveListing,
+  getAdminListing,
   useAttemptKey,
   useOwner,
   type AuditEntry,
   type CaseFilters,
   type CaseRow,
+  type CaseView,
   type Claim,
   type ReasonCode,
   type Resolution,
@@ -51,6 +56,7 @@ const RESOLUTION_STATUS: Record<Resolution['status'], string> = {
   done: 'Done',
   pending_approval: 'Waiting for a second staff member',
   rejected: 'Rejected',
+  withdrawn: 'Withdrawn by the proposer',
 }
 const PAYMENT_STATUS: Record<string, string> = {
   created: 'Waiting for the card',
@@ -70,6 +76,44 @@ function Person({ id }: { id?: string }) {
   return <>{p.data?.name ?? `${id.slice(0, 8)}…`}</>
 }
 const staff = (id: string, me?: string) => (id === me ? t('you') : `${t('staff')} ${id.slice(0, 8)}`)
+
+const REFRESH = ['adminResolutions', 'adminCases', 'adminCase', 'audit']
+
+/** "Withdraw my proposal": only on the proposer's own pending one, so a case never
+ *  stalls when nobody else is on shift. The case can be decided again after. */
+function WithdrawButton({ r }: { r: Resolution }) {
+  const qc = useQueryClient()
+  const toast = useToast()
+  const me = useSession()?.sub
+  const [busy, setBusy] = useState(false)
+  if (r.status !== 'pending_approval' || r.by !== me) return null
+  const go = async () => {
+    setBusy(true)
+    try {
+      await withdrawResolution(r.id)
+      toast(t('Withdrawn. You can decide the case again'))
+    } catch (err) {
+      toast(messageOf(err), 'error')
+    } finally {
+      setBusy(false)
+      await Promise.all(REFRESH.map((k) => qc.invalidateQueries({ queryKey: [k] })))
+    }
+  }
+  return (
+    <Button size="sm" variant="secondary" disabled={busy} onClick={() => void go()}>
+      {t('Withdraw my proposal')}
+    </Button>
+  )
+}
+
+/** Who moved a booking: a party by role, staff by label, Cappy's own jobs as Cappy. */
+function actorLabel(e: CaseView['timeline'][number], c: CaseView, me?: string): string {
+  if (e.actorKind === 'system') return t('Cappy (automatic)')
+  if (e.by === c.requesterId) return t('renter')
+  if (e.by === c.ownerId) return t('owner')
+  if (e.actorKind === 'staff') return staff(e.by, me)
+  return e.actorKind === 'person' ? `${e.by.slice(0, 8)}…` : t('Cappy (automatic)')
+}
 
 /** "12,00 €" typed as text → minor units; null when it is not a number. */
 function toMinor(text: string, currency: string): number | null {
@@ -235,12 +279,18 @@ export function Approvals() {
                   <Button size="sm" variant="secondary" to={`/admin/case/${r.bookingId}`}>
                     {t('Open the case')}
                   </Button>
-                  <Button size="sm" onClick={() => setOpen({ r, approve: true })}>
-                    {t('Approve')}
-                  </Button>
-                  <Button size="sm" variant="quiet" onClick={() => setOpen({ r, approve: false })}>
-                    {t('Reject')}
-                  </Button>
+                  {r.by === me ? (
+                    <WithdrawButton r={r} />
+                  ) : (
+                    <>
+                      <Button size="sm" onClick={() => setOpen({ r, approve: true })}>
+                        {t('Approve')}
+                      </Button>
+                      <Button size="sm" variant="quiet" onClick={() => setOpen({ r, approve: false })}>
+                        {t('Reject')}
+                      </Button>
+                    </>
+                  )}
                 </div>
               </Card>
             </li>
@@ -426,8 +476,12 @@ export function AdminCase() {
       <p className="t-sm -mt-2 mb-5 text-[var(--ink-3)]">
         {statusLabel(b.status)} · {range(b.match.start, b.match.end)} · {formatMoney(b.match.quote.total, cur)} · <span className="tnum">{b.id}</span>
       </p>
+      <Button size="sm" variant="secondary" to={`/admin/listing/${b.match.listingId}`}>
+        {t('Open the listing (staff view)')}
+      </Button>
 
-      {c.dispute && (
+      {/* Only while it is open: a settled dispute is told by its refund decision below. */}
+      {c.dispute && b.status === 'disputed' && (
         <Banner
           tone={c.dispute.escalatedAt ? 'danger' : 'warn'}
           title={c.dispute.escalatedAt ? t('Escalated: the parties did not agree in 72 hours') : t('In dispute')}
@@ -465,6 +519,9 @@ export function AdminCase() {
                   {r.approvedBy ? ` · ${r.approvedBy === me ? t('approved by you') : t('approved by {who}', { who: staff(r.approvedBy, me) })}` : ''}
                 </p>
                 {r.note && <p className="t-sm mt-1 text-[var(--ink-2)]">{r.note}</p>}
+                <div className="mt-2">
+                  <WithdrawButton r={r} />
+                </div>
               </div>
             ))}
           </Card>
@@ -479,7 +536,7 @@ export function AdminCase() {
           {c.timeline.map((e, i) => (
             <li key={i} className="t-sm text-[var(--ink-2)]">
               <span className="tnum text-[var(--ink-4)]">{when(e.at)}</span> · {e.fromStatus ? `${statusLabel(e.fromStatus)} → ` : ''}
-              {statusLabel(e.toStatus)} · {e.by === c.requesterId ? t('renter') : e.by === c.ownerId ? t('owner') : e.by}
+              {statusLabel(e.toStatus)} · {actorLabel(e, c, me)}
             </li>
           ))}
         </ol>
@@ -664,3 +721,72 @@ function Claims({ claims, bookingId }: { claims: Claim[]; bookingId: string }) {
   )
 }
 export const CLAIM_STATUS: Record<Claim['status'], string> = { open: 'Open', confirmed: 'Confirmed', rejected: 'Rejected' }
+
+// ------------------------------------------------------------ listing preview
+
+const STATE_LABEL: Record<string, string> = {
+  live: 'Live: everyone can see it',
+  held: 'Held: waiting for a quick check',
+  paused: 'Paused by its owner',
+  taken_down: 'Taken down',
+  deleted: 'Deleted',
+}
+const HOLD_LABEL: Record<string, string> = {
+  market_not_live: 'In a country where Cappy is not open yet',
+  district_not_in_country: "In a district outside its owner's country",
+}
+
+/** Any listing as staff see it, whatever its state, so approvals are never blind (V5-4). */
+export function AdminListing() {
+  const { id = '' } = useParams()
+  const session = useSession()
+  const qc = useQueryClient()
+  const toast = useToast()
+  const [busy, setBusy] = useState(false)
+  const q = useQuery({ queryKey: ['adminListing', id], queryFn: () => getAdminListing(id), enabled: Boolean(session?.staff) })
+  if (!session?.staff)
+    return (
+      <Screen back="/admin" title={t('Listing')}>
+        <p className="t-sm text-[var(--ink-3)]">{t('Only for Cappy staff')}</p>
+      </Screen>
+    )
+  if (q.isPending) return <Screen back="/admin">{null}</Screen>
+  if (q.isError)
+    return (
+      <Screen back="/admin" title={t('Listing')}>
+        <p className="t-sm text-[var(--danger)]" role="alert">
+          {messageOf(q.error)}
+        </p>
+      </Screen>
+    )
+  const { detail, state, holdReason, heldAt } = q.data
+  // A hold for where it is (V5-1) is lifted by the owner moving it, never by approval.
+  const approvable = state === 'held' && !holdReason
+  const approve = async () => {
+    setBusy(true)
+    try {
+      await approveListing(id)
+      toast(t('Approved: it is live now'))
+    } catch (err) {
+      toast(messageOf(err), 'error')
+    } finally {
+      setBusy(false)
+      await Promise.all(['adminListing', 'adminHeld'].map((k) => qc.invalidateQueries({ queryKey: [k] })))
+    }
+  }
+  const banner = (
+    <Banner
+      tone={state === 'live' ? 'accent' : 'warn'}
+      title={`${t('Staff view')} · ${t(STATE_LABEL[state] ?? state)}`}
+      body={[holdReason ? t(HOLD_LABEL[holdReason] ?? holdReason) : '', heldAt ? t('Held {when}', { when: ago(heldAt) }) : ''].filter(Boolean).join(' · ') || t('Read-only: nothing can be booked from here.')}
+      action={
+        approvable ? (
+          <Button size="sm" disabled={busy} onClick={() => void approve()}>
+            {t('Approve')}
+          </Button>
+        ) : undefined
+      }
+    />
+  )
+  return <Listing preview={{ detail, banner }} />
+}

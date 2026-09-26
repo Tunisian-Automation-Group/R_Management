@@ -1,4 +1,4 @@
-import { lazy, Suspense, useMemo, useRef, useState, useEffect } from 'react'
+import { lazy, Suspense, useMemo, useRef, useState, useEffect, type ReactNode } from 'react'
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { NotFound } from './NotFound.tsx'
 import { useQueryClient } from '@tanstack/react-query'
@@ -22,6 +22,7 @@ import {
   useQuote,
   useReviews,
   type BookingCreated,
+  type ListingDetail,
 } from '../../data/repo.ts'
 import { messageOf, useCappy, useMe, useToast } from '../store.tsx'
 import { Screen, SectionHead } from '../components/AppShell.tsx'
@@ -55,7 +56,9 @@ const PayStep = lazy(() => import('../components/PayStep.tsx').then((m) => ({ de
 
 const QUANTITY_STEPS = [10, 25, 50, 100, 250, 500, 1000]
 
-export function Listing() {
+/** The listing page. With `preview`, a read-only staff view of a listing the
+ *  public cannot see (held, hidden, taken down): no booking, a banner on top. */
+export function Listing({ preview }: { preview?: { detail: ListingDetail; banner: ReactNode } } = {}) {
   const { id } = useParams()
   const [params] = useSearchParams()
   const nav = useNavigate()
@@ -63,7 +66,8 @@ export function Listing() {
   const { state } = useCappy()
   const toast = useToast()
   const ME = useMe()
-  const detail = useListing(id)
+  const fetched = useListing(preview ? undefined : id)
+  const detail = preview ? { data: preview.detail, isPending: false } : fetched
   const districts = useDistricts()
   const reviews = useReviews(id)
   const payments = usePaymentsConfig()
@@ -183,7 +187,8 @@ export function Listing() {
   const from = districts.data?.[origin]
   const km = from ? distanceKm(from, info.district) : null
   const stars = rating(owner)
-  const mine = owner.id === ME
+  // Staff previewing get the owner's read-only view: nothing to book (V5-4).
+  const mine = owner.id === ME || Boolean(preview)
   const first = owner.name.split(' ')[0]
   // Instant book has no "owner accepts" moment: the address comes with the confirmation (V5-21).
   const addressNote = listing.instantBook
@@ -284,7 +289,7 @@ export function Listing() {
 
   return (
     <Screen
-      back="/"
+      back={preview ? '/admin' : '/'}
       docTitle={listing.title}
       hero={
         <Photo
@@ -400,7 +405,8 @@ export function Listing() {
         </div>
       </header>
 
-      {mine && (
+      {preview && <div className="mt-6">{preview.banner}</div>}
+      {mine && !preview && (
         <div className="mt-6">
           <Banner
             tone="warn"
@@ -655,9 +661,11 @@ export function Listing() {
         </ul>
       </Card>
 
-      <div className="mt-4 flex justify-end">
-        <ReportButton targetType="listing" targetId={listing.id} />
-      </div>
+      {!preview && (
+        <div className="mt-4 flex justify-end">
+          <ReportButton targetType="listing" targetId={listing.id} />
+        </div>
+      )}
 
       <Sheet
         open={confirming}

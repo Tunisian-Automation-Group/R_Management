@@ -33,6 +33,7 @@ const Legal = page(() => import('./screens/Legal.tsx'), 'Legal')
 const AccountDeletion = page(() => import('./screens/Legal.tsx'), 'AccountDeletion')
 const Admin = page(() => import('./screens/Admin.tsx'), 'Admin')
 const AdminCase = page(() => import('./screens/AdminCases.tsx'), 'AdminCase')
+const AdminListing = page(() => import('./screens/AdminCases.tsx'), 'AdminListing')
 const BookingDetail = page(() => import('./screens/BookingDetail.tsx'), 'BookingDetail')
 const Onboarding = page(() => import('./screens/Onboarding.tsx'), 'Onboarding')
 
@@ -169,6 +170,7 @@ function Member() {
           <Route path="/account/delete" element={<AccountDeletion />} />
           <Route path="/admin" element={<Admin />} />
           <Route path="/admin/case/:id" element={<AdminCase />} />
+          <Route path="/admin/listing/:id" element={<AdminListing />} />
           <Route path="/pay/return" element={<PayReturn />} />
           <Route path="*" element={<NotFound />} />
         </Routes>
