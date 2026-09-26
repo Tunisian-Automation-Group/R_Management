@@ -6,9 +6,9 @@ not the plan: planned work appears only as task ids from
 [`TASKS.md`](TASKS.md). Markets are all of Europe, the US and Canada
 ([GOAL 16](GOAL.md), [ADR 0013](adr/0013-markets.md)). Where the code
 assumes one market (German tax, Berlin time, EU-shaped rules), this file
-says so. Last synced with the code as of `9107ad2` (covering `e2e77ab`,
-`eaeb485`, `b5cdd93`, `ad9dee9` and `9107ad2` since the previous sync at
-`4e86866`).
+says so. Last synced with the code as of `1cb2d67` (covering `090c890`,
+`6c2f2ec`, `73610c4` and `1cb2d67` since the previous sync at `9107ad2`,
+which covered `e2e77ab` to `9107ad2`).
 
 Paths are relative to the repository root. `path:line` points at the
 definition. "Seam" means the interface or module boundary a replacement
@@ -284,7 +284,11 @@ to all their devices.
   the devices go and the tokens are refused (`mail.py:77`): another device
   that refreshes afterwards carries on locally (GD-4, documented as a
   local-only limit in `docs/runbook.md`, "Local stack only", since
-  `42c777c`).
+  `42c777c`). A plain **Sign out** revokes the refresh token (`RevokeToken`,
+  `web/src/data/cognito.ts`); real Cognito then refuses its access tokens
+  too, but cognito-local does not and issues them for 24 hours, so locally
+  the old access token works until it expires (V7-28, noted in the runbook
+  since `1cb2d67`; sign out everywhere does end it).
 
 ### 1.3 Staff role and staff MFA
 
@@ -530,7 +534,12 @@ resume and remove a listing.
     already there (`catalog/schedule.py`, `apply_schedule` in
     `repository.py`). Changing the schedule replaces the future windows it
     made (`slots.generated`); an edit that leaves it out keeps it, `null`
-    removes it. The catalog's hourly job rolls schedules on and, for a live
+    removes it. Since `1cb2d67` (V7-11) removing a hand-made window
+    (`DELETE /api/listings/{id}/slots/{slot}`) brings the weekly hours it
+    stood over back at once (`remove_slot`, `repository.py`); removing a
+    generated window closes that time, though the hourly roll still refills
+    it (a `ponytail:` note: holiday exceptions, H-4, will fix that). The
+    catalog's hourly job rolls schedules on and, for a live
     listing with no free window in the next seven days, emits `listing.idle`
     at most once a week (`keep_schedules_once`, `catalog/jobs.py:66`), which
     notifications sends as "No free time next week" (EN/DE/FR, `bookings`
@@ -698,7 +707,10 @@ far). Matching returns ranked offers with a quote.
   takes `perDay` (1 to 100), which caps each day's starts so a busy near day
   cannot use up `limit` and hide the days after it (`offers_for`,
   `matching/domain/availability.py`; days are the listing's own, in its
-  weekly hours' zone or its owner's market's). Since `9107ad2` the
+  weekly hours' zone or its owner's market's, since `090c890`). Since
+  `1cb2d67` (V7-1) a day with more starts than the cap is thinned evenly
+  (every k-th start), not cut: a 24-hour listing showed only 00:00 to
+  13:30 before. Since `9107ad2` the
   listing page asks `limit=500&perDay=28`, its day rail shows two weeks of
   days (was one), and the duration being priced is always one of the chips,
   selected (V6-3).
@@ -808,6 +820,31 @@ system completes it 48 hours after the end.
     capture declined after they accepted they do see (`_owner_sees`,
     `repository.py:97-110`, used by `visible` and the list; since `235eeaa`,
     FL-15).
+  - **Money on every booking** (since `1cb2d67`, V7-2/V7-3): every booking
+    answer carries `charged`, `refunded`, `ownerShare` and `paidOut` in minor
+    units (`cappy_common/models.py` `Booking`). The list works them out from
+    the booking's own facts (`money_of`, `booking/repository.py`: charged at
+    accept, a cancelled booking only if it recorded a refund, the owner's
+    share of what was kept, paid out once completed or cancelled);
+    `GET /api/bookings/{id}` overlays payments' real figures from
+    `/internal/bookings/{id}/payment` (`payments_money`), and keeps its own
+    reckoning when payments does not answer. The web works the same out in
+    `moved()` (`web/src/domain/pricing.ts`, since `73610c4`, checked by
+    `npm run check:money`, in CI): **What you agreed** on the booking page
+    shows the charge, a `−` refund line, the fee and the owner's share of
+    what stayed, "Refunded" when everything came back and "Nothing: hold
+    released" when nothing was charged; **Past** in Bookings shows the net
+    (the renter's cost after a refund, the owner's share) instead of the
+    list price.
+  - **A repeated action is success** (since `73610c4`, V7-6): when accept,
+    start, complete or cancel answers 409, the web reads the booking again,
+    and if it is already where the action takes it, that is the answer
+    (`actOnBooking`, `repo.ts`): a second **Accept** is quiet, not an error.
+  - **Declined by Cappy** (since `73610c4`, V7-14): a request the system
+    declined gets a headline that does not blame the owner (`SYSTEM_DECLINE`,
+    `BookingDetail.tsx`): "Cappy removed this listing", "The listing was
+    removed", "The booking this extended was cancelled", "Cappy stopped this
+    request"; the reason line stays under it.
   - Screens: `Listing.tsx`, `Bookings.tsx`, `BookingDetail.tsx`, `Earn.tsx`.
 - **Provider:** none (Postgres). Money moves through section 7.
 - **Settings:** `booking/settings.py`: `PAYMENT_TIMEOUT_MINUTES` 30,
@@ -878,6 +915,9 @@ with a reason (13.7).
   a booking, a no-show too, declines its waiting extension ("The booking it
   extends was cancelled", EN/DE/FR; nothing was charged) and cancels a
   confirmed one with a full refund (`_end_extensions`, `booking/routes.py`).
+  Since `1cb2d67` (V7-12) the cancelled one carries the same reason, and both
+  sides are told why and what comes back (`extension_cancelled_renter`,
+  `extension_cancelled_owner`, 12.1).
 - **Limits:** ~~no dispute negotiation between the parties or deadlines
   (S-21)~~: since `7444e37` (5.5). No owner damage claim (S-8), which needs a
   saved card or deposit first (S-9); a late return can be claimed but is not
@@ -936,7 +976,12 @@ local compose sets 10, and a deployed service refuses under 72 hours,
   a claim does not hold the owner's own payout. `GET /api/bookings/{id}/claims`
   lists them for either side. Web: `LateReturn` in `BookingExtras.tsx`, on
   the owner's booking page ("Came back late? Report it within 24 hours after
-  the end. The first 30 minutes are free.").
+  the end. The first 30 minutes are free."). Since `73610c4` (V7-15) the
+  renter's booking page shows the claim too, with its amount and Cappy's
+  decision, and how to answer it: while it is open, "The owner says it came
+  back late. Not so? Tell Cappy with “Get help with this booking” below…",
+  once decided, "Questions about this decision? …"; only the owner can
+  report one.
 - **Extend:** the renter asks for more time straight after, while the
   booking is `accepted` or `active` and before its end, for a time booking
   (`POST /api/bookings/{id}/extend` `{hours}`, up to 24, `:881`). It makes a
@@ -951,7 +996,12 @@ local compose sets 10, and a deployed service refuses under 72 hours,
   feasible: …" answers read as one translated sentence. Since `ad9dee9`
   every booking answer carries `extendsId`, and the extension's page links
   to the booking it extends ("This extends your booking before it."); an
-  extension ends with its booking (5.2).
+  extension ends with its booking (5.2). Since `73610c4` (V7-7) an instant
+  book extension's toast reads **Extended** (it answers `awaiting_payment`
+  first, so the listing's instant book setting decides), else **Asked for
+  more time**. Since `1cb2d67` the owner's notice of an extension request
+  is its own kind, `requested_extension` ("Extension request: …", with the
+  price, 12.1).
 - **Provider:** none.
 
 ### 5.3 Hand-over evidence photos
@@ -981,7 +1031,10 @@ private to the two sides and staff.
   `2257182` each pick adds to the photos chosen so far (a phone's camera
   returns one photo per pick, V4-13), up to 12, and each preview has a
   remove button; when a prompted sheet closes, focus goes to the photos
-  panel (V4-22).
+  panel (V4-22). Since `73610c4` (V7-22) photos taken from the hand-back
+  question (**Handed back and all fine?** → **Add check-out photos first**)
+  bring the question back once they are saved, instead of leaving the
+  renter on the page.
 - **Seam:** storage goes through the catalog's private `MediaStore` (3.3).
 - **Limits:** evidence saved before `f303350` keeps its public URLs.
 
@@ -994,6 +1047,12 @@ either direction.
   enforced in `create_booking` (`booking/routes.py:156`) and `send`
   (`messages.py:141`). A report on a message offers **Block {name} too**
   right after it is sent (`Report.tsx`, U-13).
+- **Web** (since `73610c4`, V7-5): a conversation with someone blocked shows
+  no composer: "You blocked {name}, so no messages can be sent." with
+  **Unblock** (`DELETE /api/me/blocks/{id}`, `Conversation.tsx`), or, when
+  the server refuses with 403 because they blocked you, "Messages to {name}
+  cannot be sent." The server's "you cannot message this person" reads as a
+  translated sentence (`MESSAGE_TEXT`, `repo.ts`).
 - **Provider:** none.
 
 ---
@@ -1259,7 +1318,14 @@ fee. Numbers have no gaps per year, and an invoice never changes once issued.
   `_money` in `invoices.py`): the service is named by the listing ("Platform
   fee for {title}"), the booking id is a separate "Booking reference" line,
   and the German issuer's VAT ID and tax number are on it in every language
-  ("Tax number (Steuernummer)"). Tables `invoices` and
+  ("Tax number (Steuernummer)"). Since `1cb2d67` (V7-10) it follows the
+  reader's typography too: French puts a no-break space before `:` and `%`,
+  English writes "19%" and German "19 %"; the tax is "VAT" in English and
+  "TVA" in French (the `INVOICE_TAX_LABEL` in German); dates read
+  `dd.mm.yyyy` in German, `m/d/yyyy` for `en-US` and `dd/mm/yyyy` otherwise,
+  and a service period of one day is one date. Locally both issuer lines
+  show (`LEGAL_VAT_ID` defaults to "DE000000000 (local)", which a deployed
+  service refuses). Tables `invoices` and
   `invoice_counters` (`payments/tables.py:64-94`). Screen: `Earn.tsx`; since
   `2257182` its list line is built in the app ("Service fee · title ·
   dates", dates in the reader's locale) instead of the server's
@@ -1540,7 +1606,22 @@ decisions, in the recipient's language.
   every text says « la personne locataire ». `tests/test_texts_every_kind.py`
   renders every kind in EN, DE and FR and fails on a missing kind, different
   placeholders, English left in a translation, an unfilled placeholder, two
-  full stops, or the wrong space before French punctuation.
+  full stops, or the wrong space before French punctuation. Since `1cb2d67`
+  (V7-24) people's own words (an owner's decline reason, staff's note) are
+  quoted as written, never re-typeset (`quoted` in `render`), and a reason
+  ending in `!` or `?` gets no extra full stop.
+- **Money and time in request mails** (since `1cb2d67`, V7-23): `requested`
+  names the price ("Someone wants to book {title} for €15.00…") and the
+  booked start, `accepted` adds "You paid …" and "The hand-over address is
+  in the app." (`for_amount`, `paid`, EN/DE/FR). New kinds, all `bookings`:
+  `requested_extension` to the owner ("Extension request: …", with the
+  price); `extension_cancelled_renter` and `extension_cancelled_owner`
+  ("Extension cancelled: …", why and the refund; always emailed, V7-12);
+  and `dispute_refunded_renter`, `dispute_partial_renter`,
+  `dispute_owner_paid_renter`, which the renter gets instead of the
+  third-person settlement text (`RENTER_READS`, `handlers.py`; always
+  emailed). Booking's notices carry `requesterId` for that
+  (`booking/support.py` `notice`) and status events `extendsId`.
 - **The staff note** (since `b5cdd93`): a dispute settled by staff carries
   their note to both parties in the "Settled" notice, as its own paragraph
   under "From Cappy's team:" (`_note`, EN/DE/FR); an item stored before notes
@@ -1666,7 +1747,8 @@ count, rendered in the reader's language.
   `content_removed`), which carries the whole statement of reasons (since
   `22b5e0f`, V5-31, `summary`, `texts.py:315-321`); the web keeps its line
   breaks (`4e86866`). Since `ad9dee9` (V6-1) a settlement's item keeps
-  staff's "From Cappy's team: …" paragraph after the first one. Reading the
+  staff's "From Cappy's team: …" paragraph after the first one, and since
+  `1cb2d67` (V7-4) a decline keeps its "Reason: …" paragraph. Reading the
   bell also remembers the app's locale for that person's emails (12.1).
 - **Retention** (since `747ed6b`): items older than `INBOX_RETENTION_DAYS`
   (365) are deleted by an hourly loop (`expire_inbox_once`,
@@ -1715,7 +1797,13 @@ email. Every report is acknowledged by email.
   region counts only when Cappy is live there (`useMarket`, `repo.ts`), so a
   signed-out reader with an en-US browser gets 112 (the first live market),
   not 911. The reason select starts at **Choose a reason**, not "Fraud"
-  (V5-32).
+  (V5-32). Since `1cb2d67` the two refusals carry codes: 429
+  `reports_today` ("We already have your reports from today; we will be in
+  touch.", the anonymous per-email cap) and 429 `reported_enough` ("This has
+  been reported many times today; it is already being looked at."). The
+  web has no text for either code yet, and its `MESSAGE_TEXT` entry keys on
+  the old lower-case sentence, so both read in English in every language
+  (FLOWS §23).
 - **Provider:** none. No CAPTCHA.
 - **Limits:** anonymous addresses are still not confirmed; the receipt mail is
   kept on purpose (DSA Art. 16(4)) and bounded by the per-address cap.
@@ -1755,6 +1843,14 @@ reasons. Both sides are told, and every action is audited.
   `web/src/app/screens/Admin.tsx`.
 - **Provider:** none. There is no automated content classifier. `automated`
   in the statement is always what staff say.
+- **Names, not ids** (since `1cb2d67`/`73610c4`, V7-19/V7-26): the queue's
+  items carry `targetLabel` (an owner's name, a listing's title) and, for a
+  review, `targetText` (`_labelled`, `moderation.py`). The console shows the
+  reported person or listing by name (`TargetName` in `Admin.tsx`, from its
+  own profile and staff listing reads; messages and reviews keep a short
+  id), a listing report links to the staff view `/admin/listing/{id}`, and
+  the decision sheet opens with what was reported (reason, target, the
+  reporter's details).
 - **Console:** for a message or review report it offers **Remove the
   message / review** and **Suspend the author** (`Admin.tsx:33-42`, `:334`),
   which the server accepts since `235eeaa` (they answered 422 before). It
@@ -1914,7 +2010,10 @@ AT, CHF 95 in CH) waits for a staff check.
   `0021_audit_details`), and the `statement` is only what staff wrote (empty
   for a read), never machine text. A case or evidence read repeated by the
   same person within the same minute is one line: booking sends a `dedupe`
-  key and catalog derives the row id from it.
+  key and catalog derives the row id from it. Since `1cb2d67` (V7-13) a
+  `read_case` or `read_evidence` within 60 s of the same staff member's
+  last read of the same target is dropped, so a refetch that crosses a
+  calendar minute no longer makes a second line.
 - **Web** (`4e86866`): `web/src/app/screens/AdminCases.tsx`. The console
   (`/admin`) opens with **Cases** (disputed or all; member id or email,
   booking id, only with open claims; **Next page**), **Waiting for approval**
@@ -1962,7 +2061,10 @@ A member downloads one JSON file with everything held about them.
   and each service's `/internal/people/{id}/export`: booking
   (`booking/routes.py:596`: bookings, messages, evidence with notes, blocks,
   verified and suspended flags, card fingerprints, and since `7444e37` the
-  disputes they opened and the claims they made), payments
+  disputes they opened and the claims they made; since `1cb2d67`, V7-16,
+  also `claimsAboutMe`, owners' claims against them as a renter, and
+  `renterRatingsAboutMe`, how owners rated them once the reviews are
+  published, never a blind rating before), payments
   (`payments/routes.py:363`: payout account, identity status, invoices with
   recipient fields, payments with charge, refund and payout flags) and
   notifications (`notifications/routes.py:184`: bell items, settings,
@@ -2056,7 +2158,14 @@ reason and a date.
   `fr-CA`, `de-AT`…), else `en-IE` (since `44a5520`: km and 24 h across
   Europe), `fr-FR` or `de-DE`. `npm run check:i18n`
   checks both catalogues have the same keys and placeholders, and that every
-  literal `t('…')` and `plural(…)` in the source has an entry. Dev builds
+  literal `t('…')` and `plural(…)` in the source has an entry; since
+  `090c890` it also enforces French typography in the catalogue (U+00A0
+  before `:`, U+202F before `; ? !`; URLs, `{placeholders}` and clock times
+  left out), and since `73610c4` (V7-9) over the French prose of the legal
+  pages in `Legal.tsx` too, which were fixed to narrow spaces. Since
+  `73610c4` the German catalogue names people neutrally ("die vermietende
+  Seite", "die mietende Seite", "Neu auf Cappy") instead of "der Anbieter"
+  and "der Mieter" (V7-25). Dev builds
   stretch every string with `?pseudo=1` (U-28). Emails, pushes and the bell
   have French since `235eeaa`; since `2257182` so do the legal pages
   (privacy, terms, withdrawal with the EU model form, ranking, reporting,
@@ -2073,11 +2182,27 @@ reason and a date.
   icons only, and the listing's host card wraps its rating column, so 200 %
   text in French at 390 px no longer scrolls sideways. Enter in the Explore
   search puts the keyboard away on touch screens only; with a mouse and
-  keyboard the field keeps focus (V6-20).
+  keyboard the field keeps focus (V6-20). Since `73610c4` (V7-8, V7-27)
+  Profile's notification settings are rows that wrap (each with **Push** and
+  **Email** checkboxes), not a fixed table, so 200 % text in French fits a
+  390 px phone; the language switch and the listing's category chip wrap
+  instead of cutting.
+- **Small words** (since `73610c4`): a countdown in its last minute reads
+  "in under a minute", never "in 0 min" (`relative`, `format.ts`, V7-21); a
+  radius under 16 km in miles keeps one decimal ("0.6 mi", V7-17); Browse's
+  empty window search says "in the next 24 hours" for one day, "in the next
+  {n} days" otherwise; the listing plate's "free from" time is in the
+  reader's own clock (5:30 PM in Toronto) and on the half hour a start
+  really exists at, after a lead time of 5 minutes on the dev server and
+  120 in builds (`VITE_MIN_LEAD_MINUTES`, `Cover.tsx`, V7-20). A business
+  owner goes by their whole name on the listing page (V7-26), and staff
+  previewing a listing read it as its owner does ("apply to bookings with
+  it", free and sold hours, "the renter gets everything back").
 - **Limits:** no Web Vitals (S-23). `npm run check:a11y` is a static check
   (image alt text, 24 px targets) and not a browser axe run (U-30 partly).
   Since `44a5520` CI runs `tsc --noEmit`, the build and every `check:*`
-  script (`size`, `i18n`, `flags`, `attempt`, `a11y`), installing with
+  script (`size`, `i18n`, `flags`, `attempt`, `a11y`, and since `73610c4`
+  `money`), installing with
   `--ignore-scripts` (`.github/workflows/ci.yml:52-61`).
 
 ### 15.2 Store shells (Capacitor)

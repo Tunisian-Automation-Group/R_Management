@@ -16,7 +16,12 @@ committed. The reasons behind them are in the ADRs, mainly
 > when applied".
 
 References are `path:line` in the committed tree. Last synced with the code
-as of `9107ad2` (`e2e77ab` to `9107ad2`): the `admin-lead` Cognito group in
+as of `1cb2d67` (`090c890` to `1cb2d67`): `check:money` in CI's web job,
+payments' local `LEGAL_VAT_ID` placeholder (refused deployed),
+`VITE_MIN_LEAD_MINUTES` in `web/.env.example`, the demo listings without the
+seed's dated windows, five German districts in the seed and the runbook's
+local plain-sign-out note. The sync before, as of `9107ad2` (`e2e77ab` to
+`9107ad2`), covered: the `admin-lead` Cognito group in
 Terraform, `COGNITO_ENDPOINT_URL` in compose's shared env block, the local
 dispute and late-return timers (`DISPUTE_OFFER_MINUTES=10`,
 `LATE_RETURN_EARLY_MINUTES`), the analytics scrub keeping only what and when
@@ -546,7 +551,13 @@ reviewed but has never run against an account.
   `MIN_LEAD_MINUTES` under 60, `START_EARLY_MINUTES` above 60 or
   `AUTO_COMPLETE_AFTER_HOURS` under 24 (`unsafe_reasons` in
   `matching/settings.py` and `booking/settings.py`, since `61b15b8`), so the
-  shortcuts cannot reach staging or prod.
+  shortcuts cannot reach staging or prod. Payments' `LEGAL_VAT_ID` defaults
+  to the placeholder "DE000000000 (local)" since `1cb2d67` (V7-10), so a
+  local invoice shows both issuer lines; a deployed payments refuses it
+  ("LEGAL_VAT_ID must be the operator's", `payments/settings.py`). The web
+  dev server assumes the local 5-minute lead for the listing plate's "free
+  from" time, builds the deployed 120 (`VITE_MIN_LEAD_MINUTES`, in
+  `web/.env.example` since `73610c4`).
 - **Stripe CLI profile.** With `COMPOSE_PROFILES=stripe`,
   `PAYMENTS_PROVIDER=stripe` and test keys in `.env`, the `stripe` container
   listens for the five webhook events the prod endpoint subscribes to and
@@ -1019,8 +1030,8 @@ gateway, `web/vite.config.ts:13`, `:89`).
 CI's `web` job does more than `make web` (since `44a5520`,
 `.github/workflows/ci.yml:43-61`): `npm ci --ignore-scripts` (no package
 install scripts run), `npx tsc --noEmit -p .`, the build, then
-`check:size`, `check:i18n`, `check:flags`, `check:attempt` and `check:a11y`,
-each failing the job when broken.
+`check:size`, `check:i18n`, `check:flags`, `check:attempt`, `check:a11y` and,
+since `73610c4`, `check:money`, each failing the job when broken.
 
 ### Ports
 
@@ -1044,7 +1055,7 @@ file.
 | Role | Email |
 |---|---|
 | Host (the seeded owner `o1`, one listing) | `host@demo.cappy.local` |
-| Second host (since `61b15b8`, GD-5): a new German owner (EUR) in Neukölln, whose three listings `local/demo_profiles.py` makes through the API: an instant-book workshop (open every day 08:00-22:00 since `22b5e0f`), a freight (batch) van run (at most 2 pallets a booking), and a studio above the market's review threshold, which is held on a fresh stack until staff approve it; all on weekly schedules. The seed has had Swiss and Austrian places and owners since `7444e37` (a CHF listing in Zürich, no sign-in) | `host2@demo.cappy.local` |
+| Second host (since `61b15b8`, GD-5): a new German owner (EUR) in Neukölln, whose three listings `local/demo_profiles.py` makes through the API: an instant-book workshop (open every day 08:00-22:00 since `22b5e0f`), a freight (batch) van run (at most 2 pallets a booking), and a studio above the market's review threshold, which is held on a fresh stack until staff approve it; all on weekly schedules. Since `1cb2d67` (V7-11) `demo_profiles.py` also deletes the seed's dated windows (`w1`, `w2`…) on the plunge saw `l9` and the bandsaw before giving them the every-day schedule, so both are open 08:00-22:00 every day on a clean stack. The seed has had Swiss and Austrian places and owners since `7444e37` (a CHF listing in Zürich, no sign-in), and since `1cb2d67` (V7-29) five more German districts without listings: Altona (Hamburg), Maxvorstadt (München), Ehrenfeld (Köln), Bockenheim (Frankfurt am Main) and Plagwitz (Leipzig) | `host2@demo.cappy.local` |
 | Buyer | `buyer@demo.cappy.local` |
 | Staff (in the `admin` group, for the admin console) | `staff@demo.cappy.local` |
 
@@ -1075,7 +1086,10 @@ cognito-local has no MFA.
   locally once it refreshes (GD-4, a stated limitation). Since `42c777c`
   `docs/runbook.md` lists this with the other local-only differences (staff
   MFA off, the short windows) under "Local stack only: what behaves
-  differently".
+  differently". Since `1cb2d67` it also notes (V7-28) that a plain **Sign
+  out** leaves the access token working locally: cognito-local ignores
+  `RevokeToken` for access tokens and issues them for 24 hours (real
+  Cognito: 15 minutes, and revoked with their refresh token).
 - Booking's `START_EARLY_MINUTES` is huge locally so the e2e can hand over
   at once, and matching's `MIN_LEAD_MINUTES` is 5; deployed, the defaults
   hold and settings refuse the local values (`compose.yaml:92`, `:104`).
