@@ -606,7 +606,7 @@ function ListingForm({ edit }: { edit?: repo.ListingView }) {
                   setCategoryId(c.id)
                   setRate((EXAMPLES[c.id] ?? DEFAULT_EXAMPLE).rate)
                 }}
-                className="flex w-full items-center gap-3 py-3.5 text-left transition-opacity duration-[160ms] hover:opacity-60"
+                className="flex w-full items-center gap-3 py-3.5 text-left transition-opacity duration-[var(--dur-short)] hover:opacity-60"
               >
                 <Icon
                   name={categoryIcon(c.icon)}
@@ -615,7 +615,7 @@ function ListingForm({ edit }: { edit?: repo.ListingView }) {
                   className="shrink-0 text-[var(--ink-3)]"
                 />
                 <span className="min-w-0 flex-1">
-                  <span className="block text-[0.9375rem] font-semibold">{c.label}</span>
+                  <span className="block text-body font-semibold">{c.label}</span>
                   <span className="t-sm block truncate text-[var(--ink-4)]">{c.blurb}</span>
                 </span>
                 <Icon
@@ -677,8 +677,8 @@ function ListingForm({ edit }: { edit?: repo.ListingView }) {
       <button
         disabled={Boolean(was)}
         onClick={() => setCategoryId(null)}
-        className="mb-7 inline-flex min-h-[38px] items-center gap-2 rounded-[var(--radius-control)] border border-[var(--line)] px-3.5 text-[0.8438rem] font-semibold
-          transition-colors duration-[160ms] hover:border-[var(--ink-4)]"
+        className="mb-7 inline-flex min-h-[38px] items-center gap-2 rounded-[var(--radius-control)] border border-[var(--line)] px-3.5 text-label font-semibold
+          transition-colors duration-[var(--dur-short)] hover:border-[var(--ink-4)]"
       >
         <Icon name={categoryIcon(meta!.icon)} size={17} className="text-[var(--accent-text)]" />
         {meta!.label}
@@ -713,27 +713,27 @@ function ListingForm({ edit }: { edit?: repo.ListingView }) {
                   <img
                     src={p.preview}
                     alt=""
-                    className={`h-full w-full object-cover transition-opacity duration-[200ms] ${pending ? 'opacity-40' : ''}`}
+                    className={`h-full w-full object-cover transition-opacity duration-[var(--dur-medium)] ${pending ? 'opacity-40' : ''}`}
                   />
                   {pending && (
-                    <span className="absolute inset-0 grid place-items-center text-[0.75rem] font-semibold text-[var(--ink-2)]">
+                    <span className="absolute inset-0 grid place-items-center text-label font-semibold text-[var(--ink-2)]">
                       <span role="status">
                         {p.progress ? t('Uploading… {pct}', { pct: percent(p.progress) }) : t('Uploading…')}
                       </span>
                       <span
                         aria-hidden
-                        className="absolute inset-x-0 bottom-0 h-1 bg-[var(--accent)] transition-[width] duration-[160ms]"
+                        className="absolute inset-x-0 bottom-0 h-1 bg-[var(--accent)] transition-[width] duration-[var(--dur-short)]"
                         style={{ width: `${Math.round((p.progress ?? 0) * 100)}%` }}
                       />
                     </span>
                   )}
                   {i === 0 && p.url && (
-                    <span className="absolute left-2 top-2 rounded-full bg-[var(--ink)] px-2 py-0.5 text-[0.6875rem] font-semibold text-[var(--on-inverse)]">
+                    <span className="absolute left-2 top-2 rounded-full bg-[var(--ink)] px-2 py-0.5 text-caption font-semibold text-[var(--on-inverse)]">
                       {t('Cover')}
                     </span>
                   )}
                   {p.error && (
-                    <span className="absolute inset-x-0 bottom-0 flex items-end gap-1 bg-[var(--danger)] px-2 py-1 text-[0.6875rem] font-semibold leading-tight text-white">
+                    <span className="absolute inset-x-0 bottom-0 flex items-end gap-1 bg-[var(--danger)] px-2 py-1 text-caption font-semibold leading-tight text-[var(--on-status)]">
                       <span className="min-w-0 flex-1" role="alert">
                         {p.error}
                       </span>
@@ -741,7 +741,7 @@ function ListingForm({ edit }: { edit?: repo.ListingView }) {
                         <button
                           type="button"
                           onClick={() => void upload(p.key, p.file!)}
-                          className="min-h-6 shrink-0 rounded-full bg-white px-2 text-[var(--danger)]"
+                          className="min-h-6 shrink-0 rounded-full bg-[var(--surface)] px-2 text-[var(--danger)]"
                         >
                           {t('Retry')}
                         </button>
@@ -760,7 +760,7 @@ function ListingForm({ edit }: { edit?: repo.ListingView }) {
                     <button
                       type="button"
                       onClick={() => makeCover(p.key)}
-                      className="absolute inset-x-1.5 bottom-1.5 min-h-6 rounded-full bg-white/90 py-1 text-[0.6875rem] font-semibold text-[var(--ink)]"
+                      className="absolute inset-x-1.5 bottom-1.5 min-h-6 rounded-full bg-[var(--veil)] py-1 text-caption font-semibold text-[var(--ink)]"
                     >
                       {t('Make cover')}
                     </button>
@@ -772,9 +772,9 @@ function ListingForm({ edit }: { edit?: repo.ListingView }) {
               <button
                 type="button"
                 onClick={() => fileInput.current?.click()}
-                className="grid aspect-[4/3] place-items-center rounded-[var(--radius-field)] border border-dashed border-[var(--line-strong)] text-[var(--ink-3)] transition-colors duration-[160ms] hover:border-[var(--ink)] hover:text-[var(--ink)]"
+                className="grid aspect-[4/3] place-items-center rounded-[var(--radius-field)] border border-dashed border-[var(--line-strong)] text-[var(--ink-3)] transition-colors duration-[var(--dur-short)] hover:border-[var(--ink)] hover:text-[var(--ink)]"
               >
-                <span className="flex flex-col items-center gap-1 text-[0.75rem] font-semibold">
+                <span className="flex flex-col items-center gap-1 text-label font-semibold">
                   <Icon name="camera" size={20} strokeWidth={1.8} />
                   {photos.length ? t('Add another') : t('Add photos')}
                 </span>
@@ -969,7 +969,7 @@ function ListingForm({ edit }: { edit?: repo.ListingView }) {
                   value={minHours}
                   onChange={(e) => setMinHours(Math.max(1, Number(e.target.value) || 1))}
                 />
-                <span className="shrink-0 text-[0.875rem] text-[var(--ink-4)]">{t('to')}</span>
+                <span className="shrink-0 text-body text-[var(--ink-4)]">{t('to')}</span>
                 <Input
                   inputMode="numeric"
                   aria-label={t('Maximum hours')}
@@ -977,7 +977,7 @@ function ListingForm({ edit }: { edit?: repo.ListingView }) {
                   value={maxHours}
                   onChange={(e) => setMaxHours(Math.max(minHours, Number(e.target.value) || minHours))}
                 />
-                <span className="shrink-0 text-[0.875rem] text-[var(--ink-4)]">{t('hours')}</span>
+                <span className="shrink-0 text-body text-[var(--ink-4)]">{t('hours')}</span>
               </div>
             </Field>
 
@@ -1013,7 +1013,7 @@ function ListingForm({ edit }: { edit?: repo.ListingView }) {
               value={dayPct}
               onChange={(e) => setDayPct(clampPct(e.target.value))}
             />
-            <span className="shrink-0 text-[0.875rem] text-[var(--ink-4)]">{t('% from 8 h')}</span>
+            <span className="shrink-0 text-body text-[var(--ink-4)]">{t('% from 8 h')}</span>
             <Input
               inputMode="numeric"
               aria-label={t('Week discount, percent')}
@@ -1021,7 +1021,7 @@ function ListingForm({ edit }: { edit?: repo.ListingView }) {
               value={weekPct}
               onChange={(e) => setWeekPct(clampPct(e.target.value))}
             />
-            <span className="shrink-0 text-[0.875rem] text-[var(--ink-4)]">{t('% from 40 h')}</span>
+            <span className="shrink-0 text-body text-[var(--ink-4)]">{t('% from 40 h')}</span>
           </div>
         </Field>
 
@@ -1047,7 +1047,7 @@ function ListingForm({ edit }: { edit?: repo.ListingView }) {
             onChange={(e) => setInstantBook(e.target.checked)}
           />
           <span>
-            <span className="block text-[0.9375rem] font-semibold text-[var(--ink)]">{t('Instant book')}</span>
+            <span className="block text-body font-semibold text-[var(--ink)]">{t('Instant book')}</span>
             <span className="t-sm block text-[var(--ink-3)]">
               {t('Bookings are confirmed as soon as the card is held, without waiting for you to accept. You can still cancel, with a full refund to the renter.')}
             </span>
@@ -1056,7 +1056,7 @@ function ListingForm({ edit }: { edit?: repo.ListingView }) {
 
         {was?.availability?.weekly.length ? (
           <Card className="p-4">
-            <p className="text-[0.9375rem] font-semibold">
+            <p className="text-body font-semibold">
               {stopSchedule ? t('The weekly schedule stops when you save') : t('Repeats every week')}
             </p>
             <p className="t-sm tnum mt-1 text-[var(--ink-3)]">
@@ -1121,14 +1121,14 @@ function ListingForm({ edit }: { edit?: repo.ListingView }) {
                 aria-pressed={availability === a.id}
                 aria-controls={a.id === 'custom' ? 'custom-window' : a.id === 'weekly' ? 'weekly-hours' : undefined}
                 aria-expanded={a.id === 'custom' || a.id === 'weekly' ? availability === a.id : undefined}
-                className={`flex min-h-[62px] w-full items-center gap-3.5 rounded-[var(--radius-field)] border px-4 text-left transition-colors duration-[160ms] ${
+                className={`flex min-h-[62px] w-full items-center gap-3.5 rounded-[var(--radius-field)] border px-4 text-left transition-colors duration-[var(--dur-short)] ${
                   availability === a.id
                     ? 'border-[var(--ink)] bg-[var(--sunken)]'
                     : 'border-[var(--line-strong)] bg-[var(--surface)] hover:border-[var(--ink-4)]'
                 }`}
               >
                 <span
-                  className={`grid h-[22px] w-[22px] shrink-0 place-items-center rounded-full border-2 transition-colors duration-[160ms] ${
+                  className={`grid h-[22px] w-[22px] shrink-0 place-items-center rounded-full border-2 transition-colors duration-[var(--dur-short)] ${
                     availability === a.id
                       ? 'border-[var(--ink)] bg-[var(--ink)] text-[var(--on-inverse)]'
                       : 'border-[var(--line-strong)]'
@@ -1137,8 +1137,8 @@ function ListingForm({ edit }: { edit?: repo.ListingView }) {
                   {availability === a.id && <Icon name="check" size={12} strokeWidth={3.5} />}
                 </span>
                 <span className="min-w-0">
-                  <span className="block text-[0.9375rem] font-semibold">{t(a.label)}</span>
-                  <span className="tnum block text-[0.8125rem] text-[var(--ink-3)]">{a.detail}</span>
+                  <span className="block text-body font-semibold">{t(a.label)}</span>
+                  <span className="tnum block text-label text-[var(--ink-3)]">{a.detail}</span>
                 </span>
               </button>
             ))}
@@ -1276,7 +1276,7 @@ function ListingForm({ edit }: { edit?: repo.ListingView }) {
                     />
                   </label>
                 </div>
-                <p className="tnum text-[0.8125rem] text-[var(--ink-3)]">
+                <p className="tnum text-label text-[var(--ink-3)]">
                   {customProblem(custom)
                     ? t('Each day in the range gets one idle window at those hours.')
                     : t('{days}, {first} to {last}, free {start} – {end} each day.', {
@@ -1327,7 +1327,7 @@ function ListingForm({ edit }: { edit?: repo.ListingView }) {
 
         <Card className="p-5">
           <p className="t-label mb-2 text-[var(--ink-2)]">{t('What a booking would earn you')}</p>
-          <p className="t-plate tnum text-[2.375rem] leading-[2.625rem] text-[var(--ink)]">
+          <p className="t-plate tnum text-headline leading-[2.625rem] text-[var(--ink)]">
             {formatMoney(
               Math.round((rate * (isBatch ? 4 : minHours) + (isBatch ? setupFee : extraFee)) * 0.85),
               cur,

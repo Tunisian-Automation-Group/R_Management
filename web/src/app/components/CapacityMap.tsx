@@ -485,7 +485,7 @@ export function CapacityMap({
       type="button"
       onClick={() => onLevel(l)}
       aria-pressed={level === l}
-      className={`tap min-h-[30px] rounded-[var(--radius-control)] px-2.5 text-[0.75rem] font-semibold transition-colors duration-[160ms]
+      className={`tap min-h-[30px] rounded-[var(--radius-control)] px-2.5 text-label font-semibold transition-colors duration-[var(--dur-short)]
         ${level === l ? "bg-[var(--inverse)] text-[var(--on-inverse)]" : "text-[var(--ink-2)] hover:text-[var(--ink)]"}`}
     >
       {label}
@@ -527,7 +527,7 @@ export function CapacityMap({
         </div>
 
         {level === "city" && (
-          <div className="veil pointer-events-none absolute bottom-3 left-3 flex items-center gap-3 rounded-[var(--radius-control)] border border-[var(--line)] px-2.5 py-1.5 text-[0.7188rem] font-semibold text-[var(--ink-2)]">
+          <div className="veil pointer-events-none absolute bottom-3 left-3 flex items-center gap-3 rounded-[var(--radius-control)] border border-[var(--line)] px-2.5 py-1.5 text-caption font-semibold text-[var(--ink-2)]">
             <span className="inline-flex items-center gap-1.5">
               <span className="relative grid h-2.5 w-2.5 place-items-center">
                 <span className="pulse-ring absolute inset-0 rounded-full bg-[var(--sky)]" />
@@ -667,7 +667,7 @@ function CityView({
             stroke="var(--map-line)"
             strokeWidth="1"
             strokeDasharray="3 4"
-            className="transition-[r] duration-[420ms] ease-[cubic-bezier(0.2,0,0,1)]"
+            className="transition-[r] duration-[var(--dur-xlong)] ease-[var(--ease-standard)]"
           />
           {/* A ring that sits under the pin cluster does not get a label. */}
           {r * scale >= 60 && (
@@ -752,7 +752,7 @@ function CityView({
           aria-label={p.label}
           onClick={() => onOpen(p.id)}
           onKeyDown={keyOpen(() => onOpen(p.id))}
-          className="group cursor-pointer outline-none transition-transform duration-[420ms] ease-[cubic-bezier(0.2,0,0,1)]"
+          className="group cursor-pointer outline-none transition-transform duration-[var(--dur-xlong)] ease-[var(--ease-standard)]"
           style={{
             transform: `translate(${p.x.toFixed(1)}px, ${p.y.toFixed(1)}px)`,
           }}
@@ -782,7 +782,7 @@ function CityView({
               fill={p.freeNow ? "var(--sky)" : "var(--accent)"}
               stroke="var(--surface)"
               strokeWidth="2"
-              className="transition-transform duration-[160ms] group-hover:scale-125 group-active:scale-95"
+              className="transition-transform duration-[var(--dur-short)] group-hover:scale-125 group-active:scale-95"
               style={{ transformBox: "fill-box", transformOrigin: "center" }}
             />
           </g>

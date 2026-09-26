@@ -14,14 +14,14 @@ import { anySheetOpen, sheetOpened } from '../sheets.ts'
 import { locale, t } from '../../i18n.ts'
 import { currencySymbol, minorPerMajor } from '../../domain/money.ts'
 
-/** 160ms for micro-interactions, decelerating. Never linear. */
+/** The short motion token for micro-interactions, decelerating. Never linear. */
 const TR =
-  'transition-[background-color,border-color,color,opacity,transform,box-shadow] duration-[160ms] ease-[cubic-bezier(0.2,0,0,1)]'
+  'transition-[background-color,border-color,color,opacity,transform,box-shadow] duration-[var(--dur-short)] ease-[var(--ease-standard)]'
 
 /* ------------------------------------------------------------------ Button */
 
 type ButtonProps = ButtonHTMLAttributes<HTMLButtonElement> & {
-  variant?: 'primary' | 'ink' | 'secondary' | 'quiet' | 'danger'
+  variant?: 'primary' | 'ink' | 'secondary' | 'quiet' | 'danger' | 'onplate'
   size?: 'lg' | 'md' | 'sm'
   icon?: IconName
   iconAfter?: IconName
@@ -50,6 +50,8 @@ export function Button({
     primary:
       'bg-[var(--accent)] text-[var(--on-accent)] hover:bg-[var(--accent-hover)] active:bg-[var(--accent-active)]',
     ink: 'bg-[var(--field)] text-[var(--on-field)] hover:bg-[var(--field-2)]',
+    // The primary on a green plate: ivory, so crimson never sits on green.
+    onplate: 'bg-[var(--on-field)] text-[var(--field)] hover:opacity-90',
     secondary:
       'bg-transparent text-[var(--ink)] border border-[var(--line-strong)] hover:border-[var(--ink)] hover:bg-[var(--sunken)]',
     quiet: 'bg-transparent text-[var(--ink-2)] hover:bg-[var(--sunken)] hover:text-[var(--ink)]',
@@ -59,11 +61,11 @@ export function Button({
   // 44px is the floor for anything you tap. `sm` is only for inline chips that
   // sit inside a larger tap target.
   const sizes: Record<string, string> = {
-    lg: 'min-h-[52px] px-7 text-[0.9375rem] font-semibold gap-2',
-    md: 'min-h-[44px] px-5 text-[0.875rem] font-semibold gap-1.5',
-    sm: 'tap min-h-[34px] px-3.5 text-[0.8125rem] font-semibold gap-1.5',
+    lg: 'min-h-[52px] px-7 text-body font-semibold gap-2',
+    md: 'min-h-[44px] px-5 text-body font-semibold gap-1.5',
+    sm: 'tap min-h-[34px] px-3.5 text-label font-semibold gap-1.5',
   }
-  const cls = `inline-flex items-center justify-center rounded-[var(--radius-control)] ${sizes[size]} ${variants[variant]} ${TR}
+  const cls = `press inline-flex items-center justify-center rounded-[var(--radius-control)] ${sizes[size]} ${variants[variant]} ${TR}
         disabled:pointer-events-none disabled:opacity-30 ${block ? 'w-full' : ''} ${className}`
   const inner = (
     <>
@@ -110,7 +112,7 @@ export function Card({
         type="button"
         onClick={onClick}
         aria-label={ariaLabel}
-        className={`${shared} w-full text-left ${TR} hover:border-[var(--line-strong)]`}
+        className={`press-soft ${shared} w-full text-left ${TR} hover:border-[var(--line-strong)]`}
       >
         {children}
       </button>
@@ -139,7 +141,7 @@ export function Chip({
       onClick={onClick}
       aria-pressed={selected}
       aria-label={ariaLabel}
-      className={`tap inline-flex min-h-[38px] shrink-0 items-center gap-1.5 rounded-[var(--radius-control)] border px-3.5 text-[0.8438rem] font-medium ${TR}
+      className={`press tap inline-flex min-h-[38px] shrink-0 items-center gap-1.5 rounded-[var(--radius-control)] border px-3.5 text-label font-medium ${TR}
         ${
           selected
             ? 'border-[var(--field)] bg-[var(--field)] font-semibold text-[var(--on-field)]'
@@ -170,7 +172,7 @@ export function Pill({
   }[tone]
   return (
     <span
-      className={`inline-flex items-center gap-1 text-[0.7812rem] font-semibold underline decoration-2 underline-offset-[5px] ${tones}`}
+      className={`inline-flex items-center gap-1 text-label font-semibold underline decoration-2 underline-offset-[5px] ${tones}`}
     >
       {icon && <Icon name={icon} size={13} strokeWidth={2.2} />}
       {children}
@@ -217,8 +219,8 @@ export function Stars({ value, count }: { value: number | null | undefined; coun
   return (
     <span className="inline-flex items-center gap-1">
       <Icon name="star" size={12} className="fill-[var(--ink)] text-[var(--ink)]" strokeWidth={0} />
-      <span className="tnum text-[0.8125rem] font-semibold text-[var(--ink)]">{oneDecimal(value)}</span>
-      <span className="tnum text-[0.8125rem] text-[var(--ink-4)]">({count})</span>
+      <span className="tnum text-label font-semibold text-[var(--ink)]">{oneDecimal(value)}</span>
+      <span className="tnum text-label text-[var(--ink-4)]">({count})</span>
     </span>
   )
 }
@@ -253,18 +255,18 @@ export function Field({
   return (
     <div>
       {/* Label above the input: never a placeholder standing in for a label. */}
-      <label htmlFor={htmlFor} className="mb-2 block text-[0.8438rem] font-semibold text-[var(--ink-2)]">
+      <label htmlFor={htmlFor} className="mb-2 block text-label font-semibold text-[var(--ink-2)]">
         {label}
       </label>
       {children}
       {/* Error sits directly under its own field, never in a summary elsewhere. */}
       {error ? (
-        <p id={htmlFor && `${htmlFor}-msg`} role="alert" className="mt-2 flex items-start gap-1.5 text-[0.8125rem] text-[var(--danger)]">
+        <p id={htmlFor && `${htmlFor}-msg`} role="alert" className="mt-2 flex items-start gap-1.5 text-label text-[var(--danger)]">
           <Icon name="alert" size={14} className="mt-[2px] shrink-0" strokeWidth={2} />
           {error}
         </p>
       ) : hint ? (
-        <p id={htmlFor && `${htmlFor}-msg`} className="mt-2 text-[0.8125rem] leading-[1.125rem] text-[var(--ink-4)]">
+        <p id={htmlFor && `${htmlFor}-msg`} className="mt-2 text-label leading-[1.125rem] text-[var(--ink-4)]">
           {hint}
         </p>
       ) : null}
@@ -272,7 +274,7 @@ export function Field({
   )
 }
 
-const fieldBase = `w-full min-h-[50px] rounded-[var(--radius-field)] border bg-[var(--surface)] px-3.5 text-[1rem] text-[var(--ink)]
+const fieldBase = `w-full min-h-[50px] rounded-[var(--radius-field)] border bg-[var(--surface)] px-3.5 text-body-l text-[var(--ink)]
   placeholder:text-[var(--ink-4)] ${TR}`
 const fieldTone = (invalid?: boolean) =>
   invalid
@@ -316,7 +318,7 @@ export function Check({
         onChange={(e) => onChange(e.target.checked)}
       />
       <span>
-        <span className="block text-[0.9375rem] font-semibold text-[var(--ink)]">{label}</span>
+        <span className="block text-body font-semibold text-[var(--ink)]">{label}</span>
         {hint && <span className="t-sm block text-[var(--ink-3)]">{hint}</span>}
       </span>
     </label>
@@ -390,7 +392,7 @@ export function MoneyInput({
   const symbol = currencySymbol(currency)
   return (
     <div className="relative">
-      <span className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-[1rem] text-[var(--ink-3)]">
+      <span className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-body-l text-[var(--ink-3)]">
         {symbol}
       </span>
       <Input
@@ -398,7 +400,7 @@ export function MoneyInput({
         inputMode="decimal"
         value={text}
         invalid={invalid}
-        className="tnum pr-24 text-[1.0625rem] font-semibold"
+        className="tnum pr-24 text-body-l font-semibold"
         style={{ paddingLeft: `calc(1.25rem + ${symbol.length}ch)` }}
         onChange={(e) => {
           const raw = e.target.value
@@ -410,7 +412,7 @@ export function MoneyInput({
         }}
         onBlur={() => setText(show(cents))}
       />
-      <span className="pointer-events-none absolute right-4 top-1/2 -translate-y-1/2 text-[0.8125rem] text-[var(--ink-4)]">
+      <span className="pointer-events-none absolute right-4 top-1/2 -translate-y-1/2 text-label text-[var(--ink-4)]">
         {suffix ?? t('/ hour')}
       </span>
     </div>
@@ -440,7 +442,7 @@ export function Segmented<T extends string>({
       {/* A rule that travels, the way a tab set should read. */}
       <span
         aria-hidden="true"
-        className="pointer-events-none absolute bottom-[-1px] left-0 h-[2px] bg-[var(--ink)] transition-transform duration-[260ms] ease-[cubic-bezier(0.2,0,0,1)]"
+        className="pointer-events-none absolute bottom-[-1px] left-0 h-[2px] bg-[var(--ink)] transition-transform duration-[var(--dur-medium)] ease-[var(--ease-standard)]"
         style={{
           width: `${100 / options.length}%`,
           transform: `translateX(${index * 100}%)`,
@@ -454,7 +456,7 @@ export function Segmented<T extends string>({
             role="tab"
             aria-selected={on}
             onClick={() => onChange(o.value)}
-            className={`tap relative z-[1] min-h-[44px] flex-1 px-3 text-[0.875rem] ${TR}
+            className={`tap relative z-[1] min-h-[44px] flex-1 px-3 text-body ${TR}
               ${on ? 'font-semibold text-[var(--ink)]' : 'font-medium text-[var(--ink-4)] hover:text-[var(--ink-2)]'}`}
           >
             {o.label}
@@ -466,6 +468,19 @@ export function Segmented<T extends string>({
 }
 
 /* ----------------------------------------------------------------- Sheet */
+
+const WIDE = '(min-width: 768px)'
+/** True from the tablet breakpoint up, following resizes. */
+function useWide(): boolean {
+  const [wide, setWide] = useState(() => typeof matchMedia !== 'undefined' && matchMedia(WIDE).matches)
+  useEffect(() => {
+    const m = matchMedia(WIDE)
+    const on = () => setWide(m.matches)
+    m.addEventListener('change', on)
+    return () => m.removeEventListener('change', on)
+  }, [])
+  return wide
+}
 
 export function Sheet({
   open,
@@ -524,30 +539,99 @@ export function Sheet({
     }
   }, [open])
 
-  if (!open) return null
+  // UX-9: the sheet stays mounted while it leaves, so it can slide away rather
+  // than vanish; on a phone it drags between a large and a medium height and
+  // down to close; from 768 px it is a centred dialog.
+  const [mounted, setMounted] = useState(open)
+  const [leaving, setLeaving] = useState(false)
+  const [detent, setDetent] = useState<'large' | 'medium'>('large')
+  const [drag, setDrag] = useState<number | null>(null)
+  const from = useRef<{ y: number; t: number } | null>(null)
+  const wide = useWide()
+  useEffect(() => {
+    if (open) {
+      setMounted(true)
+      setLeaving(false)
+      setDetent('large')
+    } else setLeaving(true)
+  }, [open])
+  useEffect(() => {
+    if (!leaving) return
+    // The exit animation normally ends it; this is the floor if it never fires.
+    const timer = setTimeout(() => setMounted(false), 400)
+    return () => clearTimeout(timer)
+  }, [leaving])
+
+  if (!mounted) return null
+
+  const onDown = (e: React.PointerEvent) => {
+    if (wide || (e.target as HTMLElement).closest('[data-no-drag]')) return
+    from.current = { y: e.clientY, t: performance.now() }
+    ;(e.currentTarget as HTMLElement).setPointerCapture(e.pointerId)
+  }
+  const onMove = (e: React.PointerEvent) => {
+    if (!from.current) return
+    const dy = e.clientY - from.current.y
+    // Up is resisted: a sheet can grow one detent, not float off the top.
+    setDrag(dy < 0 ? dy / 3 : dy)
+  }
+  const onUp = (e: React.PointerEvent) => {
+    if (!from.current) return
+    const dy = e.clientY - from.current.y
+    const speed = dy / Math.max(1, performance.now() - from.current.t)
+    const height = panel.current?.offsetHeight ?? 600
+    from.current = null
+    setDrag(null)
+    if (dy < -48 && detent === 'medium') setDetent('large')
+    else if (dy > height * 0.3 || speed > 0.6) {
+      if (detent === 'large' && dy < height * 0.5 && speed <= 0.6) setDetent('medium')
+      else onClose()
+    }
+  }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-end justify-center" style={{ paddingLeft: 'env(safe-area-inset-left, 0px)', paddingRight: 'env(safe-area-inset-right, 0px)' }}>
-      <div className="anim-fade absolute inset-0 bg-[var(--scrim)]" onClick={onClose} aria-hidden="true" />
+    <div className="fixed inset-0 z-50 flex items-end justify-center md:items-center md:p-6" style={{ paddingLeft: 'env(safe-area-inset-left, 0px)', paddingRight: 'env(safe-area-inset-right, 0px)' }}>
+      <div
+        className={`${leaving ? 'anim-scrim-out' : 'anim-fade'} absolute inset-0 bg-[var(--scrim)]`}
+        onClick={onClose}
+        aria-hidden="true"
+      />
       <div
         ref={panel}
         role="dialog"
         aria-modal="true"
         aria-labelledby={titleId}
-        className="anim-sheet glass relative flex max-h-[88dvh] w-full max-w-[540px] flex-col
-          rounded-t-[var(--radius-sheet)] shadow-[var(--shadow-sheet)]"
+        onAnimationEnd={(e) => {
+          if (leaving && e.target === e.currentTarget) setMounted(false)
+        }}
+        className={`${leaving ? (wide ? 'anim-dialog-out' : 'anim-sheet-out') : wide ? 'anim-dialog' : 'anim-sheet'}
+          glass relative flex w-full max-w-[540px] flex-col shadow-[var(--shadow-sheet)]
+          ${detent === 'medium' ? 'max-h-[55dvh]' : 'max-h-[88dvh]'}
+          rounded-t-[var(--sheet-radius)] md:max-h-[85dvh] md:rounded-[var(--sheet-radius)]`}
+        style={{
+          transform: drag ? `translateY(${drag}px)` : undefined,
+          transition: drag === null ? 'transform var(--dur-medium) var(--ease-spring-spatial)' : 'none',
+        }}
       >
-        {/* The grab handle the kit puts on every sheet. Decorative: the sheet is
-            dismissed by the close button and by the scrim, not by dragging. */}
-        <span
-          aria-hidden="true"
-          className="mx-auto mt-2.5 h-[5px] w-9 shrink-0 rounded-full bg-[var(--line-strong)] opacity-40"
-        />
-        <div className="flex items-center justify-between gap-3 border-b border-[var(--line)] px-5 pb-4 pt-3">
-          <h2 id={titleId} className="t-h2 min-w-0">
+        {/* The grabber: drag it (or the title bar) down to close or to the
+            medium height, up to grow; it is also a button, so the height can
+            be changed without a gesture. Not on a dialog. */}
+        <div onPointerDown={onDown} onPointerMove={onMove} onPointerUp={onUp} onPointerCancel={onUp} className="touch-none md:touch-auto">
+        <button
+          type="button"
+          data-no-drag
+          onClick={() => setDetent((d) => (d === 'large' ? 'medium' : 'large'))}
+          aria-label={detent === 'large' ? t('Make the sheet smaller') : t('Make the sheet bigger')}
+          className="tap mx-auto mt-1 flex h-6 w-16 items-center justify-center md:hidden"
+        >
+          <span aria-hidden="true" className="h-[5px] w-9 rounded-full bg-[var(--line-strong)] opacity-60" />
+        </button>
+        <div className="flex items-center justify-between gap-3 border-b border-[var(--line)] px-5 pb-4 pt-3 md:pt-5">
+          <h2 id={titleId} className="t-title-m min-w-0">
             {title}
           </h2>
           <button
+            data-no-drag
             onClick={onClose}
             aria-label={t('Close')}
             className={`grid h-10 w-10 shrink-0 place-items-center rounded-[var(--radius-control)] text-[var(--ink-3)] ${TR} hover:bg-[var(--sunken)] hover:text-[var(--ink)]`}
@@ -555,7 +639,8 @@ export function Sheet({
             <Icon name="close" size={18} strokeWidth={2.2} />
           </button>
         </div>
-        <div className="min-h-0 flex-1 overflow-y-auto px-5 pb-2 pt-5">{children}</div>
+        </div>
+        <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-5 pb-2 pt-5">{children}</div>
         {footer && (
           <div
             className="border-t border-[var(--line)] px-5 pt-4"
@@ -574,6 +659,19 @@ export function Sheet({
 /** Skeletons mirror the real layout so nothing jumps when content lands. */
 export function Skeleton({ className = '' }: { className?: string }) {
   return <div className={`skeleton rounded-[var(--radius-control)] ${className}`} aria-hidden="true" />
+}
+
+/** A detail page while it loads: the photo, the title and a few lines, in the
+ *  places they will be, so nothing jumps when the page arrives. */
+export function DetailSkeleton() {
+  return (
+    <div className="space-y-4 pt-2" role="status" aria-label={t('Loading')}>
+      <Skeleton className="aspect-[4/3] w-full rounded-[var(--radius-m)] md:aspect-[21/9]" />
+      <Skeleton className="h-8 w-3/4" />
+      <Skeleton className="h-4 w-1/2" />
+      <Skeleton className="h-24 w-full" />
+    </div>
+  )
 }
 
 export function EmptyState({
@@ -623,8 +721,8 @@ export function Banner({
         strokeWidth={2.4}
       />
       <div className="min-w-0">
-        <p className={`text-[0.9062rem] font-semibold ${map.fg}`}>{title}</p>
-        {body && <div className="mt-1 text-[0.8438rem] leading-[1.1875rem] text-[var(--ink-2)]">{body}</div>}
+        <p className={`text-body font-semibold ${map.fg}`}>{title}</p>
+        {body && <div className="mt-1 text-label leading-[1.1875rem] text-[var(--ink-2)]">{body}</div>}
         {action && <div className="mt-3">{action}</div>}
       </div>
     </div>
@@ -649,7 +747,7 @@ export function Row({
       <span className="t-sm min-w-0 text-[var(--ink-3)]">{label}</span>
       {/* Values wrap rather than run off the edge. Some of them are sentences. */}
       <span
-        className={`tnum min-w-0 text-right ${strong ? 'text-[1.125rem] font-bold' : 'text-[0.9062rem] font-medium'} ${color}`}
+        className={`tnum min-w-0 text-right ${strong ? 'text-body-l font-bold' : 'text-body font-medium'} ${color}`}
       >
         {value}
       </span>
@@ -680,13 +778,13 @@ export function Toast({ message, tone = 'ok', onDone }: { message: string; tone?
           : { bottom: 'calc(var(--dock-h) + var(--footer-h, 0px) + var(--safe-bottom-md) + 20px)' }
       }
     >
-      <div className="flex items-center gap-2.5 rounded-[var(--radius-control)] bg-[var(--field)] py-3 pl-3.5 pr-5 text-[0.875rem] font-semibold text-[var(--on-field)]">
+      <div className="flex items-center gap-2.5 rounded-[var(--radius-control)] bg-[var(--field)] py-3 pl-3.5 pr-5 text-body font-semibold text-[var(--on-field)]">
         {tone === 'error' ? (
-          <span className="grid h-5 w-5 shrink-0 place-items-center rounded-[2px] bg-[var(--danger)] text-white">
+          <span className="grid h-5 w-5 shrink-0 place-items-center rounded-[var(--radius-xs)] bg-[var(--danger)] text-[var(--on-status)]">
             <Icon name="info" size={14} strokeWidth={2.6} />
           </span>
         ) : (
-          <span className="grid h-5 w-5 shrink-0 place-items-center rounded-[2px] bg-[var(--sky)] text-[var(--field)]">
+          <span className="grid h-5 w-5 shrink-0 place-items-center rounded-[var(--radius-xs)] bg-[var(--sky)] text-[var(--field)]">
             {/* The tick draws itself once the toast appears. */}
             <Icon name="check" size={14} strokeWidth={3} className="anim-draw" />
           </span>

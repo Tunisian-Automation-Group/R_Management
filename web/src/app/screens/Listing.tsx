@@ -6,7 +6,6 @@ import type { Offer, Requirement, Review } from '../../domain/types.ts'
 import { isWindow, rating } from '../../domain/types.ts'
 import { category, durationLabel } from '../../domain/categories.ts'
 import { distanceKm, trackRecord } from '../../domain/match.ts'
-import { PLATFORM_FEE_BPS } from '../../domain/pricing.ts'
 import { formatMoney } from '../../domain/money.ts'
 import {
   useAttemptKey,
@@ -32,6 +31,8 @@ import { Photo, SaveButton } from '../components/Photo.tsx'
 import { Reviews } from '../components/Reviews.tsx'
 import { BlockButton, ReportButton } from '../components/Report.tsx'
 import { TraderNote } from '../components/BusinessFields.tsx'
+import { PriceSummary, type PriceLines } from '../components/PriceSummary.tsx'
+import { Gallery } from '../components/Gallery.tsx'
 import { askForPush } from '../components/PushPrime.tsx'
 import { Icon } from '../components/Icon.tsx'
 import {
@@ -46,8 +47,9 @@ import {
   Sheet,
   oneDecimal,
   Stars,
+  DetailSkeleton,
 } from '../components/ui.tsx'
-import { cancelRate, day, formatDistance, percent, policyInForce, policyName, policyText, range, relative, responseRate, responseTime, time } from '../format.ts'
+import { cancelRate, day, formatDistance, policyInForce, policyLine, policyName, policyText, range, relative, responseRate, responseTime, time } from '../format.ts'
 import { useOnline } from '../components/Offline.tsx'
 import { t } from '../../i18n.ts'
 
@@ -157,6 +159,20 @@ export function Listing({ preview }: { preview?: { detail: ListingDetail; banner
   // that fit that many hours around what is already booked.
   const quoted = useQuote(preview && !preview.bookable ? undefined : listing?.id, requirement, Boolean(preview))
   const quote = quoted.data?.quote ?? null
+  // One set of lines for the price card and the confirm sheet (UX-23).
+  const priceLines: PriceLines | null = quote && detail.data
+    ? {
+        base: {
+          label: `${formatMoney(detail.data.listing.ratePerHour, quote.currency ?? detail.data.listing.currency)}/h × ${durationLabel(quote.hours)}`,
+          amount: quote.base,
+        },
+        // The server's label (freight: "Loading"), in the reader's language (V5-18, V5-22).
+        extra: quote.extra > 0 ? { label: t(quote.extraLabel), amount: quote.extra } : undefined,
+        discount: (quote.discount ?? 0) > 0 ? { label: quote.discountLabel ?? t('Discount'), amount: quote.discount ?? 0 } : undefined,
+        fee: quote.platformFee,
+        total: quote.total,
+      }
+    : null
   const needed = quote?.hours ?? null
   const offersQ = useOffers(preview && !preview.bookable ? undefined : listing?.id, needed, Boolean(preview))
   const offers = needed === null ? [] : (offersQ.data ?? [])
@@ -180,7 +196,7 @@ export function Listing({ preview }: { preview?: { detail: ListingDetail; banner
   const selectedStart = selected?.start
   useEffect(startOver, [selectedStart])
 
-  if (detail.isPending) return <Screen back="/">{null}</Screen>
+  if (detail.isPending) return <Screen back="/"><DetailSkeleton /></Screen>
   if (!detail.data || !listing || !owner) return <NotFound what="listing" />
   const info = detail.data
   // The owner's policy only binds once Cappy switches paid policies on (V3-4).
@@ -296,22 +312,19 @@ export function Listing({ preview }: { preview?: { detail: ListingDetail; banner
       back={preview ? '/admin' : '/'}
       docTitle={listing.title}
       hero={
-        <Photo
-          src={listing.photos?.[0]}
-          alt={listing.title}
+        <Gallery
+          photos={listing.photos ?? []}
+          title={listing.title}
           slots={slots}
           categoryId={listing.category}
-          aspect={16 / 10}
-          priority
-          className="w-full md:rounded-[var(--radius-sheet)]"
           style={{ viewTransitionName: 'hero' }}
-        >
+          overlay={
           <span
             // Wraps at large text instead of cutting the category to "At…" (V7-27).
             className="absolute left-20 right-5 flex flex-wrap items-center justify-end gap-2"
             style={{ top: 'calc(var(--safe-top) + 14px)' }}
           >
-            <span className="glass glass-dark min-w-0 max-w-full truncate rounded-full px-3 py-1 text-[0.75rem] font-semibold">
+            <span className="glass glass-dark min-w-0 max-w-full truncate rounded-full px-3 py-1 text-label font-semibold">
               {meta.label}
             </span>
             <WhenBadge
@@ -320,7 +333,8 @@ export function Listing({ preview }: { preview?: { detail: ListingDetail; banner
             />
             {!mine && <SaveButton id={listing.id} title={listing.title} className="" />}
           </span>
-        </Photo>
+          }
+        />
       }
       // One row in the phone's bottom bar, a stacked buy box in the page's side
       // panel. Same content, and the panel has the room to label it.
@@ -330,12 +344,12 @@ export function Listing({ preview }: { preview?: { detail: ListingDetail; banner
           <div className="flex flex-wrap items-center gap-x-4 gap-y-2 md:block">
             <div className="min-w-[10rem] flex-1">
               <p className="t-label hidden md:block">{t('Your booking')}</p>
-              <p className="tnum text-[1.1875rem] font-bold leading-tight md:mt-2 md:text-[1.75rem]">
+              <p className="tnum text-title-s font-bold leading-tight md:mt-2 md:text-title-l">
                 {quote ? formatMoney(quote.total, cur) : '—'}
               </p>
               {/* U-20: the total is the whole price; the fee is inside it, never added at the end. */}
               {quote && (
-                <p className="tnum truncate text-[0.7812rem] text-[var(--ink-3)]">
+                <p className="tnum truncate text-label text-[var(--ink-3)]">
                   {t('Total, incl. {fee} service fee', { fee: formatMoney(quote.platformFee, cur) })}
                 </p>
               )}
@@ -379,9 +393,9 @@ export function Listing({ preview }: { preview?: { detail: ListingDetail; banner
     >
       {/* ------------------------------------------------------------- title */}
       <header className="-mt-1">
-        <h1 className="t-h1 text-balance">{listing.title}</h1>
+        <h1 className="t-title-user text-balance">{listing.title}</h1>
         <p className="t-lede mt-2.5 text-[var(--ink-3)]">{listing.blurb}</p>
-        <div className="mt-4 flex flex-wrap items-center gap-x-4 gap-y-2 text-[0.875rem] text-[var(--ink-3)]">
+        <div className="mt-4 flex flex-wrap items-center gap-x-4 gap-y-2 text-body text-[var(--ink-3)]">
           {/* Approximate for everyone but the owner (M-6): the exact place comes with the booking. */}
           <span className="tnum inline-flex items-center gap-1.5" title={mine ? undefined : addressNote}>
             <Icon name="pin" size={15} className="text-[var(--ink-4)]" />
@@ -402,7 +416,7 @@ export function Listing({ preview }: { preview?: { detail: ListingDetail; banner
             <Stars value={info.reviews.average} count={info.reviews.count} />
           </a>
           {listing.instantBook && (
-            <span className="inline-flex items-center gap-1 rounded-full bg-[var(--sunken)] px-2.5 py-0.5 text-[0.8125rem] font-semibold text-[var(--ink-2)]">
+            <span className="inline-flex items-center gap-1 rounded-full bg-[var(--sunken)] px-2.5 py-0.5 text-label font-semibold text-[var(--ink-2)]">
               <Icon name="bolt" size={13} />
               {t('Instant book')}
             </span>
@@ -431,7 +445,7 @@ export function Listing({ preview }: { preview?: { detail: ListingDetail; banner
         <div className="flex items-center gap-4">
           <Avatar initials={owner.initials} size={48} business={owner.kind === 'business'} />
           <div className="min-w-0 flex-1">
-            <p className="flex items-center gap-1.5 text-[1rem] font-semibold">
+            <p className="flex items-center gap-1.5 text-body-l font-semibold">
               {/* Wraps: a name is not cut to "Nadia Bra…" when the rating beside it is long (V4-11). */}
               <span className="min-w-0 break-words">{owner.name}</span>
               {owner.verified && (
@@ -492,7 +506,7 @@ export function Listing({ preview }: { preview?: { detail: ListingDetail; banner
         <>
           <SectionHead title={t('Hand-over address')} className="mt-7" />
           <Card className="p-5">
-            <p className="text-[0.9375rem] text-[var(--ink-2)]">{preview.address}</p>
+            <p className="text-body text-[var(--ink-2)]">{preview.address}</p>
           </Card>
         </>
       )}
@@ -621,35 +635,11 @@ export function Listing({ preview }: { preview?: { detail: ListingDetail; banner
         <>
           <SectionHead title={t('Price')} className="mt-7" />
           <Card className="p-5">
-            <Row
-              label={`${formatMoney(listing.ratePerHour, cur)}/h × ${durationLabel(quote.hours)}`}
-              value={formatMoney(quote.base, cur)}
-            />
-            {/* The server's label (the category's setupLabel: freight is "Loading"), in the reader's language (V5-18, V5-22). */}
-            {quote.extra > 0 && (
-              <Row label={t(quote.extraLabel)} value={formatMoney(quote.extra, cur)} />
-            )}
-            <div className="my-2 border-t border-[var(--line)]" />
-            {(quote.discount ?? 0) > 0 && (
-              <Row
-                label={quote.discountLabel ?? t('Discount')}
-                value={`−${formatMoney(quote.discount ?? 0, cur)}`}
-                tone="accent"
-              />
-            )}
-            <Row label={t('Total')} value={formatMoney(quote.total, cur)} strong />
-            <p className="t-sm mt-3 border-t border-[var(--line)] pt-3 text-[var(--ink-4)]">
-              {t(
-                listing.instantBook
-                  ? 'Includes the {pct} Cappy fee of {fee}. {name} receives {net}. Instant book: paid by card when you book, confirmed at once.'
-                  : 'Includes the {pct} Cappy fee of {fee}. {name} receives {net}. Paid by card when {name} accepts; if they decline, the hold is released.',
-                {
-                  pct: percent(PLATFORM_FEE_BPS / 10_000),
-                  fee: formatMoney(quote.platformFee, cur),
-                  net: formatMoney(quote.ownerNet, cur),
-                  name: first,
-                },
-              )}
+            <PriceSummary lines={priceLines!} currency={cur} perspective="renter" policy={policyLine(policy, selected.start)} />
+            <p className="t-sm mt-3 text-[var(--ink-4)]">
+              {listing.instantBook
+                ? t('Instant book: paid by card when you book, confirmed at once.')
+                : t('Paid by card when {name} accepts; if they decline, the hold is released.', { name: first })}
             </p>
           </Card>
         </>
@@ -657,7 +647,7 @@ export function Listing({ preview }: { preview?: { detail: ListingDetail; banner
 
       <SectionHead title={t('Cancellation')} className="mt-7" />
       <Card className="p-5">
-        <p className="text-[0.9375rem] font-semibold">{policyName(policy)}</p>
+        <p className="text-body font-semibold">{policyName(policy)}</p>
         <p className="t-sm mt-1 text-[var(--ink-3)]">
           {policyText(policy)} {preview ? t('If the owner cancels, the renter gets everything back.') : t('If the owner cancels, you get everything back.')}
         </p>
@@ -674,7 +664,7 @@ export function Listing({ preview }: { preview?: { detail: ListingDetail; banner
       <Card className="p-5">
         <ul className="space-y-3">
           {listing.rules.map((r) => (
-            <li key={r} className="flex gap-3 text-[0.9375rem] text-[var(--ink-2)]">
+            <li key={r} className="flex gap-3 text-body text-[var(--ink-2)]">
               <Icon
                 name="check"
                 size={16}
@@ -714,7 +704,8 @@ export function Listing({ preview }: { preview?: { detail: ListingDetail; banner
             <div className="space-y-2">
               <Button block size="lg" disabled={sending || !online} onClick={() => void book()}>
                 {/* The final button must say it commits to paying (§312j BGB). */}
-                {sending ? t('Sending…') : t('Book and pay')}
+                {/* The amount on the button (UX-23), the legal wording kept verbatim. */}
+                {sending ? t('Sending…') : quote ? `${t('Book and pay')} · ${formatMoney(quote.total, cur)}` : t('Book and pay')}
               </Button>
               <Button block variant="quiet" onClick={() => setConfirming(false)}>
                 {t('Not yet')}
@@ -741,10 +732,10 @@ export function Listing({ preview }: { preview?: { detail: ListingDetail; banner
                 categoryId={listing.category}
                 aspect={1}
                 thumb
-                className="w-[52px] shrink-0 rounded-[14px]"
+                className="w-[52px] shrink-0 rounded-[var(--radius-m)]"
               />
               <div className="min-w-0">
-                <p className="truncate text-[0.9688rem] font-semibold">{listing.title}</p>
+                <p className="truncate text-body font-semibold">{listing.title}</p>
                 <p className="t-sm truncate text-[var(--ink-3)]">{owner.name}</p>
               </div>
             </div>
@@ -762,12 +753,8 @@ export function Listing({ preview }: { preview?: { detail: ListingDetail; banner
               <Row label={t('Where')} value={`${listing.district}${km !== null ? ` · ${formatDistance(km)}` : ''}`} />
               <p className="t-sm text-[var(--ink-4)]">{addressNote}</p>
               <div className="my-2 border-t border-[var(--line)]" />
-              <Row label={t('You pay')} value={formatMoney(quote.total, cur)} strong />
-              <Row
-                label={t('{name} receives', { name: first })}
-                value={formatMoney(quote.ownerNet, cur)}
-                tone="accent"
-              />
+              {/* What the renter pays, never what the owner nets (UX-23). */}
+              <PriceSummary lines={priceLines!} currency={cur} perspective="renter" policy={policyLine(policy, selected.start)} />
             </Card>
 
             {listing.instantBook ? (
@@ -804,7 +791,7 @@ export function Listing({ preview }: { preview?: { detail: ListingDetail; banner
           </div>
         }
       >
-        <p className="pb-2 text-[0.9375rem] text-[var(--ink-2)]">
+        <p className="pb-2 text-body text-[var(--ink-2)]">
           {t('This booking needs a one-time ID check. You photograph an ID document and your face; it takes about two minutes and is never needed again. Your booking is sent as soon as it is done.')}
         </p>
         <div className="pb-3">

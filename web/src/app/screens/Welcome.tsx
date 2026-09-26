@@ -5,6 +5,16 @@ import { Icon, type IconName } from '../components/Icon.tsx'
 import { Button } from '../components/ui.tsx'
 import { setDevice } from '../device.ts'
 import { t } from '../../i18n.ts'
+import { formatMoney } from '../../domain/money.ts'
+
+/** What people rent here, as examples (UX-30): the product shown, not live
+ *  listings, which are for members (GOAL 13). */
+const EXAMPLES: { icon: IconName; what: string; price: number }[] = [
+  { icon: 'drill', what: 'Plunge saw', price: 400 },
+  { icon: 'truck', what: 'Cargo van', price: 2500 },
+  { icon: 'camera', what: 'Photo studio', price: 4000 },
+  { icon: 'printer', what: '3D printer', price: 600 },
+]
 
 const VALUES: { icon: IconName; title: string; body: string }[] = [
   {
@@ -42,7 +52,7 @@ export function Welcome() {
         style={{ paddingTop: 'max(20px, env(safe-area-inset-top))', paddingBottom: 'max(24px, env(safe-area-inset-bottom))' }}
       >
         <header className="flex items-center justify-between gap-4">
-          <p className="t-h2 leading-none" style={{ fontSize: 28 }}>
+          <p className="t-h2 leading-none">
             Cappy
           </p>
           <div className="rounded-full bg-[var(--surface)]">
@@ -58,6 +68,17 @@ export function Welcome() {
             <p className="t-body mt-4 max-w-[40ch] text-[var(--on-field-dim)]">
               {t('Rent the machines, rooms and vehicles near you when you need them, and earn from yours when you do not.')}
             </p>
+            <ul className="no-scrollbar -mx-6 mt-7 flex gap-2.5 overflow-x-auto px-6 md:mx-0 md:flex-wrap md:px-0" aria-label={t('For example')}>
+              {EXAMPLES.map((e) => (
+                <li key={e.what} className="glass glass-dark flex shrink-0 items-center gap-2.5 rounded-[var(--radius-m)] px-3.5 py-2.5">
+                  <Icon name={e.icon} size={18} strokeWidth={1.8} />
+                  <span className="text-label font-semibold">{t(e.what)}</span>
+                  <span className="t-figure text-label text-[var(--on-field-dim)]">
+                    {t('{price} / h', { price: formatMoney(e.price, 'EUR') })}
+                  </span>
+                </li>
+              ))}
+            </ul>
           </div>
           <ul className="mt-10 space-y-6 md:mt-0">
             {VALUES.map((v) => (
@@ -66,7 +87,7 @@ export function Welcome() {
                   <Icon name={v.icon} size={17} strokeWidth={2} />
                 </span>
                 <div>
-                  <h2 className="text-[1rem] font-semibold">{t(v.title)}</h2>
+                  <h2 className="text-body-l font-semibold">{t(v.title)}</h2>
                   <p className="t-sm mt-1 text-[var(--on-field-dim)]">{t(v.body)}</p>
                 </div>
               </li>
@@ -75,13 +96,14 @@ export function Welcome() {
         </main>
 
         <div className="flex flex-col gap-3 md:mx-auto md:w-[360px]">
-          <Button size="lg" block onClick={() => nav('/login?mode=up', { replace: true })}>
+          {/* On the green plate the primary is ivory, not crimson (UX-30, F-6). */}
+          <Button size="lg" block variant="onplate" onClick={() => nav('/login?mode=up', { replace: true })}>
             {t('Create an account')}
           </Button>
           <button
             type="button"
             onClick={() => nav('/login', { replace: true })}
-            className="min-h-[48px] rounded-[var(--radius-control)] border border-[var(--on-field-dim)] px-4 text-[0.9375rem] font-semibold"
+            className="min-h-[48px] rounded-[var(--radius-control)] border border-[var(--on-field-dim)] px-4 text-body font-semibold"
           >
             {t('I have an account')}
           </button>

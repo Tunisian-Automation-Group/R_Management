@@ -81,12 +81,12 @@ export function CapacityBar({
           {columns.map((col, i) => (
             <div
               key={i}
-              className="relative flex-1 overflow-hidden rounded-[7px] bg-[var(--track)]"
+              className="relative flex-1 overflow-hidden rounded-[var(--radius-s)] bg-[var(--track)]"
             >
               {size === 'sm'
                 ? col.idleShare > 0 && (
                     <div
-                      className={`anim-grow absolute inset-x-0 bottom-0 rounded-[7px] ${
+                      className={`anim-grow absolute inset-x-0 bottom-0 rounded-[var(--radius-s)] ${
                         col.sold.length ? 'bg-[var(--sold)]' : 'bg-[var(--idle)]'
                       }`}
                       style={{
@@ -98,7 +98,7 @@ export function CapacityBar({
                 : col.idle.map((b, j) => (
                     <div
                       key={j}
-                      className="anim-fade absolute inset-x-0 rounded-[6px] bg-[var(--idle)]"
+                      className="anim-fade absolute inset-x-0 rounded-[var(--radius-s)] bg-[var(--idle)]"
                       style={{ top: `${b.top}%`, height: `${b.height}%`, animationDelay: `${i * 35}ms` }}
                     />
                   ))}
@@ -106,7 +106,7 @@ export function CapacityBar({
                 col.sold.map((b, j) => (
                   <div
                     key={`s${j}`}
-                    className="absolute inset-x-0 rounded-[6px] bg-[var(--sold)] ring-2 ring-[var(--surface)]"
+                    className="absolute inset-x-0 rounded-[var(--radius-s)] bg-[var(--sold)] ring-2 ring-[var(--surface)]"
                     style={{ top: `${b.top}%`, height: `${b.height}%` }}
                   />
                 ))}
@@ -126,7 +126,7 @@ export function CapacityBar({
             <div
               key={i}
               // min-w-0 and wrap: at large text sizes (U-27) the date drops under the weekday instead of pushing the page wide.
-              className={`tnum flex min-w-0 flex-1 flex-wrap justify-center text-center tracking-[0.06em] ${size === 'sm' ? 'text-[0.625rem] leading-[0.75rem]' : 'text-[0.6875rem] leading-[0.875rem]'} ${
+              className={`tnum flex min-w-0 flex-1 flex-wrap justify-center text-center tracking-[0.06em] ${size === 'sm' ? 'text-caption leading-[0.75rem]' : 'text-caption leading-[0.875rem]'} ${
                 col.isToday ? 'font-bold text-[var(--ink)]' : 'font-semibold text-[var(--ink-4)]'
               }`}
             >
@@ -138,7 +138,7 @@ export function CapacityBar({
       </div>
 
       {showLegend && (
-        <div className="mt-4 flex flex-wrap items-center gap-x-4 gap-y-1.5 border-t border-[var(--line)] pt-3 text-[0.7812rem] text-[var(--ink-3)]">
+        <div className="mt-4 flex flex-wrap items-center gap-x-4 gap-y-1.5 border-t border-[var(--line)] pt-3 text-label text-[var(--ink-3)]">
           <Key className="bg-[var(--track)]" label={t('In use')} />
           <Key className="bg-[var(--idle)]" label={intent === 'earn' ? t('Idle, nobody paying') : t('Free to book')} />
           {bookedList.length > 0 && <Key className="bg-[var(--sold)]" label={intent === 'earn' ? t('Sold') : t('Your booking')} />}
@@ -151,7 +151,7 @@ export function CapacityBar({
 function Key({ className, label }: { className: string; label: string }) {
   return (
     <span className="inline-flex items-center gap-1.5">
-      <span className={`inline-block h-2.5 w-2.5 rounded-[4px] ${className}`} />
+      <span className={`inline-block h-2.5 w-2.5 rounded-[var(--radius-xs)] ${className}`} />
       {label}
     </span>
   )

@@ -157,7 +157,7 @@ export function EvidencePanel({
                     <img
                       src={mediaUrl(src)}
                       alt={t('{what} by {who}', { what: LABEL[e.stage], who: e.by === me ? t('you') : otherName })}
-                      className="h-[72px] w-[72px] rounded-[10px] object-cover"
+                      className="h-[72px] w-[72px] rounded-[var(--radius-s)] object-cover"
                       loading="lazy"
                       onError={renew}
                     />
@@ -219,7 +219,7 @@ export function EvidencePanel({
             />
             <label
               htmlFor={`${id}-files`}
-              className="inline-flex min-h-[48px] cursor-pointer items-center gap-2 rounded-[var(--radius-control)] border border-[var(--line-strong)] px-4 text-[0.9062rem] font-semibold hover:border-[var(--ink-4)] focus-within:outline"
+              className="inline-flex min-h-[48px] cursor-pointer items-center gap-2 rounded-[var(--radius-control)] border border-[var(--line-strong)] px-4 text-body font-semibold hover:border-[var(--ink-4)] focus-within:outline"
             >
               <Icon name="camera" size={18} />
               {files.length ? t('Add more photos') : t('Take or choose photos')}
@@ -228,7 +228,7 @@ export function EvidencePanel({
               <div className="mt-3 flex flex-wrap gap-2">
                 {previews.map((src, i) => (
                   <span key={src} className="relative">
-                    <img src={src} alt="" className="h-[64px] w-[64px] rounded-[10px] object-cover" />
+                    <img src={src} alt="" className="h-[64px] w-[64px] rounded-[var(--radius-s)] object-cover" />
                     <button
                       type="button"
                       aria-label={t('Remove photo')}

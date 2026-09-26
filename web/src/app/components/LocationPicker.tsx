@@ -94,8 +94,8 @@ export function LocationPicker({
           onChange={(e) => setQ(e.target.value)}
           placeholder={t('City, district or country')}
           aria-label={t('Filter cities and districts')}
-          className="h-10 w-full rounded-[12px] border border-[var(--line)] bg-[var(--surface)] pl-9 pr-3
-            text-[0.875rem] outline-none placeholder:text-[var(--ink-4)] focus:border-[var(--ink-3)]
+          className="h-10 w-full rounded-[var(--radius-m)] border border-[var(--line)] bg-[var(--surface)] pl-9 pr-3
+            text-body outline-none placeholder:text-[var(--ink-4)] focus:border-[var(--ink-3)]
             focus-visible:outline-none"
         />
       </label>
@@ -112,11 +112,11 @@ export function LocationPicker({
                     setOpen(false)
                     setQ('')
                   }}
-                  className="flex w-full items-center gap-3 rounded-[12px] px-3 py-2.5 text-left transition-colors duration-[140ms] hover:bg-[var(--sunken)]"
+                  className="flex w-full items-center gap-3 rounded-[var(--radius-m)] px-3 py-2.5 text-left transition-colors duration-[var(--dur-short)] hover:bg-[var(--sunken)]"
                 >
                   <Icon name="pin" size={16} strokeWidth={1.8} className="shrink-0 text-[var(--ink-4)]" />
                   <span className="min-w-0 flex-1">
-                    <span className="block text-[0.9062rem] font-semibold">{d.name}</span>
+                    <span className="block text-body font-semibold">{d.name}</span>
                     <span className="t-sm block text-[var(--ink-4)]">{d.city}</span>
                   </span>
                 </button>
@@ -143,14 +143,14 @@ export function LocationPicker({
                   <button
                     onClick={() => pick(c.city)}
                     aria-current={here ? 'true' : undefined}
-                    className={`flex w-full items-center gap-3 rounded-[12px] px-3 py-2.5 text-left
-                      transition-colors duration-[140ms] ${
+                    className={`flex w-full items-center gap-3 rounded-[var(--radius-m)] px-3 py-2.5 text-left
+                      transition-colors duration-[var(--dur-short)] ${
                         here ? 'bg-[var(--sunken)]' : 'hover:bg-[var(--sunken)]'
                       }`}
                   >
                     <Icon name="pin" size={16} strokeWidth={1.8} className="shrink-0 text-[var(--ink-4)]" />
                     <span className="min-w-0 flex-1">
-                      <span className="block text-[0.9062rem] font-semibold">{c.city}</span>
+                      <span className="block text-body font-semibold">{c.city}</span>
                       <span className="t-sm tnum block text-[var(--ink-4)]">
                         {plural(c.listings, '{n} listing', '{n} listings')}
                       </span>
@@ -174,8 +174,8 @@ export function LocationPicker({
         onClick={() => setOpen((o) => !o)}
         aria-haspopup="dialog"
         aria-expanded={open}
-        className="inline-flex min-h-[44px] items-center gap-1.5 rounded-full px-3 text-[0.8438rem] font-medium
-          text-[var(--ink-2)] transition-colors duration-[140ms] hover:bg-[var(--sunken)] hover:text-[var(--ink)]"
+        className="inline-flex min-h-[44px] items-center gap-1.5 rounded-full px-3 text-label font-medium
+          text-[var(--ink-2)] transition-colors duration-[var(--dur-short)] hover:bg-[var(--sunken)] hover:text-[var(--ink)]"
       >
         <Icon name="pin" size={15} strokeWidth={1.9} className="text-[var(--ink-3)]" />
         <span>{label}</span>
@@ -183,7 +183,7 @@ export function LocationPicker({
           name="chevron-down"
           size={14}
           strokeWidth={2.2}
-          className={`text-[var(--ink-4)] transition-transform duration-[160ms] ${open ? 'rotate-180' : ''}`}
+          className={`text-[var(--ink-4)] transition-transform duration-[var(--dur-short)] ${open ? 'rotate-180' : ''}`}
         />
       </button>
 
@@ -193,7 +193,7 @@ export function LocationPicker({
             role="dialog"
             aria-label={t('Choose a city')}
             className="anim-pop glass-strong absolute right-0 top-[calc(100%+8px)] z-50 max-h-[70vh] w-[320px]
-              overflow-y-auto rounded-[20px] p-3 shadow-[var(--glass-shadow-raised)]"
+              overflow-y-auto rounded-[var(--radius-l)] p-3 shadow-[var(--glass-shadow-raised)]"
           >
             {list}
           </div>

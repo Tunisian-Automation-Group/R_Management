@@ -1,4 +1,5 @@
 import { useEffect, useId, useRef, useState, type ReactNode } from 'react'
+import { markSeen } from '../seen.ts'
 import { useQueryClient } from '@tanstack/react-query'
 import { ApiError, HIDDEN_CONTACT, sendMessage, unblockPerson, useAttemptKey, useBlocks, useMessages, type Message } from '../../data/repo.ts'
 import { messageOf, useToast } from '../store.tsx'
@@ -19,7 +20,7 @@ function Body({ text, closed }: { text: string; closed: boolean }) {
       out.push(
         <span
           key={i}
-          className="mx-0.5 inline-block rounded-[var(--radius-control)] bg-[var(--sunken)] px-1.5 text-[0.7812rem] font-semibold text-[var(--ink-3)]"
+          className="mx-0.5 inline-block rounded-[var(--radius-control)] bg-[var(--sunken)] px-1.5 text-label font-semibold text-[var(--ink-3)]"
         >
           {/* The server shows it again once the booking is accepted (V3-6); a booking
               that closed before that never reveals it. */}
@@ -27,14 +28,14 @@ function Body({ text, closed }: { text: string; closed: boolean }) {
         </span>,
       )
   })
-  return <p className="whitespace-pre-wrap break-words text-[0.9375rem] leading-[1.375rem]">{out}</p>
+  return <p className="whitespace-pre-wrap break-words text-body leading-[1.375rem]">{out}</p>
 }
 
 function Bubble({ m, otherName, closed }: { m: Message; otherName: string; closed: boolean }) {
   return (
     <li className={`flex flex-col ${m.mine ? 'items-end' : 'items-start'}`}>
       <div
-        className={`max-w-[85%] rounded-[14px] px-3.5 py-2.5 ${
+        className={`max-w-[85%] rounded-[var(--radius-m)] px-3.5 py-2.5 ${
           m.mine ? 'bg-[var(--field)] text-[var(--on-field)]' : 'bg-[var(--sunken)] text-[var(--ink)]'
         }`}
       >
@@ -98,12 +99,24 @@ export function Conversation({
   const [refusedHere, setRefusedHere] = useState(false)
   const iBlocked = Boolean(otherId && blocks.data?.includes(otherId))
   const blocked = iBlocked || refusedHere
-  const end = useRef<HTMLDivElement>(null)
+  const list = useRef<HTMLUListElement>(null)
+  const heading = useRef<HTMLHeadingElement>(null)
+  // Opened from the Inbox (#messages): bring the thread into view once it is there.
+  const arrived = Boolean(messages.data)
+  useEffect(() => {
+    if (arrived && location.hash === '#messages') heading.current?.scrollIntoView({ block: 'start' })
+  }, [arrived])
   const items = messages.data?.items ?? []
 
+  // The newest message in view by scrolling the list itself, never the page:
+  // scrollIntoView scrolled the whole booking page 477 px down on open (UX-25).
   useEffect(() => {
-    end.current?.scrollIntoView({ block: 'nearest' })
-  }, [items.length])
+    const el = list.current
+    if (el) el.scrollTop = el.scrollHeight
+    // Read here: the Inbox drops its unread dot (UX-12).
+    const last = items[items.length - 1]
+    if (last) markSeen(bookingId, last.at)
+  }, [items.length, bookingId])
 
   const send = async () => {
     const text = draft.trim()
@@ -130,7 +143,7 @@ export function Conversation({
 
   return (
     <Card className="mt-3 p-5">
-      <h2 className="t-label mb-1">{t('Messages with {name}', { name: otherName })}</h2>
+      <h2 ref={heading} id="messages" className="t-label mb-1 scroll-mt-24">{t('Messages with {name}', { name: otherName })}</h2>
       {items.some((m) => !m.mine && m.flagged) && (
         <p role="note" className="t-sm mb-3 rounded-[var(--radius-control)] bg-[var(--warn-subtle)] p-3 text-[var(--ink-2)]">
           {t('{name} asked about paying outside Cappy. Payments outside Cappy are not protected: no refund, no help if something goes wrong. Report the message if it happens again.', { name: otherName })}
@@ -147,11 +160,10 @@ export function Conversation({
           <p className="t-sm py-3 text-[var(--ink-3)]">{t('No messages yet. Ask about the hand-over, access or anything you need.')}</p>
         )
       ) : (
-        <ul className="max-h-[360px] space-y-3 overflow-y-auto py-2" aria-live="polite">
+        <ul ref={list} className="max-h-[360px] space-y-3 overflow-y-auto overscroll-contain py-2" aria-live="polite">
           {items.map((m) => (
             <Bubble key={m.id} m={m} otherName={otherName} closed={closed} />
           ))}
-          <div ref={end} />
         </ul>
       )}
       {closed ? (

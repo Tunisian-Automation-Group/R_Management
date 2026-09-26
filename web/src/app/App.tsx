@@ -26,6 +26,7 @@ const page = <K extends string>(load: () => Promise<Record<K, ComponentType>>, n
   lazy(() => load().then((m) => ({ default: m[name] })))
 const Help = page(() => import('./screens/Help.tsx'), 'Help')
 const Notifications = page(() => import('./screens/Notifications.tsx'), 'Notifications')
+const Inbox = page(() => import('./screens/Inbox.tsx'), 'Inbox')
 const Earn = page(() => import('./screens/Earn.tsx'), 'Earn')
 const AddListing = page(() => import('./screens/AddListing.tsx'), 'AddListing')
 const Profile = page(() => import('./screens/Profile.tsx'), 'Profile')
@@ -141,7 +142,7 @@ function Member() {
       {/* Keyboard users skip the navigation; the nav comes first in the page. */}
       <a
         href="#main"
-        className="sr-only z-[70] rounded-[var(--radius-control)] bg-[var(--field)] px-4 py-3 text-[0.875rem] font-semibold text-[var(--on-field)]
+        className="sr-only z-[70] rounded-[var(--radius-control)] bg-[var(--field)] px-4 py-3 text-body font-semibold text-[var(--on-field)]
           focus:not-sr-only focus:fixed focus:left-4 focus:top-4"
       >
         {t('Skip to content')}
@@ -166,6 +167,7 @@ function Member() {
           <Route path="/help" element={<Help />} />
           <Route path="/help/:topic" element={<Help />} />
           <Route path="/notifications" element={<Notifications />} />
+          <Route path="/inbox" element={<Inbox />} />
           <Route path="/legal/:page" element={<Legal />} />
           <Route path="/account/delete" element={<AccountDeletion />} />
           <Route path="/admin" element={<Admin />} />

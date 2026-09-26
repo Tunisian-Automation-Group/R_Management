@@ -52,7 +52,7 @@ export function Legal() {
   if (!p) return <NotFound />
   return (
     <Screen title={titleOf(p)} back="/profile">
-      <nav aria-label={t('Legal pages')} className="mb-6 flex flex-wrap gap-x-5 gap-y-2 text-[0.875rem] font-semibold">
+      <nav aria-label={t('Legal pages')} className="mb-6 flex flex-wrap gap-x-5 gap-y-2 text-body font-semibold">
         {Object.entries(PAGES).map(([key, v]) => (
           <NavLink
             key={key}
@@ -72,7 +72,7 @@ export function Legal() {
           />
         </div>
       )}
-      <article className="legal space-y-4 pb-8 text-[0.9375rem] leading-[1.5rem] text-[var(--ink-2)]">{p.body()}</article>
+      <article className="legal space-y-4 pb-8 text-body leading-[1.5rem] text-[var(--ink-2)]">{p.body()}</article>
       {/* DSA Art. 16: anyone, signed in or not, can send a notice from here (FL-10). */}
       {page === 'report' && <ReportButton className="mb-8" />}
     </Screen>
@@ -85,7 +85,7 @@ export function AccountDeletion() {
   const fr = lang() === 'fr'
   return (
     <Screen title={by({ en: 'Delete your Cappy account', de: 'Konto löschen', fr: 'Supprimer votre compte Cappy' })} back="/profile">
-      <article className="legal space-y-4 pb-8 text-[0.9375rem] leading-[1.5rem] text-[var(--ink-2)]">
+      <article className="legal space-y-4 pb-8 text-body leading-[1.5rem] text-[var(--ink-2)]">
         {fr ? (
           <>
             <p>Pour supprimer votre compte, dans l’application ou sur cappy.app&nbsp;:</p>

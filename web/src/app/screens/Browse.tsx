@@ -18,12 +18,12 @@ import { buildRequirement, useCappy, useMe } from '../store.tsx'
 import { Screen, SectionHead } from '../components/AppShell.tsx'
 import { Icon, categoryIcon } from '../components/Icon.tsx'
 import { ListingCard } from '../components/ListingCard.tsx'
-import { Photo, SaveButton, WhenChip } from '../components/Photo.tsx'
+import { Photo, PhotoGrid, SaveButton, WhenChip } from '../components/Photo.tsx'
 import { LocationPicker } from '../components/LocationPicker.tsx'
 import { distanceKm } from '../../domain/match.ts'
 import { CapacityMap, type MapLevel } from '../components/CapacityMap.tsx'
 import { Banner, Button, Chip, EmptyState, oneDecimal, Sheet, Skeleton } from '../components/ui.tsx'
-import { formatDistance, formatRadius, relative, when } from '../format.ts'
+import { dayShort, formatDistance, formatRadius, relative, time, when } from '../format.ts'
 import { plural, t } from '../../i18n.ts'
 
 // The default has to be one of these or the filter opens with nothing selected.
@@ -122,6 +122,7 @@ export function Browse() {
 
   return (
     <Screen wide>
+      <PhotoGrid>
       {/* ------------------------------------------------------------ masthead */}
       <header className="flex items-baseline justify-between gap-3 pb-2 pt-8 md:pt-10">
         <h1 className="min-w-0">
@@ -150,7 +151,7 @@ export function Browse() {
       >
         {/* The field is its own glass pane, the way the kit's search bars are,
             rather than a rule drawn across the page. */}
-        <div className="glass relative mx-auto max-w-[620px] rounded-[22px] px-4 py-[11px] shadow-[var(--glass-shadow)] md:max-w-none">
+        <div className="glass relative mx-auto max-w-[620px] rounded-[var(--radius-l)] px-4 py-[11px] shadow-[var(--glass-shadow)] md:max-w-none">
           <Icon
             name="search"
             size={17}
@@ -173,7 +174,7 @@ export function Browse() {
             aria-label={t('Search listings')}
             placeholder={t('Milling, printing, PA rig, saw')}
             onChange={(e) => send({ type: 'SEARCH_CHANGED', patch: { query: e.target.value } })}
-            className="h-[26px] w-full border-0 bg-transparent pl-7 text-[1.0312rem] font-medium text-[var(--ink)]
+            className="h-[26px] w-full border-0 bg-transparent pl-7 text-body-l font-medium text-[var(--ink)]
               outline-none placeholder:font-normal placeholder:text-[var(--ink-4)]"
             style={{ fontVariationSettings: "'wdth' 104" }}
           />
@@ -222,25 +223,27 @@ export function Browse() {
                     <li key={l.id}>
                       <button
                         onClick={() => nav(`/listing/${l.id}`)}
-                        className="flex w-full items-center gap-4 py-4 text-left transition-opacity duration-[160ms] hover:opacity-70"
+                        className="flex w-full items-center gap-4 py-4 text-left transition-opacity duration-[var(--dur-short)] hover:opacity-70"
                       >
                         <Photo
                           src={l.photos?.[0]}
                           alt={l.title}
                           categoryId={l.category}
                           aspect={1}
+                          claim={l.id}
+                          width={52}
                           thumb
                           className="w-[52px] shrink-0 rounded-[var(--radius-plate)]"
                         />
                         <span className="min-w-0 flex-1">
-                          <span className="block truncate text-[0.9375rem] font-semibold">{l.title}</span>
+                          <span className="block truncate text-body font-semibold">{l.title}</span>
                           <span className="t-sm block truncate text-[var(--ink-3)]">
                             {o.name}, {l.district}
                           </span>
                         </span>
-                        <span className="tnum shrink-0 text-[0.9062rem] font-semibold">
+                        <span className="tnum shrink-0 text-body font-semibold">
                           {formatMoney(l.ratePerHour, l.currency)}
-                          <span className="text-[0.75rem] font-normal text-[var(--ink-4)]"> / h</span>
+                          <span className="text-label font-normal text-[var(--ink-4)]"> / h</span>
                         </span>
                         <Icon
                           name="chevron-right"
@@ -267,8 +270,8 @@ export function Browse() {
                   key={c.id}
                   onClick={() => send({ type: 'SEARCH_CHANGED', patch: { categoryId: c.id } })}
                   className="inline-flex shrink-0 items-center gap-2 rounded-full border border-[var(--line)]
-                    bg-[var(--surface)] px-3.5 py-2 text-[0.8438rem] font-medium text-[var(--ink-2)]
-                    transition-colors duration-[160ms] hover:border-[var(--line-strong)] hover:text-[var(--ink)]"
+                    bg-[var(--surface)] px-3.5 py-2 text-label font-medium text-[var(--ink-2)]
+                    transition-colors duration-[var(--dur-short)] hover:border-[var(--line-strong)] hover:text-[var(--ink)]"
                 >
                   <Icon name={categoryIcon(c.icon)} size={16} strokeWidth={1.7} className="text-[var(--ink-3)]" />
                   {c.label}
@@ -339,7 +342,7 @@ export function Browse() {
                 <li key={c.id}>
                   <button
                     onClick={() => send({ type: 'SEARCH_CHANGED', patch: { categoryId: c.id } })}
-                    className="group flex w-full items-center gap-3 py-3.5 text-left transition-opacity duration-[160ms] hover:opacity-60"
+                    className="group flex w-full items-center gap-3 py-3.5 text-left transition-opacity duration-[var(--dur-short)] hover:opacity-60"
                   >
                     <Icon
                       name={categoryIcon(c.icon)}
@@ -348,7 +351,7 @@ export function Browse() {
                       className="shrink-0 text-[var(--ink-3)]"
                     />
                     <span className="min-w-0 flex-1">
-                      <span className="block text-[0.9375rem] font-semibold">{c.label}</span>
+                      <span className="block text-body font-semibold">{c.label}</span>
                       <span className="t-sm block truncate text-[var(--ink-4)]">{c.blurb}</span>
                     </span>
                     <Icon
@@ -406,7 +409,7 @@ export function Browse() {
                   <button
                     onClick={() => setShowMap((v) => !v)}
                     aria-pressed={showMap}
-                    className={`tap inline-flex min-h-[34px] items-center gap-1.5 rounded-[var(--radius-control)] border px-3 text-[0.8125rem] font-medium transition-colors duration-[160ms]
+                    className={`tap inline-flex min-h-[34px] items-center gap-1.5 rounded-[var(--radius-control)] border px-3 text-label font-medium transition-colors duration-[var(--dur-short)]
                       ${
                         showMap
                           ? 'border-[var(--field)] bg-[var(--field)] font-semibold text-[var(--on-field)]'
@@ -421,7 +424,7 @@ export function Browse() {
                     <select
                       value={sort}
                       onChange={(e) => setSort(e.target.value as SortKey)}
-                      className="min-h-[34px] appearance-none rounded-[var(--radius-control)] border border-[var(--line)] bg-transparent pl-3 pr-8 text-[0.8125rem] font-medium text-[var(--ink-2)]"
+                      className="min-h-[34px] appearance-none rounded-[var(--radius-control)] border border-[var(--line)] bg-transparent pl-3 pr-8 text-label font-medium text-[var(--ink-2)]"
                     >
                       <option value="best">{t('Best match')}</option>
                       <option value="price">{t('Cheapest')}</option>
@@ -519,6 +522,30 @@ export function Browse() {
         }
       >
         <div className="space-y-7 pb-4">
+          {/* When (UX-15): a day and a start hour, so "Saturday at 10:00" is a
+              search, not a scroll through every window. */}
+          <FilterGroup label={t('When?')}>
+            <Chip selected={!search.day} onClick={() => send({ type: 'SEARCH_CHANGED', patch: { day: null, from: null } })}>
+              {t('Any time')}
+            </Chip>
+            {nextDays(Math.min(14, search.withinDays)).map((d) => (
+              <Chip key={d.value} selected={search.day === d.value} onClick={() => send({ type: 'SEARCH_CHANGED', patch: { day: d.value } })}>
+                {d.label}
+              </Chip>
+            ))}
+          </FilterGroup>
+          {search.day && (
+            <FilterGroup label={t('From')}>
+              <Chip selected={search.from === null} onClick={() => send({ type: 'SEARCH_CHANGED', patch: { from: null } })}>
+                {t('Any hour')}
+              </Chip>
+              {[8, 10, 12, 14, 16, 18, 20].map((h) => (
+                <Chip key={h} selected={search.from === h} onClick={() => send({ type: 'SEARCH_CHANGED', patch: { from: h } })}>
+                  {time(new Date(2000, 0, 1, h).toISOString())}
+                </Chip>
+              ))}
+            </FilterGroup>
+          )}
           {meta?.mode === 'window' ? (
             <FilterGroup label={t('How long do you need it?')}>
               {(meta.quickHours ?? [1, 2, 4]).map((h) => (
@@ -574,11 +601,24 @@ export function Browse() {
           )}
         </div>
       </Sheet>
+      </PhotoGrid>
     </Screen>
   )
 }
 
 /* ------------------------------------------------------------------ pieces */
+
+/** The next `n` calendar days on this device: value "2026-10-03", label "Sat 3 Oct". */
+function nextDays(n: number): { value: string; label: string }[] {
+  const out: { value: string; label: string }[] = []
+  const d = new Date()
+  for (let i = 0; i < n; i++) {
+    const at = new Date(d.getFullYear(), d.getMonth(), d.getDate() + i, 12)
+    const value = `${at.getFullYear()}-${String(at.getMonth() + 1).padStart(2, '0')}-${String(at.getDate()).padStart(2, '0')}`
+    out.push({ value, label: i === 0 ? t('Today') : dayShort(at.toISOString()) })
+  }
+  return out
+}
 
 /**
  * The search lives in the URL (`?q=…&cat=…&h=…&km=…&days=…&n=…`), so a search
@@ -603,6 +643,8 @@ function useSearchInUrl() {
       else next.set('n', String(s.quantity))
       next.set('km', String(s.maxDistanceKm))
       next.set('days', String(s.withinDays))
+      if (s.day) next.set('on', s.day)
+      if (s.day && s.from !== null) next.set('at', String(s.from))
     }
     return next
   }
@@ -621,6 +663,8 @@ function useSearchInUrl() {
         ...(num('h') ? { hours: num('h')! } : {}),
         ...(num('n') ? { quantity: num('n')! } : {}),
         ...(num('km') ? { maxDistanceKm: num('km')! } : {}),
+        day: /^\d{4}-\d{2}-\d{2}$/.test(params.get('on') ?? '') ? params.get('on') : null,
+        from: params.get('on') && num('at') !== undefined && num('at')! >= 0 && num('at')! < 24 ? num('at')! : null,
         // Snapped to an option the filter sheet offers, so they always agree.
         ...(num('days')
           ? { withinDays: HORIZONS.reduce((a, d) => (Math.abs(d - num('days')!) < Math.abs(a - num('days')!) ? d : a)) }
@@ -661,7 +705,7 @@ function FeatureCard({ spot, onOpen }: { spot: Spotlight; onOpen: () => void }) 
     // A card with a heart on it: the title is the one button, stretched over
     // the whole card, and the heart sits above it (never a button in a button).
     <div
-      className="group relative block w-full text-left transition-opacity duration-[200ms] hover:opacity-90
+      className="group relative block w-full text-left transition-opacity duration-[var(--dur-medium)] hover:opacity-90
         md:grid md:grid-cols-[1.7fr_1fr] md:items-end md:gap-10"
     >
       <Photo
@@ -669,6 +713,9 @@ function FeatureCard({ spot, onOpen }: { spot: Spotlight; onOpen: () => void }) 
         alt={spot.listing.title}
         categoryId={spot.listing.category}
         aspect={16 / 10}
+        claim={spot.listing.id}
+        width={1100}
+        sizes="(min-width: 768px) 700px, 100vw"
         priority
         className="w-full rounded-[var(--radius-plate)] shadow-[var(--shadow-plate)]"
       >
@@ -681,7 +728,7 @@ function FeatureCard({ spot, onOpen }: { spot: Spotlight; onOpen: () => void }) 
       </Photo>
       {/* On a phone this sits under the photograph. On a page it sits beside it. */}
       <span className="mt-5 block md:mt-0 md:pb-2">
-        <button onClick={onOpen} className="t-h2 block text-balance text-left after:absolute after:inset-0 after:content-['']">
+        <button onClick={onOpen} className="t-title-user block text-balance text-left after:absolute after:inset-0 after:content-['']">
           {spot.listing.title}
         </button>
         <span className="t-sm mt-2 hidden text-[var(--ink-3)] md:block">
@@ -691,8 +738,8 @@ function FeatureCard({ spot, onOpen }: { spot: Spotlight; onOpen: () => void }) 
           <span className="t-sm tnum min-w-0 truncate text-[var(--ink-3)]">
             {spot.listing.district}, {formatDistance(spot.distanceKm)}
           </span>
-          <span className="tnum shrink-0 text-[1.0625rem] font-semibold md:text-[1.375rem]">
-            <span className="mr-1 text-[0.8125rem] font-normal text-[var(--ink-4)]">{t('from')}</span>
+          <span className="tnum shrink-0 text-body-l font-semibold md:text-title-m">
+            <span className="mr-1 text-label font-normal text-[var(--ink-4)]">{t('from')}</span>
             {formatMoney(spot.fromPrice, spot.currency)}
           </span>
         </span>
@@ -704,12 +751,15 @@ function FeatureCard({ spot, onOpen }: { spot: Spotlight; onOpen: () => void }) 
 /** One thing that is free soon: what it is, when, and what it costs. */
 function SpotCard({ spot, onOpen }: { spot: Spotlight; onOpen: () => void }) {
   return (
-    <div className="group relative w-[188px] text-left transition-opacity duration-[160ms] hover:opacity-75 md:w-full">
+    <div className="group relative w-[188px] text-left transition-opacity duration-[var(--dur-short)] hover:opacity-75 md:w-full">
       <Photo
         src={spot.listing.photos?.[0]}
         alt={spot.listing.title}
         categoryId={spot.listing.category}
         aspect={4 / 3}
+        claim={spot.listing.id}
+        width={376}
+        sizes="(min-width: 768px) 25vw, 188px"
         className="rounded-[var(--radius-plate)]"
       >
         <WhenChip start={spot.offer.start} />
@@ -718,7 +768,7 @@ function SpotCard({ spot, onOpen }: { spot: Spotlight; onOpen: () => void }) {
       <span className="block pt-3">
         <button
           onClick={onOpen}
-          className="line-clamp-2 block min-h-[40px] text-left text-[0.9062rem] font-semibold leading-[1.25rem] after:absolute after:inset-0 after:content-['']"
+          className="line-clamp-2 block min-h-[40px] text-left text-body font-semibold leading-[1.25rem] after:absolute after:inset-0 after:content-['']"
         >
           {spot.listing.title}
         </button>
@@ -738,8 +788,8 @@ function SpotCard({ spot, onOpen }: { spot: Spotlight; onOpen: () => void }) {
           </span>
           {/* "5 €" beside "212 €" with no unit could not be compared. This is the
               cheapest real booking, so it is labelled as a floor. */}
-          <span className="tnum shrink-0 text-[0.9062rem] font-semibold">
-            <span className="mr-1 text-[0.75rem] font-normal text-[var(--ink-4)]">{t('from')}</span>
+          <span className="tnum shrink-0 text-body font-semibold">
+            <span className="mr-1 text-label font-normal text-[var(--ink-4)]">{t('from')}</span>
             {formatMoney(spot.fromPrice, spot.currency)}
           </span>
         </span>
