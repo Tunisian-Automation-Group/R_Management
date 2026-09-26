@@ -51,7 +51,10 @@ jobs:
     # Only main is ever deployed (the AWS roles also refuse any other ref), and
     # only a commit whose ci run succeeded: a red CI run never deploys, and a
     # manual run for an untested sha stops here.
-    if: github.ref == 'refs/heads/main' && (github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success')
+    # Off until the owner turns it on: without the repository variable
+    # DEPLOY_ENABLED = true nothing here runs, whatever is pushed or merged
+    # (GOAL 12: nothing is applied to real AWS until the owner decides).
+    if: vars.DEPLOY_ENABLED == 'true' && github.ref == 'refs/heads/main' && (github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success')
     runs-on: ubuntu-latest
     permissions: { contents: read, actions: read }
     steps:

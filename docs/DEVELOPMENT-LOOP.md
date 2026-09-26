@@ -142,3 +142,51 @@ The readiness verdict at the last score was NO-GO:
 - the axe and Capacitor plugin installs (need network);
 - rotating the tokens pasted in chat, purging the old decks from git history,
   and making the repository private.
+
+## 7. Tools in the repo
+
+| Where | What |
+|---|---|
+| `.claude/settings.json` | Enables the `frontend-design` plugin (official marketplace) for everyone who opens the repo in Claude Code |
+| `.claude/skills/cappy-ui/SKILL.md` | The UI rulebook (the `cappy-ui` skill) |
+| `.claude/agents/` | One agent per role: `cappy-verifier`, `cappy-ux-reviewer`, `cappy-visual-lead`, `cappy-docs-sync`, `cappy-readiness`, `cappy-backend-builder`, `cappy-web-builder`. Start one by name and give it the round's items. |
+| `docs/research/visual-refs.json` | The design reference image URLs (the images are copyrighted and stay out of the repo) |
+
+## 8. The owner's standing preferences
+
+- **Decisions:** the owner delegated every technical decision. Decide, and
+  record the decision in an ADR when it changes one.
+- **Git:** commit as the repo identity `tag`, and push only when the owner asks.
+  Nothing is deployed to AWS until the owner sets `DEPLOY_ENABLED` (a repository
+  variable) and the AWS roles exist.
+- **Markets:** all of Europe, the US and Canada (GOAL 16), never Germany-only
+  assumptions.
+- **Signed in only:** members only, with a welcome screen for first-timers.
+- **UI:** it must be beautiful and attractive, not merely functional (GOAL 19),
+  with Liquid Glass on chrome only.
+- **Theme:** light is the default and dark is opt-in, with a one-tap switch.
+  Dark must be as good as light.
+- **Testing UI:** test every change at phone sizes, where the owner judges the
+  app.
+- **The loop:** keep going until READINESS says GO. Research and UX review
+  continue each round.
+- **Security to-dos for the owner:** rotate the LocalStack and GitHub tokens
+  pasted in chat (the new GitHub token needs the `repo` and `workflow` scopes),
+  purge `Capacity_Exchange_*.pptx` from git history, and make the repo private.
+
+## 9. Local stack quirks
+
+- **The LocalStack licence** covers S3, SNS, SQS and SES v1. It has no Cognito,
+  ECS, RDS, ELB, CloudFront, WAF, ECR or SES v2. Cognito is emulated by
+  `jagregory/cognito-local`.
+- **LocalStack** runs with `SQS_ENDPOINT_STRATEGY=off`; the `path` style breaks
+  the Terraform AWS provider.
+- **cognito-local:**
+  - it needs `tty: true`, or the sign-up codes in its log are buffered;
+  - it doesn't set `email_verified` (use `make confirm EMAIL=…`);
+  - it can't do a global sign-out or MFA;
+  - its tokens carry `iss=http://0.0.0.0:9229/<pool>`.
+- **Postgres** for `make test-pg` is on `localhost:5433`. Agents running in a
+  sandbox need it lifted for Docker and localhost Postgres.
+- **After `make clean && make up`,** restart the web dev server, because it reads
+  the new local ids from `web/.env.development.local`.
