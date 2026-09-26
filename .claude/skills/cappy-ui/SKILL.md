@@ -10,8 +10,11 @@ holds the tokens that implement them. Use a token, never a literal
 (`npm run check:tokens` fails on literals). If a rule needs a value that has no
 token, add the token to `theme.css` (light and dark) first.
 
-Sources: Apple HIG (iOS 26), Material 3, WCAG 2.2 AA, and the research in
-`docs/research/2026-09-ui-ux-review.md`.
+Sources: Apple HIG (iOS 26, Liquid Glass), Material 3, WCAG 2.2 AA, the research in
+`docs/research/2026-09-ui-ux-review.md`, and the art direction in
+`docs/research/2026-10-visual-direction.md` (ADR 0014: glass chrome, photographic
+content). The look is meant to attract, not only work: when a rule here and the
+art direction disagree, the art direction wins and this file is corrected.
 
 ## 1. Spacing: one 4 px grid
 
@@ -41,8 +44,12 @@ The scale tokens are `text-caption` 11/14 · `text-label` 13/18 · `text-body`
 
 - **Phone body is `text-body-l` (17)**, as iOS; secondary text is `text-body` (15).
   Nothing below 11 px ever, and 11 px only for captions and badges.
-- Display serif (Bodoni) only at 28 px and up. Everything that is a number
-  (prices, times, counts, ratings) is Archivo with tabular figures (`t-figure`).
+- Bodoni is for moments only: Welcome, the Explore greeting, the booking ticket, the
+  Earn hero word and empty states, at 34 px and up (44 in dark). Screen titles are
+  `text-large-title`: Archivo 700 at width 112, 34/40, left-aligned. One hero figure
+  per screen may use `text-figure-hero` (Archivo 800, width 125, tabular, cents at 60 %).
+  Every other number (prices, times, counts, ratings) is Archivo with tabular figures
+  (`t-figure`).
 - At most 3 sizes and 2 weights on one screen section. Weight contrast before
   size contrast.
 - Line length 45–75 characters. Never all caps for labels. No single accent word
@@ -65,6 +72,9 @@ The roles are `ink` (text, 4 levels) · `surface` / `sunken` / `elevated` (backg
   - large text (at least 24 px, or 19 px bold) at least 3:1;
   - UI parts (borders of inputs, icons that carry meaning, focus rings) at least 3:1.
 - State colours always come with text or an icon; never colour alone (WCAG 1.4.1).
+- The accent is #b0182e (light) / #f2606d (dark). In dark the one primary may carry
+  `--accent-glow`. Symbols on glass are monochrome `ink`; only the primary action is
+  tinted, and it is tinted on its background, never on its label.
 
 ### Dark mode (opt-in; light is the default)
 
@@ -79,17 +89,31 @@ The roles are `ink` (text, 4 levels) · `surface` / `sunken` / `elevated` (backg
   glare; illustrations get dark variants.
 - Dividers and card edges must still be visible (`line` at least 1.5:1 against the surface: 18 % ink in dark, 22 % in light meet it).
 - Dark surface steps (lightest last): page #121813 · sunken #161c17 · surface #1a211b · elevated #232b24 · overlay #2c352d · pill #38443a. `sunken` is never darker than the page.
-- In dark, Bodoni only from 34 px (its hairlines break up below). Glass only on the dock; sheets are opaque.
+- In dark, Bodoni only from 44 px (its hairlines break up below).
+- Glass is chrome only (§4 Materials). Sheet bodies are opaque in both themes; their
+  header and action row are glass. The top of Explore, Earn and You carries
+  `--ambient-night`.
 - The theme switch is one tap (sun/moon) in the You header and the desktop header;
   Appearance is the first section of You. **Light is the default** until dark mode
   passes this rulebook on every screen (owner's call, 2026-09-27); then System.
 
 ## 4. Components
 
+**Materials.** Four planes: ground (page, media, plate), content (opaque surfaces),
+glass (chrome), lift (pressed glass, menus, the ticket). Content is never glass: no
+cards, rows, text areas, message bubbles or sheet bodies on glass. At most three
+glass surfaces are visible at once; group more into one capsule. Glass never sits on
+glass. Text on glass is `ink` or `ink-2` only, ≥ 13 px semibold or ≥ 15 px regular.
+Over photos use `glass-media` (icons) or `glass-media-text` (text). Every glass rule
+has one fallback in `theme.css`: no `backdrop-filter`, Reduce Transparency, Increase
+Contrast, and `data-glass='lite'`. Components never branch on them.
+
 **Tap targets:** at least 44×44 (iOS) / 48×48 dp (Android) hit area, even when the visual is smaller.
 
 - **Buttons:** heights 48 (primary, full width on the phone), 40 (secondary), 32 (compact,
-  desktop only). Radius `radius-control`. Label `text-label` or `text-body` semibold.
+  desktop only). Primary and secondary buttons are capsules. Over media or inside a glass
+  action row the primary is tinted glass (accent at 88 % over `glass-frost-thin` with the
+  rim); on paper it is solid. Label `text-label` or `text-body` semibold.
   Pressed state: scale .97 plus a darker shade within `dur-instant`. Disabled: a `sunken` fill with `ink-4` text (never
   opacity alone, which fails in dark), with the reason nearby. Loading keeps the width (spinner replaces the label).
 - **Inputs:** height 48, label above (never placeholder-only), 8 between label and field,
@@ -103,18 +127,26 @@ The roles are `ink` (text, 4 levels) · `surface` / `sunken` / `elevated` (backg
   filled `ink` with inverse text, plus a check icon.
 - **Badges:** min 16×16, `text-caption` bold, on the icon's top-right corner at
   (−4, −4), never clipped by its container, a 2 px ring in the bar colour.
-- **Sheets (phone):** grabber 36×4, detents medium (about 50 %) and large (about 92 %), top
-  radius `radius-sheet`, scrim at 40 % ink. Desktop (≥ 768): a centred dialog, max 560.
+- **Sheets (phone):** grabber 36×4, detents medium (about 50 %) and large (about 92 %), scrim
+  at 40 % ink. At the medium detent a sheet is inset 8 from the sides with radius
+  `radius-sheet` (32) on all corners; at the large detent it is edge to edge and fully
+  opaque. Its grabber row, header and action row are glass; its body is opaque
+  `elevated`. No dividers: a 24 px scroll-edge fade under the header. Desktop (≥ 768): a
+  centred dialog, max 560.
 - **Dock (phone tab bar):**
   - at most 5 destinations (Explore · Bookings · Inbox · Earn · You), with no floating
     create button in the bar (creation lives on Earn and in headers);
-  - height 56 + the bottom safe area; icon 24, label `text-caption` 11–12 medium, 4 between;
-  - active: an indicator pill 56×32 behind the icon (Material 3) in `accent-subtle`
-    (light) or a raised surface (dark), the icon and label in `ink` or `accent-text`.
-    Inactive icons are `ink-3`, never below 4.5:1;
-  - background: opaque `elevated` (or 85 % plus 20 px blur), a hairline top border;
-    every scroll view gets bottom padding = dock height + 16 so content never
-    sits under it;
+  - a floating glass capsule, 64 tall, inset 16 from the sides and
+    `max(8, safe-bottom − 12)` from the bottom; icon 24, label `text-caption` 11–12
+    medium, 4 between;
+  - the active item sits on a 64×52 droplet of `glass-tint-strong` that slides on
+    `spring-snappy`; the icon is filled and in `ink`. Inactive icons are `ink-3`, never
+    below 4.5:1 on the glass;
+  - on scroll down it shrinks to the active icon plus a round search button; it expands
+    on scroll up, on a tap, or at the top. Under Reduce Transparency it is opaque
+    `elevated` with a `line-strong` edge;
+  - every scroll view gets bottom padding = dock height + its bottom inset + 16 so
+    content never sits under it;
   - hidden on detail screens; at 200 % text it goes icons-only with aria-labels.
 - **Sticky action bar (phone):** one primary action plus at most one secondary, 16 padding,
   above the safe area; it replaces the dock on detail screens, never stacks on it.
@@ -137,6 +169,12 @@ The tokens are `dur-instant` 100 · `dur-short` 150 · `dur-medium` 250 · `dur-
   deliberate moment (a confirmed booking).
 - `prefers-reduced-motion`: replace movement with 100 ms fades.
 - Skeletons only after 300 ms of waiting; they match the final layout exactly.
+- Springs: `spring-spatial` (sheets, routes), `spring-snappy` (droplets, chips, menus),
+  `spring-bouncy` (the ticket, the category objects, the heart). Glass is pressed by
+  scale .96 plus `glass-glow` at the touch point. Glass materialises (scale .6 → 1 from
+  its origin, a blur that clears), never a bare fade. The one choreographed moment is
+  the booking ticket (and its small version on publish). Scroll-linked effects use
+  `animation-timeline: scroll()`, with a class-toggle fallback.
 
 ## 6. Imagery and icons
 
@@ -144,13 +182,17 @@ The tokens are `dur-instant` 100 · `dur-short` 150 · `dur-medium` 250 · `dur-
   with meaning have text or an aria-label.
 - Listing photos: the owner's own; fallback is the designed category plate, never
   unrelated stock. Colour placeholder from `photoMeta.color`, `srcset` from renditions.
+- Category objects are the nine 3D renders in `web/public/objects/`, 135° key light, the
+  brand palette only, used in the category row, on the no-photo plate and in empty
+  states. With no photo a listing shows its category object on the lit plate, never a
+  grey box. Placeholders are the photo's stored colour or its blurred thumbnail.
 
 ## 7. Review checklist: run it on every screen you touch
 
 Sizes: **390×844, 375×667, 360×800, 430×932** (iframes if resizing does not
 apply), plus desktop 1440. The safe area cannot be seen in an iframe: add top 47 /
 bottom 34 px padding to the frame's root to simulate it, and check `env(safe-area-inset-*)` in code. Each in **light and dark**, **100 % and 200 % text**,
-**EN, DE and FR**. Simulate the safe area (top 47, bottom 34).
+**EN, DE and FR**.
 
 For each screen check:
 - every value on the 4 px grid; gutters and section gaps as in §1;
@@ -160,6 +202,10 @@ For each screen check:
 - every target ≥ 44 and ≥ 8 apart; focus visible and in order;
 - loading, empty, error and offline states exist and match the layout;
 - no layout shift when images or data arrive;
-- dark mode: surfaces distinct, no glare, badges and active states visible.
+- dark mode: surfaces distinct, no glare, badges and active states visible;
+- glass: count the glass surfaces (≤ 3); check text on glass over the brightest and
+  darkest photo in the seed; toggle `data-glass='lite'`, `data-transparency='reduce'`
+  and `prefers-contrast: more`; record a 10 s scroll on a mid-range Android (VD-31) in
+  `full`.
 
 Screenshot before and after at 390 in both themes and attach them to the report.
