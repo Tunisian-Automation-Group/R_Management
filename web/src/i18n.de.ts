@@ -1394,4 +1394,11 @@ export const DE: Record<string, string> = {
   "When?": "Wann?",
   "Any time": "Jederzeit",
   "Any hour": "Jede Uhrzeit",
+  "{price} / h": "{price} / Std.",
+  "Card details go to Stripe, never to Cappy": "Kartendaten gehen an Stripe, nie an Cappy",
+  "For example": "Zum Beispiel",
+  "Plunge saw": "Tauchsäge",
+  "Cargo van": "Transporter",
+  "Photo studio": "Fotostudio",
+  "3D printer": "3D-Drucker",
 }

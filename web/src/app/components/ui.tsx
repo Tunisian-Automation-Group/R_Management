@@ -21,7 +21,7 @@ const TR =
 /* ------------------------------------------------------------------ Button */
 
 type ButtonProps = ButtonHTMLAttributes<HTMLButtonElement> & {
-  variant?: 'primary' | 'ink' | 'secondary' | 'quiet' | 'danger'
+  variant?: 'primary' | 'ink' | 'secondary' | 'quiet' | 'danger' | 'onplate'
   size?: 'lg' | 'md' | 'sm'
   icon?: IconName
   iconAfter?: IconName
@@ -50,6 +50,8 @@ export function Button({
     primary:
       'bg-[var(--accent)] text-[var(--on-accent)] hover:bg-[var(--accent-hover)] active:bg-[var(--accent-active)]',
     ink: 'bg-[var(--field)] text-[var(--on-field)] hover:bg-[var(--field-2)]',
+    // The primary on a green plate: ivory, so crimson never sits on green.
+    onplate: 'bg-[var(--on-field)] text-[var(--field)] hover:opacity-90',
     secondary:
       'bg-transparent text-[var(--ink)] border border-[var(--line-strong)] hover:border-[var(--ink)] hover:bg-[var(--sunken)]',
     quiet: 'bg-transparent text-[var(--ink-2)] hover:bg-[var(--sunken)] hover:text-[var(--ink)]',
