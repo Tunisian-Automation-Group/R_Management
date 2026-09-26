@@ -32,7 +32,7 @@ from .mail import Directory, Email, Mailer
 from .prefs import prefs_of, wanted
 from .push import Pusher, drop_devices
 from .tables import DeviceRow, InboxRow, PrefsRow
-from .texts import render, summary
+from .texts import phrase, render, summary
 
 log = logging.getLogger(__name__)
 
@@ -94,12 +94,7 @@ def messages(event: Event, web: str) -> list[Message]:
         return []
     params = {"title": d.get("title", "your booking"), "link": f"{web}/bookings/{d['bookingId']}"}
     if d["to"] == "declined":
-        reason = (d.get("declineReason") or "").strip().rstrip(".")
-        params |= {
-            "reason_en": f"\nReason: {reason}." if reason else "",
-            "reason_de": f"\nGrund: {reason}." if reason else "",
-            "reason_fr": f"\nMotif\u00a0: {reason}." if reason else "",
-        }
+        params["_reason"] = d.get("declineReason") or ""
     if d["to"] == "requested":
         params["_deadline"] = d.get("expiresAt")
         if d.get("timeZone"):
@@ -173,14 +168,23 @@ def chat_push(event: Event, web: str) -> Message | None:
 def statement_params(d: dict) -> dict[str, str]:
     """The Art. 17 statement of reasons, in both languages (render picks one)."""
     sor = d.get("statementOfReasons") or {}
-    clause = sor.get("clause") or "Terms of use: rules for listings and conduct"
+    clause = sor.get("clause") or ""
+    clauses = {
+        lang: clause or phrase("Terms of use: rules for listings and conduct", lang) for lang in ("en", "de", "fr")
+    }
     law = sor.get("ground") == "law"
     auto = bool(sor.get("automated"))
     return {
         "statement": sor.get("facts") or d["statement"],
-        "ground_en": f"illegal content under {clause}" if law else f"incompatible with our terms ({clause})",
-        "ground_de": f"rechtswidrige Inhalte nach {clause}" if law else f"Verstoß gegen unsere Bedingungen ({clause})",
-        "ground_fr": f"contenu illicite au titre de {clause}" if law else f"contraire à nos conditions ({clause})",
+        "ground_en": f"illegal content under {clauses['en']}"
+        if law
+        else f"incompatible with our terms ({clauses['en']})",
+        "ground_de": f"rechtswidrige Inhalte nach {clauses['de']}"
+        if law
+        else f"Verstoß gegen unsere Bedingungen ({clauses['de']})",
+        "ground_fr": f"contenu illicite au titre de {clauses['fr']}"
+        if law
+        else f"contraire à nos conditions ({clauses['fr']})",
         "automated_en": "yes" if auto else "no, by a person",
         "automated_de": "ja" if auto else "nein, von einem Menschen",
         "automated_fr": "oui" if auto else "non, par une personne",

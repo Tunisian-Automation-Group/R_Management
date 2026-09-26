@@ -119,6 +119,24 @@ def test_a_refund_above_the_staff_limit_needs_a_second_pair_of_eyes(client, app,
     assert ("staff-1", "propose_resolution") in actions and ("lead-1", "approve_resolution") in actions
 
 
+def test_a_proposer_alone_can_withdraw_and_decide_again(client, app, issuer, broker):
+    # One staff member on shift: an over-limit proposal must not stall the case.
+    bid = _disputed(client, app, issuer, amount=40_000)
+    support, other = _staff(issuer, "staff-1"), _staff(issuer, "staff-2")
+    body = {"outcome": "partial", "refundAmount": 30_000, "reasonCode": "damage", "note": "Cracked guard"}
+    client.post(f"/admin/bookings/{bid}/resolve", json=body, headers=support)
+    [pending] = client.get("/admin/resolutions", headers=support).json()
+    withdraw = lambda h: client.post(f"/admin/resolutions/{pending['id']}/withdraw", json={}, headers=h)  # noqa: E731
+    assert withdraw(other).json()["error"]["code"] == "not_yours"
+    assert withdraw(support).json()["status"] == "withdrawn"
+    assert withdraw(support).status_code == 409, "only a waiting one"
+    assert client.get("/admin/resolutions", headers=support).json() == []
+    ok = client.post(f"/admin/bookings/{bid}/resolve", json={**body, "refundAmount": 20_000}, headers=support).json()
+    assert ok["resolution"]["status"] == "done", "decidable again, within the limit"
+    actions = [(e["actorId"], e["action"]) for e in _events(app, broker, STAFF_ACTION)]
+    assert ("staff-1", "withdraw_resolution") in actions
+
+
 def test_within_the_limit_staff_settle_alone_and_partials_are_checked(client, app, issuer, broker):
     bid = _disputed(client, app, issuer)  # €46
     staff = _staff(issuer)
@@ -145,6 +163,9 @@ def test_the_case_view_shows_everything_and_is_logged(client, app, issuer, broke
     case = client.get(f"/admin/bookings/{bid}/case", headers=staff).json()
     assert case["requesterId"] == BUYER and case["ownerId"] == HOST
     assert [t["toStatus"] for t in case["timeline"]][-1] == "disputed"
+    kinds = {(t["actorKind"], t["by"]) for t in case["timeline"]}
+    assert ("system", "cappy") in kinds and all(k != "system" or b == "cappy" for k, b in kinds), "never 'payments'"
+    assert ("person", BUYER) in kinds
     assert case["dispute"]["reason"] == "The fence was broken"
     assert case["payment"]["status"] == "captured"
     assert "0151 2345 6789" in case["messages"][0]["body"], "staff read what was written"

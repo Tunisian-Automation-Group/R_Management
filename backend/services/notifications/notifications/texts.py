@@ -4,6 +4,7 @@ neutral French, « courriel »). Rendered in the recipient's language, Cognito's
 
 from __future__ import annotations
 
+import re
 from datetime import datetime
 from zoneinfo import ZoneInfo
 
@@ -26,7 +27,7 @@ TEXTS: dict[str, dict[str, tuple[str, str]]] = {
         ),
         "declined": (
             "Declined: {title}",
-            "Your request for {title} was declined. Nothing was charged.{reason_en}\n\n{link}",
+            "Your request for {title} was declined. Nothing was charged.{reason}\n\n{link}",
         ),
         "cancelled": ("Cancelled: {title}", "The booking of {title} was cancelled.\n\n{link}"),
         "expired": ("Expired: {title}", "Your request for {title} lapsed. Nothing was charged.\n\n{link}"),
@@ -121,7 +122,7 @@ TEXTS: dict[str, dict[str, tuple[str, str]]] = {
         ),
         "declined": (
             "Abgelehnt: {title}",
-            "Deine Anfrage für {title} wurde abgelehnt. Es wurde nichts berechnet.{reason_de}\n\n{link}",
+            "Deine Anfrage für {title} wurde abgelehnt. Es wurde nichts berechnet.{reason}\n\n{link}",
         ),
         "cancelled": ("Storniert: {title}", "Die Buchung von {title} wurde storniert.\n\n{link}"),
         "expired": (
@@ -222,7 +223,7 @@ TEXTS: dict[str, dict[str, tuple[str, str]]] = {
         ),
         "declined": (
             "Refusée : {title}",
-            "Votre demande pour {title} a été refusée. Rien n’a été facturé.{reason_fr}\n\n{link}",
+            "Votre demande pour {title} a été refusée. Rien n’a été facturé.{reason}\n\n{link}",
         ),
         "cancelled": ("Annulée : {title}", "La réservation de {title} a été annulée.\n\n{link}"),
         "expired": (
@@ -327,10 +328,51 @@ def language(locale: str | None) -> str:
     return code if code in ("de", "fr") else "en"
 
 
+# Server-made words that reach a reader as params (a decline reason, the default
+# clause, the fallback title): told in the reader's language, like the app's
+# catalogues do (V5-18). A person's own words (an owner's reason) stay as written.
+PHRASES: dict[str, dict[str, str]] = {
+    "your booking": {"de": "deine Buchung", "fr": "votre réservation"},
+    "The listing was taken down by Cappy": {
+        "de": "Das Inserat wurde von Cappy entfernt",
+        "fr": "L’annonce a été retirée par Cappy",
+    },
+    "The listing was removed by its owner": {
+        "de": "Das Inserat wurde vom Anbieter entfernt",
+        "fr": "L’annonce a été retirée par son propriétaire",
+    },
+    "The account was suspended": {"de": "Das Konto wurde gesperrt", "fr": "Le compte a été suspendu"},
+    "Terms of use: rules for listings and conduct": {
+        "de": "Nutzungsbedingungen: Regeln für Inserate und Verhalten",
+        "fr": "Conditions d’utilisation : règles relatives aux annonces et au comportement",
+    },
+}
+_REASON = {"en": "Reason: ", "de": "Grund: ", "fr": "Motif\u00a0: "}
+
+
+def phrase(text: str, lang: str) -> str:
+    return PHRASES.get(text, {}).get(lang, text)
+
+
+def french(text: str) -> str:
+    """French typography: a no-break space before : ; ? ! (not inside a URL or a
+    time), and never two full stops where a reason ended in one (V5-19)."""
+    text = re.sub(r"(?<![\s\u00a0\u202f/\d])([:;?!])(?=[\s\n]|$)", "\u00a0\\1", text)
+    text = re.sub(r"[ \t]+([:;?!])", "\u00a0\\1", text)
+    return re.sub(r"(?<!\.)\.\.(?!\.)", ".", text)
+
+
 def render(key: str, locale: str | None, **params) -> tuple[str, str]:
-    """Raw params (``_cents``, ``_deadline``, ``_tz``) are put in the reader's words here,
-    so an inbox item stored once reads right in whichever language it is read."""
+    """Raw params (``_cents``, ``_deadline``, ``_tz``, ``_reason``) are put in the
+    reader's words here, so an inbox item stored once reads right in whichever
+    language it is read."""
     params = dict(params)
+    lang = language(locale)
+    params = {k: phrase(v, lang) if isinstance(v, str) else v for k, v in params.items()}
+    if "_reason" in params:
+        # Its own paragraph, one full stop whatever the reason ended with (V5-16).
+        reason = phrase((params.pop("_reason") or "").strip().rstrip("."), lang)
+        params["reason"] = f"\n\n{_REASON[lang]}{reason}." if reason else ""
     if "_cents" in params:
         params["amount"] = money(*params.pop("_cents"), locale)
     zone = params.pop("_tz", None) or DEFAULT_TIME_ZONE
@@ -343,8 +385,9 @@ def render(key: str, locale: str | None, **params) -> tuple[str, str]:
             if at
             else {"en": "the booked start", "de": "zum gebuchten Beginn", "fr": "le début réservé"}[language(locale)]
         )
-    subject, body = TEXTS[language(locale)][key]
-    return subject.format(**params), body.format(**params)
+    subject, body = TEXTS[lang][key]
+    subject, body = subject.format(**params), body.format(**params)
+    return (french(subject), french(body)) if lang == "fr" else (subject, body)
 
 
 # Times are told in the listing's zone when the event carries one

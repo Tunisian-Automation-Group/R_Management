@@ -127,7 +127,7 @@ class Resolution(CamelModel):
     note: str
     by: str
     role: str
-    status: Literal["pending_approval", "done", "rejected"]
+    status: Literal["pending_approval", "done", "rejected", "withdrawn"]
     approved_by: str | None = None
     created_at: Iso
     decided_at: Iso | None = None
@@ -501,7 +501,7 @@ async def resolve(
 
 @admin.get("/resolutions", response_model=list[Resolution])
 async def resolutions(
-    status: str = Query(default="pending_approval", pattern="^(pending_approval|done|rejected)$"),
+    status: str = Query(default="pending_approval", pattern="^(pending_approval|done|rejected|withdrawn)$"),
     repo: BookingRepository = Depends(_repo),
     _: Principal = Depends(require_admin),
 ) -> list[Resolution]:
@@ -573,6 +573,25 @@ async def reject_resolution(
     return _resolution(res, row.currency)
 
 
+@admin.post("/resolutions/{resolution_id}/withdraw", response_model=Resolution)
+async def withdraw_resolution(
+    resolution_id: str,
+    body: DecideIn,
+    request: Request,
+    repo: BookingRepository = Depends(_repo),
+    p: Principal = Depends(require_admin),
+) -> Resolution:
+    """Only its proposer takes a waiting resolution back; the case is then
+    open for a new decision, so one staff member alone never stalls it."""
+    res, row = await _pending(repo, resolution_id)
+    if res.by != p.sub:
+        raise Forbidden("only whoever proposed a resolution can withdraw it", code="not_yours")
+    res.status, res.decided_at = "withdrawn", _now()
+    await audit(repo.s, repo.outbox, p.sub, "withdraw_resolution", "booking", row.id, body.note or f"withdrew {res.id}")
+    request.app.state.relay.wake()
+    return _resolution(res, row.currency)
+
+
 # --- the case view (H-9) -------------------------------------------------------------------
 
 
@@ -595,8 +614,19 @@ class CaseSummary(CamelModel):
 class TimelineEntry(CamelModel):
     from_status: str | None = None
     to_status: str
+    # person: a party (by = their id); staff: by = the staff id; system: Cappy
+    # itself (a payment result, a sweep), by = "cappy", never a service name.
+    actor_kind: Literal["person", "staff", "system"]
     by: str
     at: Iso
+
+
+def _actor(by: str, row) -> tuple[str, str]:  # noqa: ANN001
+    if by in (row.requester_id, row.owner_id):
+        return "person", by
+    if by.startswith("support:"):
+        return "staff", by.removeprefix("support:")
+    return "system", "cappy"
 
 
 class CaseMessage(CamelModel):
@@ -744,7 +774,13 @@ async def case(
         requester_id=row.requester_id,
         owner_id=row.owner_id,
         timeline=[
-            TimelineEntry(from_status=t.from_status, to_status=t.to_status, by=t.by, at=iso_from_datetime(t.at))
+            TimelineEntry(
+                from_status=t.from_status,
+                to_status=t.to_status,
+                actor_kind=(a := _actor(t.by, row))[0],
+                by=a[1],
+                at=iso_from_datetime(t.at),
+            )
             for t in timeline
         ],
         messages=[

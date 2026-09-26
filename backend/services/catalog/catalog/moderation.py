@@ -587,6 +587,46 @@ async def held(session: AsyncSession = Tx, _: Principal = Depends(require_admin)
     ]
 
 
+class StaffListing(CamelModel):
+    """What a guest would see, plus why nobody can see it (V5-4)."""
+
+    detail: dict
+    state: str  # live, held, paused, taken_down, deleted
+    hold_reason: str | None = None
+    held_at: Iso | None = None
+
+
+@admin.get("/listings/{listing_id}", response_model=StaffListing)
+async def staff_listing(
+    listing_id: str, request: Request, session: AsyncSession = Tx, _: Principal = Depends(require_admin)
+) -> StaffListing:
+    """Staff open any listing, held, hidden, paused or taken down, so an
+    approval is never blind. The public page stays closed to them."""
+    from .repository import CatalogRepository
+    from .routes import detail_of
+
+    repo = CatalogRepository(session, bookable_only=request.app.state.settings.require_payable_owners)
+    row = await repo.listing_row(listing_id, include_deleted=True, include_held=True)
+    state = (
+        "deleted"
+        if row.deleted_at
+        else "taken_down"
+        if row.moderated_at
+        else "held"
+        if row.held_at
+        else "live"
+        if row.active
+        else "paused"
+    )
+    detail = await detail_of(repo, row)
+    return StaffListing(
+        detail=detail.model_dump(mode="json", by_alias=True),
+        state=state,
+        hold_reason=row.hold_reason,
+        held_at=iso_from_datetime(row.held_at) if row.held_at else None,
+    )
+
+
 @admin.post("/listings/{listing_id}/approve", status_code=status.HTTP_204_NO_CONTENT)
 async def approve(
     listing_id: str, request: Request, session: AsyncSession = Tx, p: Principal = Depends(require_admin)

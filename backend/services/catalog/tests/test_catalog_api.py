@@ -943,6 +943,24 @@ def test_taking_down_declines_requests_and_owners_manage_held_listings(client, a
     assert client.delete(f"/listings/{lid}", headers=h).status_code == 204
 
 
+def test_staff_preview_any_listing_with_why_it_is_hidden(client, app, issuer):
+    """V5-4: approvals are not blind; guests still get 404."""
+    _profile(client, issuer)
+    h = issuer.headers("user-a")
+    lid = client.post("/listings", json={"listing": _window_listing(ratePerHour=90_000)}, headers=h).json()["listing"][
+        "id"
+    ]
+    assert client.get(f"/listings/{lid}", headers=issuer.headers("someone")).status_code == 404
+    assert client.get(f"/admin/listings/{lid}", headers=issuer.headers("someone")).status_code == 403
+    seen = client.get(f"/admin/listings/{lid}", headers=_staff(issuer)).json()
+    assert seen["state"] == "held" and seen["heldAt"] and seen["detail"]["listing"]["id"] == lid
+    assert seen["detail"]["owner"]["id"] == "user-a"
+    why = {"statement": "Counterfeit machinery (terms 4)."}
+    client.post("/admin/listings/l9/take-down", json=why, headers=_staff(issuer))
+    assert client.get("/admin/listings/l9", headers=_staff(issuer)).json()["state"] == "taken_down"
+    assert client.get("/admin/listings/held", headers=_staff(issuer)).status_code == 200, "the list is not shadowed"
+
+
 def test_a_take_down_purges_the_listing_s_photos_from_the_cdn(issuer, broker, tmp_path, bookings):
     """F-4: through the Cdn seam; the photos are what the edge caches."""
     from catalog.cdn import Cdn

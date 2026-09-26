@@ -26,7 +26,7 @@ RULES: list[tuple[re.Pattern[str], str]] = [
     (re.compile(r"^/listings/[^/]+/offers$"), MATCHING),
     # Staff tools on bookings (H-6, H-9, S-12): cases, resolutions, claims.
     (re.compile(r"^/admin/bookings(/[^/]+/(resolve|case))?$"), BOOKING),
-    (re.compile(r"^/admin/resolutions(/[^/]+/(approve|reject))?$"), BOOKING),
+    (re.compile(r"^/admin/resolutions(/[^/]+/(approve|reject|withdraw))?$"), BOOKING),
     (re.compile(r"^/admin/claims/[^/]+/decide$"), BOOKING),
     (re.compile(r"^/admin/(reports|listings|owners|audit|dsa-stats)(/|$)"), CATALOG),
     (re.compile(r"^/(me|districts|cities|owners|listings|search|saved|uploads|reports)(/|$)"), CATALOG),

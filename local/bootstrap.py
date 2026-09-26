@@ -222,7 +222,11 @@ def main() -> None:
     with open(f"{OUT}/local.env", "w") as f:
         f.writelines(f"{k}={v}\n" for k, v in env.items())
     with open(f"{OUT}/web.env", "w") as f:
-        demo = ";".join(f"demo {role}:{email}:{DEMO_PASSWORD}" for role, (email, _) in DEMO.items())
+        # The button says "Continue as <label>"; host2 is told apart by what it is.
+        label = {"host2": "demo host 2 (new owner)"}
+        demo = ";".join(
+            f"{label.get(role, f'demo {role}')}:{email}:{DEMO_PASSWORD}" for role, (email, _) in DEMO.items()
+        )
         f.write(f"VITE_COGNITO_ENDPOINT={COGNITO_PUBLIC}\nVITE_COGNITO_CLIENT_ID={ident['client']}\n")
         # Local only: one-tap sign-in to the seeded accounts. Never set in a deploy.
         f.write(f"VITE_DEMO_ACCOUNTS={demo}\n")

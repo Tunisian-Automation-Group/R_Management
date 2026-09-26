@@ -519,8 +519,14 @@ async def listing_detail(
     mine = p is not None and p.sub == row.owner_id
     if (row.held_at is not None or not row.active) and not mine:
         raise NotFound(f"listing {listing_id} not found")
-    listing = to_listing(row)
     saved = (listing_id in await repo.saved_ids(p.sub, {listing_id})) if p else None
+    return await detail_of(repo, row, saved)
+
+
+async def detail_of(repo, row, saved: bool | None = None) -> ListingDetail:
+    """The listing page's answer for a row: shared with the staff preview."""
+    listing = to_listing(row)
+    listing_id = row.id
     return ListingDetail(
         listing=listing,
         owner=await repo.owner(listing.owner_id),
