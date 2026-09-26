@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import time
 from datetime import UTC, datetime, timedelta
 
 import pytest
@@ -610,6 +611,15 @@ def test_hand_over_photos_are_seen_only_through_signed_links(client, app, issuer
     assert client.get(f"/bookings/{bid}/evidence", headers=issuer.headers("stranger")).status_code == 404
     staff = issuer.headers("mod-1", **{"cognito:groups": ["admin"]})
     assert len(client.get(f"/bookings/{bid}/evidence", headers=staff).json()) == 1
+    # The host's data export carries the photos as links too, good for a day.
+    exported = client.get(f"/internal/people/{HOST}/export", headers=INTERNAL).json()["evidence"][0]["photos"][0]
+    assert exported.startswith(f"/api/bookings/{bid}/evidence/") and "evidence:" not in exported
+    q = {k: v[0] for k, v in parse_qs(urlparse(exported).query).items()}
+    assert int(q["exp"]) > time.time() + 3600
+    assert (
+        client.get(urlparse(exported).path.removeprefix("/api"), params=q, headers={"Authorization": ""}).status_code
+        == 200
+    )
 
 
 def test_booking_requests_per_day_are_limited(client, app, issuer):
@@ -621,12 +631,15 @@ def test_booking_requests_per_day_are_limited(client, app, issuer):
     assert r.status_code == 429 and "a lot of booking requests" in r.json()["error"]["message"]
 
 
-def test_expensive_bookings_need_a_verified_renter(issuer, broker, payments):
+def test_expensive_bookings_need_a_verified_renter(issuer, broker, payments, monkeypatch):
+    import booking.routes
     from cappy_common.events import IDENTITY_VERIFIED
+    from cappy_common.markets import market
 
-    settings = Settings(
-        app_env="test", database_url="sqlite+aiosqlite://", internal_token="i" * 40, verify_above_cents=1000
-    )
+    # The owner's market sets the threshold, in its currency (M-2): make it low.
+    cheap = market("DE").model_copy(update={"id_check_above": 1000})
+    monkeypatch.setattr(booking.routes, "market", lambda country: cheap)
+    settings = Settings(app_env="test", database_url="sqlite+aiosqlite://", internal_token="i" * 40)
     app = build_app(
         settings, matching=FakeMatching(), payments=payments, catalog=FakeCatalog(), verifier=issuer.verifier()
     )
@@ -707,7 +720,7 @@ def test_cancellation_policy_decides_the_refund(issuer, broker, payments):
         _authorise(app, bid)
         c.post(f"/bookings/{bid}/accept", headers=issuer.headers(HOST))
         quote = c.get(f"/bookings/{bid}/cancellation", headers=issuer.headers(BUYER)).json()
-        assert quote == {"refundAmount": 2300, "currency": "eur", "policy": "strict", "charged": True}
+        assert quote == {"refundAmount": 2300, "currency": "EUR", "policy": "strict", "charged": True}
         assert c.get(f"/bookings/{bid}/cancellation", headers=issuer.headers(HOST)).json()["refundAmount"] == 4600, (
             "owner cancels: in full"
         )
@@ -999,5 +1012,5 @@ def test_a_booking_is_in_its_listing_s_currency(issuer, broker, payments):
     with TestClient(app) as c:
         app.state._portal = c.portal
         b = c.post("/bookings", json=_body(), headers=issuer.headers(BUYER)).json()["booking"]
-        assert b["currency"] == "cad"
-        assert payments.currencies[-1] == "cad", "and paid in it"
+        assert b["currency"] == "CAD", "ISO 4217 uppercase, like the listing and quote"
+        assert payments.currencies[-1] == "CAD", "and paid in it (the Stripe adapter lowercases)"

@@ -29,6 +29,11 @@ def keep(event: dict) -> dict:
         for k, v in data.items()
         if (k.endswith("Id") or k in FIELDS) and (v is None or isinstance(v, (str, int, float, bool)))
     }
+    # Who moved a booking: a person's pseudonymous id, "system", or support.
+    # Support is logged as "support:<who>", and who at Cappy decided is not
+    # analytics' business: only that staff did.
+    if isinstance(safe.get("by"), str) and safe["by"].startswith("support:"):
+        safe["by"] = "staff"
     return {**{k: event[k] for k in TOP if k in event}, "data": safe}
 
 
@@ -67,4 +72,8 @@ if __name__ == "__main__":
     # Free text that names or describes people never arrives either (D-8).
     words = {"outcome": {"note": "Ana was late"}, "statement": "Ana sells stolen tools", "details": "Ana again"}
     assert keep({"type": "booking.rated", "data": {"bookingId": "bk_1", **words}})["data"] == {"bookingId": "bk_1"}
+    # Staff are "staff", never a name or an id (the runbook's resolve sets one).
+    moved = keep({"type": "booking.status_changed", "data": {"by": "support:ana@cappy", "to": "cancelled"}})
+    assert moved["data"] == {"by": "staff", "to": "cancelled"}, moved
+    assert keep({"type": "x", "data": {"by": "system"}})["data"]["by"] == "system"
     print("scrub ok")

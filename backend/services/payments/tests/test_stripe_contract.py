@@ -24,7 +24,7 @@ def stripe_provider():
 
 async def test_the_whole_money_path_is_accepted_by_stripe(stripe_provider):
     p = stripe_provider
-    intent = await p.create_intent(booking_id="bk_1", amount=4600, currency="eur", metadata={"ownerId": "o1"})
+    intent = await p.create_intent(booking_id="bk_1", amount=4600, currency="EUR", metadata={"ownerId": "o1"})
     assert intent.id.startswith("pi_") and intent.client_secret
     assert await p.client_secret(intent.id)
     # The expanded payment method's card fingerprint (S-17); stripe-mock's
@@ -39,7 +39,7 @@ async def test_the_whole_money_path_is_accepted_by_stripe(stripe_provider):
     assert account.startswith("acct_")
     assert (await p.onboarding_link(account, "https://x/done", "https://x/retry")).startswith("http")
     await p.account_status(account)
-    transfer = await p.transfer(booking_id="bk_1", amount=4000, currency="eur", account_id=account, charge_id=charge)
+    transfer = await p.transfer(booking_id="bk_1", amount=4000, currency="EUR", account_id=account, charge_id=charge)
     assert transfer.startswith("tr_")
 
 

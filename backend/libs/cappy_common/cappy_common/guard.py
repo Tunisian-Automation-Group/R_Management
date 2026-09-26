@@ -46,6 +46,24 @@ def rate_table(metadata: MetaData) -> Table:
     return t
 
 
+# A revocation matters only while a token issued before it can still be valid:
+# Cognito caps access tokens at a day (ours last 15 minutes). Rate windows are
+# a day at most (exports). Older rows are dead weight.
+REVOCATION_KEPT = timedelta(hours=25)
+RATE_HITS_KEPT = timedelta(days=2)
+
+
+async def prune_guards(session: AsyncSession, metadata: MetaData, now: datetime | None = None) -> int:
+    """Hourly housekeeping (runtime's prune loop): old revocations and hits go."""
+    now = now or datetime.now(UTC)
+    gone = 0
+    if (t := metadata.tables.get("revoked_sessions")) is not None:
+        gone += (await session.execute(delete(t).where(t.c.not_before < now - REVOCATION_KEPT))).rowcount or 0
+    if (t := metadata.tables.get("rate_hits")) is not None:
+        gone += (await session.execute(delete(t).where(t.c.at < now - RATE_HITS_KEPT))).rowcount or 0
+    return gone
+
+
 async def revoke(session: AsyncSession, table: Table, sub: str, at: datetime) -> None:
     """Tokens of ``sub`` issued before ``at`` stop counting. Only ever moves later."""
     current = (await session.execute(select(table.c.not_before).where(table.c.sub == sub))).scalar_one_or_none()

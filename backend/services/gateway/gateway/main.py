@@ -23,6 +23,7 @@ from pydantic import Field
 from cappy_common.app import create_app
 from cappy_common.errors import error_body
 from cappy_common.flags import parse as parse_flags
+from cappy_common.markets import public_markets
 from cappy_common.models import CamelModel
 from cappy_common.observability import request_id
 
@@ -38,9 +39,14 @@ _FORWARD_REQUEST = {
     "accept-language",
     "authorization",
     "idempotency-key",
-    "stripe-signature",
     "if-none-match",
     "x-app-version",
+}
+# A webhook's signature header reaches only its own route (F-1): a new
+# provider (an ID vendor, a payments one) is one line here.
+WEBHOOK_SIGNATURES = {
+    "/payments/webhooks/stripe": {"stripe-signature"},
+    "/payments/webhooks/identity": {"stripe-signature"},
 }
 _FORWARD_RESPONSE = {"content-type", "cache-control", "location", "etag", "retry-after"}
 _METHODS = ["GET", "POST", "PUT", "PATCH", "DELETE"]
@@ -179,7 +185,8 @@ def build_app(settings: Settings, transport: httpx.AsyncBaseTransport | None = N
             return await _send(request, client, upstream, path)
 
     async def _send(request: Request, client: httpx.AsyncClient, upstream: str, path: str) -> Response:
-        headers = {k: v for k, v in request.headers.items() if k.lower() in _FORWARD_REQUEST}
+        allowed = _FORWARD_REQUEST | WEBHOOK_SIGNATURES.get(path, set())
+        headers = {k: v for k, v in request.headers.items() if k.lower() in allowed}
         headers["x-request-id"] = request_id.get()
         try:
             r = await client.request(
@@ -220,6 +227,9 @@ def build_app(settings: Settings, transport: httpx.AsyncBaseTransport | None = N
                 "latestVersion": settings.app_latest_version,
                 "flags": {name: pct >= 100 for name, pct in flags.items()},
                 "rollouts": {name: pct for name, pct in flags.items() if 0 < pct < 100},
+                # Per country (M-2): currency, languages, units, emergency
+                # number, whether it is open, the minimum age. Public only.
+                "markets": public_markets(),
             },
             headers={"Cache-Control": "public, max-age=300"},
         )

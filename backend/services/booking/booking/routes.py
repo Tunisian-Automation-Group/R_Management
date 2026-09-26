@@ -29,6 +29,7 @@ from cappy_common.auth import Principal, require_admin, require_internal, requir
 from cappy_common.errors import ApiError, Conflict, Forbidden, Invalid, NotFound, RateLimited, Unavailable
 from cappy_common.idempotency import IdempotencyKey, fingerprint, remember, replayed
 from cappy_common.ids import new_id
+from cappy_common.markets import market
 from cappy_common.models import Booking, CamelModel, Iso, Outcome, Requirement
 from cappy_common.pagination import Page, clamp_limit
 from cappy_common.runtime import ReadTx, Tx
@@ -158,7 +159,7 @@ async def create_booking(
         if await s.get(SuspendedRow, p.sub) is not None:
             raise Forbidden("your account is suspended; see the email we sent you")
         needs_id = view.listing.category in {c for c in settings.verify_categories.split(",") if c} or (
-            view.match.quote.total > settings.verify_above_cents
+            view.match.quote.total > market(view.owner.country).id_check_above
         )
         if needs_id and await s.get(VerifiedRow, p.sub) is None:
             raise Forbidden("verify your identity once before booking this", code="verification_required")
@@ -177,8 +178,9 @@ async def create_booking(
         updated_at=now,
         expires_at=now + settings.payment_timeout,
         amount=m.quote.total,
-        # The listing's currency, in Stripe's lowercase (M-3): never converted.
-        currency=view.listing.currency.lower(),
+        # The listing's currency, ISO 4217 uppercase like every answer (M-3):
+        # never converted. Only the Stripe calls lowercase it.
+        currency=view.listing.currency,
         requirement=body.requirement.model_dump(mode="json", by_alias=True),
         match=m.model_dump(mode="json", by_alias=True),
         listing_snapshot={
@@ -517,7 +519,10 @@ async def resolve(booking_id: str, body: ResolveIn, repo: BookingRepository = De
     if row.status != "disputed":
         raise Conflict(f"only a disputed booking can be resolved; this one is {row.status}")
     to = "completed" if body.outcome == "pay_owner" else "cancelled"
-    await repo.move(row, to, f"support:{body.by}", _now())
+    # A disputed booking was charged: refunding it gives it all back, and the
+    # booking says so (payments refunds the same full amount).
+    fields = {"refund_amount": row.amount} if to == "cancelled" else {}
+    await repo.move(row, to, f"support:{body.by}", _now(), **fields)
     return to_booking(row, row.owner_id)
 
 
@@ -584,10 +589,12 @@ class PersonExport(CamelModel):
 
 
 @internal.get("/people/{person}/export", response_model=PersonExport)
-async def export_person(person: str, repo: BookingRepository = Depends(get_repo)) -> PersonExport:
-    """Everything booking holds about them (GDPR art. 15/20)."""
+async def export_person(person: str, request: Request, repo: BookingRepository = Depends(get_repo)) -> PersonExport:
+    """Everything booking holds about them (GDPR art. 15/20). Hand-over photos
+    come as links signed for a day, so the file can be saved from them."""
     from sqlalchemy import select
 
+    from .messages import EXPORT_LINK_TTL, _link
     from .tables import EvidenceRow, MessageRow
 
     s = repo.s
@@ -614,7 +621,9 @@ async def export_person(person: str, repo: BookingRepository = Depends(get_repo)
             {
                 "bookingId": e.booking_id,
                 "stage": e.stage,
-                "photos": e.photos,
+                "photos": [
+                    _link(request, e.booking_id, e.id, i, photo, EXPORT_LINK_TTL) for i, photo in enumerate(e.photos)
+                ],
                 "note": e.note,
                 "at": iso_from_datetime(e.at),
             }

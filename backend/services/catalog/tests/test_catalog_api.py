@@ -244,7 +244,8 @@ def test_server_mints_ids_and_ignores_the_client_s(client, issuer, app, broker):
         ({"district": "Atlantis"}, "district"),
         ({"ratePerHour": 0}, "ratePerHour"),
         ({"extraFee": -5000}, "extraFee"),
-        ({"currency": "JPY"}, "validate"),
+        ({"currency": "JPY"}, "priced in EUR"),
+        ({"currency": "USD"}, "priced in EUR"),
         ({"minHours": 0}, "minHours"),
         ({"minHours": 8, "maxHours": 2}, "minHours"),
         ({"photos": ["https://evil.example/pixel.gif"]}, "uploaded"),
@@ -1210,7 +1211,9 @@ def test_deletion_leaves_no_words_photos_or_reports_behind(client, app, issuer):
     h = issuer.headers("user-a")
     photo = client.post("/uploads", files={"file": ("p.png", _png(), "image/png")}, headers=h).json()["url"]
     body = {
-        "listing": _window_listing(title="Ada's lathe", instructions="Door code 4711", photos=[photo]),
+        "listing": _window_listing(
+            title="Ada's lathe", instructions="Door code 4711", photos=[photo], extraLabel="Ada's own chisels"
+        ),
         "slots": [_slot()],
     }
     lid = client.post("/listings", json=body, headers={**h, "Idempotency-Key": "k-1"}).json()["listing"]["id"]
@@ -1238,7 +1241,16 @@ def test_deletion_leaves_no_words_photos_or_reports_behind(client, app, issuer):
     assert (listing.title, listing.instructions, listing.photos) == ("Removed listing", "", [])
     assert (owner.name, owner.verified, owner.business) == ("Former member", False, None)
     assert reports == [] and keys == []
+    assert listing.spec["extraLabel"] == "" and listing.spec["ratePerHour"] > 0, "the spec's words, not its numbers"
+    purged: list[str] = []
+
+    class Edge:
+        async def purge(self, paths):
+            purged.extend(paths)
+
+    app.state.cdn = Edge()
     assert _run(app, lambda: sweep_orphans_once(app)) == 1, "their photo goes on the next sweep"
+    assert purged == [f"/media/{photo.rsplit('/', 1)[-1]}"], "and its copies leave the CDN"
     assert client.get(photo).status_code == 404
 
     async def media():
@@ -1300,6 +1312,17 @@ def test_reported_messages_and_reviews_are_removed_and_their_authors_suspendable
     flush(app)
     assert [e.data["ownerId"] for e in broker.of_type(OWNER_SUSPENDED)] == ["user-b"], "the author, not a listing owner"
     assert [e.data["affectedId"] for e in broker.of_type(MODERATION_DECISION)] == ["user-b", "user-b"]
+
+    async def decisions_about_the_author():
+        from catalog.repository import CatalogRepository
+
+        async with app.state.db.session() as s:
+            return (await CatalogRepository(s).export("user-b"))["moderationDecisionsAboutMe"]
+
+    about = client.portal.call(decisions_about_the_author)
+    assert [(d["action"], d["targetId"]) for d in about] == [("remove_content", "msg_1"), ("suspend", "msg_1")], (
+        "decisions on their message are in their export"
+    )
     rid = report("listing", "l9")
     bad = client.post(f"/admin/reports/{rid}/decide", json={**decision, "action": "remove_content"}, headers=staff)
     assert bad.status_code == 422, "a listing is taken down, not removed this way"
@@ -1325,3 +1348,18 @@ def test_signing_up_again_after_deletion_is_a_fresh_start(client, app, issuer):
     fresh = client.put("/me", json={**again, "adult": True}, headers=h).json()
     assert (fresh["name"], fresh["jobsDone"], fresh["verified"]) == ("Ada L", 0, False)
     assert client.get("/me", headers=h).json()["owner"]["id"] == "user-a"
+
+
+def test_markets_decide_where_people_join_list_and_in_which_currency(client, issuer):
+    """M-2: only open markets, and a listing is priced in its market's money."""
+    h = issuer.headers("zurich-1")
+    person = {"adult": True, "name": "Heidi Muster", "kind": "person", "district": "Kreuzberg"}
+    r = client.put("/me", json={**person, "country": "FR"}, headers=h)
+    assert r.status_code == 422 and r.json()["error"]["code"] == "market_not_live", "France is planned"
+    assert client.put("/me", json={**person, "country": "ZZ"}, headers=h).json()["error"]["code"] == "market_unknown"
+    assert client.put("/me", json={**person, "country": "CH"}, headers=h).status_code == 200
+    listing = {k: v for k, v in _window_listing().items() if k != "currency"}
+    created = client.post("/listings", json={"listing": listing}, headers=h)
+    assert created.status_code == 201 and created.json()["listing"]["currency"] == "CHF", "the market's currency"
+    r = client.post("/listings", json={"listing": {**listing, "currency": "EUR"}}, headers=h)
+    assert r.json()["error"]["code"] == "currency_not_in_market"

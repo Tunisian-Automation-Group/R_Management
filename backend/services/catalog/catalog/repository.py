@@ -149,6 +149,10 @@ def to_review(r: ReviewRow) -> Review:
     )
 
 
+# Free text inside a listing's spec, cleared when its owner's account goes.
+_SPEC_WORDS = ("extraLabel", "machine")
+
+
 def _spec(l: AnyListing) -> dict:
     data = l.model_dump(mode="json", by_alias=True, exclude_none=True)
     return {k: v for k, v in data.items() if k not in _BASE_FIELDS}
@@ -208,6 +212,12 @@ class CatalogRepository:
                 photos=[],
             )
         )
+        # The spec's own words too (what the extra is, which machine): the
+        # numbers stay so an old booking's listing still reads as one.
+        for row in (await self.s.execute(select(ListingRow).where(ListingRow.owner_id == owner_id))).scalars():
+            words = {k: "" for k in _SPEC_WORDS if k in (row.spec or {})}
+            if words:
+                row.spec = {**row.spec, **words}
         # Every photo they uploaded, listing or hand-over (D-1): the hourly
         # sweep deletes the files, keeping any another person also holds.
         await self.s.execute(update(MediaRow).where(MediaRow.owner_id == owner_id).values(used=False, created_at=EPOCH))
@@ -251,7 +261,10 @@ class CatalogRepository:
         decided = (
             await self.s.execute(
                 select(ModerationActionRow).where(
-                    ModerationActionRow.target_id.in_(
+                    # Decisions about them, their listings, messages and reviews;
+                    # rows from before person_id matched by target.
+                    (ModerationActionRow.person_id == owner_id)
+                    | ModerationActionRow.target_id.in_(
                         select(ListingRow.id).where(ListingRow.owner_id == owner_id).scalar_subquery()
                     )
                     | (ModerationActionRow.target_id == owner_id)
@@ -395,6 +408,7 @@ class CatalogRepository:
         district: str,
         business: dict | None = None,
         adult: bool = False,
+        minimum_age: int = 18,
         country: str = "DE",
     ) -> tuple[Owner, bool]:
         """Create a person's profile on first use, or update the fields they
@@ -406,7 +420,7 @@ class CatalogRepository:
         fresh = row is not None and row.deleted_at is not None
         if row is None or row.adult_confirmed_at is None or fresh:
             if not adult:
-                raise Invalid("Cappy is for people aged 18 or over: confirm your age to continue")
+                raise Invalid(f"Cappy is for people aged {minimum_age} or over: confirm your age to continue")
         if fresh:
             # The same sign-in after an account deletion (FL-11): a fresh start,
             # nothing of the old record comes back. A suspension does stay.

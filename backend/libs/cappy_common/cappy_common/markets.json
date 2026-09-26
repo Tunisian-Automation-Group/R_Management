@@ -1,0 +1,750 @@
+{
+  "_about": "Markets (ADR 0013): one per country, reviewed like code. Money in the currency's minor units. A market opens by setting status to live.",
+  "markets": {
+    "AT": {
+      "cell": "eu",
+      "status": "live",
+      "currency": "EUR",
+      "languages": [
+        "de",
+        "en"
+      ],
+      "units": "metric",
+      "legal_entity": "cappy-gmbh",
+      "stripe_platform": "de",
+      "tax_regime": "eu-vat",
+      "minimum_age": 18,
+      "emergency_number": "112",
+      "consumer_law": "eu",
+      "id_check_above": 30000,
+      "held_listing_above": 10000,
+      "max_rate_per_hour": 1000000
+    },
+    "BE": {
+      "cell": "eu",
+      "status": "planned",
+      "currency": "EUR",
+      "languages": [
+        "nl",
+        "fr",
+        "de",
+        "en"
+      ],
+      "units": "metric",
+      "legal_entity": "cappy-gmbh",
+      "stripe_platform": "de",
+      "tax_regime": "eu-vat",
+      "minimum_age": 18,
+      "emergency_number": "112",
+      "consumer_law": "eu",
+      "id_check_above": 30000,
+      "held_listing_above": 10000,
+      "max_rate_per_hour": 1000000,
+      "notes": [
+        "thresholds converted from the euro values; confirm before launch"
+      ]
+    },
+    "BG": {
+      "cell": "eu",
+      "status": "planned",
+      "currency": "EUR",
+      "languages": [
+        "bg",
+        "en"
+      ],
+      "units": "metric",
+      "legal_entity": "cappy-gmbh",
+      "stripe_platform": "de",
+      "tax_regime": "eu-vat",
+      "minimum_age": 18,
+      "emergency_number": "112",
+      "consumer_law": "eu",
+      "id_check_above": 30000,
+      "held_listing_above": 10000,
+      "max_rate_per_hour": 1000000,
+      "notes": [
+        "thresholds converted from the euro values; confirm before launch"
+      ]
+    },
+    "CA": {
+      "cell": "na",
+      "status": "planned",
+      "currency": "CAD",
+      "languages": [
+        "en",
+        "fr"
+      ],
+      "units": "metric",
+      "legal_entity": "cappy-na",
+      "stripe_platform": "de",
+      "tax_regime": "ca-gst-hst",
+      "minimum_age": 19,
+      "emergency_number": "911",
+      "consumer_law": "ca",
+      "id_check_above": 45000,
+      "held_listing_above": 15000,
+      "max_rate_per_hour": 1500000,
+      "notes": [
+        "ponytail: the North America entity and Stripe platform are M-1 (counsel/owner); starts on the DE platform per ADR 0013",
+        "age of majority is 19 in BC, NB, NL, NS, NT, NU and YT: 19 nationwide until provinces are modelled (counsel); Québec needs French first (Bill 96)"
+      ]
+    },
+    "CH": {
+      "cell": "eu",
+      "status": "live",
+      "currency": "CHF",
+      "languages": [
+        "de",
+        "fr",
+        "it",
+        "en"
+      ],
+      "units": "metric",
+      "legal_entity": "cappy-gmbh",
+      "stripe_platform": "de",
+      "tax_regime": "ch-vat",
+      "minimum_age": 18,
+      "emergency_number": "112",
+      "consumer_law": "ch",
+      "id_check_above": 28000,
+      "held_listing_above": 9500,
+      "max_rate_per_hour": 950000
+    },
+    "CY": {
+      "cell": "eu",
+      "status": "planned",
+      "currency": "EUR",
+      "languages": [
+        "el",
+        "en"
+      ],
+      "units": "metric",
+      "legal_entity": "cappy-gmbh",
+      "stripe_platform": "de",
+      "tax_regime": "eu-vat",
+      "minimum_age": 18,
+      "emergency_number": "112",
+      "consumer_law": "eu",
+      "id_check_above": 30000,
+      "held_listing_above": 10000,
+      "max_rate_per_hour": 1000000,
+      "notes": [
+        "thresholds converted from the euro values; confirm before launch"
+      ]
+    },
+    "CZ": {
+      "cell": "eu",
+      "status": "planned",
+      "currency": "CZK",
+      "languages": [
+        "cs",
+        "en"
+      ],
+      "units": "metric",
+      "legal_entity": "cappy-gmbh",
+      "stripe_platform": "de",
+      "tax_regime": "eu-vat",
+      "minimum_age": 18,
+      "emergency_number": "112",
+      "consumer_law": "eu",
+      "id_check_above": 750000,
+      "held_listing_above": 250000,
+      "max_rate_per_hour": 25000000,
+      "notes": [
+        "thresholds converted from the euro values; confirm before launch"
+      ]
+    },
+    "DE": {
+      "cell": "eu",
+      "status": "live",
+      "currency": "EUR",
+      "languages": [
+        "de",
+        "en"
+      ],
+      "units": "metric",
+      "legal_entity": "cappy-gmbh",
+      "stripe_platform": "de",
+      "tax_regime": "de-vat",
+      "minimum_age": 18,
+      "emergency_number": "112",
+      "consumer_law": "eu",
+      "id_check_above": 30000,
+      "held_listing_above": 10000,
+      "max_rate_per_hour": 1000000
+    },
+    "DK": {
+      "cell": "eu",
+      "status": "planned",
+      "currency": "DKK",
+      "languages": [
+        "da",
+        "en"
+      ],
+      "units": "metric",
+      "legal_entity": "cappy-gmbh",
+      "stripe_platform": "de",
+      "tax_regime": "eu-vat",
+      "minimum_age": 18,
+      "emergency_number": "112",
+      "consumer_law": "eu",
+      "id_check_above": 220000,
+      "held_listing_above": 74000,
+      "max_rate_per_hour": 7400000,
+      "notes": [
+        "thresholds converted from the euro values; confirm before launch"
+      ]
+    },
+    "EE": {
+      "cell": "eu",
+      "status": "planned",
+      "currency": "EUR",
+      "languages": [
+        "et",
+        "en"
+      ],
+      "units": "metric",
+      "legal_entity": "cappy-gmbh",
+      "stripe_platform": "de",
+      "tax_regime": "eu-vat",
+      "minimum_age": 18,
+      "emergency_number": "112",
+      "consumer_law": "eu",
+      "id_check_above": 30000,
+      "held_listing_above": 10000,
+      "max_rate_per_hour": 1000000,
+      "notes": [
+        "thresholds converted from the euro values; confirm before launch"
+      ]
+    },
+    "ES": {
+      "cell": "eu",
+      "status": "planned",
+      "currency": "EUR",
+      "languages": [
+        "es",
+        "en"
+      ],
+      "units": "metric",
+      "legal_entity": "cappy-gmbh",
+      "stripe_platform": "de",
+      "tax_regime": "eu-vat",
+      "minimum_age": 18,
+      "emergency_number": "112",
+      "consumer_law": "eu",
+      "id_check_above": 30000,
+      "held_listing_above": 10000,
+      "max_rate_per_hour": 1000000,
+      "notes": [
+        "thresholds converted from the euro values; confirm before launch"
+      ]
+    },
+    "FI": {
+      "cell": "eu",
+      "status": "planned",
+      "currency": "EUR",
+      "languages": [
+        "fi",
+        "sv",
+        "en"
+      ],
+      "units": "metric",
+      "legal_entity": "cappy-gmbh",
+      "stripe_platform": "de",
+      "tax_regime": "eu-vat",
+      "minimum_age": 18,
+      "emergency_number": "112",
+      "consumer_law": "eu",
+      "id_check_above": 30000,
+      "held_listing_above": 10000,
+      "max_rate_per_hour": 1000000,
+      "notes": [
+        "thresholds converted from the euro values; confirm before launch"
+      ]
+    },
+    "FR": {
+      "cell": "eu",
+      "status": "planned",
+      "currency": "EUR",
+      "languages": [
+        "fr",
+        "en"
+      ],
+      "units": "metric",
+      "legal_entity": "cappy-gmbh",
+      "stripe_platform": "de",
+      "tax_regime": "eu-vat",
+      "minimum_age": 18,
+      "emergency_number": "112",
+      "consumer_law": "eu",
+      "id_check_above": 30000,
+      "held_listing_above": 10000,
+      "max_rate_per_hour": 1000000,
+      "notes": [
+        "thresholds converted from the euro values; confirm before launch"
+      ]
+    },
+    "GB": {
+      "cell": "eu",
+      "status": "planned",
+      "currency": "GBP",
+      "languages": [
+        "en"
+      ],
+      "units": "imperial",
+      "legal_entity": "cappy-gmbh",
+      "stripe_platform": "de",
+      "tax_regime": "uk-vat",
+      "minimum_age": 18,
+      "emergency_number": "999",
+      "consumer_law": "gb",
+      "id_check_above": 26000,
+      "held_listing_above": 8500,
+      "max_rate_per_hour": 850000,
+      "notes": [
+        "UK VAT has no threshold for a non-UK business (counsel)",
+        "thresholds converted from the euro values; confirm before launch"
+      ]
+    },
+    "GR": {
+      "cell": "eu",
+      "status": "planned",
+      "currency": "EUR",
+      "languages": [
+        "el",
+        "en"
+      ],
+      "units": "metric",
+      "legal_entity": "cappy-gmbh",
+      "stripe_platform": "de",
+      "tax_regime": "eu-vat",
+      "minimum_age": 18,
+      "emergency_number": "112",
+      "consumer_law": "eu",
+      "id_check_above": 30000,
+      "held_listing_above": 10000,
+      "max_rate_per_hour": 1000000,
+      "notes": [
+        "thresholds converted from the euro values; confirm before launch"
+      ]
+    },
+    "HR": {
+      "cell": "eu",
+      "status": "planned",
+      "currency": "EUR",
+      "languages": [
+        "hr",
+        "en"
+      ],
+      "units": "metric",
+      "legal_entity": "cappy-gmbh",
+      "stripe_platform": "de",
+      "tax_regime": "eu-vat",
+      "minimum_age": 18,
+      "emergency_number": "112",
+      "consumer_law": "eu",
+      "id_check_above": 30000,
+      "held_listing_above": 10000,
+      "max_rate_per_hour": 1000000,
+      "notes": [
+        "thresholds converted from the euro values; confirm before launch"
+      ]
+    },
+    "HU": {
+      "cell": "eu",
+      "status": "planned",
+      "currency": "HUF",
+      "languages": [
+        "hu",
+        "en"
+      ],
+      "units": "metric",
+      "legal_entity": "cappy-gmbh",
+      "stripe_platform": "de",
+      "tax_regime": "eu-vat",
+      "minimum_age": 18,
+      "emergency_number": "112",
+      "consumer_law": "eu",
+      "id_check_above": 12000000,
+      "held_listing_above": 3900000,
+      "max_rate_per_hour": 390000000,
+      "notes": [
+        "thresholds converted from the euro values; confirm before launch"
+      ]
+    },
+    "IE": {
+      "cell": "eu",
+      "status": "planned",
+      "currency": "EUR",
+      "languages": [
+        "en"
+      ],
+      "units": "metric",
+      "legal_entity": "cappy-gmbh",
+      "stripe_platform": "de",
+      "tax_regime": "eu-vat",
+      "minimum_age": 18,
+      "emergency_number": "112",
+      "consumer_law": "eu",
+      "id_check_above": 30000,
+      "held_listing_above": 10000,
+      "max_rate_per_hour": 1000000,
+      "notes": [
+        "thresholds converted from the euro values; confirm before launch"
+      ]
+    },
+    "IS": {
+      "cell": "eu",
+      "status": "planned",
+      "currency": "ISK",
+      "languages": [
+        "is",
+        "en"
+      ],
+      "units": "metric",
+      "legal_entity": "cappy-gmbh",
+      "stripe_platform": "de",
+      "tax_regime": "is-vat",
+      "minimum_age": 18,
+      "emergency_number": "112",
+      "consumer_law": "eu",
+      "id_check_above": 4500000,
+      "held_listing_above": 1500000,
+      "max_rate_per_hour": 150000000,
+      "notes": [
+        "thresholds converted from the euro values; confirm before launch",
+        "ISK in Stripe's two-decimal form (whole kronur x 100), like every amount here"
+      ]
+    },
+    "IT": {
+      "cell": "eu",
+      "status": "planned",
+      "currency": "EUR",
+      "languages": [
+        "it",
+        "en"
+      ],
+      "units": "metric",
+      "legal_entity": "cappy-gmbh",
+      "stripe_platform": "de",
+      "tax_regime": "eu-vat",
+      "minimum_age": 18,
+      "emergency_number": "112",
+      "consumer_law": "eu",
+      "id_check_above": 30000,
+      "held_listing_above": 10000,
+      "max_rate_per_hour": 1000000,
+      "notes": [
+        "thresholds converted from the euro values; confirm before launch"
+      ]
+    },
+    "LI": {
+      "cell": "eu",
+      "status": "planned",
+      "currency": "CHF",
+      "languages": [
+        "de",
+        "en"
+      ],
+      "units": "metric",
+      "legal_entity": "cappy-gmbh",
+      "stripe_platform": "de",
+      "tax_regime": "ch-vat",
+      "minimum_age": 18,
+      "emergency_number": "112",
+      "consumer_law": "eu",
+      "id_check_above": 28000,
+      "held_listing_above": 9500,
+      "max_rate_per_hour": 950000,
+      "notes": [
+        "thresholds converted from the euro values; confirm before launch"
+      ]
+    },
+    "LT": {
+      "cell": "eu",
+      "status": "planned",
+      "currency": "EUR",
+      "languages": [
+        "lt",
+        "en"
+      ],
+      "units": "metric",
+      "legal_entity": "cappy-gmbh",
+      "stripe_platform": "de",
+      "tax_regime": "eu-vat",
+      "minimum_age": 18,
+      "emergency_number": "112",
+      "consumer_law": "eu",
+      "id_check_above": 30000,
+      "held_listing_above": 10000,
+      "max_rate_per_hour": 1000000,
+      "notes": [
+        "thresholds converted from the euro values; confirm before launch"
+      ]
+    },
+    "LU": {
+      "cell": "eu",
+      "status": "planned",
+      "currency": "EUR",
+      "languages": [
+        "fr",
+        "de",
+        "en"
+      ],
+      "units": "metric",
+      "legal_entity": "cappy-gmbh",
+      "stripe_platform": "de",
+      "tax_regime": "eu-vat",
+      "minimum_age": 18,
+      "emergency_number": "112",
+      "consumer_law": "eu",
+      "id_check_above": 30000,
+      "held_listing_above": 10000,
+      "max_rate_per_hour": 1000000,
+      "notes": [
+        "thresholds converted from the euro values; confirm before launch"
+      ]
+    },
+    "LV": {
+      "cell": "eu",
+      "status": "planned",
+      "currency": "EUR",
+      "languages": [
+        "lv",
+        "en"
+      ],
+      "units": "metric",
+      "legal_entity": "cappy-gmbh",
+      "stripe_platform": "de",
+      "tax_regime": "eu-vat",
+      "minimum_age": 18,
+      "emergency_number": "112",
+      "consumer_law": "eu",
+      "id_check_above": 30000,
+      "held_listing_above": 10000,
+      "max_rate_per_hour": 1000000,
+      "notes": [
+        "thresholds converted from the euro values; confirm before launch"
+      ]
+    },
+    "MT": {
+      "cell": "eu",
+      "status": "planned",
+      "currency": "EUR",
+      "languages": [
+        "en"
+      ],
+      "units": "metric",
+      "legal_entity": "cappy-gmbh",
+      "stripe_platform": "de",
+      "tax_regime": "eu-vat",
+      "minimum_age": 18,
+      "emergency_number": "112",
+      "consumer_law": "eu",
+      "id_check_above": 30000,
+      "held_listing_above": 10000,
+      "max_rate_per_hour": 1000000,
+      "notes": [
+        "thresholds converted from the euro values; confirm before launch"
+      ]
+    },
+    "NL": {
+      "cell": "eu",
+      "status": "planned",
+      "currency": "EUR",
+      "languages": [
+        "nl",
+        "en"
+      ],
+      "units": "metric",
+      "legal_entity": "cappy-gmbh",
+      "stripe_platform": "de",
+      "tax_regime": "eu-vat",
+      "minimum_age": 18,
+      "emergency_number": "112",
+      "consumer_law": "eu",
+      "id_check_above": 30000,
+      "held_listing_above": 10000,
+      "max_rate_per_hour": 1000000,
+      "notes": [
+        "thresholds converted from the euro values; confirm before launch"
+      ]
+    },
+    "NO": {
+      "cell": "eu",
+      "status": "planned",
+      "currency": "NOK",
+      "languages": [
+        "nb",
+        "en"
+      ],
+      "units": "metric",
+      "legal_entity": "cappy-gmbh",
+      "stripe_platform": "de",
+      "tax_regime": "no-vat",
+      "minimum_age": 18,
+      "emergency_number": "112",
+      "consumer_law": "eu",
+      "id_check_above": 340000,
+      "held_listing_above": 120000,
+      "max_rate_per_hour": 12000000,
+      "notes": [
+        "thresholds converted from the euro values; confirm before launch"
+      ]
+    },
+    "PL": {
+      "cell": "eu",
+      "status": "planned",
+      "currency": "PLN",
+      "languages": [
+        "pl",
+        "en"
+      ],
+      "units": "metric",
+      "legal_entity": "cappy-gmbh",
+      "stripe_platform": "de",
+      "tax_regime": "eu-vat",
+      "minimum_age": 18,
+      "emergency_number": "112",
+      "consumer_law": "eu",
+      "id_check_above": 130000,
+      "held_listing_above": 43000,
+      "max_rate_per_hour": 4300000,
+      "notes": [
+        "thresholds converted from the euro values; confirm before launch"
+      ]
+    },
+    "PT": {
+      "cell": "eu",
+      "status": "planned",
+      "currency": "EUR",
+      "languages": [
+        "pt",
+        "en"
+      ],
+      "units": "metric",
+      "legal_entity": "cappy-gmbh",
+      "stripe_platform": "de",
+      "tax_regime": "eu-vat",
+      "minimum_age": 18,
+      "emergency_number": "112",
+      "consumer_law": "eu",
+      "id_check_above": 30000,
+      "held_listing_above": 10000,
+      "max_rate_per_hour": 1000000,
+      "notes": [
+        "thresholds converted from the euro values; confirm before launch"
+      ]
+    },
+    "RO": {
+      "cell": "eu",
+      "status": "planned",
+      "currency": "RON",
+      "languages": [
+        "ro",
+        "en"
+      ],
+      "units": "metric",
+      "legal_entity": "cappy-gmbh",
+      "stripe_platform": "de",
+      "tax_regime": "eu-vat",
+      "minimum_age": 18,
+      "emergency_number": "112",
+      "consumer_law": "eu",
+      "id_check_above": 150000,
+      "held_listing_above": 50000,
+      "max_rate_per_hour": 5000000,
+      "notes": [
+        "thresholds converted from the euro values; confirm before launch"
+      ]
+    },
+    "SE": {
+      "cell": "eu",
+      "status": "planned",
+      "currency": "SEK",
+      "languages": [
+        "sv",
+        "en"
+      ],
+      "units": "metric",
+      "legal_entity": "cappy-gmbh",
+      "stripe_platform": "de",
+      "tax_regime": "eu-vat",
+      "minimum_age": 18,
+      "emergency_number": "112",
+      "consumer_law": "eu",
+      "id_check_above": 340000,
+      "held_listing_above": 120000,
+      "max_rate_per_hour": 12000000,
+      "notes": [
+        "thresholds converted from the euro values; confirm before launch"
+      ]
+    },
+    "SI": {
+      "cell": "eu",
+      "status": "planned",
+      "currency": "EUR",
+      "languages": [
+        "sl",
+        "en"
+      ],
+      "units": "metric",
+      "legal_entity": "cappy-gmbh",
+      "stripe_platform": "de",
+      "tax_regime": "eu-vat",
+      "minimum_age": 18,
+      "emergency_number": "112",
+      "consumer_law": "eu",
+      "id_check_above": 30000,
+      "held_listing_above": 10000,
+      "max_rate_per_hour": 1000000,
+      "notes": [
+        "thresholds converted from the euro values; confirm before launch"
+      ]
+    },
+    "SK": {
+      "cell": "eu",
+      "status": "planned",
+      "currency": "EUR",
+      "languages": [
+        "sk",
+        "en"
+      ],
+      "units": "metric",
+      "legal_entity": "cappy-gmbh",
+      "stripe_platform": "de",
+      "tax_regime": "eu-vat",
+      "minimum_age": 18,
+      "emergency_number": "112",
+      "consumer_law": "eu",
+      "id_check_above": 30000,
+      "held_listing_above": 10000,
+      "max_rate_per_hour": 1000000,
+      "notes": [
+        "thresholds converted from the euro values; confirm before launch"
+      ]
+    },
+    "US": {
+      "cell": "na",
+      "status": "planned",
+      "currency": "USD",
+      "languages": [
+        "en"
+      ],
+      "units": "imperial",
+      "legal_entity": "cappy-na",
+      "stripe_platform": "de",
+      "tax_regime": "us-sales-tax",
+      "minimum_age": 18,
+      "emergency_number": "911",
+      "consumer_law": "us",
+      "id_check_above": 33000,
+      "held_listing_above": 11000,
+      "max_rate_per_hour": 1100000,
+      "notes": [
+        "ponytail: the North America entity and Stripe platform are M-1 (counsel/owner); starts on the DE platform per ADR 0013",
+        "age of majority is 19 in AL and NE and 21 in MS: a per-state check before launch (counsel)"
+      ]
+    }
+  }
+}

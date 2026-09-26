@@ -111,6 +111,15 @@ def test_forwards_the_token_and_request_id_and_nothing_else(gateway):
     assert "x-cappy-user" not in headers and "cookie" not in headers
 
 
+def test_a_webhook_signature_reaches_only_its_own_route(gateway):
+    c, calls = gateway
+    sig = {"Stripe-Signature": "t=1,v1=abc"}
+    c.post("/api/payments/webhooks/stripe", content=b"{}", headers=sig)
+    assert calls[-1][2] == "/payments/webhooks/stripe" and calls[-1][3]["stripe-signature"] == "t=1,v1=abc"
+    c.post("/api/payments/connect/onboarding", json={}, headers=sig)
+    assert "stripe-signature" not in calls[-1][3], "nowhere else"
+
+
 def test_the_apps_language_reaches_the_bell(gateway):
     # V3-13: the bell renders in the language the app sends.
     c, calls = gateway
@@ -183,7 +192,11 @@ def test_the_native_apps_may_call_the_api_cross_origin():
 def test_app_config_for_the_store_apps(gateway):
     c, calls = gateway
     r = c.get("/api/app-config")
-    assert r.json() == {"minVersion": "1.0.0", "latestVersion": "1.0.0", "flags": {}, "rollouts": {}}
+    body = r.json()
+    markets = body.pop("markets")
+    assert body == {"minVersion": "1.0.0", "latestVersion": "1.0.0", "flags": {}, "rollouts": {}}
+    assert markets["DE"]["status"] == "live" and markets["US"]["units"] == "imperial"
+    assert "legalEntity" not in markets["US"] and "taxRegime" not in markets["US"], "public part only"
     assert "max-age" in r.headers["cache-control"]
     assert calls == []
 

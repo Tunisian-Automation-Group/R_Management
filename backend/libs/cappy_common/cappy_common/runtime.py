@@ -170,6 +170,11 @@ async def _prune_loop(runtime: Runtime) -> None:
 
         async with runtime.db.transaction() as s:
             await idempotency.expire(s, keys)
+    if runtime.metadata is not None:
+        from .guard import prune_guards
+
+        async with runtime.db.transaction() as s:
+            await prune_guards(s, runtime.metadata)
     await asyncio.sleep(jittered(3600))
 
 

@@ -17,6 +17,8 @@ class Settings(CommonSettings):
     # SNS platform applications (APNs, FCM). Empty: pushes are logged only.
     push_ios_app_arn: str = ""
     push_android_app_arn: str = ""
+    # How long the bell keeps an item (docs/retention.md).
+    inbox_retention_days: int = 365
 
     def unsafe_reasons(self) -> list[str]:
         problems = super().unsafe_reasons()

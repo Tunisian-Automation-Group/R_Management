@@ -483,3 +483,28 @@ def test_staff_is_whatever_claim_the_settings_name():
     other = CommonSettings(staff_claim="scope", staff_value="cappy:staff")
     assert is_staff(Principal(sub="s", claims={"scope": "openid cappy:staff"}), other)
     assert not is_staff(cognito, other)
+
+
+async def test_old_revocations_and_rate_hits_are_pruned():
+    from datetime import UTC, datetime, timedelta
+
+    from cappy_common.guard import prune_guards, rate_table, revocation_table
+
+    md = new_metadata()
+    revoked, hits = revocation_table(md), rate_table(md)
+    db = Database("sqlite+aiosqlite://")
+    await db.create_all(md)
+    now = datetime.now(UTC)
+    async with db.transaction() as s:
+        await s.execute(
+            insert(revoked), [{"sub": "old", "not_before": now - timedelta(days=2)}, {"sub": "new", "not_before": now}]
+        )
+        await s.execute(
+            insert(hits), [{"key": "export:a", "at": now - timedelta(days=3)}, {"key": "export:a", "at": now}]
+        )
+    async with db.transaction() as s:
+        assert await prune_guards(s, md, now) == 2
+    async with db.session() as s:
+        assert (await s.execute(select(revoked.c.sub))).scalars().all() == ["new"], "a live revocation stays"
+        assert len((await s.execute(select(hits.c.id))).all()) == 1
+    await db.dispose()

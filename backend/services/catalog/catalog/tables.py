@@ -231,9 +231,13 @@ class ModerationActionRow(Base):
     statement: Mapped[str] = mapped_column(String(2000))
     statement_of_reasons: Mapped[dict | None] = mapped_column(JsonType, nullable=True)
     at: Mapped[datetime] = mapped_column(UtcDateTime)
+    # Whom the decision is about (the listing's owner, a message's or review's
+    # author), so their data export finds every decision about them.
+    person_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
 
 
 Index("ix_moderation_actions_at", ModerationActionRow.at)
+Index("ix_moderation_actions_person", ModerationActionRow.person_id)
 
 
 class MediaRow(Base):

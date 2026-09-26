@@ -85,7 +85,7 @@ class StripeProvider(Provider):
         pi = await self._c.v1.payment_intents.create_async(
             {
                 "amount": amount,
-                "currency": currency,
+                "currency": currency.lower(),  # Stripe spells it lowercase
                 # Authorise now, capture when the owner accepts (ADR 0005).
                 "capture_method": "manual",
                 "automatic_payment_methods": {"enabled": True},
@@ -147,7 +147,7 @@ class StripeProvider(Provider):
         t = await self._c.v1.transfers.create_async(
             {
                 "amount": amount,
-                "currency": currency,
+                "currency": currency.lower(),  # Stripe spells it lowercase
                 "destination": account_id,
                 "transfer_group": booking_id,
                 # Tied to the charge: Stripe waits for its funds to settle.

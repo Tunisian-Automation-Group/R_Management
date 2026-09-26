@@ -185,7 +185,7 @@ async def invoice_page(
     tz, label = st.invoice_time_zone, st.invoice_tax_label
     e = lambda v: html.escape(v or "")  # noqa: E731
     lines = lambda v: "<br>".join(html.escape(x.strip()) for x in (v or "").split(",") if x.strip())  # noqa: E731
-    symbol = {"eur": "€"}.get(r.currency, r.currency.upper())
+    symbol = {"EUR": "€"}.get(r.currency.upper(), r.currency.upper())
     eur = lambda c: f"{c / 100:,.2f} {symbol}".replace(",", "X").replace(".", ",").replace("X", ".")  # noqa: E731
     tax_ids = "<br>".join(
         x

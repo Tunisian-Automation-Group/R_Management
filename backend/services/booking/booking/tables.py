@@ -47,7 +47,8 @@ class BookingRow(Base):
     # When an awaiting-payment or requested booking lapses. Null otherwise.
     expires_at: Mapped[datetime | None] = mapped_column(UtcDateTime, nullable=True)
     amount: Mapped[int] = mapped_column(Integer)
-    currency: Mapped[str] = mapped_column(String(3), default="eur")
+    # ISO 4217, uppercase: the listing's currency, set at creation (M-3).
+    currency: Mapped[str] = mapped_column(String(3))
     requirement: Mapped[dict] = mapped_column(JsonType)
     match: Mapped[dict] = mapped_column(JsonType)
     listing_snapshot: Mapped[dict] = mapped_column(JsonType)

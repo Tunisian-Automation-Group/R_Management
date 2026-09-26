@@ -446,3 +446,23 @@ def test_french_readers_are_written_to_in_french_and_everything_is_translated():
     assert (
         render("paid", "es-ES", amount="x", booking="b", web="w", _cents=(100, "eur"))[0] == "You have been paid €1.00"
     )
+
+
+def test_the_bell_keeps_a_year():
+    from datetime import UTC, datetime, timedelta
+
+    from notifications.jobs import expire_inbox_once
+    from notifications.push import LogPusher
+
+    from cappy_common.testing import TestIssuer
+
+    issuer, people = TestIssuer(), People()
+    settings = Settings(app_env="test", database_url="sqlite+aiosqlite://", internal_token="i" * 40)
+    app = build_app(settings, directory=people, mailer=LogMailer(), pusher=LogPusher(), verifier=issuer.verifier())
+    with TestClient(app) as c:
+        c.portal.call(app.state.dispatcher.handle, _change("requested", by="payments"))
+        assert c.get("/notifications", headers=issuer.headers("host")).json()["unread"] == 1
+        soon = datetime.now(UTC) + timedelta(days=364)
+        assert c.portal.call(expire_inbox_once, app, soon) == 0, "younger than a year stays"
+        assert c.portal.call(expire_inbox_once, app, soon + timedelta(days=2)) == 1
+        assert c.get("/notifications", headers=issuer.headers("host")).json()["items"] == []

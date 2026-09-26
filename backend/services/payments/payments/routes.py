@@ -16,6 +16,7 @@ from cappy_common.auth import Principal, require_internal, require_principal
 from cappy_common.db import insert_or_ignore
 from cappy_common.errors import Conflict, Invalid, NotFound, Unavailable
 from cappy_common.events import IDENTITY_VERIFIED, PAYMENT_AUTHORISED, PAYOUTS_READY
+from cappy_common.markets import markets
 from cappy_common.models import CamelModel
 from cappy_common.runtime import Tx
 
@@ -26,13 +27,6 @@ from .tables import PROCESSED, ConnectAccountRow, IdentityRow, PaymentRow
 log = logging.getLogger(__name__)
 router = ApiRouter(prefix="/payments")
 internal = ApiRouter(prefix="/internal", dependencies=[Depends(require_internal)])
-
-
-# Where owners can be paid (GOAL 16: Europe, the US and Canada). ponytail: a
-# constant until the market config (M-2) carries it per market.
-PAYOUT_COUNTRIES = frozenset(
-    "AT BE BG CH CY CZ DE DK EE ES FI FR GB GR HR HU IE IS IT LI LT LU LV MT NL NO PL PT RO SE SI SK US CA".split()
-)
 
 
 def _now() -> datetime:
@@ -49,7 +43,8 @@ class IntentIn(CamelModel):
     owner_id: str = Field(max_length=64)
     amount: int = Field(gt=0, le=10_000_000)
     owner_net: int = Field(ge=0)
-    currency: str = Field(pattern="^[a-z]{3}$")
+    # ISO 4217; stored and answered uppercase, lowercased only for Stripe.
+    currency: str = Field(pattern="^[A-Za-z]{3}$")
 
 
 class IntentOut(CamelModel):
@@ -165,7 +160,7 @@ async def create_intent(body: IntentIn, request: Request) -> IntentOut:
         intent = await provider.create_intent(
             booking_id=body.booking_id,
             amount=body.amount,
-            currency=body.currency,
+            currency=body.currency.upper(),
             metadata={"requesterId": body.requester_id, "ownerId": body.owner_id},
         )
     except Exception as e:  # noqa: BLE001 - transient by default: booking keeps the booking and retries
@@ -183,7 +178,7 @@ async def create_intent(body: IntentIn, request: Request) -> IntentOut:
             owner_id=body.owner_id,
             amount=body.amount,
             owner_net=body.owner_net,
-            currency=body.currency,
+            currency=body.currency.upper(),
             status="created",
             created_at=now,
             updated_at=now,
@@ -237,7 +232,8 @@ async def onboarding(
     provider = _provider(request)
     base = request.app.state.settings.web_base_url.rstrip("/")
     country = (body or OnboardingIn()).country
-    if country not in PAYOUT_COUNTRIES:
+    # Owners are paid where Cappy is open (markets.json, M-2).
+    if not (m := markets().get(country)) or not m.live:
         raise Invalid(f"payouts are not available in {country} yet", code="country_unsupported")
     account = await session.get(ConnectAccountRow, p.sub)
     if account is None:
@@ -381,6 +377,9 @@ async def export_person(person: str, session: AsyncSession = Tx) -> dict:
         "identity": {
             "status": identity.status,
             "verifiedAt": identity.verified_at.isoformat() if identity.verified_at else None,
+            # The consent they gave before the check (P-18): when, to which text.
+            "consentAt": identity.consent_at.isoformat() if identity.consent_at else None,
+            "consentVersion": identity.consent_version,
         }
         if identity
         else None,

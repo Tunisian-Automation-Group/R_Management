@@ -27,14 +27,11 @@ class Settings(CommonSettings):
     max_unpaid: int = 3
     # Booking requests one person may make in 24 hours (velocity limit).
     max_requests_per_day: int = 10
-    # Renter identity verification (Stripe Identity) for any booking above this
-    # total, and for these categories (comma-separated; none today: freight is
-    # space on runs already going, nobody drives someone else's van).
+    # Renter identity verification for these categories (comma-separated;
+    # none today: freight is space on runs already going, nobody drives
+    # someone else's van), and for any booking above the market's
+    # threshold (markets.json, in its own currency).
     verify_categories: str = ""
-    # ponytail: one threshold in minor units for every currency, so SEK or HUF
-    # bookings ask for the ID check sooner (the safe side). Per currency with
-    # the market config (M-2).
-    verify_above_cents: int = 30_000
 
     # Moderate and strict cancellation policies charge for late cancellations;
     # off until counsel confirms them against the EU withdrawal right (G-B2).

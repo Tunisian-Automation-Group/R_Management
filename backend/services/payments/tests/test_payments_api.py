@@ -370,7 +370,10 @@ def test_payouts_only_where_owners_can_be_paid(client, issuer):
     h = issuer.headers("abroad")
     r = client.post("/payments/connect/onboarding", json={"country": "JP"}, headers=h)
     assert r.status_code == 422 and r.json()["error"]["code"] == "country_unsupported"
-    assert client.post("/payments/connect/onboarding", json={"country": "CA"}, headers=h).status_code == 200
+    # Where Cappy is open (markets.json): Canada is planned, Switzerland live.
+    r = client.post("/payments/connect/onboarding", json={"country": "CA"}, headers=h)
+    assert r.status_code == 422 and r.json()["error"]["code"] == "country_unsupported"
+    assert client.post("/payments/connect/onboarding", json={"country": "CH"}, headers=h).status_code == 200
 
 
 def test_another_identity_provider_reports_through_its_own_webhook(client, app, issuer):
@@ -507,6 +510,8 @@ def test_identity_is_verified_once_and_announced(client, app, issuer, broker):
             return row.consent_at is not None, row.consent_version
 
     assert call(app, consent) == (True, "identity-2026-09")
+    mine = client.get("/internal/people/renter-1/export", headers=INTERNAL).json()["identity"]
+    assert mine["consentVersion"] == "identity-2026-09" and mine["consentAt"], "and it is in their export"
     call(app, app.state.relay.flush)
     assert [e.data["personId"] for e in broker.of_type(IDENTITY_VERIFIED)] == ["renter-1"]
 

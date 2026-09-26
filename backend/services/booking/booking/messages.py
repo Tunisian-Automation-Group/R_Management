@@ -342,10 +342,14 @@ def _sig(request: Request, booking_id: str, evidence_id: str, index: int, exp: i
     return hmac.new(_link_key(request), msg, hashlib.sha256).hexdigest()
 
 
-def _link(request: Request, booking_id: str, evidence_id: str, index: int, photo: str) -> str:
+# A data export is read later than a booking page: its links last a day.
+EXPORT_LINK_TTL = 86_400
+
+
+def _link(request: Request, booking_id: str, evidence_id: str, index: int, photo: str, ttl: int = LINK_TTL) -> str:
     if not photo.startswith("evidence:"):
         return photo  # from before photos were private
-    exp = int(time.time()) + LINK_TTL
+    exp = int(time.time()) + ttl
     sig = _sig(request, booking_id, evidence_id, index, exp)
     return f"/api/bookings/{booking_id}/evidence/{evidence_id}/{index}?exp={exp}&sig={sig}"
 
@@ -365,4 +369,5 @@ async def evidence_photo(
         raise NotFound("no such photo")
     name = row.photos[index].removeprefix("evidence:")
     data = await request.app.state.catalog.evidence_photo(name)
-    return Response(data, media_type="image/webp", headers={"Cache-Control": f"private, max-age={min(left, LINK_TTL)}"})
+    headers = {"Cache-Control": f"private, max-age={min(left, LINK_TTL)}"}
+    return Response(data, media_type="image/webp", headers=headers)

@@ -17,6 +17,7 @@ from cappy_common.errors import Conflict, Forbidden, Invalid, NotFound, RateLimi
 from cappy_common.events import LISTING_CHANGED, PERSON_SIGNED_OUT, PROFILE_CREATED, PROFILE_DELETED
 from cappy_common.guard import hit, revoke
 from cappy_common.idempotency import IdempotencyKey, fingerprint, remember, replayed
+from cappy_common.markets import Market, live_market, market
 from cappy_common.models import CamelModel, District, Iso, Listing, Owner, Review, Slot, World
 from cappy_common.pagination import Page, clamp_limit
 from cappy_common.runtime import ReadTx, Tx
@@ -226,6 +227,14 @@ def _validate_slots(slots: list[SlotIn]) -> list[Slot]:
 async def _validate_listing(
     request: Request, repo: CatalogRepository, raw: dict, owner_id: str, already_shown: frozenset[str] = frozenset()
 ):
+    # The listing's market is its owner's (M-2): it must be open, and prices
+    # are in its currency, never converted (ADR 0013).
+    owner = await repo.find_owner(owner_id)
+    where = live_market(owner.country if owner else None)
+    if raw.get("currency") is None:
+        raw = {**raw, "currency": where.currency}
+    elif str(raw["currency"]).upper() != where.currency:
+        raise Invalid(f"listings in {where.code} are priced in {where.currency}", code="currency_not_in_market")
     try:
         listing = _listing.validate_python({**raw, "id": "pending", "ownerId": owner_id})
     except ValidationError as e:
@@ -241,7 +250,7 @@ async def _validate_listing(
         raise Invalid(f"category {listing.category} is booked by {mode_of(listing.category)}, not {listing.mode}")
     if listing.rate_per_hour <= 0:
         raise Invalid("ratePerHour must be positive")
-    _check_numbers(listing)
+    _check_numbers(listing, where)
     if not await repo.has_district(listing.district):
         raise Invalid(f"unknown district: {listing.district}")
     photos = listing.photos or []
@@ -270,16 +279,10 @@ async def _owned(repo: CatalogRepository, listing_id: str, user: str):
     return row
 
 
-# How many units of a currency make about one euro, for sanity bounds only.
-_MONEY_SCALE = {"SEK": 12, "NOK": 12, "DKK": 8, "PLN": 5, "RON": 5, "CZK": 25, "HUF": 400}
-
-
-def _check_numbers(listing) -> None:
+def _check_numbers(listing, where: Market) -> None:
     """Every number a listing carries within sane bounds, so no listing can
-    break pricing for others (P-1). Money in minor units."""
-    # ponytail: one table of bounds, money scaled roughly to the currency (the
-    # cap is about 10,000 euros an hour); per-market caps with the market config (M-2).
-    money = 1_000_000 * _MONEY_SCALE.get(listing.currency, 1)
+    break pricing for others (P-1). Money in minor units, capped per market."""
+    money = where.max_rate_per_hour
     bounds = {
         "rate_per_hour": (1, money),
         "extra_fee": (0, money),
@@ -318,6 +321,7 @@ async def put_me(
 ) -> Owner:
     """Create the caller's profile, or update its name, kind and district.
     Idempotent: calling it twice with the same body is one profile."""
+    where = live_market(body.country)
     if not await repo.has_district(body.district):
         raise Invalid(f"unknown district: {body.district}")
     if body.kind == "business" and body.business is None:
@@ -334,6 +338,7 @@ async def put_me(
         district=body.district,
         business=business,
         adult=bool(body.adult),
+        minimum_age=where.minimum_age,
         country=body.country,
     )
     if created:
@@ -346,10 +351,14 @@ async def put_me(
 
 @router.delete("/me", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_me(request: Request, repo=Depends(get_repo), p: Principal = Depends(require_principal)) -> Response:
-    """Delete my account's data (App Store and GDPR). Refused while a booking is
-    still open on either side: those have to finish or be cancelled first. The
-    app then deletes the sign-in itself (Cognito DeleteUser). Bookings and
-    payments are kept as the law requires; they hold no personal data."""
+    """Delete my account (App Store 5.1.1(v), GDPR Art. 17). Refused while a
+    booking is open on either side or a payout is pending: those finish first.
+    ``profile.deleted`` then reaches every service: each erases what it holds
+    (the register in cappy_common/privacy.py), notifications deletes the
+    sign-in (Cognito AdminDeleteUser), and every token issued before now stops
+    working. What the law keeps (bookings, payments and invoices for
+    accounting) stays, with the person's names, contact details, hand-over
+    details and free text redacted (docs/retention.md)."""
     opened = await request.app.state.bookings.open_for(p.sub)
     payouts = await request.app.state.payments.pending_payouts(p.sub)
     if opened["open"] or payouts:
@@ -551,7 +560,7 @@ async def create_listing(
     created, slots = await repo.create_listing(listing, _validate_slots(body.slots))
     await repo.set_address(created.id, body.address)
     owner = await repo.owner(p.sub)
-    if owner.jobs_done == 0 and listing.rate_per_hour > settings.review_above_cents:
+    if owner.jobs_done == 0 and listing.rate_per_hour > market(owner.country).held_listing_above:
         await repo.hold(created.id)
         created = created.model_copy(update={"active": False})
         held = True
@@ -581,8 +590,11 @@ async def update_listing(
     )
     updated = await repo.update_listing(listing_id, listing)
     owner = await repo.owner(p.sub)
-    settings = request.app.state.settings
-    if owner.jobs_done == 0 and listing.rate_per_hour > settings.review_above_cents and row.held_at is None:
+    if (
+        owner.jobs_done == 0
+        and listing.rate_per_hour > market(owner.country).held_listing_above
+        and row.held_at is None
+    ):
         # Raising the price past the review threshold is a new listing as far
         # as fraud goes: it waits for a staff check like one.
         await repo.hold(listing_id)

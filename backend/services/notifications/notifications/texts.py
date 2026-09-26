@@ -255,7 +255,7 @@ def money(cents: int, currency: str, locale: str | None) -> str:
     """12,50 € · €12.50 · 12,50 € (fr) · CA$ is just $ in its own market."""
     currency = currency.lower()
     symbol = _SYMBOL.get(currency, currency.upper())
-    places = 0 if currency == "huf" else 2
+    places = 0 if currency in ("huf", "isk") else 2
     amount = f"{cents / 100:,.{places}f}"
     lang = language(locale)
     if lang == "de":

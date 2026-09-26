@@ -299,6 +299,7 @@ async def _record(
     statement: str,
     report_id: str | None = None,
     reasons: dict | None = None,
+    person: str | None = None,
 ) -> None:
     session.add(
         ModerationActionRow(
@@ -311,6 +312,7 @@ async def _record(
             statement=statement,
             statement_of_reasons=reasons,
             at=datetime.now(UTC),
+            person_id=person,
         )
     )
 
@@ -380,7 +382,9 @@ async def decide(
     r.status = "dismissed" if body.action == "dismiss" else "actioned"
     r.decided_at, r.decided_by, r.decision, r.statement = now, p.sub, body.action, body.statement.strip()
     r.statement_of_reasons = statement_of_reasons(body.action, body)
-    await _record(session, p.sub, body.action, r.target_type, r.target_id, r.statement, r.id, r.statement_of_reasons)
+    await _record(
+        session, p.sub, body.action, r.target_type, r.target_id, r.statement, r.id, r.statement_of_reasons, affected
+    )
     await _outbox(request).add(
         session,
         MODERATION_DECISION,
@@ -422,7 +426,9 @@ async def take_down(
     row = await _take_down(session, listing_id)
     await _removed(request, session, [listing_id])
     reasons = statement_of_reasons("take_down", body)
-    await _record(session, p.sub, "take_down", "listing", listing_id, body.statement, reasons=reasons)
+    await _record(
+        session, p.sub, "take_down", "listing", listing_id, body.statement, reasons=reasons, person=row.owner_id
+    )
     await _outbox(request).add(
         session,
         MODERATION_DECISION,
@@ -444,7 +450,7 @@ async def suspend(
     _, taken = await _suspend(session, owner_id)
     await _removed(request, session, taken)
     reasons = statement_of_reasons("suspend", body)
-    await _record(session, p.sub, "suspend", "owner", owner_id, body.statement, reasons=reasons)
+    await _record(session, p.sub, "suspend", "owner", owner_id, body.statement, reasons=reasons, person=owner_id)
     await _outbox(request).add(session, OWNER_SUSPENDED, {"ownerId": owner_id})
     await _outbox(request).add(
         session,
@@ -469,7 +475,7 @@ async def reinstate(
     if owner is None:
         raise NotFound(f"owner {owner_id} not found")
     owner.suspended_at = None
-    await _record(session, p.sub, "reinstate", "owner", owner_id, body.statement)
+    await _record(session, p.sub, "reinstate", "owner", owner_id, body.statement, person=owner_id)
     from cappy_common.events import OWNER_REINSTATED
 
     await _outbox(request).add(session, OWNER_REINSTATED, {"ownerId": owner_id})
@@ -535,7 +541,7 @@ async def approve(
     if row is None or row.held_at is None:
         raise NotFound(f"no held listing {listing_id}")
     row.held_at, row.active, row.updated_at = None, True, datetime.now(UTC)
-    await _record(session, p.sub, "approve", "listing", listing_id, "Checked and approved")
+    await _record(session, p.sub, "approve", "listing", listing_id, "Checked and approved", person=row.owner_id)
     await _outbox(request).add(session, LISTING_CHANGED, {"listingId": listing_id, "change": "approved"})
 
 

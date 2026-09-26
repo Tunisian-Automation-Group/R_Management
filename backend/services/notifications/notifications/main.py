@@ -7,6 +7,7 @@ from cappy_common.auth import TokenVerifier
 from cappy_common.runtime import Runtime
 
 from .handlers import handlers
+from .jobs import expire_inbox
 from .mail import CognitoDirectory, Directory, LogMailer, Mailer, SesMailer
 from .push import LogPusher, Pusher, SnsPusher
 from .routes import internal, router
@@ -27,7 +28,10 @@ def build_app(
     configured = settings.push_ios_app_arn or settings.push_android_app_arn
     pusher = pusher or (SnsPusher(settings) if configured else LogPusher())
     runtime = Runtime(
-        settings, metadata=Base.metadata, handlers=handlers(directory, mailer, settings.web_base_url, pusher)
+        settings,
+        metadata=Base.metadata,
+        handlers=handlers(directory, mailer, settings.web_base_url, pusher),
+        loops=[expire_inbox],
     )
     app = create_app(settings, title="Cappy notifications", lifespan=runtime.lifespan())
     app.state.verifier = verifier

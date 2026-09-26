@@ -18,7 +18,8 @@ before launch in each market (G-B2, G-B3).
 | ID check (document, selfie) | At Stripe Identity, per its retention; our row only the status | Consent (P-18; Art. 9(2)(a) for the biometric check) | Redacted at the provider on deletion (D-6) |
 | Reports: reporter's email and words | Until 6 months after the decision (DSA Art. 20 contest window) | Legal obligation (DSA Art. 16/17) | Redacted by `forget_reporters_once`; the case and the statement of reasons stay |
 | Moderation decisions, statements of reasons | For the DSA record | Legal obligation (DSA Art. 17, 24) | Kept; they name the target by id |
-| Notifications inbox, settings, devices | While the account exists | Contract | Deleted with the account; push endpoints deleted at SNS (D-7) |
+| Notifications inbox | 12 months (`INBOX_RETENTION_DAYS`, hourly job), or until the account goes | Contract | Deleted with the account |
+| Notification settings, devices | While the account exists | Contract | Deleted with the account; push endpoints deleted at SNS (D-7) |
 | Idempotency answers | 24 hours | Contract (safe retries) | Expired hourly; deleted with the account |
 | Revoked sessions | One row per person: an id and a timestamp | Security (6(1)(f)): tokens issued before it stop working | Kept; holds nothing but the pseudonymous id |
 | Analytics lake | 2 years | Legitimate interest: product statistics | Only pseudonymous ids and allowlisted fields ever arrive (`scrub.py`) |

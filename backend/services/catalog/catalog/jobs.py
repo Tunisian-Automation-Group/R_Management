@@ -39,6 +39,9 @@ async def sweep_orphans_once(app: FastAPI) -> int:
             await app.state.evidence.delete(name)
         except Exception as e:  # noqa: BLE001 - an orphaned file costs cents; try the rest
             log.warning("could not delete photo %s: %s", name, e)
+    # A deleted file must not live on at the edge either (a deleted account's
+    # photos above all): the CDN drops the copies now.
+    await app.state.cdn.purge(sorted(f"/media/{n}" for n in gone))
     return len(gone)
 
 
