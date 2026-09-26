@@ -1,7 +1,8 @@
-"""Which service answers which path. Order matters: first match wins.
+"""Which service answers which public path. First match wins.
 
-Anything not listed is a 404 at the gateway, which is what keeps the
-services' ``/internal/…`` and ``/admin/…`` routes off the internet.
+This is an allow-list: anything not listed is a 404 at the gateway. That is
+what keeps every service's ``/internal/*`` routes off the internet, whatever
+the services themselves expose.
 """
 
 from __future__ import annotations
@@ -11,23 +12,36 @@ import re
 CATALOG = "catalog"
 MATCHING = "matching"
 BOOKING = "booking"
-ACCOUNTS = "accounts"
+PAYMENTS = "payments"
+NOTIFICATIONS = "notifications"
 
-# (regex over the path *after* the /api prefix, upstream)
+# (regex over the path after the /api prefix, upstream)
 RULES: list[tuple[re.Pattern[str], str]] = [
-    (re.compile(r"^/auth/(register|login|logout|session)$"), ACCOUNTS),
     (re.compile(r"^/bookings(/|$)"), BOOKING),
-    (re.compile(r"^/(matches|match-for-offer|quote|feasibility|categories|groups|review-tags)$"), MATCHING),
-    (re.compile(r"^/browse(/|$)"), MATCHING),
-    (re.compile(r"^/districts/nearest$"), MATCHING),
+    (re.compile(r"^/me/blocks(/[^/]+)?$"), BOOKING),
+    (re.compile(r"^/inbox(/[^/]+/read)?$"), BOOKING),
+    (re.compile(r"^/payments(/|$)"), PAYMENTS),
+    (re.compile(r"^/notifications(/read|/settings|/devices(/[^/]+)?)?$"), NOTIFICATIONS),
+    (re.compile(r"^/(matches|quote|feasibility|categories|groups|review-tags|ranking)$"), MATCHING),
+    (re.compile(r"^/browse/[a-z-]+$"), MATCHING),
     (re.compile(r"^/listings/[^/]+/offers$"), MATCHING),
-    (re.compile(r"^/listings/[^/]+/reviews/summary$"), MATCHING),
-    (re.compile(r"^/(world|me|districts|owners|listings|reviews|saved|uploads)(/|$)"), CATALOG),
+    # Staff tools on bookings (H-6, H-9, S-12): cases, resolutions, claims.
+    (re.compile(r"^/admin/bookings(/[^/]+/(resolve|case))?$"), BOOKING),
+    (re.compile(r"^/admin/resolutions(/[^/]+/(approve|reject|withdraw))?$"), BOOKING),
+    (re.compile(r"^/admin/claims/[^/]+/decide$"), BOOKING),
+    # Chargebacks: the open ones and staff's evidence (R2-3).
+    (re.compile(r"^/admin/payments/(chargebacks|[^/]+/dispute-evidence)$"), PAYMENTS),
+    # The staff preview's free times and price for a held listing (V6-2).
+    (re.compile(r"^/admin/(listings/[^/]+/offers|quote)$"), MATCHING),
+    (re.compile(r"^/admin/(reports|listings|owners|audit|dsa-stats)(/|$)"), CATALOG),
+    (re.compile(r"^/(me|districts|cities|owners|listings|search|saved|uploads|reports)(/|$)"), CATALOG),
 ]
 
 
 def resolve(path: str) -> str | None:
     """``path`` is relative to ``/api``, e.g. ``/listings/l1/offers``."""
+    if "/internal" in path or ".." in path:
+        return None
     for pattern, upstream in RULES:
         if pattern.search(path):
             return upstream

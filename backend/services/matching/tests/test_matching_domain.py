@@ -110,6 +110,15 @@ def test_window_request_matches_window_listings(world, now, saw):
         assert l.category == "workshop"
 
 
+def test_a_window_request_searches_from_its_own_start(world, now, saw):
+    # The web's From hour: nothing may start before the requirement's earliest.
+    later = plus(now, 48)
+    moved = saw.model_copy(update={"earliest": later})
+    found = find_matches(moved, world, now)
+    assert found and all(ms_from_iso(m.start) >= ms_from_iso(later) for m in found)
+    assert any(ms_from_iso(m.start) < ms_from_iso(later) for m in find_matches(saw, world, now))
+
+
 # 3 - a batch request matches only batch listings, and respects tolerance
 def test_batch_request_respects_tolerance(world, now, brackets):
     m = find_matches(brackets, world, now)
@@ -312,8 +321,10 @@ def test_nearest_district(world):
     assert at("Navigli").district.metro == "Milan"
     assert at("Marvila").district.metro == "Lisbon"
     assert nearest_district(world, 48.8566, 2.3522).district.metro == "Paris"
-    hamburg = nearest_district(world, 53.5511, 9.9937)
-    assert hamburg.km > 200
+    assert nearest_district(world, 53.5511, 9.9937).district.city == "Hamburg"
+    # Nowhere near a place of ours: the distance says so.
+    reykjavik = nearest_district(world, 64.1466, -21.9426)
+    assert reykjavik.km > 200
     assert nearest_district(world, 0, 0) is not None
 
 
@@ -336,3 +347,130 @@ def test_reviews_match_the_record(world):
             assert set(r.tags) <= vocab, f"unknown tag on {r.id}"
     empty = summarise([])
     assert (empty.count, empty.average, empty.on_time_share, empty.top_tags) == (0, None, None, [])
+
+
+def test_longer_bookings_get_the_owner_s_duration_discount():
+    from cappy_common.fixtures import build_world
+    from cappy_common.models import WindowRequest
+    from matching.domain.pricing import quote_for
+
+    listing = next(l for l in build_world().listings if l.mode == "window")
+    listing = listing.model_copy(update={"day_discount_pct": 10, "week_discount_pct": 25, "extra_fee": 500})
+
+    def req(h):
+        return WindowRequest(
+            mode="window",
+            category=listing.category,
+            hours=h,
+            earliest="2026-01-01T00:00:00Z",
+            latest="2026-02-01T00:00:00Z",
+            district=listing.district,
+            max_distance_km=50,
+        )
+
+    short, day, week = quote_for(req(4), listing), quote_for(req(8), listing), quote_for(req(40), listing)
+    assert short.discount == 0
+    assert day.discount == round(day.base * 0.10) and day.discount_label == "Day rate −10%"
+    assert week.discount == round(week.base * 0.25)
+    assert week.total == week.base - week.discount + 500, "extras are never discounted"
+    assert week.platform_fee + week.owner_net == week.total
+
+
+# U-8 - the night the clocks go back (Europe/Berlin, 25 Oct 2026, 03:00 CEST -> 02:00 CET)
+def test_a_booking_across_the_dst_change_is_the_hours_booked_and_priced(world, saw):
+    from datetime import datetime
+    from zoneinfo import ZoneInfo
+
+    berlin = ZoneInfo("Europe/Berlin")
+    # Midnight to 07:00 on the wall clock is eight real hours that night.
+    start = datetime(2026, 10, 25, 0, 0, tzinfo=berlin)
+    end = datetime(2026, 10, 25, 7, 0, tzinfo=berlin)
+    slot = Slot(id="dst", listing_id="l8", start=start.isoformat(), end=end.isoformat(), hours_usable=8)
+    offers = offers_for([slot], 3, start.isoformat(), end.isoformat())
+    assert len(offers) == 11, "starts every half hour from 00:00 to 05:00 real time (wall clock 04:00)"
+    for o in offers:
+        assert ms_from_iso(o.end) - ms_from_iso(o.start) == 3 * HOUR_MS, "three real hours, whatever the clock says"
+    across = next(o for o in offers if o.start == iso_from_ms(int(start.timestamp() * 1000) + 2 * HOUR_MS))
+    local = [datetime.fromisoformat(t.replace("Z", "+00:00")).astimezone(berlin) for t in (across.start, across.end)]
+    assert [t.strftime("%H:%M %Z") for t in local] == ["02:00 CEST", "04:00 CET"], "02:00 to 04:00 on the wall is 3 h"
+    q = quote_for(saw.model_copy(update={"hours": 3}), listing(world, "l8"))
+    assert q and q.hours == 3 and q.base == 3 * listing(world, "l8").rate_per_hour
+
+
+def test_owners_who_cancel_accepted_bookings_lose_trust_in_proportion():
+    """S-18: a mild penalty, so one bad month does not bury a good owner."""
+    o = build_world().owners[0]
+    steady, flaky = o.model_copy(update={"cancellation_rate": 0.0}), o.model_copy(update={"cancellation_rate": 0.2})
+    assert trust_of(o) == trust_of(steady), "too few bookings to know (None) is no penalty"
+    assert trust_of(flaky) == pytest.approx(trust_of(o) * 0.9)
+
+
+def test_a_listing_that_cannot_be_priced_is_no_offer(world, brackets):
+    # P-1: one batch listing with zero throughput used to turn everyone's
+    # search in its category into a 500 (division by zero).
+    batch = next(l for l in world.listings if l.mode == "batch")
+    for broken in ({"units_per_hour": 0}, {"setup_fee": -5000}):
+        assert quote_for(brackets, batch.model_copy(update=broken)) is None
+    assert quote_for(brackets, batch) is not None
+
+
+def test_a_quote_is_in_its_listing_s_currency(world, brackets):
+    """M-3: minor units of the listing's own currency; nothing converted."""
+    batch = next(l for l in world.listings if l.mode == "batch")
+    assert quote_for(brackets, batch).currency == "EUR"
+    assert quote_for(brackets, batch.model_copy(update={"currency": "CAD"})).currency == "CAD"
+
+
+def test_distance_is_from_the_listings_own_point(world, now, saw):
+    """M-5: a listing's point (snapped by catalog) wins over its district's
+    centre; a listing without one still measures from the district."""
+    from matching.domain.match import point_of
+
+    listing = next(l for l in world.listings if l.district == "Kreuzberg")
+    from cappy_common.models import Location
+
+    moved = listing.model_copy(update={"location": Location(lat=52.52, lng=13.405)})
+    assert point_of(moved, world.districts) == (52.52, 13.405)
+    bare = listing.model_copy(update={"location": None})
+    k = world.districts["Kreuzberg"]
+    assert point_of(bare, world.districts) == (k.lat, k.lng)
+
+
+def test_a_van_takes_no_more_than_it_has_room_for_and_loads(world, brackets):
+    """V5-22: two pallet spaces take two pallets, and its fixed part is loading."""
+    van = next(l for l in world.listings if l.category == "freight").model_copy(update={"max_quantity": 2})
+
+    def ask(n):
+        return brackets.model_copy(
+            update={"category": "freight", "quantity": n, "dims": None, "material": None, "tolerance_mm": None}
+        )
+
+    assert assess_feasibility(ask(2), van).feasible
+    assert "takes at most 2 per booking" in assess_feasibility(ask(3), van).blockers
+    assert quote_for(ask(2), van).extra_label == "Loading"
+
+
+def test_the_daily_cap_counts_the_listings_own_day():
+    """perDay is per local day: a Toronto evening (22:00-03:30 UTC) is one
+    day there, not two days in UTC (the V6-23 cap split it)."""
+    slot = Slot(id="eve", listing_id="lt", start="2030-10-01T22:00:00Z", end="2030-10-02T03:30:00Z", hours_usable=5.5)
+    args = ([slot], 1, "2030-10-01T00:00:00Z", "2030-10-03T00:00:00Z", 60, None, 4)
+    local = offers_for(*args, "America/Toronto")
+    # Ten starts on one local day, thinned evenly to four (V7-1), not cut.
+    assert [o.start[11:16] for o in local] == ["22:00", "23:30", "01:00", "02:30"]
+    assert len(offers_for(*args, "UTC")) > 4, "UTC days split the evening in two"
+
+
+def test_a_capped_day_keeps_its_evening():
+    """V7-1: perDay=28 on a listing open all day kept 00:00-13:30 and lost
+    the rest. The cap spreads over the whole day instead."""
+    day = Slot(id="all", listing_id="l", start="2030-10-01T00:00:00Z", end="2030-10-02T00:00:00Z", hours_usable=24)
+    starts = [
+        o.start[11:16] for o in offers_for([day], 1, "2030-10-01T00:00:00Z", "2030-10-02T00:00:00Z", 500, None, 28)
+    ]
+    assert len(starts) <= 28 and starts[0] == "00:00" and starts[-1] >= "22:00", starts
+    assert "18:00" in starts, "the evening is bookable"
+    # A day that fits under the cap keeps every start (08:00-22:00, 1 h: 27 starts).
+    shop = Slot(id="shop", listing_id="l", start="2030-10-01T08:00:00Z", end="2030-10-01T22:00:00Z", hours_usable=14)
+    kept = offers_for([shop], 1, "2030-10-01T00:00:00Z", "2030-10-02T00:00:00Z", 500, None, 28)
+    assert len(kept) == 27 and kept[-1].start[11:16] == "21:00"

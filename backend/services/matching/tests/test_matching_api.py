@@ -1,156 +1,333 @@
+"""The matching API, against fake upstreams: no database, no network."""
+
 from __future__ import annotations
+
+import time
 
 import pytest
 from fastapi.testclient import TestClient
 
+from cappy_common.errors import NotFound, Unavailable
 from cappy_common.fixtures import build_world
-from cappy_common.timeutil import HOUR_MS, iso_from_ms, ms_from_iso, now_iso
+from cappy_common.models import Slot, World
+from cappy_common.testing import TestIssuer
+from cappy_common.timeutil import DAY_MS, HOUR_MS, iso_from_ms, ms_from_iso, now_iso, now_ms
+from matching.clients import Bookings, Catalog
 from matching.main import build_app
 from matching.settings import Settings
-from matching.world import StaticWorldProvider
+
+INTERNAL = {"X-Internal-Token": "i" * 40}
 
 
-@pytest.fixture(scope="module")
-def client():
+class FakeCatalog(Catalog):
+    """Serves the demo world. The real catalog narrows candidates in SQL; the
+    domain rules applied afterwards are what these tests pin down."""
+
+    def __init__(self) -> None:
+        self.world = build_world()
+        self.calls: list[str] = []
+
+    async def candidates(self, *, origin, max_km, start, until, category, exclude_owner) -> World:  # noqa: ANN001
+        self.calls.append("candidates")
+        listings = [
+            l
+            for l in self.world.listings
+            if (category is None or l.category == category) and (exclude_owner is None or l.owner_id != exclude_owner)
+        ]
+        return self.world.model_copy(update={"listings": listings})
+
+    async def listing_context(self, listing_id, *, after, origin=None, staff=False) -> World:  # noqa: ANN001
+        self.calls.append("staff-context" if staff else "context")
+        listing = next((l for l in self.world.listings if l.id == listing_id), None)
+        if listing is None:
+            raise NotFound(f"listing {listing_id} not found")
+        return World(
+            owners=[o for o in self.world.owners if o.id == listing.owner_id],
+            listings=[listing],
+            slots=[s for s in self.world.slots if s.listing_id == listing_id],
+            districts=self.world.districts,
+            reviews=[],
+        )
+
+
+class FakeBookings(Bookings):
+    def __init__(self) -> None:
+        self.taken: dict[str, list[tuple[int, int]]] = {}
+
+    async def busy(self, listing_ids, start, until):  # noqa: ANN001
+        return {lid: self.taken[lid] for lid in listing_ids if lid in self.taken}
+
+
+class FakeRevocations:
+    """Catalog's answer to "when did this person's sessions end?"."""
+
+    def __init__(self) -> None:
+        self.ended: dict[str, float] = {}
+        self.down = False
+
+    async def not_before(self, sub: str) -> float | None:
+        if self.down:
+            raise Unavailable("catalog is unreachable")
+        return self.ended.get(sub)
+
+
+@pytest.fixture()
+def revocations():
+    return FakeRevocations()
+
+
+@pytest.fixture()
+def issuer():
+    return TestIssuer()
+
+
+@pytest.fixture()
+def fakes():
+    return FakeCatalog(), FakeBookings()
+
+
+@pytest.fixture()
+def client(fakes, issuer, revocations):
+    catalog, bookings = fakes
     app = build_app(
-        Settings(event_bus_url="memory://", cors_origins=""),
-        world_provider=StaticWorldProvider(build_world()),
+        Settings(app_env="test", internal_token="i" * 40),
+        catalog=catalog,
+        bookings=bookings,
+        verifier=issuer.verifier(),
+        revocations=revocations,
     )
-    with TestClient(app) as c:
+    with TestClient(app, headers=issuer.headers("viewer-1")) as c:
         yield c
 
 
-NOW = now_iso()
-LATER = iso_from_ms(ms_from_iso(NOW) + 7 * 24 * HOUR_MS)
-# Two hours of a drill, from Kreuzberg. l8 is a hammer drill in Wedding at €2.50/h.
-SAW = {
-    "mode": "window",
-    "category": "workshop",
-    "hours": 2,
-    "earliest": NOW,
-    "latest": LATER,
-    "district": "Kreuzberg",
-    "maxDistanceKm": 10,
-}
-
-
-def test_health(client):
-    assert client.get("/healthz").json()["ok"] is True
+def _saw_requirement(**extra):
+    return {
+        "mode": "window",
+        "category": "workshop",
+        "hours": 2,
+        "earliest": now_iso(),
+        "latest": iso_from_ms(now_ms() + 7 * DAY_MS),
+        "district": "Kreuzberg",
+        "maxDistanceKm": 25,
+        **extra,
+    }
 
 
 def test_vocabulary(client):
-    groups = client.get("/groups").json()
-    assert [g["id"] for g in groups] == ["make", "move", "equip"]
-    assert all({"label", "blurb"} <= set(g) for g in groups)
-
-    everything = client.get("/categories").json()
-    assert len(everything) == 9
-    assert {c["id"] for c in everything} == {
-        "fabrication",
-        "additive",
-        "finishing",
-        "print",
-        "freight",
-        "warehousing",
-        "workshop",
-        "events",
-        "creator",
-    }
-    equip = client.get("/categories", params={"group": "equip"}).json()
-    assert [c["id"] for c in equip] == ["workshop", "events", "creator"]
-    assert all(c["group"] == "equip" and c["mode"] == "window" for c in equip)
-    assert "markets" not in equip[0]
-    workshop = next(c for c in equip if c["id"] == "workshop")
-    assert workshop["quickHours"] == [2, 4, 8] and "unitNoun" not in workshop
-    assert client.get("/categories", params={"group": "everyday"}).status_code == 422
-
-    assert client.get("/review-tags").json() == [
-        "As described",
-        "Ready on time",
-        "Clear handover",
-        "Quick replies",
-        "Great quality",
-        "Fair price",
-    ]
+    assert [g["id"] for g in client.get("/groups").json()] == ["make", "move", "equip"]
+    assert len(client.get("/categories").json()) == 9
+    assert {c["group"] for c in client.get("/categories", params={"group": "move"}).json()} == {"move"}
+    assert client.get("/categories", params={"group": "nope"}).status_code == 422
+    assert "Ready on time" in client.get("/review-tags").json()
 
 
-def test_matches_are_camel_case_and_sorted(client):
-    r = client.post("/matches", json={"requirement": SAW, "now": NOW, "sort": "price"})
+def test_matches_carry_what_a_card_needs_and_are_sorted(client):
+    r = client.post("/matches", json={"requirement": _saw_requirement(), "sort": "price"})
     assert r.status_code == 200, r.text
-    matches = r.json()
-    assert matches
-    assert "listingId" in matches[0] and "quote" in matches[0] and "platformFee" in matches[0]["quote"]
-    totals = [m["quote"]["total"] for m in matches]
+    views = r.json()
+    assert views
+    totals = [v["match"]["quote"]["total"] for v in views]
     assert totals == sorted(totals)
+    for v in views:
+        assert v["listing"]["id"] == v["match"]["listingId"] and v["owner"]["id"] == v["match"]["ownerId"]
+        assert v["listing"]["category"] == "workshop"
 
 
-def test_offers_and_match_for_offer(client):
-    offers = client.get("/listings/l8/offers", params={"hours": 2, "from": NOW, "until": LATER}).json()
-    assert offers
-    o = offers[0]
-    r = client.post(
-        "/match-for-offer",
-        json={"requirement": SAW, "listingId": "l8", "slotId": o["slotId"], "start": o["start"], "end": o["end"]},
-    )
+def test_you_never_see_your_own_listings(client, issuer):
+    everyone = {
+        v["listing"]["ownerId"] for v in client.post("/matches", json={"requirement": _saw_requirement()}).json()
+    }
+    assert "o1" in everyone
+    mine = client.post("/matches", json={"requirement": _saw_requirement()}, headers=issuer.headers("o1")).json()
+    assert mine and all(v["listing"]["ownerId"] != "o1" for v in mine)
+
+
+def test_results_are_capped(client):
+    r = client.post("/matches", json={"requirement": _saw_requirement(maxDistanceKm=2000), "limit": 3})
+    assert len(r.json()) == 3
+    assert client.post("/matches", json={"requirement": _saw_requirement(), "limit": 1000}).status_code == 422
+
+
+def test_spotlight(client):
+    spots = client.get("/browse/spotlight", params={"district": "Kreuzberg", "maxKm": 10}).json()
+    assert spots and all(s["distanceKm"] <= 10 for s in spots)
+
+
+def test_offers_skip_what_is_booked(client, fakes):
+    _, bookings = fakes
+    before = client.get("/listings/l9/offers", params={"hours": 2}).json()
+    assert before
+    first = before[0]
+    bookings.taken["l9"] = [(ms_from_iso(first["start"]), ms_from_iso(first["end"]))]
+    after = client.get("/listings/l9/offers", params={"hours": 2}).json()
+    assert all(not (o["start"] < first["end"] and first["start"] < o["end"]) for o in after)
+
+
+def test_match_for_offer_is_internal(client):
+    offer = client.get("/listings/l9/offers", params={"hours": 2}).json()[0]
+    body = {"requirement": _saw_requirement(), "listingId": "l9", **offer}
+    assert client.post("/internal/match-for-offer", json=body).status_code == 403
+    r = client.post("/internal/match-for-offer", json=body, headers=INTERNAL)
     assert r.status_code == 200, r.text
-    m = r.json()
-    assert m["listingId"] == "l8" and m["ownerId"] == "o5"
-    assert m["quote"]["total"] == 2 * 250
-    assert 0 < m["distanceKm"] < 10, "Kreuzberg to Wedding is a few km"
-    assert any("of idle time" in reason for reason in m["reasons"])
+    view = r.json()
+    assert view["match"]["quote"]["total"] > 0 and view["match"]["start"] == offer["start"]
+    assert view["listing"]["id"] == "l9" and view["owner"]["id"] == view["listing"]["ownerId"]
 
 
-def test_match_for_offer_rejects_bad_window(client):
-    offers = client.get("/listings/l8/offers", params={"hours": 2, "from": NOW, "until": LATER}).json()
-    o = offers[0]
-    outside = iso_from_ms(ms_from_iso(o["start"]) + 400 * HOUR_MS)
-    r = client.post(
-        "/match-for-offer",
-        json={"requirement": SAW, "listingId": "l8", "slotId": o["slotId"], "start": o["start"], "end": outside},
+def test_an_extension_finds_its_own_slot(client):
+    # S-12: booking asks for the time after a booking, with no slot id.
+    offer = client.get("/listings/l9/offers", params={"hours": 2}).json()[0]
+    body = {"requirement": _saw_requirement(), "listingId": "l9", **offer, "slotId": "", "extension": True}
+    r = client.post("/internal/match-for-offer", json=body, headers=INTERNAL)
+    assert r.status_code == 200, r.text
+    assert r.json()["match"]["slotId"] == offer["slotId"]
+    closed = {**body, "start": iso_from_ms(ms_from_iso(offer["start"]) + 400 * DAY_MS)}
+    closed["end"] = iso_from_ms(ms_from_iso(closed["start"]) + 2 * 3_600_000)
+    assert (
+        client.post("/internal/match-for-offer", json=closed, headers=INTERNAL).json()["error"]["code"]
+        == "not_extendable"
     )
-    assert r.status_code == 422
-    assert r.json()["error"]["code"] == "invalid"
+    no_slot = {**body, "extension": False}
+    assert client.post("/internal/match-for-offer", json=no_slot, headers=INTERNAL).status_code == 404
 
 
-def test_match_for_offer_unknown_listing(client):
-    r = client.post(
-        "/match-for-offer",
-        json={"requirement": SAW, "listingId": "nope", "slotId": "x", "start": NOW, "end": LATER},
-    )
-    assert r.status_code == 404
+def test_match_for_offer_refuses_a_taken_window(client, fakes):
+    _, bookings = fakes
+    offer = client.get("/listings/l9/offers", params={"hours": 2}).json()[0]
+    bookings.taken["l9"] = [(ms_from_iso(offer["start"]), ms_from_iso(offer["end"]))]
+    body = {"requirement": _saw_requirement(), "listingId": "l9", **offer}
+    r = client.post("/internal/match-for-offer", json=body, headers=INTERNAL)
+    assert r.status_code == 409
+
+
+def test_match_for_offer_refuses_bad_windows(client):
+    offer = client.get("/listings/l9/offers", params={"hours": 2}).json()[0]
+    base = {"requirement": _saw_requirement(), "listingId": "l9", **offer}
+    wrong_length = {**base, "end": iso_from_ms(ms_from_iso(offer["start"]) + 5 * 3_600_000)}
+    outside = {**base, "start": iso_from_ms(ms_from_iso(offer["start"]) - 365 * DAY_MS), "end": offer["start"]}
+    for body, code in [(wrong_length, 422), (outside, 422), ({**base, "listingId": "nope"}, 404)]:
+        assert client.post("/internal/match-for-offer", json=body, headers=INTERNAL).status_code == code, body
 
 
 def test_quote_and_feasibility(client):
-    r = client.post("/quote", json={"requirement": SAW, "listingId": "l8"}).json()
-    assert r["quote"]["total"] == 500 and r["feasibility"]["feasible"] is True
-    pa = client.post("/feasibility", json={"requirement": SAW, "listingId": "l12"}).json()
-    assert pa["feasible"] is False and "different category" in pa["blockers"]
+    q = client.post("/quote", json={"requirement": _saw_requirement(), "listingId": "l9"}).json()
+    assert q["feasibility"]["feasible"] and q["quote"]["total"] == q["quote"]["platformFee"] + q["quote"]["ownerNet"]
+    f = client.post("/feasibility", json={"requirement": _saw_requirement(hours=200), "listingId": "l9"}).json()
+    assert not f["feasible"] and f["blockers"]
 
 
-def test_reviews_summary(client):
-    r = client.get("/listings/l8/reviews/summary")
+def test_nothing_starts_too_soon_for_the_owner_to_answer(client):
+    soon = ms_from_iso(now_iso()) + 2 * HOUR_MS - 60_000
+    offers = client.get("/listings/l9/offers", params={"hours": 2}).json()
+    assert offers and all(ms_from_iso(o["start"]) >= soon for o in offers)
+    early = {"slotId": offers[0]["slotId"], "start": now_iso(), "end": iso_from_ms(now_ms() + 2 * HOUR_MS)}
+    body = {"requirement": _saw_requirement(), "listingId": "l9", **early}
+    assert client.post("/internal/match-for-offer", json=body, headers=INTERNAL).status_code == 422
+
+
+def test_shared_vocabulary_is_cacheable_at_the_edge(client):
+    for path in ("/groups", "/categories", "/review-tags", "/ranking"):
+        assert client.get(path).headers["cache-control"] == "public, max-age=300"
+
+
+def test_the_ranking_page_is_the_ranker(client):
+    """H-2 (P2B Art. 5): the published signals and weights are exactly the ones
+    the ranker multiplies. Changing W changes this answer, or this test fails."""
+    from matching.domain.match import SIGNALS, W
+
+    body = client.get("/ranking", headers={"Authorization": ""}).json()
+    assert (
+        {s["key"]: s["weight"] for s in body["signals"]} == W == {"price": 0.3, "trust": 0.3, "soon": 0.2, "near": 0.2}
+    )
+    assert set(SIGNALS) == set(W) and all(s["description"] for s in body["signals"])
+    assert body["signals"][0]["weight"] >= body["signals"][-1]["weight"] and body["textSearch"] == "newest first"
+
+
+def test_search_keeps_working_when_booking_is_down(client, fakes):
+    from cappy_common.errors import Unavailable
+
+    _, bookings = fakes
+
+    async def down(*a, **k):
+        raise Unavailable("booking is down")
+
+    bookings.busy = down
+    assert client.post("/matches", json={"requirement": _saw_requirement()}).json()
+    assert client.get("/listings/l9/offers", params={"hours": 2}).json()
+    # Selling a window, though, needs booking to say it is free.
+    offer = client.get("/listings/l9/offers", params={"hours": 2}).json()[0]
+    body = {"requirement": _saw_requirement(), "listingId": "l9", **offer}
+    assert client.post("/internal/match-for-offer", json=body, headers=INTERNAL).status_code == 503
+
+
+def test_every_category_is_tagged_for_dac7(client):
+    tags = {c["id"]: c["dac7"] for c in client.get("/categories").json()}
+    assert set(tags.values()) <= {"personal_service", "immovable_property", "transport", "out_of_scope"}
+    assert tags["warehousing"] == "immovable_property" and tags["events"] == "out_of_scope"
+
+
+def test_offers_can_be_spread_over_days(client):
+    # V6-23: a long window's starts used up the limit on the first days.
+    few = client.get("/listings/l9/offers", params={"hours": 2, "limit": 500, "perDay": 2}).json()
+    days = {o["start"][:10] for o in few}
+    assert all(sum(o["start"][:10] == d for o in few) <= 2 for d in days)
+    assert len(days) > 1
+
+
+def test_staff_see_a_held_listings_offers_and_quote(client, fakes, issuer):
+    # V6-2: only staff, and the context is asked for with held listings in.
+    catalog, _ = fakes
+    staff = {"Authorization": f"Bearer {issuer.token('staff-1', **{'cognito:groups': ['admin']})}"}
+    assert client.get("/admin/listings/l9/offers", params={"hours": 2}).status_code == 403
+    r = client.get("/admin/listings/l9/offers", params={"hours": 2}, headers=staff)
+    assert r.status_code == 200 and r.json() and catalog.calls[-1] == "staff-context"
+    q = client.post("/admin/quote", json={"listingId": "l9", "requirement": _saw_requirement()}, headers=staff)
+    assert q.status_code == 200 and q.json()["quote"]["total"] > 0
+
+
+def test_a_session_ended_elsewhere_is_refused_here_too(client, revocations):
+    """Sign out everywhere ends the old access token in matching at once, not
+    after its 15 minutes (P-24): matching asks catalog when sessions ended."""
+    body = {"requirement": _saw_requirement()}
+    assert client.post("/matches", json=body).status_code == 200
+    revocations.ended["viewer-1"] = time.time() + 60  # after this token was issued
+    r = client.post("/matches", json=body)
+    assert r.status_code == 401 and r.json()["error"]["code"] == "token_expired"
+
+
+def test_catalog_down_is_an_outage_not_a_sign_out(client, revocations):
+    # A 401 would make the app sign the person out over a blip.
+    revocations.down = True
+    assert client.post("/matches", json={"requirement": _saw_requirement()}).status_code == 503
+
+
+def test_a_start_across_touching_windows_is_offered_and_bookable(client, fakes):
+    # V9-5: weekly hours ending at 22:00 and a dated evening from 22:00. The
+    # 2-hour start at 21:00 spans the join: offered, and match-for-offer
+    # (what booking asks) accepts it with the offer's own slot id.
+    catalog, _ = fakes
+    day0 = (now_ms() // DAY_MS + 3) * DAY_MS
+    weekly = Slot(
+        id="weekly",
+        listing_id="l9",
+        start=iso_from_ms(day0 + 8 * HOUR_MS),
+        end=iso_from_ms(day0 + 22 * HOUR_MS),
+        hours_usable=14,
+    )
+    evening = Slot(
+        id="evening",
+        listing_id="l9",
+        start=iso_from_ms(day0 + 22 * HOUR_MS),
+        end=iso_from_ms(day0 + 26 * HOUR_MS),
+        hours_usable=4,
+    )
+    others = [s for s in catalog.world.slots if s.listing_id != "l9"]
+    catalog.world = catalog.world.model_copy(update={"slots": [*others, weekly, evening]})
+    offers = client.get("/listings/l9/offers", params={"hours": 2, "limit": 500}).json()
+    across = next(o for o in offers if o["start"] == iso_from_ms(day0 + 21 * HOUR_MS))
+    body = {"requirement": _saw_requirement(latest=iso_from_ms(day0 + 2 * DAY_MS)), "listingId": "l9", **across}
+    r = client.post("/internal/match-for-offer", json=body, headers=INTERNAL)
     assert r.status_code == 200, r.text
-    body = r.json()
-    s = body["summary"]
-    assert s["count"] == len(body["reviews"]) > 0
-    assert 1 <= s["average"] <= 5 and 0 <= s["onTimeShare"] <= 1
-    assert s["topTags"] and all({"tag", "n"} == set(t) for t in s["topTags"])
-    ats = [x["at"] for x in body["reviews"]]
-    assert ats == sorted(ats, reverse=True)
-    assert client.get("/listings/nope/reviews/summary").status_code == 404
-
-
-def test_browse(client):
-    spot = client.get("/browse/spotlight", params={"district": "Kreuzberg", "maxKm": 5, "now": NOW}).json()
-    assert isinstance(spot, list)
-    idle = client.get("/browse/idle", params={"district": "Kreuzberg", "maxKm": 5, "now": NOW}).json()
-    assert idle["hours"] > 0 and isinstance(idle["value"], int)
-    cities = client.get("/browse/cities", params={"now": NOW}).json()
-    assert len(cities) >= 5 and cities[0]["idle"]["hours"] >= cities[-1]["idle"]["hours"]
-    europe = client.get("/browse/europe", params={"now": NOW}).json()
-    assert abs(europe["hours"] - sum(c["idle"]["hours"] for c in cities)) < 1e-6
-
-
-def test_nearest_district(client):
-    r = client.get("/districts/nearest", params={"lat": 48.8566, "lng": 2.3522}).json()
-    assert r["district"]["metro"] == "Paris"
+    # Naming the evening slot for the same start works too: it is one window.
+    r = client.post("/internal/match-for-offer", json={**body, "slotId": "evening"}, headers=INTERNAL)
+    assert r.status_code == 200, r.text

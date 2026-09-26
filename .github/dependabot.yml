@@ -1,0 +1,21 @@
+# P-32: actions stay on tags (their commit SHAs could not be resolved offline
+# when this was set up); Dependabot proposes each new version as a pull
+# request, and CI's audits catch known vulnerabilities in between.
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule: { interval: weekly }
+    groups:
+      actions: { patterns: ["*"] }
+  - package-ecosystem: uv
+    directory: /backend
+    schedule: { interval: weekly }
+    open-pull-requests-limit: 5
+  - package-ecosystem: npm
+    directory: /web
+    schedule: { interval: weekly }
+    open-pull-requests-limit: 5
+  - package-ecosystem: docker
+    directory: /backend
+    schedule: { interval: weekly }

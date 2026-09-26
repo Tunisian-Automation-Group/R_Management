@@ -1,61 +1,144 @@
+"""Matching: rank, price and schedule, over a bounded candidate set.
+
+Every endpoint gathers exactly the data it needs — candidates or one
+listing's context from the catalog, and the intervals already booked from
+the booking service, in parallel — then runs the unchanged domain rules.
+Nothing is cached across requests, so nothing can go stale across replicas.
+"""
+
 from __future__ import annotations
 
-from fastapi import Depends, Query, Request
+import asyncio
+import logging
+
+from fastapi import Depends, Query, Request, Response
+from pydantic import Field
 
 from cappy_common.app import ApiRouter
-from cappy_common.errors import Invalid, NotFound
-from cappy_common.models import (
-    CamelModel,
-    Iso,
-    Match,
-    Quote,
-    Requirement,
-    Review,
-    World,
-)
-from cappy_common.timeutil import iso_from_ms, ms_from_iso, now_iso
+from cappy_common.auth import Principal, optional_principal, require_admin, require_internal, require_principal
+from cappy_common.errors import Conflict, Invalid, NotFound
+from cappy_common.markets import market
+from cappy_common.models import CamelModel, Iso, MatchView, Quote, Requirement, World
+from cappy_common.timeutil import HOUR_MS, iso_from_ms, ms_from_iso, now_iso
 
-from .domain.availability import Offer, offers_for
-from .domain.browse import (
-    CityStat,
-    IdleSummary,
-    NearestDistrict,
-    Spotlight,
-    available_soon,
-    cities,
-    idle_europe,
-    idle_nearby,
-    nearest_district,
-)
+from .clients import Bookings, Busy, Catalog
+from .domain.availability import Offer, merge_slots, offers_for
+from .domain.browse import Spotlight, available_soon
 from .domain.categories import CATEGORIES, GROUP_IDS, GROUPS, CategoryMeta, GroupMeta, categories_in
 from .domain.feasibility import Feasibility, assess_feasibility
-from .domain.match import SortKey, distance_km, find_matches, match_for_offer, sort_matches
-from .domain.pricing import quote_for
-from .domain.reviews import REVIEW_TAGS, ReviewSummary, by_recent, summarise
+from .domain.match import (
+    SIGNALS,
+    SortKey,
+    W,
+    distance_km,
+    find_matches,
+    match_for_offer,
+    point_of,
+    sort_matches,
+)
+from .domain.pricing import hours_for, quote_for
+from .domain.reviews import REVIEW_TAGS
 
-router = ApiRouter()
+log = logging.getLogger(__name__)
+# The shared vocabulary is public (no user data; the welcome screen shows it).
+# Everything else is signed-in only (GOAL 13).
+vocab = ApiRouter()
+router = ApiRouter(dependencies=[Depends(require_principal)])
+# The same for everyone and rarely changing: CloudFront answers these for five minutes.
+PUBLIC_CACHE = "public, max-age=300"
+internal = ApiRouter(prefix="/internal", dependencies=[Depends(require_internal)])
+# Staff only (MFA where deployed): a held listing's times and price (V6-2).
+admin = ApiRouter(prefix="/admin")
+
+MAX_RESULTS = 100
 
 
-async def get_world(request: Request) -> World:
-    return await request.app.state.world_provider.get()
+def _catalog(request: Request) -> Catalog:
+    return request.app.state.catalog
 
 
-def _now(now: str | None) -> Iso:
-    return now or now_iso()
+def _bookings(request: Request) -> Bookings:
+    return request.app.state.bookings
+
+
+def _window(request: Request, req) -> tuple[Iso, Iso]:  # noqa: ANN001
+    now = _earliest_start(request)
+    until = req.latest if req.mode == "window" else req.deadline
+    start = max(now, req.earliest) if req.mode == "window" else now
+    return start, until
+
+
+async def _candidates_and_busy(request: Request, req, exclude_owner: str | None) -> tuple[World, Busy]:  # noqa: ANN001
+    start, until = _window(request, req)
+    if ms_from_iso(until) <= ms_from_iso(start):
+        return World(owners=[], listings=[], slots=[], districts={}, reviews=[]), {}
+    world = await _catalog(request).candidates(
+        origin=req.district,
+        max_km=req.max_distance_km,
+        start=start,
+        until=until,
+        category=req.category,
+        exclude_owner=exclude_owner,
+    )
+    busy = await _busy_or_nothing(request, [l.id for l in world.listings], start, until)
+    return world, busy
+
+
+async def _busy_or_nothing(request: Request, listing_ids: list[str], start: Iso, until: Iso) -> Busy:
+    """Taken windows, or none if booking cannot say right now (resilience F11):
+    search keeps working, and booking itself still refuses a taken window."""
+    try:
+        return await _bookings(request).busy(listing_ids, start, until)
+    except Exception as e:  # noqa: BLE001
+        log.warning("busy windows unavailable (%s); answering without them", e)
+        return {}
+
+
+async def _context(
+    request: Request, listing_id: str, origin: str | None = None, *, strict: bool = False, staff: bool = False
+) -> tuple[World, Busy]:
+    """One listing's world and bookings, fetched in parallel. ``strict`` when
+    the answer is about to be sold (match-for-offer): then booking must answer."""
+    start = now_iso()
+    until = iso_from_ms(ms_from_iso(start) + 400 * 24 * HOUR_MS)
+    busy = (
+        _bookings(request).busy([listing_id], start, until)
+        if strict
+        else _busy_or_nothing(request, [listing_id], start, until)
+    )
+    ctx = _catalog(request).listing_context(
+        listing_id, after=start, origin=origin, **({"staff": True} if staff else {})
+    )
+    world, busy = await asyncio.gather(ctx, busy)
+    return world, busy
+
+
+def _earliest_start(request: Request) -> Iso:
+    """The owner needs time to answer a request (and the buyer to pay), so
+    nothing can be booked to start sooner than this."""
+    lead = request.app.state.settings.min_lead_minutes * 60_000
+    return iso_from_ms(ms_from_iso(now_iso()) + lead)
+
+
+# --- shapes -------------------------------------------------------------------------
 
 
 class MatchesIn(CamelModel):
     requirement: Requirement
-    now: Iso | None = None
     sort: SortKey = "best"
+    limit: int = Field(default=50, ge=1, le=MAX_RESULTS)
 
 
 class MatchForOfferIn(CamelModel):
     requirement: Requirement
     listing_id: str
+    # Empty for an extension: whichever idle slot holds the window.
     slot_id: str
     start: Iso
     end: Iso
+    # The time straight after a booking, for its renter (S-12): they are
+    # already there, so no lead time for an answer applies.
+    extension: bool = False
 
 
 class QuoteIn(CamelModel):
@@ -64,36 +147,24 @@ class QuoteIn(CamelModel):
 
 
 class QuoteOut(CamelModel):
-    quote: Quote | None
+    quote: Quote | None = None
     feasibility: Feasibility
 
 
-class ReviewsOut(CamelModel):
-    summary: ReviewSummary
-    reviews: list[Review]
+# --- vocabulary ------------------------------------------------------------------------
 
 
-def _listing_and_owner(world: World, listing_id: str):
-    listing = next((l for l in world.listings if l.id == listing_id), None)
-    if not listing:
-        raise NotFound(f"listing {listing_id} not found")
-    owner = next((o for o in world.owners if o.id == listing.owner_id), None)
-    if not owner:
-        raise NotFound(f"owner {listing.owner_id} not found")
-    return listing, owner
-
-
-# --- vocabulary: what a client needs to draw the browse screen without a seed --
-
-
-@router.get("/groups", response_model=list[GroupMeta])
-async def list_groups() -> list[GroupMeta]:
-    """Make, move, equip. The three tabs of the browse screen."""
+@vocab.get("/groups", response_model=list[GroupMeta])
+async def list_groups(
+    response: Response,
+) -> list[GroupMeta]:
+    response.headers["Cache-Control"] = PUBLIC_CACHE
     return GROUPS
 
 
-@router.get("/categories", response_model=list[CategoryMeta])
-async def list_categories(group: str | None = None) -> list[CategoryMeta]:
+@vocab.get("/categories", response_model=list[CategoryMeta])
+async def list_categories(response: Response, group: str | None = None) -> list[CategoryMeta]:
+    response.headers["Cache-Control"] = PUBLIC_CACHE
     if group is None:
         return CATEGORIES
     if group not in GROUP_IDS:
@@ -101,134 +172,186 @@ async def list_categories(group: str | None = None) -> list[CategoryMeta]:
     return categories_in(group)
 
 
-@router.get("/review-tags", response_model=list[str])
-async def list_review_tags() -> list[str]:
-    """The fixed vocabulary a buyer picks from when rating a booking."""
+@vocab.get("/review-tags", response_model=list[str])
+async def list_review_tags(
+    response: Response,
+) -> list[str]:
+    response.headers["Cache-Control"] = PUBLIC_CACHE
     return list(REVIEW_TAGS)
 
 
-# --- matching ------------------------------------------------------------------
+class Signal(CamelModel):
+    key: str
+    weight: float
+    description: str
 
 
-@router.post("/matches", response_model=list[Match])
-async def matches(body: MatchesIn, world: World = Depends(get_world)) -> list[Match]:
-    found = find_matches(body.requirement, world, _now(body.now))
-    return sort_matches(found, body.sort)
+class Ranking(CamelModel):
+    signals: list[Signal]
+    text_search: str
 
 
-@router.post("/match-for-offer", response_model=Match)
-async def match_for_offer_route(body: MatchForOfferIn, world: World = Depends(get_world)) -> Match:
-    """The match for a window the buyer chose. The booking service calls this so
-    a booking's quote is computed here, never trusted from the client."""
-    listing, owner = _listing_and_owner(world, body.listing_id)
-    origin = world.districts.get(body.requirement.district)
-    dest = world.districts.get(listing.district)
-    if not origin or not dest:
-        raise Invalid("unknown district")
-
-    slot = next((s for s in world.slots if s.id == body.slot_id and s.listing_id == listing.id), None)
-    if not slot:
-        raise NotFound(f"slot {body.slot_id} not found on listing {listing.id}")
-    start, end = ms_from_iso(body.start), ms_from_iso(body.end)
-    if not (ms_from_iso(slot.start) <= start < end <= ms_from_iso(slot.end)):
-        raise Invalid("the requested window does not sit inside that idle slot")
-
-    km = distance_km((origin.lat, origin.lng), (dest.lat, dest.lng))
-    offer = Offer(slot_id=slot.id, start=iso_from_ms(start), end=iso_from_ms(end))
-    match = match_for_offer(body.requirement, listing, owner, offer, km)
-    if not match:
-        fit = assess_feasibility(body.requirement, listing)
-        raise Invalid("not feasible: " + "; ".join(fit.blockers))
-    return match
-
-
-@router.post("/quote", response_model=QuoteOut)
-async def quote(body: QuoteIn, world: World = Depends(get_world)) -> QuoteOut:
-    listing, _ = _listing_and_owner(world, body.listing_id)
-    return QuoteOut(
-        quote=quote_for(body.requirement, listing),
-        feasibility=assess_feasibility(body.requirement, listing),
+@vocab.get("/ranking", response_model=Ranking)
+async def ranking(response: Response) -> Ranking:
+    """How results are ordered, from the weights the ranker uses (H-2)."""
+    response.headers["Cache-Control"] = PUBLIC_CACHE
+    return Ranking(
+        signals=[Signal(key=k, weight=w, description=SIGNALS[k]) for k, w in sorted(W.items(), key=lambda kv: -kv[1])],
+        text_search="newest first",
     )
 
 
-@router.post("/feasibility", response_model=Feasibility)
-async def feasibility(body: QuoteIn, world: World = Depends(get_world)) -> Feasibility:
-    listing, _ = _listing_and_owner(world, body.listing_id)
-    return assess_feasibility(body.requirement, listing)
+# --- search ----------------------------------------------------------------------------
+
+
+@router.post("/matches", response_model=list[MatchView])
+async def matches(
+    body: MatchesIn, request: Request, p: Principal | None = Depends(optional_principal)
+) -> list[MatchView]:
+    """Ranked capacity for a requirement. Your own listings are never results."""
+    req = body.requirement
+    world, busy = await _candidates_and_busy(request, req, p.sub if p else None)
+    found = sort_matches(find_matches(req, world, _earliest_start(request), busy), body.sort)[: body.limit]
+    listings = {l.id: l for l in world.listings}
+    owners = {o.id: o for o in world.owners}
+    return [MatchView(match=m, listing=listings[m.listing_id], owner=owners[m.owner_id]) for m in found]
+
+
+@router.get("/browse/spotlight", response_model=list[Spotlight])
+async def spotlight(
+    request: Request,
+    district: str,
+    max_km: float = Query(default=10, alias="maxKm", gt=0, le=500),
+    within_hours: float = Query(default=24, alias="withinHours", gt=0, le=24 * 14),
+    limit: int = Query(default=12, ge=1, le=60),
+    p: Principal | None = Depends(optional_principal),
+) -> list[Spotlight]:
+    """What is genuinely free near you soon, across every category."""
+    now = _earliest_start(request)
+    until = iso_from_ms(ms_from_iso(now) + int(within_hours * HOUR_MS))
+    world = await _catalog(request).candidates(
+        origin=district, max_km=max_km, start=now, until=until, category=None, exclude_owner=p.sub if p else None
+    )
+    busy = await _busy_or_nothing(request, [l.id for l in world.listings], now, until)
+    return available_soon(world, district, max_km, now, within_hours, limit, busy)
+
+
+def _zone(world: World) -> str:
+    """The listing's own time zone, as booking reads it: its weekly hours'
+    zone, else its owner's market's."""
+    listing = world.listings[0] if world.listings else None
+    if listing is not None and listing.availability is not None:
+        return listing.availability.time_zone
+    owner = world.owners[0] if world.owners else None
+    return market(owner.country if owner else None).time_zone
 
 
 @router.get("/listings/{listing_id}/offers", response_model=list[Offer])
 async def offers(
     listing_id: str,
-    hours: float = Query(gt=0),
+    request: Request,
+    hours: float = Query(gt=0, le=24 * 90),
     from_: str | None = Query(default=None, alias="from"),
     until: str | None = None,
     limit: int = Query(default=60, ge=1, le=500),
-    world: World = Depends(get_world),
+    per_day: int | None = Query(default=None, alias="perDay", ge=1, le=100),
 ) -> list[Offer]:
-    _listing_and_owner(world, listing_id)
-    start = _now(from_)
-    end = until or iso_from_ms(ms_from_iso(start) + 7 * 24 * 3_600_000)
-    slots = [s for s in world.slots if s.listing_id == listing_id]
-    return offers_for(slots, hours, start, end, limit)
+    """Every start that fits ``hours`` of work, excluding what is already
+    booked. ``perDay`` caps each day's starts so every day in range shows."""
+    world, busy = await _context(request, listing_id)
+    start = max(from_ or now_iso(), _earliest_start(request))
+    end = until or iso_from_ms(ms_from_iso(start) + 28 * 24 * HOUR_MS)
+    return offers_for(world.slots, hours, start, end, limit, busy.get(listing_id), per_day, _zone(world))
 
 
-@router.get("/listings/{listing_id}/reviews/summary", response_model=ReviewsOut)
-async def reviews_summary(listing_id: str, world: World = Depends(get_world)) -> ReviewsOut:
-    """What the listing screen leads with: the average, the share ready on time,
-    the tags people pick most, and then the words, newest first."""
-    _listing_and_owner(world, listing_id)
-    mine = [r for r in world.reviews if r.listing_id == listing_id]
-    return ReviewsOut(summary=summarise(mine), reviews=by_recent(mine))
+@router.post("/quote", response_model=QuoteOut)
+async def quote(body: QuoteIn, request: Request) -> QuoteOut:
+    world, _ = await _context(request, body.listing_id)
+    listing = world.listings[0]
+    return QuoteOut(
+        quote=quote_for(body.requirement, listing), feasibility=assess_feasibility(body.requirement, listing)
+    )
 
 
-# --- browse --------------------------------------------------------------------
+@router.post("/feasibility", response_model=Feasibility)
+async def feasibility(body: QuoteIn, request: Request) -> Feasibility:
+    world, _ = await _context(request, body.listing_id)
+    return assess_feasibility(body.requirement, world.listings[0])
 
 
-@router.get("/browse/spotlight", response_model=list[Spotlight])
-async def spotlight(
-    district: str,
-    max_km: float = Query(default=10, alias="maxKm", gt=0),
-    now: str | None = None,
-    within_hours: float = Query(default=24, alias="withinHours", gt=0),
-    limit: int = Query(default=12, ge=1, le=100),
-    world: World = Depends(get_world),
-) -> list[Spotlight]:
-    return available_soon(world, district, max_km, _now(now), within_hours, limit)
+# --- internal: the booking service prices every booking here -------------------------------
 
 
-@router.get("/browse/idle", response_model=IdleSummary)
-async def idle(
-    district: str,
-    max_km: float = Query(default=10, alias="maxKm", gt=0),
-    now: str | None = None,
-    horizon_hours: float = Query(default=24, alias="horizonHours", gt=0),
-    world: World = Depends(get_world),
-) -> IdleSummary:
-    return idle_nearby(world, district, max_km, _now(now), horizon_hours)
+@internal.post("/match-for-offer", response_model=MatchView)
+async def match_for_offer_route(body: MatchForOfferIn, request: Request) -> MatchView:
+    """The match for a window the buyer chose. The quote is computed here, never
+    trusted from the client, and the window must still be free."""
+    req = body.requirement
+    world, busy = await _context(request, body.listing_id, origin=req.district, strict=True)
+    listing, owner = world.listings[0], world.owners[0]
+    origin, dest = world.districts.get(req.district), point_of(listing, world.districts)
+    if not origin or not dest:
+        raise Invalid("unknown district")
+    if not listing.active:
+        raise NotFound(f"listing {listing.id} is not taking bookings")
+
+    start, end = ms_from_iso(body.start), ms_from_iso(body.end)
+    inside = lambda s: ms_from_iso(s.start) <= start < end <= ms_from_iso(s.end)  # noqa: E731
+    # Touching windows are one window (V9-5), the same as the offers were made.
+    windows = merge_slots(world.slots)
+    if body.extension and not body.slot_id:
+        slot = next((s for s in windows if inside(s)), None)
+        if not slot:
+            raise Conflict("the listing is not open straight after this booking", code="not_extendable")
+    else:
+        raw = next((s for s in world.slots if s.id == body.slot_id), None)
+        if not raw:
+            raise NotFound(f"slot {body.slot_id} not found on listing {listing.id}")
+        slot = next(s for s in windows if ms_from_iso(s.start) <= ms_from_iso(raw.start) < ms_from_iso(s.end))
+        if not inside(slot):
+            raise Invalid("the requested window does not sit inside that idle slot")
+    if body.extension:
+        if start < ms_from_iso(now_iso()):
+            raise Invalid("an extension starts where the booking ends, which is past")
+    elif start < ms_from_iso(_earliest_start(request)):
+        raise Invalid("that window starts too soon for the owner to answer; pick a later one")
+    hours = hours_for(req, listing)
+    if hours is not None and abs((end - start) / HOUR_MS - hours) > 0.01:
+        raise Invalid(f"that requirement needs {hours:g} hours, not {(end - start) / HOUR_MS:g}")
+    if any(a < end and start < b for a, b in busy.get(listing.id, [])):
+        raise Conflict("that window was just taken; pick another")
+
+    km = distance_km((origin.lat, origin.lng), dest)
+    offer = Offer(slot_id=slot.id, start=iso_from_ms(start), end=iso_from_ms(end))
+    match = match_for_offer(req, listing, owner, offer, km)
+    if not match:
+        raise Invalid("not feasible: " + "; ".join(assess_feasibility(req, listing).blockers))
+    return MatchView(match=match, listing=listing, owner=owner)
 
 
-@router.get("/browse/cities", response_model=list[CityStat])
-async def browse_cities(
-    now: str | None = None,
-    horizon_hours: float = Query(default=168, alias="horizonHours", gt=0),
-    world: World = Depends(get_world),
-) -> list[CityStat]:
-    return cities(world, _now(now), horizon_hours)
+# --- the staff preview of a listing nobody can see yet (V6-2) ----------------------------
 
 
-@router.get("/browse/europe", response_model=IdleSummary)
-async def browse_europe(
-    now: str | None = None,
-    horizon_hours: float = Query(default=168, alias="horizonHours", gt=0),
-    world: World = Depends(get_world),
-) -> IdleSummary:
-    return idle_europe(world, _now(now), horizon_hours)
+@admin.get("/listings/{listing_id}/offers", response_model=list[Offer])
+async def staff_offers(
+    listing_id: str,
+    request: Request,
+    hours: float = Query(gt=0, le=24 * 90),
+    limit: int = Query(default=120, ge=1, le=500),
+    per_day: int | None = Query(default=None, alias="perDay", ge=1, le=100),
+    _: Principal = Depends(require_admin),
+) -> list[Offer]:
+    """A held or hidden listing's free starts, for staff deciding on it."""
+    world, busy = await _context(request, listing_id, staff=True)
+    start = _earliest_start(request)
+    end = iso_from_ms(ms_from_iso(start) + 28 * 24 * HOUR_MS)
+    return offers_for(world.slots, hours, start, end, limit, busy.get(listing_id), per_day, _zone(world))
 
 
-@router.get("/districts/nearest", response_model=NearestDistrict)
-async def nearest(lat: float, lng: float, world: World = Depends(get_world)) -> NearestDistrict:
-    found = nearest_district(world, lat, lng)
-    if not found:
-        raise NotFound("no districts in the world")
-    return found
+@admin.post("/quote", response_model=QuoteOut)
+async def staff_quote(body: QuoteIn, request: Request, _: Principal = Depends(require_admin)) -> QuoteOut:
+    world, _busy = await _context(request, body.listing_id, staff=True)
+    listing = world.listings[0]
+    return QuoteOut(
+        quote=quote_for(body.requirement, listing), feasibility=assess_feasibility(body.requirement, listing)
+    )

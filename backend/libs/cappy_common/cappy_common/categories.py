@@ -21,8 +21,14 @@ class CategoryMeta(CamelModel):
     blurb: str
     # Window categories: the durations people actually book.
     quick_hours: list[float] | None = None
-    # Batch categories: the unit a buyer counts in.
+    # Batch categories: the unit a buyer counts in, and what the fixed part
+    # of the price is for (a van loads; a mill is set up and programmed).
     unit_noun: str | None = None
+    setup_label: str = "Setup and programming"
+    # EU DAC7 (PStTG): which reportable activity this is, if any. Tagged by
+    # what the owner provides; confirmed by counsel before the first report
+    # (docs/research/2026-09-launch-gaps.md).
+    dac7: str = "out_of_scope"
 
 
 class GroupMeta(CamelModel):
@@ -47,6 +53,7 @@ CATEGORIES: list[CategoryMeta] = [
     # ------------------------------------------------------------------- make
     _c(
         id="fabrication",
+        dac7="personal_service",
         label="Fabrication",
         group="make",
         mode="batch",
@@ -56,6 +63,7 @@ CATEGORIES: list[CategoryMeta] = [
     ),
     _c(
         id="additive",
+        dac7="personal_service",
         label="3D printing",
         group="make",
         mode="batch",
@@ -65,6 +73,7 @@ CATEGORIES: list[CategoryMeta] = [
     ),
     _c(
         id="finishing",
+        dac7="personal_service",
         label="Finishing",
         group="make",
         mode="batch",
@@ -74,6 +83,7 @@ CATEGORIES: list[CategoryMeta] = [
     ),
     _c(
         id="print",
+        dac7="personal_service",
         label="Print & signage",
         group="make",
         mode="batch",
@@ -84,15 +94,18 @@ CATEGORIES: list[CategoryMeta] = [
     # ------------------------------------------------------------------- move
     _c(
         id="freight",
+        dac7="personal_service",
         label="Freight",
         group="move",
         mode="batch",
         icon="truck",
         blurb="Van, pallet and groupage space on runs already going",
         unit_noun="pallets",
+        setup_label="Loading",
     ),
     _c(
         id="warehousing",
+        dac7="immovable_property",
         label="Warehousing",
         group="move",
         mode="window",
@@ -103,6 +116,7 @@ CATEGORIES: list[CategoryMeta] = [
     # ------------------------------------------------------------------ equip
     _c(
         id="workshop",
+        dac7="immovable_property",
         label="Workshop & tools",
         group="equip",
         mode="window",
@@ -112,6 +126,7 @@ CATEGORIES: list[CategoryMeta] = [
     ),
     _c(
         id="events",
+        dac7="out_of_scope",
         label="Event & AV",
         group="equip",
         mode="window",
@@ -121,6 +136,7 @@ CATEGORIES: list[CategoryMeta] = [
     ),
     _c(
         id="creator",
+        dac7="immovable_property",
         label="Creator kit",
         group="equip",
         mode="window",

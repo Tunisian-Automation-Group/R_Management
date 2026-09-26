@@ -1,0 +1,1246 @@
+@import 'tailwindcss';
+
+/* ============================================================================
+   Cappy design tokens.
+
+   The product sells hours, so the reference is a departure board and an auction
+   catalogue: ruled rows, right-aligned figures, tabular numerals, and one deep
+   material. Not cards, not pills, not shadows.
+
+   White paper carries the interface. Aegean carries the moments that matter, so
+   every listing wears a dark plate with its next free window set large. Ice only
+   ever appears on Aegean, where it has 10:1 to spend. Crimson is the one hot
+   colour and it is spent on actions and on time somebody has already taken.
+
+   Every colour that carries words was measured against the surface it sits on
+   and clears WCAG AA. Fills and graphics clear 3:1 against their neighbours.
+   ========================================================================= */
+
+@theme {
+  /* Two faces with different jobs and a wide gap between them. Bodoni Moda is
+     a true Didone: at display sizes its optical-size axis opens the stroke
+     contrast right up, which is where the presence comes from. Archivo runs
+     the interface and carries the tabular numerals. */
+  --font-sans: 'Archivo Variable', 'Archivo', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto,
+    system-ui, sans-serif;
+  /* 'Display Signs' only covers + and &: Bodoni Moda's plus is a hairline that
+     vanishes at display sizes, so those two come from a sturdier face. */
+  --font-display: 'Display Signs', 'Bodoni Moda Variable', 'Bodoni Moda', 'Didot', 'Bodoni 72', Georgia, serif;
+
+  /* Softened back off the hard 3px edge, which read as austere rather than
+     considered. Three steps, each used for one kind of thing. */
+  --radius-plate: 14px;
+  --radius-control: 8px;
+  --radius-field: 8px;
+  --radius-card: 14px;
+  --radius-cover: 14px;
+  --radius-sheet: 22px;
+
+  --ease-out: cubic-bezier(0.2, 0, 0, 1);
+  /* Retired overshoot (1.4): M3's spatial springs bounce only slightly. */
+  --ease-spring: cubic-bezier(0.2, 0.9, 0.3, 1.04);
+
+  /* The type scale (UX-5, review §3.1): nine steps, each one a Tailwind
+     utility (`text-body`, `text-label`…) that carries its line height. Body is
+     17 px on the phone, as on iOS. Nothing else: check:tokens refuses
+     `text-[…rem]`. Bodoni only at title-l and up, and only for words (UX-4). */
+  --text-caption: 0.6875rem;
+  --text-caption--line-height: 0.875rem;
+  --text-label: 0.8125rem;
+  --text-label--line-height: 1.125rem;
+  --text-body: 0.9375rem;
+  --text-body--line-height: 1.375rem;
+  --text-body-l: 1.0625rem;
+  --text-body-l--line-height: 1.5rem;
+  --text-title-s: 1.25rem;
+  --text-title-s--line-height: 1.625rem;
+  --text-title-m: 1.375rem;
+  --text-title-m--line-height: 1.75rem;
+  --text-title-l: 1.75rem;
+  --text-title-l--line-height: 2rem;
+  --text-headline: 2.125rem;
+  --text-headline--line-height: 2.375rem;
+  --text-display: 2.75rem;
+  --text-display--line-height: 2.875rem;
+}
+
+/* ---------------------------------------------------------------- semantic */
+@font-face {
+  font-family: 'Display Signs';
+  src: local('Georgia'), local('Times New Roman'), local('DejaVu Serif');
+  unicode-range: U+002B, U+0026;
+}
+
+:root {
+  --page: #fbfaf8;
+  --surface: #ffffff;
+  /* A quiet paper for fills that need to sit back without a border. */
+  --sunken: #f2f0eb;
+  --veil: rgba(255, 255, 255, 0.94);
+  --veil-page: rgba(255, 255, 255, 0.94);
+  /* 1.5:1 on page and surface; input borders (line-strong) are UI parts, 3:1. */
+  --line: rgba(24, 33, 26, 0.22);
+  --line-strong: rgba(24, 33, 26, 0.5);
+
+  --ink: #18211a;
+  --ink-2: #39423a;
+  --ink-3: #5a6157;
+  --ink-4: #646b60; /* the floor for small text: 5.3:1 on white, 4.7:1 on sunken (check:contrast) */
+  /* Focus is its own role, blue ink, so a focused crimson button or a focused
+     error never reads as more of the same (UX-6). */
+  --focus: #2d6479;
+  /* Sheets and popovers: white here, a lighter surface in dark mode (Apple's
+     "elevated" background). */
+  --elevated: #ffffff;
+  /* Menus over sheets and hovered rows; selected segments and the dock's
+     indicator in dark (UX-47). Light keeps paper and the crimson tint. */
+  --overlay: #ffffff;
+  --pill: #eceae4;
+  /* The selected segment: the green plate in light, a raised pill in dark,
+     where the plate would sink into the card (UX-47). */
+  --segment-on: var(--field);
+  --on-segment: var(--on-field);
+  /* Disabled controls: a quiet fill and ink-4, never opacity alone. */
+  --disabled-bg: var(--sunken);
+  /* The full-screen gallery is black in both themes, its controls white on a
+     40 % black chip (UX-49). */
+  --gallery-bg: #000000;
+  --on-gallery: #ffffff;
+  --gallery-chip: rgba(0, 0, 0, 0.4);
+
+  /* The deep material. Listing plates, the hero, the dock's active state. */
+  --field: #20311e;
+  --field-2: #2b3d28;
+  --on-field: #f4f3ee;
+  --on-field-dim: #a9b3a5;
+
+  /* Crimson. Actions, and time somebody has taken. */
+  --accent: #8b0d1a;
+  --accent-hover: #790b17;
+  --accent-active: #660913;
+  --accent-text: #8b0d1a;
+  --accent-subtle: #f9eaeb;
+  --accent-muted: #e2b6ba;
+  /* Crimson at 1.7:1 on the dark plate is invisible. This is the same colour
+     opened up until it clears 3:1 there. */
+  --accent-bright: #e35a66;
+  --on-accent: #ffffff;
+
+  /* Ice. Capacity that is free. It only ever appears on Aegean. */
+  --sky: #d0e0e3;
+  --sky-ink: #2d6479; /* the same idea when it has to sit on white */
+  --sky-subtle: #eef4f6;
+
+  --success: #2c6048;
+  --success-text: #2c6048;
+  --success-subtle: #e9f0ec;
+
+  /* Money that arrives (earnings, paid out) is green, never crimson (UX-6). */
+  --money: #2c6048;
+
+  --warn: #8a5200;
+  --warn-subtle: #faf1e3;
+  /* Errors: a red that is not the action crimson (UX-6). */
+  --danger: #c4312b;
+  --danger-subtle: #fbeceb;
+  --badge: #8b0d1a;
+  --on-badge: #ffffff;
+  /* Text on a filled danger or success chip. */
+  --on-status: #ffffff;
+
+  /* The timetable on white: warm grey is time already spoken for, the cool ink
+     blue is time going free, crimson is a window taken. */
+  --track: #eceae4;
+  --idle: #2d6479;
+  --sold: #8b0d1a;
+
+  --map-ground: #f2f0eb;
+  --map-water: #e4ecee;
+  --map-line: #d9d6ce;
+  --map-label: var(--ink-3);
+
+  --inverse: #18211a;
+  --on-inverse: #f4f3ee;
+
+  /* Depth comes from rules, from the dark plates, and from glass. Chrome floats
+     over content instead of being ruled off from it, so it needs real depth. */
+  --shadow-card: none;
+  --shadow-float: 0 8px 24px -12px rgba(24, 33, 26, 0.3);
+  --shadow-dock: 0 -1px 0 rgba(24, 33, 26, 0.14);
+  --shadow-plate: 0 18px 40px -24px rgba(24, 33, 26, 0.45);
+  --shadow-sheet: 0 -24px 60px rgba(24, 33, 26, 0.22);
+  --shadow-1: 0 1px 2px rgba(24, 33, 26, 0.06), 0 2px 8px rgba(24, 33, 26, 0.06);
+  --scrim: rgba(24, 33, 26, 0.5);
+
+  /* ---------------------------------------------------------- scale tokens
+     Tiers (UX-5): these values are the primitives; the names above are the
+     semantic roles components use, swapped per theme below; the few component
+     knobs come last. check:tokens refuses colour, size and radius literals
+     anywhere but this file. ponytail: no separate primitive palette block, the
+     two theme blocks hold the values; add one when a third theme appears. */
+
+  /* Radii, one per kind of thing (UX review §3.2). */
+  --radius-xs: 4px;
+  --radius-s: 8px;
+  --radius-m: 14px;
+  --radius-l: 22px;
+
+  /* Motion (§3.4). Only transform and opacity animate; exits take 2/3 of the
+     entry; under reduced motion slides become short fades. */
+  --dur-instant: 100ms;
+  --dur-short: 150ms;
+  --dur-medium: 250ms;
+  --dur-long: 350ms;
+  --dur-xlong: 500ms;
+  --ease-standard: cubic-bezier(0.2, 0, 0, 1);
+  --ease-decelerate: cubic-bezier(0.05, 0.7, 0.1, 1);
+  --ease-accelerate: cubic-bezier(0.3, 0, 0.8, 0.15);
+  /* A spatial spring (damping ~0.9) sampled into linear(): lands with a hint of
+     overshoot, the way a sheet settles. */
+  --ease-spring-spatial: linear(0, 0.18, 0.5, 0.78, 0.95, 1.03, 1.045, 1.03, 1.012, 1.002, 0.998, 1);
+
+  /* Component knobs. */
+  --sheet-radius: var(--radius-l);
+  /* The phone tab bar (cappy-ui §4): 56 plus the home indicator, opaque
+     elevated surface, hairline top, a 56×32 indicator pill behind the active
+     icon. */
+  /* 12/16 labels in fixed pixels, as a tab bar: at 200 % text it drops them. */
+  --dock-label-size: 12px;
+  --dock-label-line: 16px;
+  --dock-bar-h: 56px;
+  /* Items centred in a 480 px row with 20 px gutters: 5 × 64 at 360. */
+  --dock-row: 480px;
+  --dock-gutter: 20px;
+  --dock-bg: var(--elevated);
+  /* The bar at 92 % over a 20 px blur; opaque under Reduce Transparency. */
+  --dock-alpha: 92%;
+  --dock-ink: var(--ink-3);
+  /* The crimson tint deep enough to read against the bar (1.5:1). */
+  --dock-active: #ecc4c9;
+  --dock-active-ink: var(--accent-text);
+  /* Fixed pixels, as an iOS tab bar: the bar does not grow with text size; at
+     200 % it drops its labels instead (useLargeText), so 5 × 56 always fits. */
+  --dock-pill-w: 56px;
+  --dock-pill-h: 32px;
+  --dock-icon: 24px;
+  --dock-badge: 16px;
+  --dock-badge-off: -4px;
+  --dock-badge-pad: 4px;
+  --dock-badge-text: 11px;
+
+  /* ------------------------------------------------------------ liquid glass
+     Apple's iOS 27 kit models glass as seven numbers: frost, depth, opacity,
+     refraction, dispersion, splay and a light angle. The browser gives us the
+     first three directly (backdrop-filter, a shadow, a tint) and fakes the rest,
+     because there is no refraction primitive on the web.
+
+     What actually sells it is the edge. Real glass is brightest where the light
+     hits and darkest on the far side, so the border is a gradient lit from the
+     top-left (the kit's 135° light angle), not a flat 1px line. Everything else
+     is a blur. */
+  --glass-frost: 24px;
+  --glass-frost-thin: 14px;
+  --glass-frost-strong: 34px;
+  --glass-sat: 180%;
+  /* The tint under the blur. Without it, glass over white reads as nothing. */
+  --glass-tint: rgba(255, 255, 255, 0.5);
+  --glass-tint-thin: rgba(255, 255, 255, 0.38);
+  /* Frost-Large. A pane that carries its own small text needs to beat the small
+     text scrolling behind it, or the two read as one column of noise. */
+  --glass-tint-strong: rgba(255, 255, 255, 0.66);
+  /* Glass on the Aegean plate is the same material with the light behind it. */
+  --glass-tint-dark: rgba(32, 49, 30, 0.42);
+  --glass-edge-lit: rgba(255, 255, 255, 0.9);
+  --glass-edge-shade: rgba(24, 33, 26, 0.12);
+  --glass-edge-lit-dark: rgba(255, 255, 255, 0.34);
+  --glass-edge-shade-dark: rgba(255, 255, 255, 0.04);
+  /* The kit's specular sweep: a bright band raked across the top of the pane. */
+  --glass-specular: rgba(255, 255, 255, 0.55);
+  --glass-shadow: 0 10px 30px -12px rgba(24, 33, 26, 0.28);
+  --glass-shadow-raised: 0 18px 44px -16px rgba(24, 33, 26, 0.36);
+
+  --safe-top: env(safe-area-inset-top, 0px);
+  /* The bar plus the home indicator: what every scroll view keeps clear of. */
+  --dock-h: calc(var(--dock-bar-h) + 1px + env(safe-area-inset-bottom, 0px));
+  --safe-bottom-md: 0px;
+  /* Zero on a phone: the nav is at the bottom there, not the top. */
+  --header-h: 0px;
+
+  color-scheme: light;
+}
+
+/* On a detail screen the phone dock steps aside (UX-13). */
+@media (max-width: 767px) {
+  :root[data-dock='hidden'] {
+    --dock-h: env(safe-area-inset-bottom, 0px);
+  }
+}
+@media (min-width: 768px) {
+  :root {
+    --dock-h: 0px;
+    --safe-bottom-md: env(safe-area-inset-bottom, 0px);
+    --header-h: 68px;
+  }
+}
+
+/* ------------------------------------------------------------------- dark
+   Dark mode (UX-36). Only the semantic roles swap. The app resolves the
+   Profile choice (System, Light, Dark) against prefers-color-scheme and sets
+   data-theme on <html> before the first paint (index.html, theme.ts), so there
+   is one dark block. Light is the default; dark is opt-in (cappy-ui §3). The
+   pairs are measured by check:contrast, not listed here. */
+:root[data-theme='dark'] {
+  /* The surface ladder (UX-47): each step about +4.5 L*, visibly its own
+     level, lightest last. Sunken sits above the page, never a hole in it. */
+  --page: #121813;
+  --sunken: #161c17;
+  --surface: #1a211b;
+  --elevated: #252d26;
+  --overlay: #2f3830;
+  --pill: #404c42;
+  --veil: rgba(18, 24, 19, 0.94);
+  --veil-page: rgba(18, 24, 19, 0.94);
+  --line: rgba(238, 240, 234, 0.18);
+  --line-strong: rgba(238, 240, 234, 0.36);
+  /* Never pure white on large areas. ink-3 and ink-4 keep 4.5:1 up to the
+     overlay step. */
+  --ink: #eef0ea;
+  --ink-2: #cfd5ca;
+  --ink-3: #a8b0a4;
+  --ink-4: #9ca496;
+  --focus: #8cc3d6;
+  /* The plate stays a plate: a touch lighter so it still reads as material. */
+  --field: #1f3a24;
+  --field-2: #274a2e;
+  --on-field-dim: #b3bdaf;
+  /* The crimson opened up for dark, carrying dark text (5.2:1): white on it
+     fails. One filled accent per view. */
+  --accent: #e0525f;
+  --accent-hover: #e66873;
+  --accent-active: #c9434f;
+  --accent-text: #f07782;
+  --accent-subtle: #3a1a1d;
+  --accent-muted: #6b2a30;
+  --accent-bright: #ec979e;
+  --on-accent: #1a0507;
+  --disabled-bg: var(--pill);
+  --segment-on: var(--pill);
+  --on-segment: var(--ink);
+  --sky-ink: #8cc3d6;
+  --sky-subtle: #16272c;
+  --success: #7cc4a0;
+  --success-text: #7cc4a0;
+  --success-subtle: #16271d;
+  --money: #7cc4a0;
+  --warn: #f0b45c;
+  --warn-subtle: #2c2112;
+  --danger: #ff8a80;
+  --danger-subtle: #331716;
+  --badge: #e0525f;
+  --on-badge: #1a0507;
+  --on-status: #121813;
+  --track: #2b322c;
+  --idle: #8cc3d6;
+  --sold: #e0525f;
+  --map-ground: #1a211b;
+  --map-water: #162226;
+  --map-line: #343b35;
+  --inverse: #eef0ea;
+  --on-inverse: #121813;
+  /* The dock: a pill clearly lighter than the bar, the active icon in ink. */
+  --dock-alpha: 94%;
+  --dock-active: var(--pill);
+  --dock-active-ink: var(--ink);
+  --shadow-1: 0 0 0 1px rgba(238, 240, 234, 0.08);
+  --shadow-float: 0 8px 24px -12px rgba(0, 0, 0, 0.6);
+  --shadow-dock: 0 -1px 0 rgba(238, 240, 234, 0.12);
+  --shadow-plate: 0 18px 40px -24px rgba(0, 0, 0, 0.7);
+  --shadow-sheet: 0 -24px 60px rgba(0, 0, 0, 0.5);
+  --scrim: rgba(0, 0, 0, 0.6);
+  --glass-tint: rgba(35, 43, 36, 0.6);
+  --glass-tint-thin: rgba(35, 43, 36, 0.46);
+  --glass-tint-strong: rgba(35, 43, 36, 0.8);
+  --glass-edge-lit: rgba(238, 240, 234, 0.22);
+  --glass-edge-shade: rgba(238, 240, 234, 0.05);
+  --glass-specular: rgba(255, 255, 255, 0.08);
+  --glass-shadow: 0 10px 30px -12px rgba(0, 0, 0, 0.6);
+  --glass-shadow-raised: 0 18px 44px -16px rgba(0, 0, 0, 0.7);
+  color-scheme: dark;
+}
+
+/* Photos are dimmed about 10 % in dark so they don't glare; the full-screen
+   gallery shows them as they are. */
+:root[data-theme='dark'] img:not(.gallery-full) {
+  filter: brightness(0.9);
+}
+
+/* In dark, Bodoni only from 34 px: its hairlines break up below ("yet" read
+   as "yct"). The 28 px titles take Archivo 600 there. */
+/* The wordmark is a brand mark, not a title: it keeps its face in every theme (V9-8). */
+:root[data-theme='dark'] .t-h2:not(.wordmark) {
+  font-family: var(--font-sans);
+  font-variation-settings: 'wdth' 100;
+  font-weight: 600;
+  letter-spacing: -0.012em;
+}
+
+/* Glass only on the dock: content sheets are opaque in dark (Apple: no glass
+   in the content layer). */
+:root[data-theme='dark'] .sheet-pane {
+  background: var(--elevated);
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+}
+:root[data-theme='dark'] .sheet-pane::before,
+:root[data-theme='dark'] .sheet-pane::after {
+  display: none;
+}
+
+/* The phone tab bar (UX-46): full width on the bottom edge, 92–94 % over a
+   20 px blur, a hairline above, the home indicator inside. Unlayered, so it
+   wins over the glass pane it is on the desktop. */
+@media (max-width: 767px) {
+  .dock {
+    background: color-mix(in srgb, var(--dock-bg) var(--dock-alpha), transparent);
+    -webkit-backdrop-filter: blur(20px) saturate(180%);
+    backdrop-filter: blur(20px) saturate(180%);
+    border-top: 1px solid var(--line);
+    border-radius: 0;
+    box-shadow: none;
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+    transition: transform var(--dur-long) var(--ease-decelerate);
+  }
+  .dock::before,
+  .dock::after {
+    display: none;
+  }
+  /* Hide on scroll: the bar slides down by its content height, leaving the
+     safe area painted; it leaves faster than it returns. */
+  .dock[data-scrolled='away'] {
+    transform: translateY(var(--dock-bar-h));
+    transition-duration: var(--dur-medium);
+    transition-timing-function: var(--ease-accelerate);
+  }
+}
+@media (max-width: 767px) and (prefers-reduced-transparency: reduce) {
+  .dock {
+    background: var(--dock-bg);
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .dock[data-scrolled='away'] {
+    transform: none;
+  }
+  .dock-pill-in {
+    animation: none;
+  }
+}
+/* The indicator arrives: its width from 0 to 56 (scaleX, transform only). */
+@keyframes dock-pill {
+  from {
+    transform: scaleX(0);
+    opacity: 0;
+  }
+}
+.dock-pill-in {
+  animation: dock-pill var(--dur-short) var(--ease-standard);
+}
+
+.gallery-dialog::backdrop {
+  background: var(--gallery-bg);
+}
+
+
+
+
+
+/* --------------------------------------------------------------------- base */
+html {
+  background: var(--page);
+  -webkit-text-size-adjust: 100%;
+}
+
+/* S-14: edge to edge. A phone on its side has the notch or the camera
+   cut-out at one end: content and fixed bars keep clear of it. */
+body {
+  padding-left: env(safe-area-inset-left, 0px);
+  padding-right: env(safe-area-inset-right, 0px);
+}
+.safe-x {
+  padding-left: max(1rem, env(safe-area-inset-left, 0px));
+  padding-right: max(1rem, env(safe-area-inset-right, 0px));
+}
+
+body {
+  margin: 0;
+  background: var(--page);
+  color: var(--ink);
+  font-family: var(--font-sans);
+  font-size: 0.9375rem;
+  line-height: 1.375rem;
+  font-variation-settings: 'wdth' 100;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+  overscroll-behavior-y: none;
+}
+
+/* This app is mostly numbers in columns. They line up everywhere. */
+.tnum {
+  font-variant-numeric: lining-nums tabular-nums;
+  font-feature-settings: 'tnum' 1, 'lnum' 1;
+}
+
+/* ---------------------------------------------------------------- type ramp
+   The previous ramp ran 13px to 22px and everything landed within six pixels
+   of everything else, which is what makes a screen read as cheap. This one
+   spans 11px to 68px. Display sizes are Bodoni at high optical size; anything
+   that labels, measures or instructs is Archivo. */
+
+/* A long German or French word never pushes a heading off the screen at large
+   text (V8-6): hyphenate by the document's lang, break as a last resort. */
+.t-display,
+.t-h1,
+.t-h2,
+.t-title-user {
+  hyphens: auto;
+  overflow-wrap: anywhere;
+}
+
+.t-display {
+  font-family: var(--font-display);
+  font-optical-sizing: auto;
+  font-variation-settings: 'opsz' 96;
+  font-size: clamp(3.5rem, 19vw, 4.75rem);
+  line-height: 0.88;
+  letter-spacing: -0.028em;
+  font-weight: 500;
+}
+.t-h1 {
+  font-family: var(--font-display);
+  font-variation-settings: 'opsz' 72;
+  font-size: 2.375rem;
+  line-height: 1.04;
+  letter-spacing: -0.02em;
+  font-weight: 500;
+}
+/* 28 px, the smallest size Bodoni is allowed (UX-4): below it the hairlines
+   break up and "€3.40" reads as "C3.10". */
+.t-h2 {
+  font-family: var(--font-display);
+  font-variation-settings: 'opsz' 48;
+  font-size: 1.75rem;
+  line-height: 1.14;
+  letter-spacing: -0.015em;
+  font-weight: 500;
+}
+/* Archivo from here down. These label the machinery. */
+.t-h3 {
+  font-size: 1.1875rem;
+  line-height: 1.5625rem;
+  letter-spacing: -0.016em;
+  font-weight: 600;
+}
+.t-h4 {
+  font-size: 0.9688rem;
+  line-height: 1.3125rem;
+  letter-spacing: -0.012em;
+  font-weight: 600;
+}
+.t-body {
+  font-size: 0.9375rem;
+  line-height: 1.4375rem;
+  letter-spacing: -0.005em;
+}
+.t-sm {
+  font-size: 0.8125rem;
+  line-height: 1.125rem;
+}
+/* Genuinely small, so the display has something to be large against. */
+.t-label {
+  font-size: 0.6875rem;
+  line-height: 0.875rem;
+  letter-spacing: 0.06em;
+  font-weight: 600;
+  color: var(--ink-4);
+}
+.t-lede {
+  font-size: 1.0625rem;
+  line-height: 1.625rem;
+  letter-spacing: -0.008em;
+  font-weight: 400;
+  color: var(--ink-3);
+}
+/* Figures: prices, times, ratings, counts. Always Archivo, lining and tabular,
+   never Bodoni, so "€3.40", "1.4 m" and "10:30" can't be misread (UX-4). The
+   plate still sets its time large; it just sets it in the face built for
+   numbers. */
+.t-plate,
+.t-figure {
+  font-family: var(--font-sans);
+  font-weight: 600;
+  letter-spacing: -0.03em;
+  font-variant-numeric: lining-nums tabular-nums;
+  font-feature-settings: 'tnum' 1, 'lnum' 1;
+}
+/* Titles people wrote (a listing, a booking) are data, not display: Archivo
+   at title-l, so an unusual name or a model number reads plainly. */
+.t-title-user {
+  font-size: var(--text-title-l);
+  line-height: var(--text-title-l--line-height);
+  letter-spacing: -0.02em;
+  font-weight: 600;
+}
+/* Sheet and dialog titles (title-m, Archivo). */
+.t-title-m {
+  font-size: var(--text-title-m);
+  line-height: var(--text-title-m--line-height);
+  letter-spacing: -0.016em;
+  font-weight: 600;
+}
+
+/* Money nobody is collecting. */
+.hl {
+  /* Emphasis, not alarm: crimson is for actions only (UX-6). */
+  color: var(--ink);
+  font-weight: 600;
+}
+
+.rule {
+  border: 0;
+  border-top: 1px solid var(--line);
+}
+
+/* These live in @layer components so a call site's `fixed` or `sticky` utility
+   still wins over the `position: relative` the pane needs by default. Unlayered
+   CSS beats Tailwind's utility layer, which is how the dock ended up scrolling
+   with the page. */
+@layer components {
+  /* ------------------------------------------------------------------ chrome
+     Glass, built the way the iOS 27 kit builds it.
+
+     `.glass` is the pane: frost, tint and a lit edge. The edge is a gradient
+     border drawn with a mask rather than `border`, because a border cannot be
+     brighter on one side than the other, and a flat edge is what makes web
+     imitations of this material look like a grey box with a blur behind it.
+
+     `::before` is that edge. `::after` is the specular sweep across the top.
+     Neither takes pointer events, so a glass surface still behaves like a plain
+     element. */
+  .glass,
+  .glass-thin,
+  .glass-strong {
+    position: relative;
+    /* No `isolation: isolate` here, however much it looks like it belongs.
+       Isolation makes an element its own backdrop root, and an element that is
+       its own backdrop root has nothing behind it to filter, so backdrop-filter
+       silently does nothing and the pane renders as flat translucent paint.
+       backdrop-filter already establishes the stacking context the z-index: -1
+       pseudo-elements below need, so isolation would buy nothing anyway. */
+    background: var(--glass-tint);
+    -webkit-backdrop-filter: saturate(var(--glass-sat)) blur(var(--glass-frost));
+    backdrop-filter: saturate(var(--glass-sat)) blur(var(--glass-frost));
+  }
+  .glass-thin {
+    background: var(--glass-tint-thin);
+    -webkit-backdrop-filter: saturate(var(--glass-sat)) blur(var(--glass-frost-thin));
+    backdrop-filter: saturate(var(--glass-sat)) blur(var(--glass-frost-thin));
+  }
+  .glass-strong {
+    background: var(--glass-tint-strong);
+    -webkit-backdrop-filter: saturate(var(--glass-sat)) blur(var(--glass-frost-strong));
+    backdrop-filter: saturate(var(--glass-sat)) blur(var(--glass-frost-strong));
+  }
+
+  .glass::before,
+  .glass-thin::before,
+  .glass-strong::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    z-index: -1;
+    border-radius: inherit;
+    padding: 1px;
+    background: linear-gradient(135deg, var(--glass-edge-lit), var(--glass-edge-shade) 60%);
+    /* Punch the middle out so only the 1px rim paints. */
+    -webkit-mask:
+      linear-gradient(#000 0 0) content-box,
+      linear-gradient(#000 0 0);
+    mask:
+      linear-gradient(#000 0 0) content-box,
+      linear-gradient(#000 0 0);
+    -webkit-mask-composite: xor;
+    mask-composite: exclude;
+    pointer-events: none;
+  }
+
+  /* The specular band. Short, high on the pane, and gone by 40%. */
+  .glass::after,
+  .glass-strong::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    z-index: -1;
+    border-radius: inherit;
+    background: linear-gradient(160deg, var(--glass-specular), transparent 42%);
+    opacity: 0.7;
+    pointer-events: none;
+  }
+
+  /* Glass laid over the Aegean plate. Same material, light coming from behind. */
+  .glass-dark {
+    background: var(--glass-tint-dark);
+    color: var(--on-field);
+  }
+  .glass-dark::before {
+    background: linear-gradient(135deg, var(--glass-edge-lit-dark), var(--glass-edge-shade-dark) 60%);
+  }
+  .glass-dark::after {
+    opacity: 0.22;
+  }
+
+  /* ------------------------------------------------------------------ plate
+     The plate is its own container, so its parts respond to how big the plate
+     is rather than how big the window is. The same component is a 46px square
+     in a ruled row, a 178px card in a grid, and a band across a landing page. */
+  .plate {
+    container-type: size;
+  }
+
+  /* Card and below: the week is a seven-tick index along the bottom edge. */
+  .plate-figure {
+    padding-bottom: 22px;
+  }
+  .plate-week {
+    display: flex;
+    align-items: flex-end;
+    gap: 2px;
+  }
+  .plate-day {
+    flex: 1;
+    min-width: 0;
+  }
+  .plate-day > i {
+    display: block;
+    height: 3px;
+    border-radius: 2px;
+  }
+  .plate-day > b {
+    display: none;
+  }
+
+  /* Band: the index becomes the timetable. Bars take their height from the
+     hours free that day, and the days are named. 330px is a phone hero, which is
+     the plate that read as an empty void, so that is where the change happens
+     rather than at some tidier round number. */
+  @container (min-width: 330px) {
+    .plate-body {
+      padding: 20px 22px;
+    }
+    .plate-figure {
+      display: flex;
+      align-items: baseline;
+      gap: 16px;
+      padding-bottom: 20px;
+    }
+    .plate-figure > .plate-caption {
+      margin-top: 0;
+      font-size: 0.8125rem;
+    }
+    .plate-week {
+      height: min(30cqh, 88px);
+      gap: 6px;
+      /* The card-size rule bottom-aligns seven 3px ticks. Here each column has to
+         fill the track, or its `1fr` bar row collapses to the tick's own height. */
+      align-items: stretch;
+    }
+    /* Grid, not flex: a percentage height on a flex item has no definite track
+       to resolve against, so every bar collapsed to its min-height and the
+       timetable drew seven identical stubs. `1fr auto` gives the bar a real
+       track and leaves the label its own row. */
+    .plate-day {
+      display: grid;
+      grid-template-rows: 1fr auto;
+      gap: 7px;
+    }
+    .plate-day > i {
+      align-self: end;
+      height: var(--h);
+      min-height: 3px;
+      border-radius: 3px;
+      /* At this size the bar's own height carries the magnitude, so the opacity
+         that stood in for it on a card would only mute the colour. */
+      opacity: 1 !important;
+    }
+    .plate-day > b {
+      display: block;
+      font-size: 0.625rem;
+      font-weight: 600;
+      letter-spacing: 0.02em;
+      text-align: center;
+      font-variant-numeric: lining-nums tabular-nums;
+      color: var(--on-field-dim);
+    }
+  }
+
+  /* A landing band has room to breathe. */
+  @container (min-width: 620px) {
+    .plate-body {
+      padding: 28px 32px;
+    }
+    .plate-figure {
+      gap: 26px;
+      padding-bottom: 28px;
+    }
+    .plate-figure > .plate-caption {
+      font-size: 0.9375rem;
+    }
+    .plate-week {
+      height: min(34cqh, 124px);
+      gap: 12px;
+    }
+    .plate-day {
+      gap: 10px;
+    }
+    .plate-day > b {
+      font-size: 0.7188rem;
+      letter-spacing: 0.04em;
+    }
+  }
+
+  /* The kit's soft scroll edge. Where a floating glass pane sits over scrolling
+     content, the content fades out behind and below it instead of being cut off
+     by a rule or hidden under an opaque bar. The gradient runs from the page
+     colour at the top to nothing a little below the pane, and sits behind the
+     pane's own children, so what you see through the glass is page rather than
+     whatever happened to scroll under it. */
+  .scroll-edge::before {
+    content: '';
+    position: absolute;
+    left: 0;
+    right: 0;
+    /* Only far enough up to cover the safe area above the pane. Reaching higher
+       paints page colour over whatever is sitting above it at rest, which on a
+       wide screen is the masthead. */
+    top: calc(-1 * env(safe-area-inset-top, 0px));
+    bottom: -26px;
+    z-index: -1;
+    background: linear-gradient(var(--page) 0%, var(--page) 78%, transparent 100%);
+    pointer-events: none;
+  }
+
+  /* No backdrop-filter (older Firefox, some Android WebViews): fall back to an
+     opaque surface. Glass that does not blur is just a translucent smear. */
+  @supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+    .glass,
+    .glass-thin,
+    .glass-strong {
+      background: var(--surface);
+      /* Safe here: with no backdrop-filter there is no stacking context, so the
+         rim pseudo-element needs one, and nothing is being filtered to break. */
+      isolation: isolate;
+    }
+    .glass-dark {
+      background: var(--field);
+    }
+    .glass::after,
+    .glass-strong::after {
+      display: none;
+    }
+  }
+}
+
+/* Kept because the veil still carries the page background behind sticky rows
+   that must stay opaque, such as the search bar's own fallback. */
+.veil,
+.veil-page {
+  background: var(--veil);
+  -webkit-backdrop-filter: saturate(150%) blur(18px);
+  backdrop-filter: saturate(150%) blur(18px);
+}
+
+/* A default, so it lives in the base layer: a component that draws its own focus
+   state (a search field that is focused the moment it appears) has to be able to
+   replace it with a utility. Unlayered, it beat every one of them. */
+@layer base {
+  *:focus-visible {
+    outline: 2px solid var(--focus);
+    outline-offset: 2px;
+    border-radius: 2px;
+  }
+  *:focus:not(:focus-visible) {
+    outline: none;
+  }
+  /* A heading that receives focus on a route change is a reading position,
+     not a control: no ring (UX-57). */
+  h1[tabindex='-1']:focus {
+    outline: none;
+  }
+}
+
+button,
+[role='button'],
+a {
+  -webkit-tap-highlight-color: transparent;
+}
+
+input[type='range'] {
+  accent-color: var(--accent);
+}
+
+/* Small controls (chips, tabs, inline row actions) stay visually compact but
+   carry a 44px tap target. */
+.tap {
+  position: relative;
+}
+.tap::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 50%;
+  height: 44px;
+  transform: translateY(-50%);
+}
+
+/* Layout classes belong in a layer for the same reason the glass ones do: a call
+   site's `md:grid` or `md:static` has to be able to win over them. Unlayered CSS
+   beats Tailwind's utility layer outright, which is why a rail stayed a flex rail
+   on a screen wide enough to want a grid. */
+@layer components {
+  /* Horizontal rails bleed to the screen edge and snap. */
+  .rail {
+    display: flex;
+    gap: 10px;
+    overflow-x: auto;
+    scroll-snap-type: x mandatory;
+    scroll-padding-inline: 20px;
+    padding-inline: 20px;
+    margin-inline: -20px;
+    scrollbar-width: none;
+  }
+  .rail::-webkit-scrollbar {
+    display: none;
+  }
+  .rail > * {
+    scroll-snap-align: start;
+    flex: none;
+  }
+  .rail-16 {
+    display: flex;
+    gap: 10px;
+    overflow-x: auto;
+    scroll-snap-type: x mandatory;
+    scroll-padding-inline: 20px;
+    padding-inline: 20px;
+    margin-inline: -20px;
+    scrollbar-width: none;
+  }
+  .rail-16::-webkit-scrollbar {
+    display: none;
+  }
+  .rail-16 > * {
+    scroll-snap-align: start;
+    flex: none;
+  }
+
+  .no-scrollbar {
+    scrollbar-width: none;
+  }
+  .no-scrollbar::-webkit-scrollbar {
+    display: none;
+  }
+
+  /* A ruled list. Rows are separated by a hairline and nothing else: no card, no
+     shadow, no gap. The rule is the structure. */
+  .ruled > li + li,
+  .ruled > * + * {
+    border-top: 1px solid var(--line);
+  }
+}
+
+/* ------------------------------------------------------------------ motion
+   One orchestrated entrance on a screen, and motion that answers a tap.
+   Nothing fades and slides on every card.
+
+   Every one of these ends on its property's natural value, so they fill
+   `backwards` and never `forwards`. That is not a style preference. An element
+   left holding a filled opacity animation stays a backdrop root for good, and a
+   backdrop root has nothing behind it to sample, so every backdrop-filter inside
+   the screen silently stops blurring. `.anim-screen` wraps every screen, so
+   `both` here quietly disabled the glass in the entire app. */
+@keyframes cappy-screen {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+@keyframes cappy-sheet {
+  from {
+    transform: translateY(100%);
+  }
+  to {
+    transform: none;
+  }
+}
+@keyframes cappy-fade {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+@keyframes cappy-pop {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+@keyframes cappy-grow {
+  from {
+    transform: scaleY(0);
+  }
+  to {
+    transform: none;
+  }
+}
+@keyframes cappy-pulse {
+  0% {
+    transform: scale(1);
+    opacity: 0.5;
+  }
+  100% {
+    transform: scale(2.2);
+    opacity: 0;
+  }
+}
+@keyframes cappy-draw {
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+@keyframes cappy-shimmer {
+  from {
+    background-position: -180% 0;
+  }
+  to {
+    background-position: 180% 0;
+  }
+}
+
+/* Every duration and curve is a motion token (UX-8). Entries decelerate,
+   exits accelerate and take two thirds of the entry. */
+.anim-screen {
+  animation: cappy-screen var(--dur-medium) var(--ease-decelerate) backwards;
+}
+.anim-rise {
+  animation: cappy-fade var(--dur-medium) var(--ease-decelerate) backwards;
+}
+/* Sheets land on a spatial spring: a hint of settle, no bounce. */
+.anim-sheet {
+  animation: cappy-sheet var(--dur-long) var(--ease-spring-spatial) backwards;
+}
+.anim-sheet-out {
+  animation: cappy-sheet-out calc(var(--dur-long) * 2 / 3) var(--ease-accelerate) forwards;
+}
+.anim-scrim-out {
+  animation: cappy-fade-out calc(var(--dur-medium) * 2 / 3) var(--ease-accelerate) forwards;
+}
+/* A dialog (sheets at 768 px and up) scales in from 96%, fading. */
+.anim-dialog {
+  animation: cappy-dialog var(--dur-medium) var(--ease-decelerate) backwards;
+}
+.anim-dialog-out {
+  animation: cappy-dialog-out calc(var(--dur-medium) * 2 / 3) var(--ease-accelerate) forwards;
+}
+.anim-fade {
+  animation: cappy-fade var(--dur-short) var(--ease-decelerate) backwards;
+}
+.anim-pop {
+  animation: cappy-pop var(--dur-medium) var(--ease-decelerate) backwards;
+}
+.anim-grow {
+  animation: cappy-grow var(--dur-long) var(--ease-decelerate) backwards;
+  transform-origin: bottom;
+}
+.anim-draw {
+  stroke-dasharray: 32;
+  stroke-dashoffset: 32;
+  animation: cappy-draw var(--dur-long) var(--ease-standard) var(--dur-instant) forwards;
+}
+@keyframes cappy-sheet-out {
+  to {
+    transform: translateY(100%);
+  }
+}
+@keyframes cappy-fade-out {
+  to {
+    opacity: 0;
+  }
+}
+@keyframes cappy-dialog {
+  from {
+    opacity: 0;
+    transform: scale(0.96);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+@keyframes cappy-dialog-out {
+  to {
+    opacity: 0;
+    transform: scale(0.97);
+  }
+}
+
+/* Press states: what you touch answers at once (100 ms), then settles. */
+.press {
+  transition-property: background-color, border-color, color, opacity, transform, box-shadow;
+}
+.press:active:not(:disabled) {
+  transform: scale(0.97);
+  transition-duration: var(--dur-instant);
+}
+.press-soft:active {
+  transform: scale(0.99);
+  transition-duration: var(--dur-instant);
+}
+
+/* The one thing on screen that moves without being touched. */
+.pulse-ring {
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: cappy-pulse 2.4s var(--ease-out) infinite;
+}
+
+/* A skeleton appears only after 300 ms, so a fast load never flashes one
+   (NN/g: no indicator under a second). */
+.skeleton {
+  background-image: linear-gradient(90deg, var(--sunken) 0%, var(--line) 45%, var(--sunken) 90%);
+  background-size: 180% 100%;
+  animation:
+    cappy-fade var(--dur-short) var(--ease-decelerate) 300ms backwards,
+    cappy-shimmer 1.4s linear infinite;
+}
+
+/* ------------------------------------------------------------ view transitions
+   Going from a row to its detail, the plate is the shared element. */
+::view-transition-old(root),
+::view-transition-new(root) {
+  animation-duration: var(--dur-short);
+  animation-timing-function: var(--ease-standard);
+}
+::view-transition-group(hero) {
+  animation-duration: var(--dur-long);
+  animation-timing-function: var(--ease-standard);
+}
+::view-transition-old(hero),
+::view-transition-new(hero) {
+  animation: none;
+  mix-blend-mode: normal;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  overflow: clip;
+}
+::view-transition-group(dock),
+::view-transition-group(chrome) {
+  animation-duration: 0ms;
+}
+/* On phones a detail pushes in from the side and pops back out (UX-8); tabs
+   keep the crossfade above. Exits run shorter than entries. */
+@media (max-width: 767px) {
+  :root[data-nav='push']::view-transition-new(root) {
+    animation: cappy-push-in var(--dur-medium) var(--ease-decelerate) both;
+  }
+  :root[data-nav='push']::view-transition-old(root) {
+    animation: cappy-push-out var(--dur-short) var(--ease-accelerate) both;
+  }
+  :root[data-nav='pop']::view-transition-new(root) {
+    animation: cappy-pop-in var(--dur-medium) var(--ease-decelerate) both;
+  }
+  :root[data-nav='pop']::view-transition-old(root) {
+    animation: cappy-pop-out var(--dur-short) var(--ease-accelerate) both;
+  }
+}
+@keyframes cappy-push-in {
+  from { transform: translateX(28%); opacity: 0; }
+}
+@keyframes cappy-push-out {
+  to { transform: translateX(-12%); opacity: 0; }
+}
+@keyframes cappy-pop-in {
+  from { transform: translateX(-12%); opacity: 0; }
+}
+@keyframes cappy-pop-out {
+  to { transform: translateX(28%); opacity: 0; }
+}
+
+/* Reduced motion (UX-8, Apple HIG): nothing slides, scales or springs, but
+   short fades stay, because an element that pops in with no transition at all
+   is harder to follow, not easier. */
+@media (prefers-reduced-motion: reduce) {
+  .anim-screen,
+  .anim-rise,
+  .anim-sheet,
+  .anim-dialog,
+  .anim-pop,
+  .anim-grow {
+    animation: cappy-fade var(--dur-instant) linear backwards;
+  }
+  .anim-sheet-out,
+  .anim-dialog-out,
+  .anim-scrim-out {
+    animation: cappy-fade-out var(--dur-instant) linear forwards;
+  }
+  .press:active:not(:disabled),
+  .press-soft:active {
+    transform: none;
+  }
+  .skeleton {
+    animation: none;
+  }
+  .pulse-ring {
+    display: none;
+  }
+  * {
+    scroll-behavior: auto !important;
+  }
+  ::view-transition-group(*),
+  ::view-transition-old(*),
+  ::view-transition-new(*) {
+    animation-duration: var(--dur-instant) !important;
+  }
+}
+
+/* A focused field stays clear of the keyboard and the floating dock (U-26,
+   WCAG 2.4.11). With interactive-widget=resizes-content the keyboard shrinks
+   the viewport, so this margin is measured from its top. */
+input,
+textarea,
+select {
+  scroll-margin-bottom: calc(var(--dock-h, 80px) + 24px);
+}
+
+/* Dock labels run slightly condensed (Archivo's width axis) so German and
+   French words fit the 64 px cell at 360 without truncating (UX-46). */
+.dock-label {
+  font-variation-settings: 'wdth' 88;
+  letter-spacing: -0.01em;
+}
+@media (min-width: 768px) {
+  .dock-label {
+    font-variation-settings: 'wdth' 100;
+    letter-spacing: normal;
+  }
+}

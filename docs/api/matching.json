@@ -1,0 +1,1962 @@
+{
+ "components": {
+  "schemas": {
+   "Availability": {
+    "description": "A weekly schedule (H-4): the server keeps windows open from it, eight\nweeks ahead, in the listing's own time zone, so a listing never goes\ndark because nobody added windows by hand.",
+    "properties": {
+     "timeZone": {
+      "default": "Europe/Berlin",
+      "title": "Timezone",
+      "type": "string"
+     },
+     "weekly": {
+      "items": {
+       "$ref": "#/components/schemas/WeeklyHours"
+      },
+      "maxItems": 21,
+      "minItems": 1,
+      "title": "Weekly",
+      "type": "array"
+     }
+    },
+    "required": [
+     "weekly"
+    ],
+    "title": "Availability",
+    "type": "object"
+   },
+   "BatchListing": {
+    "properties": {
+     "active": {
+      "title": "Active",
+      "type": "boolean"
+     },
+     "availability": {
+      "anyOf": [
+       {
+        "$ref": "#/components/schemas/Availability"
+       },
+       {
+        "type": "null"
+       }
+      ]
+     },
+     "blurb": {
+      "title": "Blurb",
+      "type": "string"
+     },
+     "cancellationPolicy": {
+      "default": "flexible",
+      "enum": [
+       "flexible",
+       "moderate",
+       "strict"
+      ],
+      "title": "Cancellationpolicy",
+      "type": "string"
+     },
+     "category": {
+      "enum": [
+       "fabrication",
+       "additive",
+       "finishing",
+       "print",
+       "freight",
+       "warehousing",
+       "workshop",
+       "events",
+       "creator"
+      ],
+      "title": "Category",
+      "type": "string"
+     },
+     "country": {
+      "anyOf": [
+       {
+        "pattern": "^[A-Z]{2}$",
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Country"
+     },
+     "currency": {
+      "default": "EUR",
+      "enum": [
+       "EUR",
+       "GBP",
+       "CHF",
+       "SEK",
+       "NOK",
+       "DKK",
+       "PLN",
+       "CZK",
+       "HUF",
+       "RON",
+       "ISK",
+       "USD",
+       "CAD"
+      ],
+      "title": "Currency",
+      "type": "string"
+     },
+     "dayDiscountPct": {
+      "default": 0,
+      "maximum": 50.0,
+      "minimum": 0.0,
+      "title": "Daydiscountpct",
+      "type": "integer"
+     },
+     "district": {
+      "title": "District",
+      "type": "string"
+     },
+     "id": {
+      "title": "Id",
+      "type": "string"
+     },
+     "instantBook": {
+      "default": false,
+      "title": "Instantbook",
+      "type": "boolean"
+     },
+     "instructions": {
+      "title": "Instructions",
+      "type": "string"
+     },
+     "location": {
+      "anyOf": [
+       {
+        "$ref": "#/components/schemas/Location"
+       },
+       {
+        "type": "null"
+       }
+      ]
+     },
+     "machine": {
+      "title": "Machine",
+      "type": "string"
+     },
+     "materials": {
+      "anyOf": [
+       {
+        "items": {
+         "enum": [
+          "PLA",
+          "PETG",
+          "ABS",
+          "ASA",
+          "TPU",
+          "Resin",
+          "Aluminium 6061",
+          "Aluminium 7075",
+          "Stainless 304",
+          "Steel S235",
+          "Brass",
+          "POM",
+          "Acrylic",
+          "Plywood"
+         ],
+         "type": "string"
+        },
+        "type": "array"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Materials"
+     },
+     "maxDims": {
+      "$ref": "#/components/schemas/Dims"
+     },
+     "mode": {
+      "const": "batch",
+      "title": "Mode",
+      "type": "string"
+     },
+     "ownerId": {
+      "title": "Ownerid",
+      "type": "string"
+     },
+     "photos": {
+      "anyOf": [
+       {
+        "items": {
+         "type": "string"
+        },
+        "type": "array"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Photos"
+     },
+     "postalCode": {
+      "anyOf": [
+       {
+        "maxLength": 12,
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Postalcode"
+     },
+     "ratePerHour": {
+      "title": "Rateperhour",
+      "type": "integer"
+     },
+     "rules": {
+      "items": {
+       "type": "string"
+      },
+      "title": "Rules",
+      "type": "array"
+     },
+     "setupFee": {
+      "title": "Setupfee",
+      "type": "integer"
+     },
+     "setupHours": {
+      "title": "Setuphours",
+      "type": "number"
+     },
+     "title": {
+      "title": "Title",
+      "type": "string"
+     },
+     "toleranceMm": {
+      "anyOf": [
+       {
+        "type": "number"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Tolerancemm"
+     },
+     "unitsPerHour": {
+      "title": "Unitsperhour",
+      "type": "number"
+     },
+     "weekDiscountPct": {
+      "default": 0,
+      "maximum": 50.0,
+      "minimum": 0.0,
+      "title": "Weekdiscountpct",
+      "type": "integer"
+     }
+    },
+    "required": [
+     "id",
+     "ownerId",
+     "category",
+     "title",
+     "blurb",
+     "district",
+     "instructions",
+     "rules",
+     "active",
+     "mode",
+     "machine",
+     "maxDims",
+     "unitsPerHour",
+     "setupHours",
+     "ratePerHour",
+     "setupFee"
+    ],
+    "title": "BatchListing",
+    "type": "object"
+   },
+   "BatchRequest": {
+    "properties": {
+     "category": {
+      "enum": [
+       "fabrication",
+       "additive",
+       "finishing",
+       "print",
+       "freight",
+       "warehousing",
+       "workshop",
+       "events",
+       "creator"
+      ],
+      "title": "Category",
+      "type": "string"
+     },
+     "deadline": {
+      "title": "Deadline",
+      "type": "string"
+     },
+     "dims": {
+      "anyOf": [
+       {
+        "$ref": "#/components/schemas/Dims"
+       },
+       {
+        "type": "null"
+       }
+      ]
+     },
+     "district": {
+      "title": "District",
+      "type": "string"
+     },
+     "material": {
+      "anyOf": [
+       {
+        "enum": [
+         "PLA",
+         "PETG",
+         "ABS",
+         "ASA",
+         "TPU",
+         "Resin",
+         "Aluminium 6061",
+         "Aluminium 7075",
+         "Stainless 304",
+         "Steel S235",
+         "Brass",
+         "POM",
+         "Acrylic",
+         "Plywood"
+        ],
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Material"
+     },
+     "maxDistanceKm": {
+      "title": "Maxdistancekm",
+      "type": "number"
+     },
+     "mode": {
+      "const": "batch",
+      "title": "Mode",
+      "type": "string"
+     },
+     "quantity": {
+      "title": "Quantity",
+      "type": "integer"
+     },
+     "toleranceMm": {
+      "anyOf": [
+       {
+        "type": "number"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Tolerancemm"
+     }
+    },
+    "required": [
+     "mode",
+     "category",
+     "quantity",
+     "deadline",
+     "district",
+     "maxDistanceKm"
+    ],
+    "title": "BatchRequest",
+    "type": "object"
+   },
+   "Business": {
+    "description": "A trader's identity (\u00a7 5b UWG, \u00a7 312l BGB): public, so a renter knows\nwho their contract is with. People never have one.",
+    "properties": {
+     "address": {
+      "title": "Address",
+      "type": "string"
+     },
+     "legalName": {
+      "title": "Legalname",
+      "type": "string"
+     },
+     "registerNumber": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Registernumber"
+     },
+     "vatId": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Vatid"
+     }
+    },
+    "required": [
+     "legalName",
+     "address"
+    ],
+    "title": "Business",
+    "type": "object"
+   },
+   "CategoryMeta": {
+    "properties": {
+     "blurb": {
+      "title": "Blurb",
+      "type": "string"
+     },
+     "dac7": {
+      "default": "out_of_scope",
+      "title": "Dac7",
+      "type": "string"
+     },
+     "group": {
+      "enum": [
+       "make",
+       "move",
+       "equip"
+      ],
+      "title": "Group",
+      "type": "string"
+     },
+     "icon": {
+      "title": "Icon",
+      "type": "string"
+     },
+     "id": {
+      "enum": [
+       "fabrication",
+       "additive",
+       "finishing",
+       "print",
+       "freight",
+       "warehousing",
+       "workshop",
+       "events",
+       "creator"
+      ],
+      "title": "Id",
+      "type": "string"
+     },
+     "label": {
+      "title": "Label",
+      "type": "string"
+     },
+     "mode": {
+      "enum": [
+       "window",
+       "batch"
+      ],
+      "title": "Mode",
+      "type": "string"
+     },
+     "quickHours": {
+      "anyOf": [
+       {
+        "items": {
+         "type": "number"
+        },
+        "type": "array"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Quickhours"
+     },
+     "unitNoun": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Unitnoun"
+     }
+    },
+    "required": [
+     "id",
+     "label",
+     "group",
+     "mode",
+     "icon",
+     "blurb"
+    ],
+    "title": "CategoryMeta",
+    "type": "object"
+   },
+   "Dims": {
+    "description": "Bounding box in millimetres.",
+    "properties": {
+     "x": {
+      "title": "X",
+      "type": "number"
+     },
+     "y": {
+      "title": "Y",
+      "type": "number"
+     },
+     "z": {
+      "title": "Z",
+      "type": "number"
+     }
+    },
+    "required": [
+     "x",
+     "y",
+     "z"
+    ],
+    "title": "Dims",
+    "type": "object"
+   },
+   "Feasibility": {
+    "properties": {
+     "blockers": {
+      "items": {
+       "type": "string"
+      },
+      "title": "Blockers",
+      "type": "array"
+     },
+     "confidence": {
+      "title": "Confidence",
+      "type": "number"
+     },
+     "feasible": {
+      "title": "Feasible",
+      "type": "boolean"
+     },
+     "reasons": {
+      "items": {
+       "type": "string"
+      },
+      "title": "Reasons",
+      "type": "array"
+     }
+    },
+    "required": [
+     "feasible",
+     "confidence",
+     "reasons",
+     "blockers"
+    ],
+    "title": "Feasibility",
+    "type": "object"
+   },
+   "GroupMeta": {
+    "properties": {
+     "blurb": {
+      "title": "Blurb",
+      "type": "string"
+     },
+     "id": {
+      "enum": [
+       "make",
+       "move",
+       "equip"
+      ],
+      "title": "Id",
+      "type": "string"
+     },
+     "label": {
+      "title": "Label",
+      "type": "string"
+     }
+    },
+    "required": [
+     "id",
+     "label",
+     "blurb"
+    ],
+    "title": "GroupMeta",
+    "type": "object"
+   },
+   "HTTPValidationError": {
+    "properties": {
+     "detail": {
+      "items": {
+       "$ref": "#/components/schemas/ValidationError"
+      },
+      "title": "Detail",
+      "type": "array"
+     }
+    },
+    "title": "HTTPValidationError",
+    "type": "object"
+   },
+   "Location": {
+    "description": "Where a listing is (M-5). Stored exactly; answered snapped to a grid of\nabout 500 m (M-6) until a booking is accepted, like the address.",
+    "properties": {
+     "lat": {
+      "maximum": 90.0,
+      "minimum": -90.0,
+      "title": "Lat",
+      "type": "number"
+     },
+     "lng": {
+      "maximum": 180.0,
+      "minimum": -180.0,
+      "title": "Lng",
+      "type": "number"
+     }
+    },
+    "required": [
+     "lat",
+     "lng"
+    ],
+    "title": "Location",
+    "type": "object"
+   },
+   "Match": {
+    "properties": {
+     "confidence": {
+      "title": "Confidence",
+      "type": "number"
+     },
+     "distanceKm": {
+      "title": "Distancekm",
+      "type": "number"
+     },
+     "end": {
+      "title": "End",
+      "type": "string"
+     },
+     "listingId": {
+      "title": "Listingid",
+      "type": "string"
+     },
+     "ownerId": {
+      "title": "Ownerid",
+      "type": "string"
+     },
+     "quote": {
+      "$ref": "#/components/schemas/Quote"
+     },
+     "reasons": {
+      "items": {
+       "type": "string"
+      },
+      "title": "Reasons",
+      "type": "array"
+     },
+     "score": {
+      "title": "Score",
+      "type": "number"
+     },
+     "slotId": {
+      "title": "Slotid",
+      "type": "string"
+     },
+     "start": {
+      "title": "Start",
+      "type": "string"
+     }
+    },
+    "required": [
+     "listingId",
+     "ownerId",
+     "slotId",
+     "start",
+     "end",
+     "score",
+     "confidence",
+     "reasons",
+     "quote",
+     "distanceKm"
+    ],
+    "title": "Match",
+    "type": "object"
+   },
+   "MatchForOfferIn": {
+    "properties": {
+     "end": {
+      "title": "End",
+      "type": "string"
+     },
+     "extension": {
+      "default": false,
+      "title": "Extension",
+      "type": "boolean"
+     },
+     "listingId": {
+      "title": "Listingid",
+      "type": "string"
+     },
+     "requirement": {
+      "discriminator": {
+       "mapping": {
+        "batch": "#/components/schemas/BatchRequest",
+        "window": "#/components/schemas/WindowRequest"
+       },
+       "propertyName": "mode"
+      },
+      "oneOf": [
+       {
+        "$ref": "#/components/schemas/WindowRequest"
+       },
+       {
+        "$ref": "#/components/schemas/BatchRequest"
+       }
+      ],
+      "title": "Requirement"
+     },
+     "slotId": {
+      "title": "Slotid",
+      "type": "string"
+     },
+     "start": {
+      "title": "Start",
+      "type": "string"
+     }
+    },
+    "required": [
+     "requirement",
+     "listingId",
+     "slotId",
+     "start",
+     "end"
+    ],
+    "title": "MatchForOfferIn",
+    "type": "object"
+   },
+   "MatchView": {
+    "description": "A match with what a card needs to draw it: matching returns it for a\nsearch, and for the one window a buyer picked when booking.",
+    "properties": {
+     "listing": {
+      "discriminator": {
+       "mapping": {
+        "batch": "#/components/schemas/BatchListing",
+        "window": "#/components/schemas/WindowListing"
+       },
+       "propertyName": "mode"
+      },
+      "oneOf": [
+       {
+        "$ref": "#/components/schemas/WindowListing"
+       },
+       {
+        "$ref": "#/components/schemas/BatchListing"
+       }
+      ],
+      "title": "Listing"
+     },
+     "match": {
+      "$ref": "#/components/schemas/Match"
+     },
+     "owner": {
+      "$ref": "#/components/schemas/Owner"
+     }
+    },
+    "required": [
+     "match",
+     "listing",
+     "owner"
+    ],
+    "title": "MatchView",
+    "type": "object"
+   },
+   "MatchesIn": {
+    "properties": {
+     "limit": {
+      "default": 50,
+      "maximum": 100.0,
+      "minimum": 1.0,
+      "title": "Limit",
+      "type": "integer"
+     },
+     "requirement": {
+      "discriminator": {
+       "mapping": {
+        "batch": "#/components/schemas/BatchRequest",
+        "window": "#/components/schemas/WindowRequest"
+       },
+       "propertyName": "mode"
+      },
+      "oneOf": [
+       {
+        "$ref": "#/components/schemas/WindowRequest"
+       },
+       {
+        "$ref": "#/components/schemas/BatchRequest"
+       }
+      ],
+      "title": "Requirement"
+     },
+     "sort": {
+      "default": "best",
+      "enum": [
+       "best",
+       "price",
+       "soonest",
+       "nearest"
+      ],
+      "title": "Sort",
+      "type": "string"
+     }
+    },
+    "required": [
+     "requirement"
+    ],
+    "title": "MatchesIn",
+    "type": "object"
+   },
+   "Offer": {
+    "description": "A concrete bookable window: not the whole idle gap, the bit you would take.",
+    "properties": {
+     "end": {
+      "title": "End",
+      "type": "string"
+     },
+     "slotId": {
+      "title": "Slotid",
+      "type": "string"
+     },
+     "start": {
+      "title": "Start",
+      "type": "string"
+     }
+    },
+    "required": [
+     "slotId",
+     "start",
+     "end"
+    ],
+    "title": "Offer",
+    "type": "object"
+   },
+   "Owner": {
+    "properties": {
+     "business": {
+      "anyOf": [
+       {
+        "$ref": "#/components/schemas/Business"
+       },
+       {
+        "type": "null"
+       }
+      ]
+     },
+     "cancellationRate": {
+      "anyOf": [
+       {
+        "type": "number"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Cancellationrate"
+     },
+     "country": {
+      "default": "DE",
+      "title": "Country",
+      "type": "string"
+     },
+     "district": {
+      "title": "District",
+      "type": "string"
+     },
+     "id": {
+      "title": "Id",
+      "type": "string"
+     },
+     "initials": {
+      "title": "Initials",
+      "type": "string"
+     },
+     "jobsDone": {
+      "title": "Jobsdone",
+      "type": "integer"
+     },
+     "joinedYear": {
+      "title": "Joinedyear",
+      "type": "integer"
+     },
+     "kind": {
+      "enum": [
+       "person",
+       "business"
+      ],
+      "title": "Kind",
+      "type": "string"
+     },
+     "name": {
+      "title": "Name",
+      "type": "string"
+     },
+     "onTimeJobs": {
+      "title": "Ontimejobs",
+      "type": "integer"
+     },
+     "ratingSum": {
+      "title": "Ratingsum",
+      "type": "integer"
+     },
+     "renterJobs": {
+      "default": 0,
+      "title": "Renterjobs",
+      "type": "integer"
+     },
+     "renterRatingSum": {
+      "default": 0,
+      "title": "Renterratingsum",
+      "type": "integer"
+     },
+     "responseMins": {
+      "anyOf": [
+       {
+        "type": "integer"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Responsemins"
+     },
+     "responseRate": {
+      "anyOf": [
+       {
+        "type": "number"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Responserate"
+     },
+     "verified": {
+      "title": "Verified",
+      "type": "boolean"
+     }
+    },
+    "required": [
+     "id",
+     "name",
+     "initials",
+     "kind",
+     "district",
+     "verified",
+     "ratingSum",
+     "jobsDone",
+     "onTimeJobs",
+     "joinedYear"
+    ],
+    "title": "Owner",
+    "type": "object"
+   },
+   "Quote": {
+    "properties": {
+     "base": {
+      "title": "Base",
+      "type": "integer"
+     },
+     "currency": {
+      "default": "EUR",
+      "title": "Currency",
+      "type": "string"
+     },
+     "discount": {
+      "default": 0,
+      "title": "Discount",
+      "type": "integer"
+     },
+     "discountLabel": {
+      "default": "",
+      "title": "Discountlabel",
+      "type": "string"
+     },
+     "extra": {
+      "title": "Extra",
+      "type": "integer"
+     },
+     "extraLabel": {
+      "title": "Extralabel",
+      "type": "string"
+     },
+     "hours": {
+      "title": "Hours",
+      "type": "number"
+     },
+     "ownerNet": {
+      "title": "Ownernet",
+      "type": "integer"
+     },
+     "platformFee": {
+      "title": "Platformfee",
+      "type": "integer"
+     },
+     "total": {
+      "title": "Total",
+      "type": "integer"
+     }
+    },
+    "required": [
+     "hours",
+     "base",
+     "extra",
+     "extraLabel",
+     "total",
+     "platformFee",
+     "ownerNet"
+    ],
+    "title": "Quote",
+    "type": "object"
+   },
+   "QuoteIn": {
+    "properties": {
+     "listingId": {
+      "title": "Listingid",
+      "type": "string"
+     },
+     "requirement": {
+      "discriminator": {
+       "mapping": {
+        "batch": "#/components/schemas/BatchRequest",
+        "window": "#/components/schemas/WindowRequest"
+       },
+       "propertyName": "mode"
+      },
+      "oneOf": [
+       {
+        "$ref": "#/components/schemas/WindowRequest"
+       },
+       {
+        "$ref": "#/components/schemas/BatchRequest"
+       }
+      ],
+      "title": "Requirement"
+     }
+    },
+    "required": [
+     "requirement",
+     "listingId"
+    ],
+    "title": "QuoteIn",
+    "type": "object"
+   },
+   "QuoteOut": {
+    "properties": {
+     "feasibility": {
+      "$ref": "#/components/schemas/Feasibility"
+     },
+     "quote": {
+      "anyOf": [
+       {
+        "$ref": "#/components/schemas/Quote"
+       },
+       {
+        "type": "null"
+       }
+      ]
+     }
+    },
+    "required": [
+     "feasibility"
+    ],
+    "title": "QuoteOut",
+    "type": "object"
+   },
+   "Ranking": {
+    "properties": {
+     "signals": {
+      "items": {
+       "$ref": "#/components/schemas/Signal"
+      },
+      "title": "Signals",
+      "type": "array"
+     },
+     "textSearch": {
+      "title": "Textsearch",
+      "type": "string"
+     }
+    },
+    "required": [
+     "signals",
+     "textSearch"
+    ],
+    "title": "Ranking",
+    "type": "object"
+   },
+   "Signal": {
+    "properties": {
+     "description": {
+      "title": "Description",
+      "type": "string"
+     },
+     "key": {
+      "title": "Key",
+      "type": "string"
+     },
+     "weight": {
+      "title": "Weight",
+      "type": "number"
+     }
+    },
+    "required": [
+     "key",
+     "weight",
+     "description"
+    ],
+    "title": "Signal",
+    "type": "object"
+   },
+   "Spotlight": {
+    "properties": {
+     "distanceKm": {
+      "title": "Distancekm",
+      "type": "number"
+     },
+     "freeNow": {
+      "title": "Freenow",
+      "type": "boolean"
+     },
+     "fromPrice": {
+      "title": "Fromprice",
+      "type": "integer"
+     },
+     "listing": {
+      "discriminator": {
+       "mapping": {
+        "batch": "#/components/schemas/BatchListing",
+        "window": "#/components/schemas/WindowListing"
+       },
+       "propertyName": "mode"
+      },
+      "oneOf": [
+       {
+        "$ref": "#/components/schemas/WindowListing"
+       },
+       {
+        "$ref": "#/components/schemas/BatchListing"
+       }
+      ],
+      "title": "Listing"
+     },
+     "offer": {
+      "$ref": "#/components/schemas/Offer"
+     },
+     "owner": {
+      "$ref": "#/components/schemas/Owner"
+     },
+     "windowStart": {
+      "title": "Windowstart",
+      "type": "string"
+     }
+    },
+    "required": [
+     "listing",
+     "owner",
+     "offer",
+     "distanceKm",
+     "fromPrice",
+     "freeNow",
+     "windowStart"
+    ],
+    "title": "Spotlight",
+    "type": "object"
+   },
+   "ValidationError": {
+    "properties": {
+     "ctx": {
+      "title": "Context",
+      "type": "object"
+     },
+     "input": {
+      "title": "Input"
+     },
+     "loc": {
+      "items": {
+       "anyOf": [
+        {
+         "type": "string"
+        },
+        {
+         "type": "integer"
+        }
+       ]
+      },
+      "title": "Location",
+      "type": "array"
+     },
+     "msg": {
+      "title": "Message",
+      "type": "string"
+     },
+     "type": {
+      "title": "Error Type",
+      "type": "string"
+     }
+    },
+    "required": [
+     "loc",
+     "msg",
+     "type"
+    ],
+    "title": "ValidationError",
+    "type": "object"
+   },
+   "WeeklyHours": {
+    "description": "Open every week on one day (1 = Monday \u2026 7 = Sunday, ISO), local time.",
+    "properties": {
+     "day": {
+      "maximum": 7.0,
+      "minimum": 1.0,
+      "title": "Day",
+      "type": "integer"
+     },
+     "end": {
+      "pattern": "^([01]\\d|2[0-3]):[0-5]\\d$|^24:00$",
+      "title": "End",
+      "type": "string"
+     },
+     "start": {
+      "pattern": "^([01]\\d|2[0-3]):[0-5]\\d$",
+      "title": "Start",
+      "type": "string"
+     }
+    },
+    "required": [
+     "day",
+     "start",
+     "end"
+    ],
+    "title": "WeeklyHours",
+    "type": "object"
+   },
+   "WindowListing": {
+    "properties": {
+     "active": {
+      "title": "Active",
+      "type": "boolean"
+     },
+     "availability": {
+      "anyOf": [
+       {
+        "$ref": "#/components/schemas/Availability"
+       },
+       {
+        "type": "null"
+       }
+      ]
+     },
+     "blurb": {
+      "title": "Blurb",
+      "type": "string"
+     },
+     "cancellationPolicy": {
+      "default": "flexible",
+      "enum": [
+       "flexible",
+       "moderate",
+       "strict"
+      ],
+      "title": "Cancellationpolicy",
+      "type": "string"
+     },
+     "category": {
+      "enum": [
+       "fabrication",
+       "additive",
+       "finishing",
+       "print",
+       "freight",
+       "warehousing",
+       "workshop",
+       "events",
+       "creator"
+      ],
+      "title": "Category",
+      "type": "string"
+     },
+     "country": {
+      "anyOf": [
+       {
+        "pattern": "^[A-Z]{2}$",
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Country"
+     },
+     "currency": {
+      "default": "EUR",
+      "enum": [
+       "EUR",
+       "GBP",
+       "CHF",
+       "SEK",
+       "NOK",
+       "DKK",
+       "PLN",
+       "CZK",
+       "HUF",
+       "RON",
+       "ISK",
+       "USD",
+       "CAD"
+      ],
+      "title": "Currency",
+      "type": "string"
+     },
+     "dayDiscountPct": {
+      "default": 0,
+      "maximum": 50.0,
+      "minimum": 0.0,
+      "title": "Daydiscountpct",
+      "type": "integer"
+     },
+     "district": {
+      "title": "District",
+      "type": "string"
+     },
+     "extraFee": {
+      "title": "Extrafee",
+      "type": "integer"
+     },
+     "extraLabel": {
+      "title": "Extralabel",
+      "type": "string"
+     },
+     "id": {
+      "title": "Id",
+      "type": "string"
+     },
+     "instantBook": {
+      "default": false,
+      "title": "Instantbook",
+      "type": "boolean"
+     },
+     "instructions": {
+      "title": "Instructions",
+      "type": "string"
+     },
+     "location": {
+      "anyOf": [
+       {
+        "$ref": "#/components/schemas/Location"
+       },
+       {
+        "type": "null"
+       }
+      ]
+     },
+     "maxHours": {
+      "title": "Maxhours",
+      "type": "number"
+     },
+     "minHours": {
+      "title": "Minhours",
+      "type": "number"
+     },
+     "mode": {
+      "const": "window",
+      "title": "Mode",
+      "type": "string"
+     },
+     "ownerId": {
+      "title": "Ownerid",
+      "type": "string"
+     },
+     "photos": {
+      "anyOf": [
+       {
+        "items": {
+         "type": "string"
+        },
+        "type": "array"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Photos"
+     },
+     "postalCode": {
+      "anyOf": [
+       {
+        "maxLength": 12,
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Postalcode"
+     },
+     "ratePerHour": {
+      "title": "Rateperhour",
+      "type": "integer"
+     },
+     "rules": {
+      "items": {
+       "type": "string"
+      },
+      "title": "Rules",
+      "type": "array"
+     },
+     "title": {
+      "title": "Title",
+      "type": "string"
+     },
+     "weekDiscountPct": {
+      "default": 0,
+      "maximum": 50.0,
+      "minimum": 0.0,
+      "title": "Weekdiscountpct",
+      "type": "integer"
+     }
+    },
+    "required": [
+     "id",
+     "ownerId",
+     "category",
+     "title",
+     "blurb",
+     "district",
+     "instructions",
+     "rules",
+     "active",
+     "mode",
+     "ratePerHour",
+     "minHours",
+     "maxHours",
+     "extraFee",
+     "extraLabel"
+    ],
+    "title": "WindowListing",
+    "type": "object"
+   },
+   "WindowRequest": {
+    "properties": {
+     "category": {
+      "enum": [
+       "fabrication",
+       "additive",
+       "finishing",
+       "print",
+       "freight",
+       "warehousing",
+       "workshop",
+       "events",
+       "creator"
+      ],
+      "title": "Category",
+      "type": "string"
+     },
+     "district": {
+      "title": "District",
+      "type": "string"
+     },
+     "earliest": {
+      "title": "Earliest",
+      "type": "string"
+     },
+     "hours": {
+      "title": "Hours",
+      "type": "number"
+     },
+     "latest": {
+      "title": "Latest",
+      "type": "string"
+     },
+     "maxDistanceKm": {
+      "title": "Maxdistancekm",
+      "type": "number"
+     },
+     "mode": {
+      "const": "window",
+      "title": "Mode",
+      "type": "string"
+     }
+    },
+    "required": [
+     "mode",
+     "category",
+     "hours",
+     "earliest",
+     "latest",
+     "district",
+     "maxDistanceKm"
+    ],
+    "title": "WindowRequest",
+    "type": "object"
+   }
+  }
+ },
+ "info": {
+  "title": "Cappy matching",
+  "version": "1.0.0"
+ },
+ "openapi": "3.1.0",
+ "paths": {
+  "/browse/spotlight": {
+   "get": {
+    "description": "What is genuinely free near you soon, across every category.",
+    "operationId": "spotlight_browse_spotlight_get",
+    "parameters": [
+     {
+      "in": "query",
+      "name": "district",
+      "required": true,
+      "schema": {
+       "title": "District",
+       "type": "string"
+      }
+     },
+     {
+      "in": "query",
+      "name": "maxKm",
+      "required": false,
+      "schema": {
+       "default": 10,
+       "exclusiveMinimum": 0,
+       "maximum": 500,
+       "title": "Maxkm",
+       "type": "number"
+      }
+     },
+     {
+      "in": "query",
+      "name": "withinHours",
+      "required": false,
+      "schema": {
+       "default": 24,
+       "exclusiveMinimum": 0,
+       "maximum": 336,
+       "title": "Withinhours",
+       "type": "number"
+      }
+     },
+     {
+      "in": "query",
+      "name": "limit",
+      "required": false,
+      "schema": {
+       "default": 12,
+       "maximum": 60,
+       "minimum": 1,
+       "title": "Limit",
+       "type": "integer"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "items": {
+          "$ref": "#/components/schemas/Spotlight"
+         },
+         "title": "Response Spotlight Browse Spotlight Get",
+         "type": "array"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Spotlight"
+   }
+  },
+  "/categories": {
+   "get": {
+    "operationId": "list_categories_categories_get",
+    "parameters": [
+     {
+      "in": "query",
+      "name": "group",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "Group"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "items": {
+          "$ref": "#/components/schemas/CategoryMeta"
+         },
+         "title": "Response List Categories Categories Get",
+         "type": "array"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "List Categories"
+   }
+  },
+  "/feasibility": {
+   "post": {
+    "operationId": "feasibility_feasibility_post",
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/QuoteIn"
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Feasibility"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Feasibility"
+   }
+  },
+  "/groups": {
+   "get": {
+    "operationId": "list_groups_groups_get",
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "items": {
+          "$ref": "#/components/schemas/GroupMeta"
+         },
+         "title": "Response List Groups Groups Get",
+         "type": "array"
+        }
+       }
+      },
+      "description": "Successful Response"
+     }
+    },
+    "summary": "List Groups"
+   }
+  },
+  "/internal/match-for-offer": {
+   "post": {
+    "description": "The match for a window the buyer chose. The quote is computed here, never\ntrusted from the client, and the window must still be free.",
+    "operationId": "match_for_offer_route_internal_match_for_offer_post",
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/MatchForOfferIn"
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/MatchView"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Match For Offer Route"
+   }
+  },
+  "/listings/{listing_id}/offers": {
+   "get": {
+    "description": "Every start that fits ``hours`` of work, excluding what is already booked.",
+    "operationId": "offers_listings__listing_id__offers_get",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "listing_id",
+      "required": true,
+      "schema": {
+       "title": "Listing Id",
+       "type": "string"
+      }
+     },
+     {
+      "in": "query",
+      "name": "hours",
+      "required": true,
+      "schema": {
+       "exclusiveMinimum": 0,
+       "maximum": 2160,
+       "title": "Hours",
+       "type": "number"
+      }
+     },
+     {
+      "in": "query",
+      "name": "from",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "From"
+      }
+     },
+     {
+      "in": "query",
+      "name": "until",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "Until"
+      }
+     },
+     {
+      "in": "query",
+      "name": "limit",
+      "required": false,
+      "schema": {
+       "default": 60,
+       "maximum": 500,
+       "minimum": 1,
+       "title": "Limit",
+       "type": "integer"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "items": {
+          "$ref": "#/components/schemas/Offer"
+         },
+         "title": "Response Offers Listings  Listing Id  Offers Get",
+         "type": "array"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Offers"
+   }
+  },
+  "/matches": {
+   "post": {
+    "description": "Ranked capacity for a requirement. Your own listings are never results.",
+    "operationId": "matches_matches_post",
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/MatchesIn"
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "items": {
+          "$ref": "#/components/schemas/MatchView"
+         },
+         "title": "Response Matches Matches Post",
+         "type": "array"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Matches"
+   }
+  },
+  "/quote": {
+   "post": {
+    "operationId": "quote_quote_post",
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/QuoteIn"
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/QuoteOut"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Quote"
+   }
+  },
+  "/ranking": {
+   "get": {
+    "description": "How results are ordered, from the weights the ranker uses (H-2).",
+    "operationId": "ranking_ranking_get",
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Ranking"
+        }
+       }
+      },
+      "description": "Successful Response"
+     }
+    },
+    "summary": "Ranking"
+   }
+  },
+  "/review-tags": {
+   "get": {
+    "operationId": "list_review_tags_review_tags_get",
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "items": {
+          "type": "string"
+         },
+         "title": "Response List Review Tags Review Tags Get",
+         "type": "array"
+        }
+       }
+      },
+      "description": "Successful Response"
+     }
+    },
+    "summary": "List Review Tags"
+   }
+  }
+ }
+}

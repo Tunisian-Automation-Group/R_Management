@@ -8,3 +8,26 @@ __MACOSX/
 # Secrets live next to their .env.example, never in git
 .env
 .env.local
+
+# Local-only credentials (LocalStack auth token, Stripe test keys). Never committed.
+.env.*
+!.env.example
+*.pem
+terraform.tfstate*
+.terraform/
+
+# What the local bootstrap writes (pool ids, generated per machine)
+.local/
+
+# Terraform local state from the LocalStack proof
+infra/localstack/terraform.tfstate*
+infra/**/.terraform.lock.hcl.bak
+infra/platform/.build/
+__pycache__/
+
+# Operator settings (legal identity etc.): never in git
+*.tfvars
+!*.example.tfvars
+
+# Agent worktrees (local only)
+.claude/worktrees/

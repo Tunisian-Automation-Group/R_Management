@@ -41,3 +41,13 @@ def iso_from_datetime(dt: datetime) -> str:
     if dt.tzinfo is None:
         dt = dt.replace(tzinfo=UTC)
     return iso_from_ms(int(round(dt.timestamp() * 1000)))
+
+
+def dt_from_iso(iso: str) -> datetime:
+    """An aware UTC datetime from an ISO-8601 string (naive taken as UTC)."""
+    dt = datetime.fromisoformat(iso.replace("Z", "+00:00"))
+    return dt.replace(tzinfo=UTC) if dt.tzinfo is None else dt.astimezone(UTC)
+
+
+def dt_from_ms(ms: int) -> datetime:
+    return datetime.fromtimestamp(ms / 1000, tz=UTC)

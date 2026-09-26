@@ -297,6 +297,126 @@
       "country": "PT",
       "lat": 38.75,
       "lng": -9.2
+    },
+    {
+      "name": "Neubau",
+      "city": "Wien",
+      "metro": "Wien",
+      "country": "AT",
+      "lat": 48.202,
+      "lng": 16.349
+    },
+    {
+      "name": "Lend",
+      "city": "Graz",
+      "metro": "Graz",
+      "country": "AT",
+      "lat": 47.077,
+      "lng": 15.428
+    },
+    {
+      "name": "Urfahr",
+      "city": "Linz",
+      "metro": "Linz",
+      "country": "AT",
+      "lat": 48.316,
+      "lng": 14.287
+    },
+    {
+      "name": "Salzburg-Altstadt",
+      "city": "Salzburg",
+      "metro": "Salzburg",
+      "country": "AT",
+      "lat": 47.799,
+      "lng": 13.044
+    },
+    {
+      "name": "Wilten",
+      "city": "Innsbruck",
+      "metro": "Innsbruck",
+      "country": "AT",
+      "lat": 47.256,
+      "lng": 11.394
+    },
+    {
+      "name": "Zürich-Kreis 5",
+      "city": "Zürich",
+      "metro": "Zürich",
+      "country": "CH",
+      "lat": 47.388,
+      "lng": 8.52
+    },
+    {
+      "name": "Plainpalais",
+      "city": "Genève",
+      "metro": "Genève",
+      "country": "CH",
+      "lat": 46.197,
+      "lng": 6.141
+    },
+    {
+      "name": "Kleinbasel",
+      "city": "Basel",
+      "metro": "Basel",
+      "country": "CH",
+      "lat": 47.565,
+      "lng": 7.598
+    },
+    {
+      "name": "Länggasse",
+      "city": "Bern",
+      "metro": "Bern",
+      "country": "CH",
+      "lat": 46.957,
+      "lng": 7.431
+    },
+    {
+      "name": "Flon",
+      "city": "Lausanne",
+      "metro": "Lausanne",
+      "country": "CH",
+      "lat": 46.521,
+      "lng": 6.629
+    },
+    {
+      "name": "Altona",
+      "city": "Hamburg",
+      "metro": "Hamburg",
+      "country": "DE",
+      "lat": 53.5503,
+      "lng": 9.9357
+    },
+    {
+      "name": "Maxvorstadt",
+      "city": "München",
+      "metro": "München",
+      "country": "DE",
+      "lat": 48.1508,
+      "lng": 11.57
+    },
+    {
+      "name": "Ehrenfeld",
+      "city": "Köln",
+      "metro": "Köln",
+      "country": "DE",
+      "lat": 50.9492,
+      "lng": 6.9165
+    },
+    {
+      "name": "Bockenheim",
+      "city": "Frankfurt am Main",
+      "metro": "Frankfurt am Main",
+      "country": "DE",
+      "lat": 50.1206,
+      "lng": 8.6499
+    },
+    {
+      "name": "Plagwitz",
+      "city": "Leipzig",
+      "metro": "Leipzig",
+      "country": "DE",
+      "lat": 51.3285,
+      "lng": 12.3346
     }
   ],
   "owners": [
@@ -428,7 +548,13 @@
       "jobsDone": 30,
       "onTimeJobs": 29,
       "joinedYear": 2024,
-      "responseMins": 90
+      "responseMins": 90,
+      "business": {
+        "legalName": "Prächtig Präzision GmbH",
+        "address": "Friedrich-Engels-Straße 57, 14473 Potsdam",
+        "registerNumber": "HRB 27494 B",
+        "vatId": "DE587966073"
+      }
     },
     {
       "id": "b2",
@@ -441,7 +567,13 @@
       "jobsDone": 0,
       "onTimeJobs": 0,
       "joinedYear": 2026,
-      "responseMins": 120
+      "responseMins": 120,
+      "business": {
+        "legalName": "Havel Zerspanung GmbH",
+        "address": "Magdeburger Landstraße 33, 14770 Brandenburg a.d.H.",
+        "registerNumber": "HRB 55054 B",
+        "vatId": "DE243286559"
+      }
     },
     {
       "id": "b3",
@@ -454,7 +586,13 @@
       "jobsDone": 22,
       "onTimeJobs": 20,
       "joinedYear": 2024,
-      "responseMins": 110
+      "responseMins": 110,
+      "business": {
+        "legalName": "Metallbau Sturm GmbH",
+        "address": "Industriestraße 54, 14974 Ludwigsfelde",
+        "registerNumber": "HRB 52367 B",
+        "vatId": "DE384266421"
+      }
     },
     {
       "id": "b4",
@@ -467,7 +605,13 @@
       "jobsDone": 17,
       "onTimeJobs": 15,
       "joinedYear": 2025,
-      "responseMins": 75
+      "responseMins": 75,
+      "business": {
+        "legalName": "Spandauer Werkstatt GmbH",
+        "address": "Freiheit 33, 13597 Berlin",
+        "registerNumber": "HRB 64365 B",
+        "vatId": "DE515724509"
+      }
     },
     {
       "id": "b5",
@@ -480,7 +624,13 @@
       "jobsDone": 12,
       "onTimeJobs": 11,
       "joinedYear": 2025,
-      "responseMins": 95
+      "responseMins": 95,
+      "business": {
+        "legalName": "Blechwerk Oranienburg GmbH",
+        "address": "Sachsenhausener Straße 28, 16515 Oranienburg",
+        "registerNumber": "HRB 40913 B",
+        "vatId": "DE777514217"
+      }
     },
     {
       "id": "b6",
@@ -493,7 +643,13 @@
       "jobsDone": 10,
       "onTimeJobs": 9,
       "joinedYear": 2025,
-      "responseMins": 140
+      "responseMins": 140,
+      "business": {
+        "legalName": "KW Kunststofftechnik GmbH",
+        "address": "Storkower Straße 22, 15711 Königs Wusterhausen",
+        "registerNumber": "HRB 72787 B",
+        "vatId": "DE112760776"
+      }
     },
     {
       "id": "b7",
@@ -506,7 +662,13 @@
       "jobsDone": 19,
       "onTimeJobs": 18,
       "joinedYear": 2024,
-      "responseMins": 80
+      "responseMins": 80,
+      "business": {
+        "legalName": "Oberflächen Teltow GmbH",
+        "address": "Oderstraße 11, 14513 Teltow",
+        "registerNumber": "HRB 52360 B",
+        "vatId": "DE576628415"
+      }
     },
     {
       "id": "b8",
@@ -519,7 +681,13 @@
       "jobsDone": 13,
       "onTimeJobs": 12,
       "joinedYear": 2025,
-      "responseMins": 105
+      "responseMins": 105,
+      "business": {
+        "legalName": "Härterei Spandau GmbH",
+        "address": "Freiheit 67, 13597 Berlin",
+        "registerNumber": "HRB 31960 B",
+        "vatId": "DE102449119"
+      }
     },
     {
       "id": "o18",
@@ -558,7 +726,13 @@
       "jobsDone": 18,
       "onTimeJobs": 17,
       "joinedYear": 2024,
-      "responseMins": 65
+      "responseMins": 65,
+      "business": {
+        "legalName": "Signal Druck GmbH",
+        "address": "Turmstraße 12, 10559 Berlin",
+        "registerNumber": "HRB 82316 B",
+        "vatId": "DE223355375"
+      }
     },
     {
       "id": "o20",
@@ -584,7 +758,13 @@
       "jobsDone": 23,
       "onTimeJobs": 22,
       "joinedYear": 2024,
-      "responseMins": 70
+      "responseMins": 70,
+      "business": {
+        "legalName": "Havelspedition GmbH",
+        "address": "Sachsenhausener Straße 39, 16515 Oranienburg",
+        "registerNumber": "HRB 11138 B",
+        "vatId": "DE393114885"
+      }
     },
     {
       "id": "b11",
@@ -597,7 +777,13 @@
       "jobsDone": 0,
       "onTimeJobs": 0,
       "joinedYear": 2026,
-      "responseMins": 115
+      "responseMins": 115,
+      "business": {
+        "legalName": "Nord-Süd Logistik GmbH",
+        "address": "Industriestraße 59, 14974 Ludwigsfelde",
+        "registerNumber": "HRB 46189 B",
+        "vatId": "DE257625088"
+      }
     },
     {
       "id": "b12",
@@ -610,7 +796,13 @@
       "jobsDone": 16,
       "onTimeJobs": 15,
       "joinedYear": 2025,
-      "responseMins": 90
+      "responseMins": 90,
+      "business": {
+        "legalName": "Lagerhaus Schönefeld GmbH",
+        "address": "Mittelstraße 61, 12529 Schönefeld",
+        "registerNumber": "HRB 92944 B",
+        "vatId": "DE831774290"
+      }
     },
     {
       "id": "b13",
@@ -623,7 +815,13 @@
       "jobsDone": 8,
       "onTimeJobs": 8,
       "joinedYear": 2025,
-      "responseMins": 125
+      "responseMins": 125,
+      "business": {
+        "legalName": "Kühlhaus Treptow GmbH",
+        "address": "Rudower Chaussee 54, 12489 Berlin",
+        "registerNumber": "HRB 61739 B",
+        "vatId": "DE766253413"
+      }
     },
     {
       "id": "o21",
@@ -649,7 +847,13 @@
       "jobsDone": 18,
       "onTimeJobs": 17,
       "joinedYear": 2024,
-      "responseMins": 85
+      "responseMins": 85,
+      "business": {
+        "legalName": "Wasserstrahl Adlershof GmbH",
+        "address": "Rudower Chaussee 14, 12489 Berlin",
+        "registerNumber": "HRB 11658 B",
+        "vatId": "DE101813617"
+      }
     },
     {
       "id": "b15",
@@ -662,7 +866,13 @@
       "jobsDone": 14,
       "onTimeJobs": 13,
       "joinedYear": 2025,
-      "responseMins": 100
+      "responseMins": 100,
+      "business": {
+        "legalName": "Erodiertechnik Marzahn GmbH",
+        "address": "Storkower Straße 30, 15711 Königs Wusterhausen",
+        "registerNumber": "HRB 57532 B",
+        "vatId": "DE115414261"
+      }
     },
     {
       "id": "b16",
@@ -675,7 +885,13 @@
       "jobsDone": 0,
       "onTimeJobs": 0,
       "joinedYear": 2026,
-      "responseMins": 110
+      "responseMins": 110,
+      "business": {
+        "legalName": "Abkantwerk Velten GmbH",
+        "address": "Sachsenhausener Straße 27, 16515 Oranienburg",
+        "registerNumber": "HRB 54032 B",
+        "vatId": "DE887604668"
+      }
     },
     {
       "id": "b17",
@@ -688,7 +904,13 @@
       "jobsDone": 10,
       "onTimeJobs": 10,
       "joinedYear": 2025,
-      "responseMins": 92
+      "responseMins": 92,
+      "business": {
+        "legalName": "Rohrbiegerei Nord GmbH",
+        "address": "Freiheit 11, 13597 Berlin",
+        "registerNumber": "HRB 88071 B",
+        "vatId": "DE135162263"
+      }
     },
     {
       "id": "b18",
@@ -701,7 +923,13 @@
       "jobsDone": 17,
       "onTimeJobs": 16,
       "joinedYear": 2024,
-      "responseMins": 88
+      "responseMins": 88,
+      "business": {
+        "legalName": "Galvanik Lichtenberg GmbH",
+        "address": "Rudower Chaussee 12, 12489 Berlin",
+        "registerNumber": "HRB 62698 B",
+        "vatId": "DE102748256"
+      }
     },
     {
       "id": "b19",
@@ -714,7 +942,13 @@
       "jobsDone": 9,
       "onTimeJobs": 8,
       "joinedYear": 2025,
-      "responseMins": 97
+      "responseMins": 97,
+      "business": {
+        "legalName": "Strahltechnik Teltow GmbH",
+        "address": "Oderstraße 71, 14513 Teltow",
+        "registerNumber": "HRB 15337 B",
+        "vatId": "DE103463373"
+      }
     },
     {
       "id": "b20",
@@ -727,7 +961,13 @@
       "jobsDone": 12,
       "onTimeJobs": 12,
       "joinedYear": 2025,
-      "responseMins": 105
+      "responseMins": 105,
+      "business": {
+        "legalName": "Kaltlager Schönefeld GmbH",
+        "address": "Mittelstraße 20, 12529 Schönefeld",
+        "registerNumber": "HRB 67243 B",
+        "vatId": "DE388347501"
+      }
     },
     {
       "id": "b21",
@@ -740,7 +980,13 @@
       "jobsDone": 20,
       "onTimeJobs": 19,
       "joinedYear": 2024,
-      "responseMins": 60
+      "responseMins": 60,
+      "business": {
+        "legalName": "Pickpack Ludwigsfelde GmbH",
+        "address": "Industriestraße 25, 14974 Ludwigsfelde",
+        "registerNumber": "HRB 30954 B",
+        "vatId": "DE525313666"
+      }
     },
     {
       "id": "b22",
@@ -753,7 +999,13 @@
       "jobsDone": 15,
       "onTimeJobs": 14,
       "joinedYear": 2025,
-      "responseMins": 55
+      "responseMins": 55,
+      "business": {
+        "legalName": "Bogendruck Kreuzberg GmbH",
+        "address": "Oranienstraße 10, 10999 Berlin",
+        "registerNumber": "HRB 11173 B",
+        "vatId": "DE344717836"
+      }
     },
     {
       "id": "o22",
@@ -896,7 +1148,13 @@
       "jobsDone": 12,
       "onTimeJobs": 11,
       "joinedYear": 2025,
-      "responseMins": 95
+      "responseMins": 95,
+      "business": {
+        "legalName": "Haven Opslag BV",
+        "address": "Johan van Hasseltweg 21, 1022 WZ Amsterdam",
+        "registerNumber": "KvK 33180228",
+        "vatId": "NL176876865B01"
+      }
     },
     {
       "id": "n5",
@@ -909,7 +1167,13 @@
       "jobsDone": 24,
       "onTimeJobs": 23,
       "joinedYear": 2024,
-      "responseMins": 85
+      "responseMins": 85,
+      "business": {
+        "legalName": "Brainport Precisie BV",
+        "address": "Torenallee 34, 5617 BC Eindhoven",
+        "registerNumber": "KvK 32503695",
+        "vatId": "NL877060579B01"
+      }
     },
     {
       "id": "f1",
@@ -948,7 +1212,13 @@
       "jobsDone": 19,
       "onTimeJobs": 17,
       "joinedYear": 2025,
-      "responseMins": 100
+      "responseMins": 100,
+      "business": {
+        "legalName": "Rhône Tournage SAS",
+        "address": "Avenue Salvador Allende 3, 69120 Vaulx-en-Velin",
+        "registerNumber": "RCS 106681445",
+        "vatId": "FR29490364131"
+      }
     },
     {
       "id": "f6",
@@ -961,7 +1231,13 @@
       "jobsDone": 14,
       "onTimeJobs": 14,
       "joinedYear": 2025,
-      "responseMins": 75
+      "responseMins": 75,
+      "business": {
+        "legalName": "Transports Rhône-Sud SAS",
+        "address": "Avenue Salvador Allende 29, 69120 Vaulx-en-Velin",
+        "registerNumber": "RCS 304297519",
+        "vatId": "FR67175754445"
+      }
     },
     {
       "id": "i3",
@@ -1000,7 +1276,13 @@
       "jobsDone": 27,
       "onTimeJobs": 26,
       "joinedYear": 2024,
-      "responseMins": 95
+      "responseMins": 95,
+      "business": {
+        "legalName": "Valtrompia Meccanica Srl",
+        "address": "Via Montini 41, 25065 Lumezzane",
+        "registerNumber": "REA 571677",
+        "vatId": "IT28897827099"
+      }
     },
     {
       "id": "i6",
@@ -1013,7 +1295,13 @@
       "jobsDone": 0,
       "onTimeJobs": 0,
       "joinedYear": 2026,
-      "responseMins": 130
+      "responseMins": 130,
+      "business": {
+        "legalName": "Acciaio Lumezzane Srl",
+        "address": "Via Montini 26, 25065 Lumezzane",
+        "registerNumber": "REA 114029",
+        "vatId": "IT11019562164"
+      }
     },
     {
       "id": "i7",
@@ -1026,7 +1314,13 @@
       "jobsDone": 20,
       "onTimeJobs": 19,
       "joinedYear": 2024,
-      "responseMins": 88
+      "responseMins": 88,
+      "business": {
+        "legalName": "Galvanica Valtrompia Srl",
+        "address": "Via Montini 41, 25065 Lumezzane",
+        "registerNumber": "REA 479987",
+        "vatId": "IT83598394144"
+      }
     },
     {
       "id": "p2",
@@ -1091,7 +1385,13 @@
       "jobsDone": 17,
       "onTimeJobs": 17,
       "joinedYear": 2024,
-      "responseMins": 78
+      "responseMins": 78,
+      "business": {
+        "legalName": "Randstad Koeltransport BV",
+        "address": "Westerstraat 74, 1015 MN Amsterdam",
+        "registerNumber": "KvK 46504147",
+        "vatId": "NL101221438B01"
+      }
     },
     {
       "id": "n9",
@@ -1104,7 +1404,13 @@
       "jobsDone": 0,
       "onTimeJobs": 0,
       "joinedYear": 2026,
-      "responseMins": 105
+      "responseMins": 105,
+      "business": {
+        "legalName": "Eindhoven Additive BV",
+        "address": "Torenallee 72, 5617 BC Eindhoven",
+        "registerNumber": "KvK 41146984",
+        "vatId": "NL110397841B01"
+      }
     },
     {
       "id": "f7",
@@ -1130,7 +1436,13 @@
       "jobsDone": 9,
       "onTimeJobs": 9,
       "joinedYear": 2025,
-      "responseMins": 48
+      "responseMins": 48,
+      "business": {
+        "legalName": "Atelier Sérigraphie Nord",
+        "address": "Rue de Paris 55, 93100 Paris",
+        "registerNumber": "RCS 124844842",
+        "vatId": "FR73643788032"
+      }
     },
     {
       "id": "f9",
@@ -1143,7 +1455,13 @@
       "jobsDone": 16,
       "onTimeJobs": 15,
       "joinedYear": 2024,
-      "responseMins": 92
+      "responseMins": 92,
+      "business": {
+        "legalName": "Traitement Rhône SAS",
+        "address": "Avenue Salvador Allende 36, 69120 Vaulx-en-Velin",
+        "registerNumber": "RCS 611979335",
+        "vatId": "FR61214879928"
+      }
     },
     {
       "id": "i8",
@@ -1169,7 +1487,13 @@
       "jobsDone": 14,
       "onTimeJobs": 14,
       "joinedYear": 2024,
-      "responseMins": 50
+      "responseMins": 50,
+      "business": {
+        "legalName": "Stampa Isola Srl",
+        "address": "Via Borsieri 4, 20159 Milan",
+        "registerNumber": "REA 235644",
+        "vatId": "IT66502461891"
+      }
     },
     {
       "id": "i10",
@@ -1182,7 +1506,13 @@
       "jobsDone": 0,
       "onTimeJobs": 0,
       "joinedYear": 2026,
-      "responseMins": 118
+      "responseMins": 118,
+      "business": {
+        "legalName": "Logistica Brescia Srl",
+        "address": "Via Montini 53, 25065 Lumezzane",
+        "registerNumber": "REA 350839",
+        "vatId": "IT77900602548"
+      }
     },
     {
       "id": "p5",
@@ -1208,7 +1538,41 @@
       "jobsDone": 13,
       "onTimeJobs": 13,
       "joinedYear": 2025,
-      "responseMins": 68
+      "responseMins": 68,
+      "business": {
+        "legalName": "Tejo Fulfilment Lda",
+        "address": "Rua do Açúcar 57, 1950-010 Lisbon",
+        "registerNumber": "NIPC 676922242",
+        "vatId": "PT111008994"
+      }
+    },
+    {
+      "id": "ch1",
+      "name": "Lea Brunner",
+      "initials": "LB",
+      "kind": "person",
+      "district": "Zürich-Kreis 5",
+      "country": "CH",
+      "verified": true,
+      "ratingSum": 0,
+      "jobsDone": 0,
+      "onTimeJobs": 0,
+      "joinedYear": 2025,
+      "responseMins": 25
+    },
+    {
+      "id": "at1",
+      "name": "Jakob Huber",
+      "initials": "JH",
+      "kind": "person",
+      "district": "Neubau",
+      "country": "AT",
+      "verified": true,
+      "ratingSum": 0,
+      "jobsDone": 0,
+      "onTimeJobs": 0,
+      "joinedYear": 2026,
+      "responseMins": 40
     }
   ],
   "listings": [
@@ -3520,6 +3884,51 @@
         "https://images.unsplash.com/photo-1611273426858-450d8e3c9fce?w=900&q=70&auto=format&fit=crop",
         "https://images.unsplash.com/photo-1581092160562-40aa08e78837?w=900&q=70&auto=format&fit=crop"
       ]
+    },
+    {
+      "id": "ch-l1",
+      "ownerId": "ch1",
+      "category": "workshop",
+      "mode": "window",
+      "title": "Makita track saw with 1.5 m rail",
+      "blurb": "Straight cuts in panels, with a dust bag.",
+      "district": "Zürich-Kreis 5",
+      "ratePerHour": 900,
+      "currency": "CHF",
+      "minHours": 2,
+      "maxHours": 8,
+      "extraFee": 0,
+      "extraLabel": "No extras",
+      "instructions": "Collect from the courtyard workshop; ring Brunner.",
+      "rules": [
+        "Back the same day"
+      ],
+      "active": true,
+      "photos": [
+        "https://images.unsplash.com/photo-1621905251189-08b45d6a269e?w=900&q=70&auto=format&fit=crop"
+      ]
+    },
+    {
+      "id": "at-l1",
+      "ownerId": "at1",
+      "category": "workshop",
+      "mode": "window",
+      "title": "Bosch cordless drill set",
+      "blurb": "Two batteries, bits and a case.",
+      "district": "Neubau",
+      "ratePerHour": 300,
+      "minHours": 2,
+      "maxHours": 8,
+      "extraFee": 0,
+      "extraLabel": "No extras",
+      "instructions": "Pick up at the door, Huber on the bell.",
+      "rules": [
+        "Charge the batteries before returning"
+      ],
+      "active": true,
+      "photos": [
+        "https://images.unsplash.com/photo-1517420704952-d9f39e95b43e?w=900&q=70&auto=format&fit=crop"
+      ]
     }
   ],
   "slots": [
@@ -5272,6 +5681,34 @@
       "startHour": 0,
       "endHour": 1440,
       "hoursUsable": 1440
+    },
+    {
+      "id": "w251",
+      "listingId": "ch-l1",
+      "startHour": 41,
+      "endHour": 49,
+      "hoursUsable": 8
+    },
+    {
+      "id": "w252",
+      "listingId": "ch-l1",
+      "startHour": 89,
+      "endHour": 97,
+      "hoursUsable": 8
+    },
+    {
+      "id": "w253",
+      "listingId": "at-l1",
+      "startHour": 41,
+      "endHour": 49,
+      "hoursUsable": 8
+    },
+    {
+      "id": "w254",
+      "listingId": "at-l1",
+      "startHour": 113,
+      "endHour": 121,
+      "hoursUsable": 8
     }
   ],
   "reviews": [
@@ -9340,5 +9777,87 @@
       ],
       "atHour": -1440
     }
-  ]
+  ],
+  "listingAddresses": {
+    "l8": "Müllerstraße 11, 13353 Berlin",
+    "l9": "Tempelhofer Damm 22, 12099 Berlin",
+    "l12": "Turmstraße 11, 10559 Berlin",
+    "l13": "Kastanienallee 28, 10435 Berlin",
+    "l14": "Freiheit 30, 13597 Berlin",
+    "l15": "Weserstraße 48, 12045 Berlin",
+    "l16": "Oranienstraße 89, 10999 Berlin",
+    "l17": "Weserstraße 11, 12045 Berlin",
+    "l18": "Boxhagener Straße 12, 10245 Berlin",
+    "l19": "Friedrich-Engels-Straße 93, 14473 Potsdam",
+    "l20": "Magdeburger Landstraße 12, 14770 Brandenburg a.d.H.",
+    "l21": "Industriestraße 15, 14974 Ludwigsfelde",
+    "l22": "Freiheit 13, 13597 Berlin",
+    "l23": "Sachsenhausener Straße 72, 16515 Oranienburg",
+    "l24": "Storkower Straße 11, 15711 Königs Wusterhausen",
+    "l25": "Oderstraße 71, 14513 Teltow",
+    "l26": "Freiheit 44, 13597 Berlin",
+    "l27": "Weserstraße 67, 12045 Berlin",
+    "l28": "Boxhagener Straße 12, 10245 Berlin",
+    "l29": "Turmstraße 12, 10559 Berlin",
+    "l30": "Müllerstraße 83, 13353 Berlin",
+    "l31": "Sachsenhausener Straße 45, 16515 Oranienburg",
+    "l32": "Industriestraße 54, 14974 Ludwigsfelde",
+    "l33": "Mittelstraße 73, 12529 Schönefeld",
+    "l34": "Rudower Chaussee 37, 12489 Berlin",
+    "l36": "Rudower Chaussee 21, 12489 Berlin",
+    "l37": "Storkower Straße 78, 15711 Königs Wusterhausen",
+    "l38": "Sachsenhausener Straße 15, 16515 Oranienburg",
+    "l39": "Freiheit 26, 13597 Berlin",
+    "l40": "Müllerstraße 52, 13353 Berlin",
+    "l41": "Industriestraße 78, 14974 Ludwigsfelde",
+    "l42": "Weserstraße 99, 12045 Berlin",
+    "l43": "Torenallee 12, 5617 BC Eindhoven",
+    "l44": "Rudower Chaussee 71, 12489 Berlin",
+    "l45": "Oderstraße 12, 14513 Teltow",
+    "l46": "Avenue Salvador Allende 11, 69120 Vaulx-en-Velin",
+    "l47": "Oranienstraße 56, 10999 Berlin",
+    "l48": "Rue de Paris 75, 93100 Paris",
+    "l49": "Via Borsieri 15, 20159 Milan",
+    "l50": "Florastraße 14, 13187 Berlin",
+    "l51": "Westerstraat 87, 1015 MN Amsterdam",
+    "l52": "Via Montini 23, 25065 Lumezzane",
+    "l53": "Boxhagener Straße 46, 10245 Berlin",
+    "l54": "Rua do Açúcar 11, 1950-010 Lisbon",
+    "l55": "Mittelstraße 56, 12529 Schönefeld",
+    "l56": "Industriestraße 11, 14974 Ludwigsfelde",
+    "l57": "Rua do Açúcar 11, 1950-010 Lisbon",
+    "l58": "Turmstraße 43, 10559 Berlin",
+    "l59": "Invalidenstraße 98, 10115 Berlin",
+    "l60": "Tempelhofer Damm 55, 12099 Berlin",
+    "l61": "Kastanienallee 89, 10435 Berlin",
+    "l62": "Ferdinand Bolstraat 70, 1072 LL Amsterdam",
+    "l63": "Oranienstraße 96, 10999 Berlin",
+    "l64": "Turmstraße 97, 10559 Berlin",
+    "l65": "Boxhagener Straße 18, 10245 Berlin",
+    "l66": "Weserstraße 58, 12045 Berlin",
+    "l67": "Müllerstraße 41, 13353 Berlin",
+    "l68": "Rua Maria Pia 11, 1350-205 Lisbon",
+    "l69": "Rue de Turenne 11, 75003 Paris",
+    "l70": "Via Vigevano 11, 20144 Milan",
+    "l35": "Oranienstraße 27, 10999 Berlin",
+    "n-l3": "Kinkerstraat 24, 1053 DZ Amsterdam",
+    "n-l5": "Johan van Hasseltweg 62, 1022 WZ Amsterdam",
+    "n-l6": "Torenallee 11, 5617 BC Eindhoven",
+    "f-l4": "Rue de Paris 12, 93100 Paris",
+    "f-l5": "Rue de Belleville 11, 75020 Paris",
+    "f-l6": "Avenue Salvador Allende 27, 69120 Vaulx-en-Velin",
+    "i-l3": "Via Ventura 29, 20134 Milan",
+    "i-l4": "Via Bovisasca 60, 20157 Milan",
+    "i-l5": "Via Montini 26, 25065 Lumezzane",
+    "i-l6": "Via Montini 13, 25065 Lumezzane",
+    "p-l3": "Estrada de Benfica 56, 1500-085 Lisbon",
+    "p-l4": "Rua Maria Pia 35, 1350-205 Lisbon",
+    "i-l7": "Via Montini 65, 25065 Lumezzane",
+    "f-l7": "Avenue Salvador Allende 11, 69120 Vaulx-en-Velin",
+    "n-l7": "Johan van Hasseltweg 80, 1022 WZ Amsterdam",
+    "p-l6": "Rua Morais Soares 12, 1900-341 Lisbon",
+    "p-l5": "Rua do Açúcar 33, 1950-010 Lisbon",
+    "ch-l1": "Josefstrasse 12, 8005 Zürich",
+    "at-l1": "Neubaugasse 7, 1070 Wien"
+  }
 }

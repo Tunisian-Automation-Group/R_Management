@@ -1,0 +1,376 @@
+// The capacity graph.
+//
+// One network, one atomic unit: a capacity slot. A resin printer free overnight,
+// a 5-axis mill free between contracts and half a truck going to Lyon on Thursday
+// are the same thing, idle capacity someone will pay for. They differ only in how
+// the buyer says what they want,
+//   'window' : "I need it from 18:00 for two hours"   (tools, AV, creator, space)
+//   'batch'  : "I need 500 of these by the 14th"      (making, finishing, freight)
+// Everything downstream (feasibility, availability, pricing, matching) is shared.
+//
+// There is deliberately no consumer/industry split. One capacity graph, several
+// demand pools: a buyer who books a laser cutter on Monday, a powder coater on
+// Wednesday and a pallet to Milan on Friday is one buyer, not three markets. The
+// same graph is what lets a neighbour sell hours on a printer sitting in a spare
+// room, because from the engine's point of view that is the same kind of object
+// as a factory selling second-shift capacity.
+
+/** Integer cents. Never floats for money. */
+export type Cents = number
+
+/** ISO-8601 instant. */
+export type Iso = string
+
+export type BookingMode = 'window' | 'batch'
+
+/**
+ * Three things a buyer needs to get a physical job done, and the network sells
+ * all three. Splitting them is what keeps nine categories legible: you arrive
+ * knowing whether you need something made, moved, or lent to you.
+ */
+export type CategoryGroup = 'make' | 'move' | 'equip'
+
+/**
+ * Nine categories across the chain, because a part that cannot be finished and
+ * cannot be shipped is not a delivered order. Freight is in here on purpose: it
+ * is the step that makes capacity in Lumezzane usable from Berlin, and without
+ * it a pan-European capacity graph is a directory of places you cannot reach.
+ */
+export type CategoryId =
+  // make
+  | 'fabrication'
+  | 'additive'
+  | 'finishing'
+  | 'print'
+  // move
+  | 'freight'
+  | 'warehousing'
+  // equip
+  | 'workshop'
+  | 'events'
+  | 'creator'
+
+export type Material =
+  | 'PLA'
+  | 'PETG'
+  | 'ABS'
+  | 'ASA'
+  | 'TPU'
+  | 'Resin'
+  | 'Aluminium 6061'
+  | 'Aluminium 7075'
+  | 'Stainless 304'
+  | 'Steel S235'
+  | 'Brass'
+  | 'POM'
+  | 'Acrylic'
+  | 'Plywood'
+
+/** Bounding box in millimetres. */
+export type Dims = { x: number; y: number; z: number }
+
+/** A neighbourhood somewhere in Europe. Keyed by name across the whole registry,
+ *  so names stay unique, 'Kreuzberg', 'Le Marais', 'Jordaan'. */
+export type District = {
+  name: string
+  /** The true city. Potsdam is Potsdam, not Berlin. */
+  city: string
+  /** The market it trades in. Potsdam is in Berlin's, Lumezzane in Brescia's.
+   *  Kept separate from `city` so labels stay honest while distance still
+   *  decides what anyone can actually reach. */
+  metro: string
+  /** ISO-3166-1 alpha-2. Its market sets the currency (GOAL 16, ADR 0013). */
+  country: string
+  lat: number
+  lng: number
+}
+
+export type Owner = {
+  id: string
+  name: string
+  /** Two letters. We show initials rather than invented photographs of real-looking people. */
+  initials: string
+  kind: 'person' | 'business'
+  district: string
+  verified: boolean
+  /** Sum of 1-5 stars across rated bookings, kept as a sum so a new rating folds in. */
+  ratingSum: number
+  jobsDone: number
+  onTimeJobs: number
+  joinedYear: number
+  /** Median minutes to accept or decline, over 90 days (H-1). Absent or null
+   *  under 3 requests: then nothing is said about it, never a made-up number. */
+  responseMins?: number | null
+  /** Share of requests answered before they lapsed, 0–1, same window (H-1). */
+  responseRate?: number | null
+  /** ISO 3166-1 alpha-2: the market this person trades in (M-2, markets.json). */
+  country?: string
+  /** As a renter: stars owners gave after completed bookings (two-way reviews). */
+  renterRatingSum?: number
+  renterJobs?: number
+  /** Traders only (S-4): who the renter's contract is with. Never present for a person. */
+  business?: Business
+  /** Share of accepted bookings in 12 months the owner cancelled or missed; absent under 5 (S-18). */
+  cancellationRate?: number
+}
+
+export type Business = { legalName: string; address: string; registerNumber?: string; vatId?: string }
+
+export type CancellationPolicy = 'flexible' | 'moderate' | 'strict'
+
+type ListingBase = {
+  id: string
+  ownerId: string
+  /** ISO 4217: what it is priced and charged in, its market's (M-3). */
+  currency?: string
+  category: CategoryId
+  title: string
+  blurb: string
+  district: string
+  /**
+   * What the owner photographed. The first is the cover.
+   *
+   * The old rule here was that a listing has no photograph, on the grounds that
+   * a stock photo of someone else's machine would be a lie. That was right about
+   * stock photography and wrong about this product: these are pictures the owner
+   * takes of their own kit, which is the most honest thing on the listing. A
+   * buyer deciding between two mills wants to see the two mills.
+   *
+   * Optional, because a listing is valid before anyone uploads anything, and the
+   * plate still covers that case.
+   */
+  photos?: string[]
+  /** Shown after booking. Real handover detail, not marketing. */
+  instructions: string
+  rules: string[]
+  active: boolean
+  /** Confirmed as soon as the card is held; the owner does not answer each request. */
+  instantBook?: boolean
+  cancellationPolicy?: CancellationPolicy
+  /** Percent off the hourly base from 8 h (day) and 40 h (week), 0–50. */
+  dayDiscountPct?: number
+  weekDiscountPct?: number
+  /** A weekly pattern the server turns into windows 8 weeks ahead (H-4). */
+  availability?: Availability | null
+  /** Where it is (M-5). Public answers snap it to a ~500 m grid; the exact
+   *  point is the owner's, and the renter's in the hand-over. */
+  location?: LatLng
+  country?: string
+  /** Only in the owner's own views. */
+  postalCode?: string
+}
+
+export type LatLng = { lat: number; lng: number }
+/** ISO weekday, Monday = 1; "HH:MM", end may be "24:00". */
+export type WeeklyRule = { day: number; start: string; end: string }
+export type Availability = { weekly: WeeklyRule[]; timeZone: string }
+
+export type WindowListing = ListingBase & {
+  mode: 'window'
+  ratePerHour: Cents
+  minHours: number
+  maxHours: number
+  /** Consumables or turnaround the owner charges once: detergent, fuel, a clean. */
+  extraFee: Cents
+  extraLabel: string
+}
+
+export type BatchListing = ListingBase & {
+  mode: 'batch'
+  /** The machine, the line, or the vehicle. Whatever actually does the work. */
+  machine: string
+  /** Absent where the question does not apply: a truck does not stock a material. */
+  materials?: Material[]
+  /** Per unit. A build envelope on a mill, the load box on a van. */
+  maxDims: Dims
+  /** Tightest tolerance held, in mm. Absent where nothing is being held to one. */
+  toleranceMm?: number
+  unitsPerHour: number
+  setupHours: number
+  ratePerHour: Cents
+  setupFee: Cents
+  /** The most one booking takes (two pallet spaces on a van); absent means no cap. */
+  maxQuantity?: number
+}
+
+export type Listing = WindowListing | BatchListing
+
+/** An idle window. This is the product. */
+export type Slot = {
+  id: string
+  listingId: string
+  start: Iso
+  end: Iso
+  /** Usable hours inside the window, a 3-day factory gap is not 72 machine-hours. */
+  hoursUsable: number
+}
+
+export type WindowRequest = {
+  mode: 'window'
+  category: CategoryId
+  hours: number
+  earliest: Iso
+  latest: Iso
+  district: string
+  maxDistanceKm: number
+}
+
+export type BatchRequest = {
+  mode: 'batch'
+  category: CategoryId
+  quantity: number
+  material?: Material
+  dims?: Dims
+  toleranceMm?: number
+  deadline: Iso
+  district: string
+  maxDistanceKm: number
+}
+
+export type Requirement = WindowRequest | BatchRequest
+
+export type Quote = {
+  hours: number
+  /** rate × hours */
+  base: Cents
+  /** A duration discount already taken out of `total`. */
+  discount?: Cents
+  discountLabel?: string
+  extra: Cents
+  extraLabel: string
+  /** What the buyer pays. */
+  total: Cents
+  /** 15% of total, the fee sits inside the total, it is not added on top. */
+  platformFee: Cents
+  ownerNet: Cents
+  /** ISO 4217, from the listing's market (M-3); absent from older servers. */
+  currency?: string
+}
+
+export type Match = {
+  listingId: string
+  ownerId: string
+  slotId: string
+  /** The concrete window this booking would occupy, not the whole idle gap. */
+  start: Iso
+  end: Iso
+  score: number
+  /** 1 while feasibility is rules-based. A calibrated probability if that ever changes. */
+  confidence: number
+  reasons: string[]
+  quote: Quote
+  distanceKm: number
+}
+
+export type BookingStatus =
+  /** Made, and the card is being authorised. The owner does not see it yet. */
+  | 'awaiting_payment'
+  | 'requested'
+  | 'accepted'
+  | 'declined'
+  | 'active'
+  | 'completed'
+  | 'cancelled'
+  /** Nobody paid, or nobody answered, in time. Nothing was charged. */
+  | 'expired'
+  | 'payment_failed'
+  /** The buyer reported a problem after the window began; the payout waits for review. */
+  | 'disputed'
+
+export type Outcome = {
+  onTime: boolean
+  quality: number
+  /** What the buyer wrote. Becomes a review the next buyer reads. */
+  note?: string
+  /** The short things people say most, picked rather than typed. */
+  tags?: string[]
+}
+
+/**
+ * The feedback loop, as the next buyer sees it. The ranking already moves on
+ * outcomes (on time, quality); a review is the same outcome with the reason
+ * attached, which is the part a stranger deciding whether to trust an owner
+ * actually reads.
+ */
+export type Review = {
+  id: string
+  listingId: string
+  ownerId: string
+  author: string
+  initials: string
+  /** 1 to 5. */
+  rating: number
+  onTime: boolean
+  text: string
+  tags: string[]
+  at: Iso
+}
+
+export type Booking = {
+  id: string
+  match: Match
+  requirement: Requirement
+  status: BookingStatus
+  createdAt: Iso
+  /** Who asked. Absent means the app's own user, present when someone is
+   *  requesting capacity from them, which is what the Earn inbox shows. */
+  requesterId?: string
+  /** Set when the owner declines, so the buyer is told why rather than just refused. */
+  declineReason?: string
+  declineReasonCode?: string
+  outcome?: Outcome
+  /** What the listing looked like when it was booked: enough to draw the card
+   *  even if the listing has since changed or gone. */
+  listing?: ListingSnapshot
+  /** While it waits for payment or for the owner: when it lapses. */
+  expiresAt?: Iso
+  /** When the hand-over can first be marked; the server decides. */
+  canStartFrom?: Iso
+  /** From when the owner may report a late return (the end, earlier locally). */
+  lateReturnFrom?: Iso
+  /** Where and how to collect it: only once the booking is accepted, for both parties. */
+  handover?: { address: string; instructions: string; location?: LatLng; postalCode?: string }
+  /** The owner's 1–5 stars for the renter (hidden from the renter until both reviews are out). */
+  renterRating?: number
+  /** Cents refunded when it was cancelled. */
+  refundAmount?: Cents
+  /** Set when this booking extends another (S-12, V6-22). */
+  extendsId?: string
+  /** Who did not turn up, when a no-show ended it (S-11). */
+  noShow?: 'owner' | 'renter'
+  /** ISO 4217: what the card is charged in (M-3). */
+  currency?: string
+  /** What moved, in minor units of `currency` (the server's reckoning): charged
+   *  (0 while only held), refunded, the owner's share of what was kept, and
+   *  what has reached the owner so far. */
+  charged?: Cents
+  refunded?: Cents
+  ownerShare?: Cents
+  paidOut?: Cents
+}
+
+export type ListingSnapshot = {
+  title: string
+  district: string
+  category: CategoryId
+  ownerName: string
+  photo?: string
+  instantBook?: boolean
+  cancellationPolicy?: CancellationPolicy
+  /** The owner's trader identity when they booked as a business (S-4). */
+  ownerBusiness?: Business
+}
+
+/** A concrete bookable window: not the whole idle gap, the bit you would take. */
+export type Offer = { slotId: string; start: Iso; end: Iso }
+
+/** Null until they have been rated at all, "new" is not the same as "bad". */
+export const rating = (o: Owner): number | null =>
+  o.jobsDone > 0 ? o.ratingSum / o.jobsDone : null
+
+/** Unrated owners sit mid-scale rather than at zero. */
+export const reliability = (o: Owner): number =>
+  o.jobsDone > 0 ? o.onTimeJobs / o.jobsDone : 0.5
+
+export const isWindow = (l: Listing): l is WindowListing => l.mode === 'window'
+export const isBatch = (l: Listing): l is BatchListing => l.mode === 'batch'

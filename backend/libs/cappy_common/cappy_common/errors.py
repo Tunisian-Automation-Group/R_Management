@@ -2,18 +2,35 @@
 
 from __future__ import annotations
 
+import logging
+
 from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
+from starlette.exceptions import HTTPException as StarletteHTTPException
+
+log = logging.getLogger(__name__)
 
 
 class ApiError(Exception):
     status = 500
     code = "internal"
 
-    def __init__(self, message: str, *, status: int | None = None, code: str | None = None):
+    def __init__(
+        self,
+        message: str,
+        *,
+        status: int | None = None,
+        code: str | None = None,
+        details: object | None = None,
+        fields: list[dict] | None = None,
+    ):
         super().__init__(message)
         self.message = message
+        self.details = details
+        # Every problem with the form at once, [{field, message}], so a client
+        # can mark each field (V4-20); `message` stays for older clients.
+        self.fields = fields
         if status is not None:
             self.status = status
         if code is not None:
@@ -47,28 +64,70 @@ class Invalid(ApiError):
     code = "invalid"
 
 
+class TooLarge(ApiError):
+    status = 413
+    code = "too_large"
+
+
+class RateLimited(ApiError):
+    status = 429
+    code = "rate_limited"
+
+
 class Upstream(ApiError):
     status = 502
     code = "upstream"
 
 
-def error_body(code: str, message: str, details: object | None = None) -> dict:
+class Unavailable(ApiError):
+    status = 503
+    code = "unavailable"
+
+
+def error_body(code: str, message: str, details: object | None = None, fields: list[dict] | None = None) -> dict:
     body: dict = {"error": {"code": code, "message": message}}
     if details is not None:
         body["error"]["details"] = details
+    if fields:
+        body["error"]["fields"] = fields
     return body
 
 
 def install_error_handlers(app: FastAPI) -> None:
     @app.exception_handler(ApiError)
     async def _api_error(_: Request, exc: ApiError) -> JSONResponse:
-        return JSONResponse(status_code=exc.status, content=error_body(exc.code, exc.message))
+        # A 503 says when to come back, so clients spread their retries out.
+        headers = {"Retry-After": "2"} if exc.status == 503 else None
+        return JSONResponse(
+            status_code=exc.status,
+            content=error_body(exc.code, exc.message, exc.details, exc.fields),
+            headers=headers,
+        )
 
     @app.exception_handler(RequestValidationError)
     async def _validation(_: Request, exc: RequestValidationError) -> JSONResponse:
+        errors = _serialisable(exc.errors())
+        fields = _fields(errors)
+        # The first problem in words, for clients that show only `message`.
+        message = f"{fields[0]['field']}: {fields[0]['message']}" if fields else "request did not validate"
+        return JSONResponse(status_code=422, content=error_body("invalid", message, errors, fields))
+
+    @app.exception_handler(StarletteHTTPException)
+    async def _http(_: Request, exc: StarletteHTTPException) -> JSONResponse:
+        # Router-level 404/405 in the same shape as everything else.
+        code = {404: "not_found", 405: "method_not_allowed"}.get(exc.status_code, "error")
+        return JSONResponse(status_code=exc.status_code, content=error_body(code, str(exc.detail)))
+
+    @app.exception_handler(Exception)
+    async def _unhandled(request: Request, exc: Exception) -> JSONResponse:
+        # Logged in full with the request id; the client learns nothing about
+        # the internals, only the id to quote to support.
+        from .observability import request_id
+
+        log.exception("unhandled error on %s %s", request.method, request.url.path)
         return JSONResponse(
-            status_code=422,
-            content=error_body("invalid", "request did not validate", _serialisable(exc.errors())),
+            status_code=500,
+            content=error_body("internal", f"something went wrong on our side (request {request_id.get()})"),
         )
 
 
@@ -81,4 +140,15 @@ def _serialisable(errors: list) -> list:
         if isinstance(e.get("ctx"), dict):
             e["ctx"] = {k: str(v) if isinstance(v, Exception) else v for k, v in e["ctx"].items()}
         out.append(e)
+    return out
+
+
+def _fields(errors: list) -> list[dict]:
+    """``[{field: "business.vatId", message}]`` from pydantic's errors: the
+    path inside the body, in the API's own (camelCase) names."""
+    out = []
+    for e in errors:
+        loc = [str(p) for p in e.get("loc", ()) if p not in ("body", "query", "path")]
+        msg = str(e.get("msg", "invalid")).removeprefix("Value error, ")
+        out.append({"field": ".".join(loc), "message": msg})
     return out

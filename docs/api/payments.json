@@ -1,0 +1,883 @@
+{
+ "components": {
+  "schemas": {
+   "Config": {
+    "properties": {
+     "identityProvider": {
+      "title": "Identityprovider",
+      "type": "string"
+     },
+     "provider": {
+      "title": "Provider",
+      "type": "string"
+     },
+     "publishableKey": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Publishablekey"
+     }
+    },
+    "required": [
+     "provider",
+     "identityProvider"
+    ],
+    "title": "Config",
+    "type": "object"
+   },
+   "ConnectStatus": {
+    "properties": {
+     "connected": {
+      "title": "Connected",
+      "type": "boolean"
+     },
+     "detailsSubmitted": {
+      "title": "Detailssubmitted",
+      "type": "boolean"
+     },
+     "payoutsEnabled": {
+      "title": "Payoutsenabled",
+      "type": "boolean"
+     }
+    },
+    "required": [
+     "connected",
+     "payoutsEnabled",
+     "detailsSubmitted"
+    ],
+    "title": "ConnectStatus",
+    "type": "object"
+   },
+   "HTTPValidationError": {
+    "properties": {
+     "detail": {
+      "items": {
+       "$ref": "#/components/schemas/ValidationError"
+      },
+      "title": "Detail",
+      "type": "array"
+     }
+    },
+    "title": "HTTPValidationError",
+    "type": "object"
+   },
+   "IdentityOut": {
+    "properties": {
+     "clientSecret": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Clientsecret"
+     },
+     "status": {
+      "title": "Status",
+      "type": "string"
+     },
+     "url": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Url"
+     }
+    },
+    "required": [
+     "status"
+    ],
+    "title": "IdentityOut",
+    "type": "object"
+   },
+   "IdentityStart": {
+    "properties": {
+     "consent": {
+      "default": false,
+      "title": "Consent",
+      "type": "boolean"
+     }
+    },
+    "title": "IdentityStart",
+    "type": "object"
+   },
+   "IntentIn": {
+    "properties": {
+     "amount": {
+      "exclusiveMinimum": 0.0,
+      "maximum": 10000000.0,
+      "title": "Amount",
+      "type": "integer"
+     },
+     "bookingId": {
+      "maxLength": 40,
+      "title": "Bookingid",
+      "type": "string"
+     },
+     "currency": {
+      "pattern": "^[A-Za-z]{3}$",
+      "title": "Currency",
+      "type": "string"
+     },
+     "ownerId": {
+      "maxLength": 64,
+      "title": "Ownerid",
+      "type": "string"
+     },
+     "ownerNet": {
+      "minimum": 0.0,
+      "title": "Ownernet",
+      "type": "integer"
+     },
+     "requesterId": {
+      "maxLength": 64,
+      "title": "Requesterid",
+      "type": "string"
+     }
+    },
+    "required": [
+     "bookingId",
+     "requesterId",
+     "ownerId",
+     "amount",
+     "ownerNet",
+     "currency"
+    ],
+    "title": "IntentIn",
+    "type": "object"
+   },
+   "IntentOut": {
+    "properties": {
+     "clientSecret": {
+      "title": "Clientsecret",
+      "type": "string"
+     },
+     "intentId": {
+      "title": "Intentid",
+      "type": "string"
+     }
+    },
+    "required": [
+     "clientSecret",
+     "intentId"
+    ],
+    "title": "IntentOut",
+    "type": "object"
+   },
+   "Invoice": {
+    "properties": {
+     "bookingId": {
+      "title": "Bookingid",
+      "type": "string"
+     },
+     "currency": {
+      "title": "Currency",
+      "type": "string"
+     },
+     "description": {
+      "title": "Description",
+      "type": "string"
+     },
+     "gross": {
+      "title": "Gross",
+      "type": "integer"
+     },
+     "issuedAt": {
+      "title": "Issuedat",
+      "type": "string"
+     },
+     "net": {
+      "title": "Net",
+      "type": "integer"
+     },
+     "number": {
+      "title": "Number",
+      "type": "string"
+     },
+     "serviceEnd": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Serviceend"
+     },
+     "serviceStart": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Servicestart"
+     },
+     "title": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Title"
+     },
+     "vat": {
+      "title": "Vat",
+      "type": "integer"
+     },
+     "vatRateBps": {
+      "title": "Vatratebps",
+      "type": "integer"
+     }
+    },
+    "required": [
+     "number",
+     "bookingId",
+     "description",
+     "net",
+     "vatRateBps",
+     "vat",
+     "gross",
+     "currency",
+     "issuedAt"
+    ],
+    "title": "Invoice",
+    "type": "object"
+   },
+   "Onboarding": {
+    "properties": {
+     "url": {
+      "title": "Url",
+      "type": "string"
+     }
+    },
+    "required": [
+     "url"
+    ],
+    "title": "Onboarding",
+    "type": "object"
+   },
+   "OnboardingIn": {
+    "properties": {
+     "country": {
+      "default": "DE",
+      "pattern": "^[A-Z]{2}$",
+      "title": "Country",
+      "type": "string"
+     }
+    },
+    "title": "OnboardingIn",
+    "type": "object"
+   },
+   "PaymentState": {
+    "properties": {
+     "amount": {
+      "title": "Amount",
+      "type": "integer"
+     },
+     "bookingId": {
+      "title": "Bookingid",
+      "type": "string"
+     },
+     "captured": {
+      "title": "Captured",
+      "type": "boolean"
+     },
+     "chargebackAt": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Chargebackat"
+     },
+     "currency": {
+      "title": "Currency",
+      "type": "string"
+     },
+     "ownerNet": {
+      "title": "Ownernet",
+      "type": "integer"
+     },
+     "paidOut": {
+      "title": "Paidout",
+      "type": "boolean"
+     },
+     "refunded": {
+      "title": "Refunded",
+      "type": "boolean"
+     },
+     "status": {
+      "title": "Status",
+      "type": "string"
+     },
+     "updatedAt": {
+      "title": "Updatedat",
+      "type": "string"
+     }
+    },
+    "required": [
+     "bookingId",
+     "status",
+     "amount",
+     "ownerNet",
+     "currency",
+     "captured",
+     "refunded",
+     "paidOut",
+     "updatedAt"
+    ],
+    "title": "PaymentState",
+    "type": "object"
+   },
+   "PaymentView": {
+    "properties": {
+     "amount": {
+      "title": "Amount",
+      "type": "integer"
+     },
+     "bookingId": {
+      "title": "Bookingid",
+      "type": "string"
+     },
+     "currency": {
+      "title": "Currency",
+      "type": "string"
+     },
+     "status": {
+      "title": "Status",
+      "type": "string"
+     }
+    },
+    "required": [
+     "bookingId",
+     "status",
+     "amount",
+     "currency"
+    ],
+    "title": "PaymentView",
+    "type": "object"
+   },
+   "ValidationError": {
+    "properties": {
+     "ctx": {
+      "title": "Context",
+      "type": "object"
+     },
+     "input": {
+      "title": "Input"
+     },
+     "loc": {
+      "items": {
+       "anyOf": [
+        {
+         "type": "string"
+        },
+        {
+         "type": "integer"
+        }
+       ]
+      },
+      "title": "Location",
+      "type": "array"
+     },
+     "msg": {
+      "title": "Message",
+      "type": "string"
+     },
+     "type": {
+      "title": "Error Type",
+      "type": "string"
+     }
+    },
+    "required": [
+     "loc",
+     "msg",
+     "type"
+    ],
+    "title": "ValidationError",
+    "type": "object"
+   }
+  }
+ },
+ "info": {
+  "title": "Cappy payments",
+  "version": "1.0.0"
+ },
+ "openapi": "3.1.0",
+ "paths": {
+  "/internal/bookings/{booking_id}/payment": {
+   "get": {
+    "description": "For the staff case view (H-9): where the money of a booking stands.",
+    "operationId": "payment_state_internal_bookings__booking_id__payment_get",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "booking_id",
+      "required": true,
+      "schema": {
+       "title": "Booking Id",
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/PaymentState"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Payment State"
+   }
+  },
+  "/internal/intents": {
+   "post": {
+    "description": "Idempotent per booking: a retried booking gets the same intent back.\n\nNo database connection is held while Stripe answers: a slow Stripe must\nnot use up the pool that every other request needs.",
+    "operationId": "create_intent_internal_intents_post",
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/IntentIn"
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/IntentOut"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Create Intent"
+   }
+  },
+  "/internal/people/{person}/export": {
+   "get": {
+    "description": "What payments holds about them (GDPR art. 15/20). Card details stay\nwith Stripe and are never here.",
+    "operationId": "export_person_internal_people__person__export_get",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "person",
+      "required": true,
+      "schema": {
+       "title": "Person",
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "additionalProperties": true,
+         "title": "Response Export Person Internal People  Person  Export Get",
+         "type": "object"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Export Person"
+   }
+  },
+  "/internal/people/{person}/open": {
+   "get": {
+    "description": "Before an account is deleted: money captured for them and not paid out\nyet (a completed booking waiting for its payout, or one held).",
+    "operationId": "open_payouts_internal_people__person__open_get",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "person",
+      "required": true,
+      "schema": {
+       "title": "Person",
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "additionalProperties": true,
+         "title": "Response Open Payouts Internal People  Person  Open Get",
+         "type": "object"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Open Payouts"
+   }
+  },
+  "/payments/bookings/{booking_id}": {
+   "get": {
+    "operationId": "payment_for_booking_payments_bookings__booking_id__get",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "booking_id",
+      "required": true,
+      "schema": {
+       "title": "Booking Id",
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/PaymentView"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Payment For Booking"
+   }
+  },
+  "/payments/config": {
+   "get": {
+    "description": "What the app needs to load Stripe.js, or to know there is no card step.",
+    "operationId": "config_payments_config_get",
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Config"
+        }
+       }
+      },
+      "description": "Successful Response"
+     }
+    },
+    "summary": "Config"
+   }
+  },
+  "/payments/connect/onboarding": {
+   "post": {
+    "description": "A Stripe-hosted page where an owner gives Stripe their identity and bank\ndetails. We never see either.",
+    "operationId": "onboarding_payments_connect_onboarding_post",
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "anyOf": [
+         {
+          "$ref": "#/components/schemas/OnboardingIn"
+         },
+         {
+          "type": "null"
+         }
+        ],
+        "title": "Body"
+       }
+      }
+     }
+    },
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Onboarding"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Onboarding"
+   }
+  },
+  "/payments/connect/status": {
+   "get": {
+    "operationId": "connect_status_payments_connect_status_get",
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ConnectStatus"
+        }
+       }
+      },
+      "description": "Successful Response"
+     }
+    },
+    "summary": "Connect Status"
+   }
+  },
+  "/payments/identity": {
+   "get": {
+    "operationId": "identity_status_payments_identity_get",
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/IdentityOut"
+        }
+       }
+      },
+      "description": "Successful Response"
+     }
+    },
+    "summary": "Identity Status"
+   }
+  },
+  "/payments/identity/session": {
+   "post": {
+    "description": "Starts (or continues) verifying who the caller is, once they have agreed\nto the ID and selfie check (P-18). The app hands the client secret to\nStripe.js (verifyIdentity); the outcome comes by webhook.",
+    "operationId": "identity_session_payments_identity_session_post",
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "anyOf": [
+         {
+          "$ref": "#/components/schemas/IdentityStart"
+         },
+         {
+          "type": "null"
+         }
+        ],
+        "title": "Body"
+       }
+      }
+     }
+    },
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/IdentityOut"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Identity Session"
+   }
+  },
+  "/payments/invoices": {
+   "get": {
+    "operationId": "my_invoices_payments_invoices_get",
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "items": {
+          "$ref": "#/components/schemas/Invoice"
+         },
+         "title": "Response My Invoices Payments Invoices Get",
+         "type": "array"
+        }
+       }
+      },
+      "description": "Successful Response"
+     }
+    },
+    "summary": "My Invoices"
+   }
+  },
+  "/payments/invoices/{number}": {
+   "get": {
+    "description": "A printable invoice (the browser saves it as PDF) with the \u00a7 14 (4) UStG\nfields: issuer and recipient with addresses, the issuer's tax number or VAT\nID, date, number, the service and its date, net, rate, tax and total.",
+    "operationId": "invoice_page_payments_invoices__number__get",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "number",
+      "required": true,
+      "schema": {
+       "title": "Number",
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "content": {
+       "text/html": {
+        "schema": {
+         "type": "string"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Invoice Page"
+   }
+  },
+  "/payments/webhooks/identity": {
+   "post": {
+    "description": "For an ID-check provider with its own webhook (F-1). Verified by the\nprovider class; handled once per session and status.",
+    "operationId": "identity_webhook_payments_webhooks_identity_post",
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "additionalProperties": true,
+         "title": "Response Identity Webhook Payments Webhooks Identity Post",
+         "type": "object"
+        }
+       }
+      },
+      "description": "Successful Response"
+     }
+    },
+    "summary": "Identity Webhook"
+   }
+  },
+  "/payments/webhooks/stripe": {
+   "post": {
+    "description": "The source of truth for what happened at Stripe. Signature-verified,\nand handled once per Stripe event id however often Stripe retries.",
+    "operationId": "stripe_webhook_payments_webhooks_stripe_post",
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "additionalProperties": true,
+         "title": "Response Stripe Webhook Payments Webhooks Stripe Post",
+         "type": "object"
+        }
+       }
+      },
+      "description": "Successful Response"
+     }
+    },
+    "summary": "Stripe Webhook"
+   }
+  }
+ }
+}

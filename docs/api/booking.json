@@ -1,0 +1,4049 @@
+{
+ "components": {
+  "schemas": {
+   "ActivePeople": {
+    "properties": {
+     "people": {
+      "title": "People",
+      "type": "integer"
+     }
+    },
+    "required": [
+     "people"
+    ],
+    "title": "ActivePeople",
+    "type": "object"
+   },
+   "BatchRequest": {
+    "properties": {
+     "category": {
+      "enum": [
+       "fabrication",
+       "additive",
+       "finishing",
+       "print",
+       "freight",
+       "warehousing",
+       "workshop",
+       "events",
+       "creator"
+      ],
+      "title": "Category",
+      "type": "string"
+     },
+     "deadline": {
+      "title": "Deadline",
+      "type": "string"
+     },
+     "dims": {
+      "anyOf": [
+       {
+        "$ref": "#/components/schemas/Dims"
+       },
+       {
+        "type": "null"
+       }
+      ]
+     },
+     "district": {
+      "title": "District",
+      "type": "string"
+     },
+     "material": {
+      "anyOf": [
+       {
+        "enum": [
+         "PLA",
+         "PETG",
+         "ABS",
+         "ASA",
+         "TPU",
+         "Resin",
+         "Aluminium 6061",
+         "Aluminium 7075",
+         "Stainless 304",
+         "Steel S235",
+         "Brass",
+         "POM",
+         "Acrylic",
+         "Plywood"
+        ],
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Material"
+     },
+     "maxDistanceKm": {
+      "title": "Maxdistancekm",
+      "type": "number"
+     },
+     "mode": {
+      "const": "batch",
+      "title": "Mode",
+      "type": "string"
+     },
+     "quantity": {
+      "title": "Quantity",
+      "type": "integer"
+     },
+     "toleranceMm": {
+      "anyOf": [
+       {
+        "type": "number"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Tolerancemm"
+     }
+    },
+    "required": [
+     "mode",
+     "category",
+     "quantity",
+     "deadline",
+     "district",
+     "maxDistanceKm"
+    ],
+    "title": "BatchRequest",
+    "type": "object"
+   },
+   "Booking": {
+    "properties": {
+     "canStartFrom": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Canstartfrom"
+     },
+     "createdAt": {
+      "title": "Createdat",
+      "type": "string"
+     },
+     "currency": {
+      "default": "EUR",
+      "title": "Currency",
+      "type": "string"
+     },
+     "declineReason": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Declinereason"
+     },
+     "expiresAt": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Expiresat"
+     },
+     "handover": {
+      "anyOf": [
+       {
+        "$ref": "#/components/schemas/Handover"
+       },
+       {
+        "type": "null"
+       }
+      ]
+     },
+     "id": {
+      "title": "Id",
+      "type": "string"
+     },
+     "listing": {
+      "anyOf": [
+       {
+        "$ref": "#/components/schemas/ListingSnapshot"
+       },
+       {
+        "type": "null"
+       }
+      ]
+     },
+     "match": {
+      "$ref": "#/components/schemas/Match"
+     },
+     "noShow": {
+      "anyOf": [
+       {
+        "enum": [
+         "owner",
+         "renter"
+        ],
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Noshow"
+     },
+     "outcome": {
+      "anyOf": [
+       {
+        "$ref": "#/components/schemas/Outcome"
+       },
+       {
+        "type": "null"
+       }
+      ]
+     },
+     "refundAmount": {
+      "anyOf": [
+       {
+        "type": "integer"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Refundamount"
+     },
+     "renterRating": {
+      "anyOf": [
+       {
+        "type": "integer"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Renterrating"
+     },
+     "requesterId": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Requesterid"
+     },
+     "requirement": {
+      "discriminator": {
+       "mapping": {
+        "batch": "#/components/schemas/BatchRequest",
+        "window": "#/components/schemas/WindowRequest"
+       },
+       "propertyName": "mode"
+      },
+      "oneOf": [
+       {
+        "$ref": "#/components/schemas/WindowRequest"
+       },
+       {
+        "$ref": "#/components/schemas/BatchRequest"
+       }
+      ],
+      "title": "Requirement"
+     },
+     "status": {
+      "enum": [
+       "disputed",
+       "awaiting_payment",
+       "requested",
+       "accepted",
+       "active",
+       "completed",
+       "declined",
+       "cancelled",
+       "expired",
+       "payment_failed"
+      ],
+      "title": "Status",
+      "type": "string"
+     }
+    },
+    "required": [
+     "id",
+     "match",
+     "requirement",
+     "status",
+     "createdAt"
+    ],
+    "title": "Booking",
+    "type": "object"
+   },
+   "BookingCreated": {
+    "properties": {
+     "booking": {
+      "$ref": "#/components/schemas/Booking"
+     },
+     "payment": {
+      "anyOf": [
+       {
+        "$ref": "#/components/schemas/PaymentStart"
+       },
+       {
+        "type": "null"
+       }
+      ]
+     }
+    },
+    "required": [
+     "booking"
+    ],
+    "title": "BookingCreated",
+    "type": "object"
+   },
+   "Business": {
+    "description": "A trader's identity (\u00a7 5b UWG, \u00a7 312l BGB): public, so a renter knows\nwho their contract is with. People never have one.",
+    "properties": {
+     "address": {
+      "title": "Address",
+      "type": "string"
+     },
+     "legalName": {
+      "title": "Legalname",
+      "type": "string"
+     },
+     "registerNumber": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Registernumber"
+     },
+     "vatId": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Vatid"
+     }
+    },
+    "required": [
+     "legalName",
+     "address"
+    ],
+    "title": "Business",
+    "type": "object"
+   },
+   "BusyIn": {
+    "properties": {
+     "listingIds": {
+      "items": {
+       "type": "string"
+      },
+      "maxItems": 500,
+      "title": "Listingids",
+      "type": "array"
+     },
+     "start": {
+      "title": "Start",
+      "type": "string"
+     },
+     "until": {
+      "title": "Until",
+      "type": "string"
+     }
+    },
+    "required": [
+     "listingIds",
+     "start",
+     "until"
+    ],
+    "title": "BusyIn",
+    "type": "object"
+   },
+   "CancellationQuote": {
+    "properties": {
+     "charged": {
+      "title": "Charged",
+      "type": "boolean"
+     },
+     "currency": {
+      "title": "Currency",
+      "type": "string"
+     },
+     "policy": {
+      "title": "Policy",
+      "type": "string"
+     },
+     "refundAmount": {
+      "title": "Refundamount",
+      "type": "integer"
+     }
+    },
+    "required": [
+     "refundAmount",
+     "currency",
+     "policy",
+     "charged"
+    ],
+    "title": "CancellationQuote",
+    "type": "object"
+   },
+   "Case": {
+    "properties": {
+     "booking": {
+      "$ref": "#/components/schemas/Booking"
+     },
+     "claims": {
+      "items": {
+       "$ref": "#/components/schemas/Claim"
+      },
+      "title": "Claims",
+      "type": "array"
+     },
+     "dispute": {
+      "anyOf": [
+       {
+        "$ref": "#/components/schemas/Dispute"
+       },
+       {
+        "type": "null"
+       }
+      ]
+     },
+     "evidence": {
+      "items": {
+       "additionalProperties": true,
+       "type": "object"
+      },
+      "title": "Evidence",
+      "type": "array"
+     },
+     "messages": {
+      "items": {
+       "$ref": "#/components/schemas/CaseMessage"
+      },
+      "title": "Messages",
+      "type": "array"
+     },
+     "ownerId": {
+      "title": "Ownerid",
+      "type": "string"
+     },
+     "payment": {
+      "anyOf": [
+       {
+        "additionalProperties": true,
+        "type": "object"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Payment"
+     },
+     "requesterId": {
+      "title": "Requesterid",
+      "type": "string"
+     },
+     "resolutions": {
+      "items": {
+       "$ref": "#/components/schemas/Resolution"
+      },
+      "title": "Resolutions",
+      "type": "array"
+     },
+     "timeline": {
+      "items": {
+       "$ref": "#/components/schemas/TimelineEntry"
+      },
+      "title": "Timeline",
+      "type": "array"
+     }
+    },
+    "required": [
+     "booking",
+     "requesterId",
+     "ownerId",
+     "timeline",
+     "messages",
+     "evidence",
+     "resolutions",
+     "claims"
+    ],
+    "title": "Case",
+    "type": "object"
+   },
+   "CaseMessage": {
+    "properties": {
+     "at": {
+      "title": "At",
+      "type": "string"
+     },
+     "body": {
+      "title": "Body",
+      "type": "string"
+     },
+     "flagged": {
+      "title": "Flagged",
+      "type": "boolean"
+     },
+     "id": {
+      "title": "Id",
+      "type": "string"
+     },
+     "senderId": {
+      "title": "Senderid",
+      "type": "string"
+     }
+    },
+    "required": [
+     "id",
+     "senderId",
+     "body",
+     "at",
+     "flagged"
+    ],
+    "title": "CaseMessage",
+    "type": "object"
+   },
+   "CaseSummary": {
+    "properties": {
+     "amount": {
+      "title": "Amount",
+      "type": "integer"
+     },
+     "currency": {
+      "title": "Currency",
+      "type": "string"
+     },
+     "dispute": {
+      "anyOf": [
+       {
+        "$ref": "#/components/schemas/Dispute"
+       },
+       {
+        "type": "null"
+       }
+      ]
+     },
+     "id": {
+      "title": "Id",
+      "type": "string"
+     },
+     "openClaims": {
+      "default": 0,
+      "title": "Openclaims",
+      "type": "integer"
+     },
+     "ownerId": {
+      "title": "Ownerid",
+      "type": "string"
+     },
+     "pendingApproval": {
+      "default": false,
+      "title": "Pendingapproval",
+      "type": "boolean"
+     },
+     "requesterId": {
+      "title": "Requesterid",
+      "type": "string"
+     },
+     "status": {
+      "title": "Status",
+      "type": "string"
+     },
+     "title": {
+      "title": "Title",
+      "type": "string"
+     },
+     "updatedAt": {
+      "title": "Updatedat",
+      "type": "string"
+     },
+     "windowEnd": {
+      "title": "Windowend",
+      "type": "string"
+     },
+     "windowStart": {
+      "title": "Windowstart",
+      "type": "string"
+     }
+    },
+    "required": [
+     "id",
+     "status",
+     "title",
+     "requesterId",
+     "ownerId",
+     "amount",
+     "currency",
+     "windowStart",
+     "windowEnd",
+     "updatedAt"
+    ],
+    "title": "CaseSummary",
+    "type": "object"
+   },
+   "Claim": {
+    "properties": {
+     "amount": {
+      "title": "Amount",
+      "type": "integer"
+     },
+     "bookingId": {
+      "title": "Bookingid",
+      "type": "string"
+     },
+     "by": {
+      "title": "By",
+      "type": "string"
+     },
+     "createdAt": {
+      "title": "Createdat",
+      "type": "string"
+     },
+     "currency": {
+      "title": "Currency",
+      "type": "string"
+     },
+     "decidedAt": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Decidedat"
+     },
+     "decidedBy": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Decidedby"
+     },
+     "decisionNote": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Decisionnote"
+     },
+     "id": {
+      "title": "Id",
+      "type": "string"
+     },
+     "kind": {
+      "title": "Kind",
+      "type": "string"
+     },
+     "minutesLate": {
+      "title": "Minuteslate",
+      "type": "integer"
+     },
+     "note": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Note"
+     },
+     "status": {
+      "enum": [
+       "open",
+       "confirmed",
+       "rejected"
+      ],
+      "title": "Status",
+      "type": "string"
+     }
+    },
+    "required": [
+     "id",
+     "bookingId",
+     "kind",
+     "by",
+     "minutesLate",
+     "amount",
+     "currency",
+     "status",
+     "createdAt"
+    ],
+    "title": "Claim",
+    "type": "object"
+   },
+   "ClaimDecisionIn": {
+    "properties": {
+     "decision": {
+      "enum": [
+       "confirm",
+       "reject"
+      ],
+      "title": "Decision",
+      "type": "string"
+     },
+     "note": {
+      "default": "",
+      "maxLength": 1000,
+      "title": "Note",
+      "type": "string"
+     }
+    },
+    "required": [
+     "decision"
+    ],
+    "title": "ClaimDecisionIn",
+    "type": "object"
+   },
+   "CreateBookingIn": {
+    "properties": {
+     "end": {
+      "title": "End",
+      "type": "string"
+     },
+     "listingId": {
+      "maxLength": 40,
+      "title": "Listingid",
+      "type": "string"
+     },
+     "requirement": {
+      "discriminator": {
+       "mapping": {
+        "batch": "#/components/schemas/BatchRequest",
+        "window": "#/components/schemas/WindowRequest"
+       },
+       "propertyName": "mode"
+      },
+      "oneOf": [
+       {
+        "$ref": "#/components/schemas/WindowRequest"
+       },
+       {
+        "$ref": "#/components/schemas/BatchRequest"
+       }
+      ],
+      "title": "Requirement"
+     },
+     "slotId": {
+      "maxLength": 40,
+      "title": "Slotid",
+      "type": "string"
+     },
+     "start": {
+      "title": "Start",
+      "type": "string"
+     }
+    },
+    "required": [
+     "requirement",
+     "listingId",
+     "slotId",
+     "start",
+     "end"
+    ],
+    "title": "CreateBookingIn",
+    "type": "object"
+   },
+   "DecideIn": {
+    "properties": {
+     "note": {
+      "default": "",
+      "maxLength": 1000,
+      "title": "Note",
+      "type": "string"
+     }
+    },
+    "title": "DecideIn",
+    "type": "object"
+   },
+   "DeclineIn": {
+    "properties": {
+     "reason": {
+      "maxLength": 500,
+      "minLength": 1,
+      "title": "Reason",
+      "type": "string"
+     }
+    },
+    "required": [
+     "reason"
+    ],
+    "title": "DeclineIn",
+    "type": "object"
+   },
+   "Dims": {
+    "description": "Bounding box in millimetres.",
+    "properties": {
+     "x": {
+      "title": "X",
+      "type": "number"
+     },
+     "y": {
+      "title": "Y",
+      "type": "number"
+     },
+     "z": {
+      "title": "Z",
+      "type": "number"
+     }
+    },
+    "required": [
+     "x",
+     "y",
+     "z"
+    ],
+    "title": "Dims",
+    "type": "object"
+   },
+   "Dispute": {
+    "properties": {
+     "amount": {
+      "title": "Amount",
+      "type": "integer"
+     },
+     "bookingId": {
+      "title": "Bookingid",
+      "type": "string"
+     },
+     "currency": {
+      "title": "Currency",
+      "type": "string"
+     },
+     "escalatedAt": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Escalatedat"
+     },
+     "offer": {
+      "anyOf": [
+       {
+        "$ref": "#/components/schemas/Offer"
+       },
+       {
+        "type": "null"
+       }
+      ]
+     },
+     "openedAt": {
+      "title": "Openedat",
+      "type": "string"
+     },
+     "openedBy": {
+      "title": "Openedby",
+      "type": "string"
+     },
+     "reason": {
+      "title": "Reason",
+      "type": "string"
+     },
+     "respondBy": {
+      "title": "Respondby",
+      "type": "string"
+     }
+    },
+    "required": [
+     "bookingId",
+     "openedBy",
+     "reason",
+     "openedAt",
+     "respondBy",
+     "currency",
+     "amount"
+    ],
+    "title": "Dispute",
+    "type": "object"
+   },
+   "DisputeIn": {
+    "properties": {
+     "reason": {
+      "maxLength": 500,
+      "minLength": 1,
+      "title": "Reason",
+      "type": "string"
+     }
+    },
+    "required": [
+     "reason"
+    ],
+    "title": "DisputeIn",
+    "type": "object"
+   },
+   "Evidence": {
+    "properties": {
+     "at": {
+      "title": "At",
+      "type": "string"
+     },
+     "by": {
+      "title": "By",
+      "type": "string"
+     },
+     "id": {
+      "title": "Id",
+      "type": "string"
+     },
+     "note": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Note"
+     },
+     "photos": {
+      "items": {
+       "type": "string"
+      },
+      "title": "Photos",
+      "type": "array"
+     },
+     "stage": {
+      "title": "Stage",
+      "type": "string"
+     }
+    },
+    "required": [
+     "id",
+     "by",
+     "stage",
+     "photos",
+     "at"
+    ],
+    "title": "Evidence",
+    "type": "object"
+   },
+   "EvidenceIn": {
+    "properties": {
+     "note": {
+      "anyOf": [
+       {
+        "maxLength": 1000,
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Note"
+     },
+     "photos": {
+      "items": {
+       "type": "string"
+      },
+      "maxItems": 12,
+      "minItems": 1,
+      "title": "Photos",
+      "type": "array"
+     },
+     "stage": {
+      "pattern": "^(check_in|check_out)$",
+      "title": "Stage",
+      "type": "string"
+     }
+    },
+    "required": [
+     "stage",
+     "photos"
+    ],
+    "title": "EvidenceIn",
+    "type": "object"
+   },
+   "ExtendIn": {
+    "properties": {
+     "hours": {
+      "exclusiveMinimum": 0.0,
+      "maximum": 24.0,
+      "title": "Hours",
+      "type": "number"
+     }
+    },
+    "required": [
+     "hours"
+    ],
+    "title": "ExtendIn",
+    "type": "object"
+   },
+   "HTTPValidationError": {
+    "properties": {
+     "detail": {
+      "items": {
+       "$ref": "#/components/schemas/ValidationError"
+      },
+      "title": "Detail",
+      "type": "array"
+     }
+    },
+    "title": "HTTPValidationError",
+    "type": "object"
+   },
+   "Handover": {
+    "properties": {
+     "address": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Address"
+     },
+     "instructions": {
+      "title": "Instructions",
+      "type": "string"
+     },
+     "location": {
+      "anyOf": [
+       {
+        "$ref": "#/components/schemas/Location"
+       },
+       {
+        "type": "null"
+       }
+      ]
+     },
+     "postalCode": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Postalcode"
+     }
+    },
+    "required": [
+     "instructions"
+    ],
+    "title": "Handover",
+    "type": "object"
+   },
+   "LateReturnIn": {
+    "properties": {
+     "minutesLate": {
+      "maximum": 10080.0,
+      "minimum": 1.0,
+      "title": "Minuteslate",
+      "type": "integer"
+     },
+     "note": {
+      "anyOf": [
+       {
+        "maxLength": 1000,
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Note"
+     }
+    },
+    "required": [
+     "minutesLate"
+    ],
+    "title": "LateReturnIn",
+    "type": "object"
+   },
+   "ListingSnapshot": {
+    "description": "What the listing looked like when it was booked: enough to draw a\nbooking card without asking the catalog about every row, and the record of\nwhat was actually agreed even if the listing changes or is removed later.",
+    "properties": {
+     "cancellationPolicy": {
+      "default": "flexible",
+      "title": "Cancellationpolicy",
+      "type": "string"
+     },
+     "category": {
+      "enum": [
+       "fabrication",
+       "additive",
+       "finishing",
+       "print",
+       "freight",
+       "warehousing",
+       "workshop",
+       "events",
+       "creator"
+      ],
+      "title": "Category",
+      "type": "string"
+     },
+     "district": {
+      "title": "District",
+      "type": "string"
+     },
+     "instantBook": {
+      "default": false,
+      "title": "Instantbook",
+      "type": "boolean"
+     },
+     "ownerBusiness": {
+      "anyOf": [
+       {
+        "$ref": "#/components/schemas/Business"
+       },
+       {
+        "type": "null"
+       }
+      ]
+     },
+     "ownerName": {
+      "title": "Ownername",
+      "type": "string"
+     },
+     "photo": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Photo"
+     },
+     "timeZone": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Timezone"
+     },
+     "title": {
+      "title": "Title",
+      "type": "string"
+     }
+    },
+    "required": [
+     "title",
+     "district",
+     "category",
+     "ownerName"
+    ],
+    "title": "ListingSnapshot",
+    "type": "object"
+   },
+   "Location": {
+    "description": "Where a listing is (M-5). Stored exactly; answered snapped to a grid of\nabout 500 m (M-6) until a booking is accepted, like the address.",
+    "properties": {
+     "lat": {
+      "maximum": 90.0,
+      "minimum": -90.0,
+      "title": "Lat",
+      "type": "number"
+     },
+     "lng": {
+      "maximum": 180.0,
+      "minimum": -180.0,
+      "title": "Lng",
+      "type": "number"
+     }
+    },
+    "required": [
+     "lat",
+     "lng"
+    ],
+    "title": "Location",
+    "type": "object"
+   },
+   "Match": {
+    "properties": {
+     "confidence": {
+      "title": "Confidence",
+      "type": "number"
+     },
+     "distanceKm": {
+      "title": "Distancekm",
+      "type": "number"
+     },
+     "end": {
+      "title": "End",
+      "type": "string"
+     },
+     "listingId": {
+      "title": "Listingid",
+      "type": "string"
+     },
+     "ownerId": {
+      "title": "Ownerid",
+      "type": "string"
+     },
+     "quote": {
+      "$ref": "#/components/schemas/Quote"
+     },
+     "reasons": {
+      "items": {
+       "type": "string"
+      },
+      "title": "Reasons",
+      "type": "array"
+     },
+     "score": {
+      "title": "Score",
+      "type": "number"
+     },
+     "slotId": {
+      "title": "Slotid",
+      "type": "string"
+     },
+     "start": {
+      "title": "Start",
+      "type": "string"
+     }
+    },
+    "required": [
+     "listingId",
+     "ownerId",
+     "slotId",
+     "start",
+     "end",
+     "score",
+     "confidence",
+     "reasons",
+     "quote",
+     "distanceKm"
+    ],
+    "title": "Match",
+    "type": "object"
+   },
+   "Message": {
+    "properties": {
+     "at": {
+      "title": "At",
+      "type": "string"
+     },
+     "body": {
+      "title": "Body",
+      "type": "string"
+     },
+     "flagged": {
+      "default": false,
+      "title": "Flagged",
+      "type": "boolean"
+     },
+     "id": {
+      "title": "Id",
+      "type": "string"
+     },
+     "mine": {
+      "title": "Mine",
+      "type": "boolean"
+     },
+     "senderId": {
+      "title": "Senderid",
+      "type": "string"
+     }
+    },
+    "required": [
+     "id",
+     "senderId",
+     "body",
+     "at",
+     "mine"
+    ],
+    "title": "Message",
+    "type": "object"
+   },
+   "MessageAuthor": {
+    "properties": {
+     "senderId": {
+      "title": "Senderid",
+      "type": "string"
+     }
+    },
+    "required": [
+     "senderId"
+    ],
+    "title": "MessageAuthor",
+    "type": "object"
+   },
+   "MessageIn": {
+    "properties": {
+     "body": {
+      "maxLength": 2000,
+      "minLength": 1,
+      "title": "Body",
+      "type": "string"
+     }
+    },
+    "required": [
+     "body"
+    ],
+    "title": "MessageIn",
+    "type": "object"
+   },
+   "Offer": {
+    "properties": {
+     "at": {
+      "title": "At",
+      "type": "string"
+     },
+     "by": {
+      "title": "By",
+      "type": "string"
+     },
+     "refundAmount": {
+      "title": "Refundamount",
+      "type": "integer"
+     }
+    },
+    "required": [
+     "refundAmount",
+     "by",
+     "at"
+    ],
+    "title": "Offer",
+    "type": "object"
+   },
+   "OfferIn": {
+    "properties": {
+     "refundAmount": {
+      "minimum": 0.0,
+      "title": "Refundamount",
+      "type": "integer"
+     }
+    },
+    "required": [
+     "refundAmount"
+    ],
+    "title": "OfferIn",
+    "type": "object"
+   },
+   "OpenBookings": {
+    "properties": {
+     "open": {
+      "title": "Open",
+      "type": "integer"
+     },
+     "until": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Until"
+     }
+    },
+    "required": [
+     "open"
+    ],
+    "title": "OpenBookings",
+    "type": "object"
+   },
+   "Outcome": {
+    "properties": {
+     "note": {
+      "anyOf": [
+       {
+        "maxLength": 1000,
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Note"
+     },
+     "onTime": {
+      "title": "Ontime",
+      "type": "boolean"
+     },
+     "quality": {
+      "maximum": 5.0,
+      "minimum": 1.0,
+      "title": "Quality",
+      "type": "integer"
+     },
+     "tags": {
+      "anyOf": [
+       {
+        "items": {
+         "type": "string"
+        },
+        "type": "array"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Tags"
+     }
+    },
+    "required": [
+     "onTime",
+     "quality"
+    ],
+    "title": "Outcome",
+    "type": "object"
+   },
+   "Page_Booking_": {
+    "properties": {
+     "items": {
+      "items": {
+       "$ref": "#/components/schemas/Booking"
+      },
+      "title": "Items",
+      "type": "array"
+     },
+     "nextCursor": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Nextcursor"
+     }
+    },
+    "required": [
+     "items"
+    ],
+    "title": "Page[Booking]",
+    "type": "object"
+   },
+   "Page_CaseSummary_": {
+    "properties": {
+     "items": {
+      "items": {
+       "$ref": "#/components/schemas/CaseSummary"
+      },
+      "title": "Items",
+      "type": "array"
+     },
+     "nextCursor": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Nextcursor"
+     }
+    },
+    "required": [
+     "items"
+    ],
+    "title": "Page[CaseSummary]",
+    "type": "object"
+   },
+   "Page_Message_": {
+    "properties": {
+     "items": {
+      "items": {
+       "$ref": "#/components/schemas/Message"
+      },
+      "title": "Items",
+      "type": "array"
+     },
+     "nextCursor": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Nextcursor"
+     }
+    },
+    "required": [
+     "items"
+    ],
+    "title": "Page[Message]",
+    "type": "object"
+   },
+   "PaymentStart": {
+    "description": "What the app needs to collect the card: Stripe's client secret for the\nPaymentIntent that holds (authorises, not captures) the booking's price.",
+    "properties": {
+     "clientSecret": {
+      "title": "Clientsecret",
+      "type": "string"
+     },
+     "intentId": {
+      "title": "Intentid",
+      "type": "string"
+     }
+    },
+    "required": [
+     "clientSecret",
+     "intentId"
+    ],
+    "title": "PaymentStart",
+    "type": "object"
+   },
+   "PersonExport": {
+    "properties": {
+     "blocked": {
+      "items": {
+       "type": "string"
+      },
+      "title": "Blocked",
+      "type": "array"
+     },
+     "bookings": {
+      "items": {
+       "$ref": "#/components/schemas/Booking"
+      },
+      "title": "Bookings",
+      "type": "array"
+     },
+     "cardFingerprints": {
+      "items": {
+       "type": "string"
+      },
+      "title": "Cardfingerprints",
+      "type": "array"
+     },
+     "claims": {
+      "default": [],
+      "items": {
+       "additionalProperties": true,
+       "type": "object"
+      },
+      "title": "Claims",
+      "type": "array"
+     },
+     "disputes": {
+      "default": [],
+      "items": {
+       "additionalProperties": true,
+       "type": "object"
+      },
+      "title": "Disputes",
+      "type": "array"
+     },
+     "evidence": {
+      "items": {
+       "additionalProperties": true,
+       "type": "object"
+      },
+      "title": "Evidence",
+      "type": "array"
+     },
+     "identityVerified": {
+      "title": "Identityverified",
+      "type": "boolean"
+     },
+     "messagesSent": {
+      "items": {
+       "additionalProperties": true,
+       "type": "object"
+      },
+      "title": "Messagessent",
+      "type": "array"
+     },
+     "suspended": {
+      "title": "Suspended",
+      "type": "boolean"
+     }
+    },
+    "required": [
+     "bookings",
+     "messagesSent",
+     "evidence",
+     "blocked",
+     "identityVerified",
+     "suspended",
+     "cardFingerprints"
+    ],
+    "title": "PersonExport",
+    "type": "object"
+   },
+   "Quote": {
+    "properties": {
+     "base": {
+      "title": "Base",
+      "type": "integer"
+     },
+     "currency": {
+      "default": "EUR",
+      "title": "Currency",
+      "type": "string"
+     },
+     "discount": {
+      "default": 0,
+      "title": "Discount",
+      "type": "integer"
+     },
+     "discountLabel": {
+      "default": "",
+      "title": "Discountlabel",
+      "type": "string"
+     },
+     "extra": {
+      "title": "Extra",
+      "type": "integer"
+     },
+     "extraLabel": {
+      "title": "Extralabel",
+      "type": "string"
+     },
+     "hours": {
+      "title": "Hours",
+      "type": "number"
+     },
+     "ownerNet": {
+      "title": "Ownernet",
+      "type": "integer"
+     },
+     "platformFee": {
+      "title": "Platformfee",
+      "type": "integer"
+     },
+     "total": {
+      "title": "Total",
+      "type": "integer"
+     }
+    },
+    "required": [
+     "hours",
+     "base",
+     "extra",
+     "extraLabel",
+     "total",
+     "platformFee",
+     "ownerNet"
+    ],
+    "title": "Quote",
+    "type": "object"
+   },
+   "RenterRatingIn": {
+    "properties": {
+     "quality": {
+      "maximum": 5.0,
+      "minimum": 1.0,
+      "title": "Quality",
+      "type": "integer"
+     }
+    },
+    "required": [
+     "quality"
+    ],
+    "title": "RenterRatingIn",
+    "type": "object"
+   },
+   "Resolution": {
+    "properties": {
+     "approvedBy": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Approvedby"
+     },
+     "bookingId": {
+      "title": "Bookingid",
+      "type": "string"
+     },
+     "by": {
+      "title": "By",
+      "type": "string"
+     },
+     "createdAt": {
+      "title": "Createdat",
+      "type": "string"
+     },
+     "currency": {
+      "title": "Currency",
+      "type": "string"
+     },
+     "decidedAt": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Decidedat"
+     },
+     "id": {
+      "title": "Id",
+      "type": "string"
+     },
+     "note": {
+      "title": "Note",
+      "type": "string"
+     },
+     "outcome": {
+      "title": "Outcome",
+      "type": "string"
+     },
+     "reasonCode": {
+      "title": "Reasoncode",
+      "type": "string"
+     },
+     "refundAmount": {
+      "title": "Refundamount",
+      "type": "integer"
+     },
+     "role": {
+      "title": "Role",
+      "type": "string"
+     },
+     "status": {
+      "enum": [
+       "pending_approval",
+       "done",
+       "rejected"
+      ],
+      "title": "Status",
+      "type": "string"
+     }
+    },
+    "required": [
+     "id",
+     "bookingId",
+     "outcome",
+     "refundAmount",
+     "currency",
+     "reasonCode",
+     "note",
+     "by",
+     "role",
+     "status",
+     "createdAt"
+    ],
+    "title": "Resolution",
+    "type": "object"
+   },
+   "ResolveIn": {
+    "properties": {
+     "by": {
+      "anyOf": [
+       {
+        "maxLength": 64,
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "By"
+     },
+     "note": {
+      "default": "",
+      "maxLength": 1000,
+      "title": "Note",
+      "type": "string"
+     },
+     "outcome": {
+      "enum": [
+       "pay_owner",
+       "refund_buyer",
+       "partial"
+      ],
+      "title": "Outcome",
+      "type": "string"
+     },
+     "reasonCode": {
+      "default": "other",
+      "pattern": "^(damage|no_show|not_as_described|late_return|cleanliness|safety|goodwill|agreement|other)$",
+      "title": "Reasoncode",
+      "type": "string"
+     },
+     "refundAmount": {
+      "anyOf": [
+       {
+        "minimum": 1.0,
+        "type": "integer"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Refundamount"
+     }
+    },
+    "required": [
+     "outcome"
+    ],
+    "title": "ResolveIn",
+    "type": "object"
+   },
+   "Settled": {
+    "properties": {
+     "booking": {
+      "$ref": "#/components/schemas/Booking"
+     },
+     "resolution": {
+      "$ref": "#/components/schemas/Resolution"
+     }
+    },
+    "required": [
+     "resolution",
+     "booking"
+    ],
+    "title": "Settled",
+    "type": "object"
+   },
+   "TimelineEntry": {
+    "properties": {
+     "at": {
+      "title": "At",
+      "type": "string"
+     },
+     "by": {
+      "title": "By",
+      "type": "string"
+     },
+     "fromStatus": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Fromstatus"
+     },
+     "toStatus": {
+      "title": "Tostatus",
+      "type": "string"
+     }
+    },
+    "required": [
+     "toStatus",
+     "by",
+     "at"
+    ],
+    "title": "TimelineEntry",
+    "type": "object"
+   },
+   "ValidationError": {
+    "properties": {
+     "ctx": {
+      "title": "Context",
+      "type": "object"
+     },
+     "input": {
+      "title": "Input"
+     },
+     "loc": {
+      "items": {
+       "anyOf": [
+        {
+         "type": "string"
+        },
+        {
+         "type": "integer"
+        }
+       ]
+      },
+      "title": "Location",
+      "type": "array"
+     },
+     "msg": {
+      "title": "Message",
+      "type": "string"
+     },
+     "type": {
+      "title": "Error Type",
+      "type": "string"
+     }
+    },
+    "required": [
+     "loc",
+     "msg",
+     "type"
+    ],
+    "title": "ValidationError",
+    "type": "object"
+   },
+   "WindowRequest": {
+    "properties": {
+     "category": {
+      "enum": [
+       "fabrication",
+       "additive",
+       "finishing",
+       "print",
+       "freight",
+       "warehousing",
+       "workshop",
+       "events",
+       "creator"
+      ],
+      "title": "Category",
+      "type": "string"
+     },
+     "district": {
+      "title": "District",
+      "type": "string"
+     },
+     "earliest": {
+      "title": "Earliest",
+      "type": "string"
+     },
+     "hours": {
+      "title": "Hours",
+      "type": "number"
+     },
+     "latest": {
+      "title": "Latest",
+      "type": "string"
+     },
+     "maxDistanceKm": {
+      "title": "Maxdistancekm",
+      "type": "number"
+     },
+     "mode": {
+      "const": "window",
+      "title": "Mode",
+      "type": "string"
+     }
+    },
+    "required": [
+     "mode",
+     "category",
+     "hours",
+     "earliest",
+     "latest",
+     "district",
+     "maxDistanceKm"
+    ],
+    "title": "WindowRequest",
+    "type": "object"
+   }
+  }
+ },
+ "info": {
+  "title": "Cappy booking",
+  "version": "1.0.0"
+ },
+ "openapi": "3.1.0",
+ "paths": {
+  "/admin/bookings": {
+   "get": {
+    "description": "Find a case: by booking id, by member (id or email, either side), by\nstatus (``disputed``: escalated ones first), or with open claims. Most\nrecently changed first.",
+    "operationId": "cases_admin_bookings_get",
+    "parameters": [
+     {
+      "in": "query",
+      "name": "status",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "pattern": "^[a-z_]{3,20}$",
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "Status"
+      }
+     },
+     {
+      "description": "a member's id or email",
+      "in": "query",
+      "name": "member",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "maxLength": 254,
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "description": "a member's id or email",
+       "title": "Member"
+      }
+     },
+     {
+      "in": "query",
+      "name": "booking",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "maxLength": 40,
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "Booking"
+      }
+     },
+     {
+      "description": "only bookings with open claims",
+      "in": "query",
+      "name": "claims",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "pattern": "^open$",
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "description": "only bookings with open claims",
+       "title": "Claims"
+      }
+     },
+     {
+      "in": "query",
+      "name": "cursor",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "Cursor"
+      }
+     },
+     {
+      "in": "query",
+      "name": "limit",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "type": "integer"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "Limit"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Page_CaseSummary_"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Cases"
+   }
+  },
+  "/admin/bookings/{booking_id}/case": {
+   "get": {
+    "description": "Everything about a booking on one screen: its timeline, the whole\nconversation as written (staff see what masking hid), the hand-over\nphotos as short-lived links, the payment, the dispute and what was\ndecided. Reading it is logged (H-7).",
+    "operationId": "case_admin_bookings__booking_id__case_get",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "booking_id",
+      "required": true,
+      "schema": {
+       "title": "Booking Id",
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Case"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Case"
+   }
+  },
+  "/admin/bookings/{booking_id}/resolve": {
+   "post": {
+    "description": "Pay the owner, refund the renter, or refund part. Above the staff\nmember's limit the resolution waits for a second staff member.",
+    "operationId": "resolve_as_staff_admin_bookings__booking_id__resolve_post",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "booking_id",
+      "required": true,
+      "schema": {
+       "title": "Booking Id",
+       "type": "string"
+      }
+     },
+     {
+      "in": "header",
+      "name": "Idempotency-Key",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "maxLength": 80,
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "Idempotency-Key"
+      }
+     }
+    ],
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/ResolveIn"
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Settled"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Resolve As Staff"
+   }
+  },
+  "/admin/claims/{claim_id}/decide": {
+   "post": {
+    "description": "Confirmed means the owner is owed it; collecting it waits for S-9.",
+    "operationId": "decide_claim_admin_claims__claim_id__decide_post",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "claim_id",
+      "required": true,
+      "schema": {
+       "title": "Claim Id",
+       "type": "string"
+      }
+     }
+    ],
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/ClaimDecisionIn"
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Claim"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Decide Claim"
+   }
+  },
+  "/admin/resolutions": {
+   "get": {
+    "description": "Oldest first: what waits for a second pair of eyes.",
+    "operationId": "resolutions_admin_resolutions_get",
+    "parameters": [
+     {
+      "in": "query",
+      "name": "status",
+      "required": false,
+      "schema": {
+       "default": "pending_approval",
+       "pattern": "^(pending_approval|done|rejected)$",
+       "title": "Status",
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "items": {
+          "$ref": "#/components/schemas/Resolution"
+         },
+         "title": "Response Resolutions Admin Resolutions Get",
+         "type": "array"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Resolutions"
+   }
+  },
+  "/admin/resolutions/{resolution_id}/approve": {
+   "post": {
+    "description": "The second pair of eyes: someone else, whose limit covers the refund\n(a lead's does, up to theirs; two leads together, anything).",
+    "operationId": "approve_resolution_admin_resolutions__resolution_id__approve_post",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "resolution_id",
+      "required": true,
+      "schema": {
+       "title": "Resolution Id",
+       "type": "string"
+      }
+     },
+     {
+      "in": "header",
+      "name": "Idempotency-Key",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "maxLength": 80,
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "Idempotency-Key"
+      }
+     }
+    ],
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/DecideIn"
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Settled"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Approve Resolution"
+   }
+  },
+  "/admin/resolutions/{resolution_id}/reject": {
+   "post": {
+    "description": "Not approved: the booking stays in dispute for another decision.",
+    "operationId": "reject_resolution_admin_resolutions__resolution_id__reject_post",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "resolution_id",
+      "required": true,
+      "schema": {
+       "title": "Resolution Id",
+       "type": "string"
+      }
+     }
+    ],
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/DecideIn"
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Resolution"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Reject Resolution"
+   }
+  },
+  "/bookings": {
+   "get": {
+    "description": "What the caller asked for (``role=requester``), is being asked for\n(``role=owner``), or both, newest first.",
+    "operationId": "list_bookings_bookings_get",
+    "parameters": [
+     {
+      "in": "query",
+      "name": "role",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "pattern": "^(requester|owner)$",
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "Role"
+      }
+     },
+     {
+      "in": "query",
+      "name": "cursor",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "Cursor"
+      }
+     },
+     {
+      "in": "query",
+      "name": "limit",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "minimum": 1,
+         "type": "integer"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "Limit"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Page_Booking_"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "List Bookings"
+   },
+   "post": {
+    "description": "Send the same ``Idempotency-Key`` when retrying: a retry returns the\nbooking the first attempt made, rather than a second booking.",
+    "operationId": "create_booking_bookings_post",
+    "parameters": [
+     {
+      "in": "header",
+      "name": "idempotency-key",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "maxLength": 80,
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "Idempotency-Key"
+      }
+     }
+    ],
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/CreateBookingIn"
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "201": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/BookingCreated"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Create Booking"
+   }
+  },
+  "/bookings/{booking_id}": {
+   "get": {
+    "operationId": "get_booking_bookings__booking_id__get",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "booking_id",
+      "required": true,
+      "schema": {
+       "title": "Booking Id",
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Booking"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Get Booking"
+   }
+  },
+  "/bookings/{booking_id}/accept": {
+   "post": {
+    "operationId": "accept_bookings__booking_id__accept_post",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "booking_id",
+      "required": true,
+      "schema": {
+       "title": "Booking Id",
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Booking"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Accept"
+   }
+  },
+  "/bookings/{booking_id}/cancel": {
+   "post": {
+    "operationId": "cancel_bookings__booking_id__cancel_post",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "booking_id",
+      "required": true,
+      "schema": {
+       "title": "Booking Id",
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Booking"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Cancel"
+   }
+  },
+  "/bookings/{booking_id}/cancellation": {
+   "get": {
+    "description": "What cancelling now would refund, shown before anyone confirms.",
+    "operationId": "cancellation_quote_bookings__booking_id__cancellation_get",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "booking_id",
+      "required": true,
+      "schema": {
+       "title": "Booking Id",
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/CancellationQuote"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Cancellation Quote"
+   }
+  },
+  "/bookings/{booking_id}/claims": {
+   "get": {
+    "operationId": "booking_claims_bookings__booking_id__claims_get",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "booking_id",
+      "required": true,
+      "schema": {
+       "title": "Booking Id",
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "items": {
+          "$ref": "#/components/schemas/Claim"
+         },
+         "title": "Response Booking Claims Bookings  Booking Id  Claims Get",
+         "type": "array"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Booking Claims"
+   }
+  },
+  "/bookings/{booking_id}/complete": {
+   "post": {
+    "operationId": "complete_bookings__booking_id__complete_post",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "booking_id",
+      "required": true,
+      "schema": {
+       "title": "Booking Id",
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Booking"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Complete"
+   }
+  },
+  "/bookings/{booking_id}/decline": {
+   "post": {
+    "operationId": "decline_bookings__booking_id__decline_post",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "booking_id",
+      "required": true,
+      "schema": {
+       "title": "Booking Id",
+       "type": "string"
+      }
+     }
+    ],
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/DeclineIn"
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Booking"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Decline"
+   }
+  },
+  "/bookings/{booking_id}/dispute": {
+   "get": {
+    "operationId": "get_dispute_bookings__booking_id__dispute_get",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "booking_id",
+      "required": true,
+      "schema": {
+       "title": "Booking Id",
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Dispute"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Get Dispute"
+   },
+   "post": {
+    "description": "Something went wrong once the booked time began. The payout is held\nand the booking no longer completes by itself; support resolves it.",
+    "operationId": "dispute_bookings__booking_id__dispute_post",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "booking_id",
+      "required": true,
+      "schema": {
+       "title": "Booking Id",
+       "type": "string"
+      }
+     }
+    ],
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/DisputeIn"
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Booking"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Dispute"
+   }
+  },
+  "/bookings/{booking_id}/dispute/accept": {
+   "post": {
+    "description": "The other side agrees to the offer on the table (the amount is sent\nback, so nobody accepts an offer that changed under them).",
+    "operationId": "accept_offer_bookings__booking_id__dispute_accept_post",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "booking_id",
+      "required": true,
+      "schema": {
+       "title": "Booking Id",
+       "type": "string"
+      }
+     },
+     {
+      "in": "header",
+      "name": "Idempotency-Key",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "maxLength": 80,
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "Idempotency-Key"
+      }
+     }
+    ],
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/OfferIn"
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Settled"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Accept Offer"
+   }
+  },
+  "/bookings/{booking_id}/dispute/offer": {
+   "post": {
+    "description": "Either side proposes how much of the price goes back to the renter.\nA new offer replaces the one on the table and gives the other side 72\nhours to answer.",
+    "operationId": "make_offer_bookings__booking_id__dispute_offer_post",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "booking_id",
+      "required": true,
+      "schema": {
+       "title": "Booking Id",
+       "type": "string"
+      }
+     }
+    ],
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/OfferIn"
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Dispute"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Make Offer"
+   }
+  },
+  "/bookings/{booking_id}/evidence": {
+   "get": {
+    "description": "The two sides' hand-over photos, as links that work for a few minutes\n(P-27). Staff (with MFA) see them too, to decide disputes; that read is\nin the staff audit log (H-7).",
+    "operationId": "evidence_bookings__booking_id__evidence_get",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "booking_id",
+      "required": true,
+      "schema": {
+       "title": "Booking Id",
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "items": {
+          "$ref": "#/components/schemas/Evidence"
+         },
+         "title": "Response Evidence Bookings  Booking Id  Evidence Get",
+         "type": "array"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Evidence"
+   },
+   "post": {
+    "operationId": "add_evidence_bookings__booking_id__evidence_post",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "booking_id",
+      "required": true,
+      "schema": {
+       "title": "Booking Id",
+       "type": "string"
+      }
+     }
+    ],
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/EvidenceIn"
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "201": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Evidence"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Add Evidence"
+   }
+  },
+  "/bookings/{booking_id}/extend": {
+   "post": {
+    "description": "More time straight after the booking, while it is on: a new booking of\nthe same listing by the same renter, instant if the listing is instant\nbook, else a request the owner answers. Only if that time is free.",
+    "operationId": "extend_bookings__booking_id__extend_post",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "booking_id",
+      "required": true,
+      "schema": {
+       "title": "Booking Id",
+       "type": "string"
+      }
+     },
+     {
+      "in": "header",
+      "name": "idempotency-key",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "maxLength": 80,
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "Idempotency-Key"
+      }
+     }
+    ],
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/ExtendIn"
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "201": {
+      "content": {
+       "application/json": {
+        "schema": {}
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Extend"
+   }
+  },
+  "/bookings/{booking_id}/late-return": {
+   "post": {
+    "description": "The owner says the thing came back late, within a day of the end. It\nbecomes a claim staff confirm in the case view; nothing is charged\nautomatically (that needs a saved card, S-9).",
+    "operationId": "report_late_return_bookings__booking_id__late_return_post",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "booking_id",
+      "required": true,
+      "schema": {
+       "title": "Booking Id",
+       "type": "string"
+      }
+     }
+    ],
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/LateReturnIn"
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "201": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Claim"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Report Late Return"
+   }
+  },
+  "/bookings/{booking_id}/messages": {
+   "get": {
+    "description": "Oldest first; the cursor continues towards newer messages.",
+    "operationId": "conversation_bookings__booking_id__messages_get",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "booking_id",
+      "required": true,
+      "schema": {
+       "title": "Booking Id",
+       "type": "string"
+      }
+     },
+     {
+      "in": "query",
+      "name": "cursor",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "Cursor"
+      }
+     },
+     {
+      "in": "query",
+      "name": "limit",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "type": "integer"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "Limit"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Page_Message_"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Conversation"
+   },
+   "post": {
+    "operationId": "send_bookings__booking_id__messages_post",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "booking_id",
+      "required": true,
+      "schema": {
+       "title": "Booking Id",
+       "type": "string"
+      }
+     },
+     {
+      "in": "header",
+      "name": "Idempotency-Key",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "maxLength": 80,
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "Idempotency-Key"
+      }
+     }
+    ],
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/MessageIn"
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "201": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Message"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Send"
+   }
+  },
+  "/bookings/{booking_id}/no-show": {
+   "post": {
+    "description": "The other side never came. Either side reports it about the other, in\nthe first 2 hours of the booked time, while nobody marked the hand-over.",
+    "operationId": "no_show_bookings__booking_id__no_show_post",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "booking_id",
+      "required": true,
+      "schema": {
+       "title": "Booking Id",
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Booking"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "No Show"
+   }
+  },
+  "/bookings/{booking_id}/payment": {
+   "get": {
+    "description": "The card step again, for a buyer who left it half way. Payments returns\nthe same intent however often it is asked.",
+    "operationId": "payment_bookings__booking_id__payment_get",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "booking_id",
+      "required": true,
+      "schema": {
+       "title": "Booking Id",
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/PaymentStart"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Payment"
+   }
+  },
+  "/bookings/{booking_id}/rate": {
+   "post": {
+    "description": "``booking.rated`` feeds the owner's record and becomes a review. It is\ndated at the end of the booked window, not when the buyer got round to it.",
+    "operationId": "rate_bookings__booking_id__rate_post",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "booking_id",
+      "required": true,
+      "schema": {
+       "title": "Booking Id",
+       "type": "string"
+      }
+     },
+     {
+      "in": "header",
+      "name": "Idempotency-Key",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "maxLength": 80,
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "Idempotency-Key"
+      }
+     }
+    ],
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/Outcome"
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Booking"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Rate"
+   }
+  },
+  "/bookings/{booking_id}/rate-renter": {
+   "post": {
+    "description": "Two-way reviews: the owner rates the renter after a completed booking,\nonce. Builds the renter's record other owners see before accepting.",
+    "operationId": "rate_renter_bookings__booking_id__rate_renter_post",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "booking_id",
+      "required": true,
+      "schema": {
+       "title": "Booking Id",
+       "type": "string"
+      }
+     },
+     {
+      "in": "header",
+      "name": "Idempotency-Key",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "maxLength": 80,
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "Idempotency-Key"
+      }
+     }
+    ],
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/RenterRatingIn"
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Booking"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Rate Renter"
+   }
+  },
+  "/bookings/{booking_id}/start": {
+   "post": {
+    "operationId": "start_bookings__booking_id__start_post",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "booking_id",
+      "required": true,
+      "schema": {
+       "title": "Booking Id",
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Booking"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Start"
+   }
+  },
+  "/internal/bookings/{booking_id}/resolve": {
+   "post": {
+    "description": "Support tooling (docs/runbook.md): the same rules as the console, with\nthe support role's limit; ``by`` says who decided.",
+    "operationId": "resolve_internal_bookings__booking_id__resolve_post",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "booking_id",
+      "required": true,
+      "schema": {
+       "title": "Booking Id",
+       "type": "string"
+      }
+     }
+    ],
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/ResolveIn"
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Settled"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Resolve"
+   }
+  },
+  "/internal/busy": {
+   "post": {
+    "description": "From the reader: a window booked a moment ago may still show as free,\nin which case the booking itself is refused by the constraint.",
+    "operationId": "busy_internal_busy_post",
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/BusyIn"
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "additionalProperties": {
+          "items": {
+           "maxItems": 2,
+           "minItems": 2,
+           "prefixItems": [
+            {
+             "type": "string"
+            },
+            {
+             "type": "string"
+            }
+           ],
+           "type": "array"
+          },
+          "type": "array"
+         },
+         "title": "Response Busy Internal Busy Post",
+         "type": "object"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Busy"
+   }
+  },
+  "/internal/messages/{message_id}": {
+   "get": {
+    "description": "Who wrote a reported message (catalog's moderation, FL-7).",
+    "operationId": "message_author_internal_messages__message_id__get",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "message_id",
+      "required": true,
+      "schema": {
+       "title": "Message Id",
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/MessageAuthor"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Message Author"
+   }
+  },
+  "/internal/messages/{message_id}/remove": {
+   "post": {
+    "description": "A moderation decision: the words go, the conversation keeps its shape.",
+    "operationId": "remove_message_internal_messages__message_id__remove_post",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "message_id",
+      "required": true,
+      "schema": {
+       "title": "Message Id",
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "204": {
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Remove Message"
+   }
+  },
+  "/internal/people/{person}/export": {
+   "get": {
+    "description": "Everything booking holds about them (GDPR art. 15/20). Hand-over photos\ncome as links signed for a day, so the file can be saved from them.",
+    "operationId": "export_person_internal_people__person__export_get",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "person",
+      "required": true,
+      "schema": {
+       "title": "Person",
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/PersonExport"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Export Person"
+   }
+  },
+  "/internal/people/{person}/open": {
+   "get": {
+    "description": "Before an account is deleted: is anything still in flight for them?",
+    "operationId": "open_bookings_internal_people__person__open_get",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "person",
+      "required": true,
+      "schema": {
+       "title": "Person",
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/OpenBookings"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Open Bookings"
+   }
+  },
+  "/internal/stats/active-people": {
+   "get": {
+    "description": "For the DSA transparency numbers (catalog's /admin/dsa-stats).",
+    "operationId": "active_people_internal_stats_active_people_get",
+    "parameters": [
+     {
+      "in": "query",
+      "name": "from",
+      "required": true,
+      "schema": {
+       "title": "From",
+       "type": "string"
+      }
+     },
+     {
+      "in": "query",
+      "name": "until",
+      "required": true,
+      "schema": {
+       "title": "Until",
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ActivePeople"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Active People"
+   }
+  },
+  "/me/blocks": {
+   "get": {
+    "operationId": "my_blocks_me_blocks_get",
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "items": {
+          "type": "string"
+         },
+         "title": "Response My Blocks Me Blocks Get",
+         "type": "array"
+        }
+       }
+      },
+      "description": "Successful Response"
+     }
+    },
+    "summary": "My Blocks"
+   }
+  },
+  "/me/blocks/{person}": {
+   "delete": {
+    "operationId": "unblock_me_blocks__person__delete",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "person",
+      "required": true,
+      "schema": {
+       "title": "Person",
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "204": {
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Unblock"
+   },
+   "put": {
+    "description": "No more messages or new bookings between the two of you, either way.",
+    "operationId": "block_me_blocks__person__put",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "person",
+      "required": true,
+      "schema": {
+       "title": "Person",
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "204": {
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Block"
+   }
+  }
+ }
+}

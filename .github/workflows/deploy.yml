@@ -1,0 +1,283 @@
+name: deploy
+
+# A release is a commit whose `ci` run passed on main (R2-8): a green CI run
+# on main deploys it to staging; prod, or a rollback, is a manual run naming
+# the release. The same image sha goes everywhere, and the prod GitHub
+# environment requires a reviewer.
+on:
+  workflow_run:
+    workflows: [ci]
+    types: [completed]
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      env:
+        description: Environment
+        type: choice
+        options: [staging, prod]
+        default: staging
+      release:
+        description: Commit sha to deploy (empty = the latest on main). For a rollback, the previous release's sha; its images already exist, so it takes minutes.
+        type: string
+        default: ""
+      rollback:
+        description: Roll back to `release`. Only the services' images change; Terraform and the database stay at main's current state and no migration runs (R2-19).
+        type: boolean
+        default: false
+
+# Each job asks for AWS (id-token) only if it needs it; see P-2.
+permissions:
+  contents: read
+
+concurrency:
+  group: deploy-${{ inputs.env || 'staging' }}
+  cancel-in-progress: false
+
+env:
+  ENV: ${{ inputs.env || 'staging' }}
+  # What is deployed: the named release, the commit CI just passed, or main.
+  TAG: ${{ inputs.release || github.event.workflow_run.head_sha || github.sha }}
+  # Where Terraform and the migrations come from. A rollback keeps today's
+  # infrastructure and schema (main's head) and swaps only the image tag, so
+  # an old release never runs its own migrations (Alembic would not know the
+  # newer revision) nor its own Terraform (it would destroy newer resources,
+  # the locked backup vault among them). Migrations only expand, so old code
+  # runs on the newer schema (test_migrations_expand_only.py).
+  ROLLBACK: ${{ inputs.rollback == true }}
+  INFRA_REF: ${{ inputs.rollback == true && github.sha || inputs.release || github.event.workflow_run.head_sha || github.sha }}
+
+jobs:
+  gate:
+    # Only main is ever deployed (the AWS roles also refuse any other ref), and
+    # only a commit whose ci run succeeded: a red CI run never deploys, and a
+    # manual run for an untested sha stops here.
+    # Off until the owner turns it on: without the repository variable
+    # DEPLOY_ENABLED = true nothing here runs, whatever is pushed or merged
+    # (GOAL 12: nothing is applied to real AWS until the owner decides).
+    if: vars.DEPLOY_ENABLED == 'true' && github.ref == 'refs/heads/main' && (github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success')
+    runs-on: ubuntu-latest
+    permissions: { contents: read, actions: read }
+    steps:
+      - name: The release passed CI on main
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          ok=$(gh api "repos/${{ github.repository }}/actions/workflows/ci.yml/runs?branch=main&head_sha=$TAG&status=success" --jq '.total_count')
+          [ "$ok" -gt 0 ] || { echo "$TAG has no successful ci run on main: not deploying it"; exit 1; }
+
+  images:
+    needs: gate
+    runs-on: ubuntu-latest
+    environment: ${{ inputs.env || 'staging' }}
+    permissions: { contents: read, id-token: write }
+    env:
+      # The cell and its region (ADR 0013, M-46), from the environment's variables.
+      AWS_REGION: ${{ vars.AWS_REGION || 'eu-central-1' }}
+      CELL: ${{ vars.CELL || 'eu' }}
+      TF_VAR_region: ${{ vars.AWS_REGION || 'eu-central-1' }}
+      TF_VAR_cell: ${{ vars.CELL || 'eu' }}
+    steps:
+      - uses: actions/checkout@v5
+        with: { ref: "${{ env.TAG }}" }
+
+      # Image builds install third-party packages: they get a role that can
+      # only push to ECR, never the deploy role.
+      - uses: aws-actions/configure-aws-credentials@v5
+        with:
+          role-to-assume: ${{ vars.AWS_IMAGES_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - uses: aws-actions/amazon-ecr-login@v2
+        id: ecr
+
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Build and push every service image (immutable tag = commit sha)
+        run: |
+          for s in gateway catalog matching booking payments notifications; do
+            repo="${{ steps.ecr.outputs.registry }}/cappy/$s"
+            if ! aws ecr describe-images --repository-name "cappy/$s" --image-ids imageTag="$TAG" >/dev/null 2>&1; then
+              docker buildx build --push --build-arg SERVICE=$s -t "$repo:$TAG" \
+                --cache-from type=gha,scope=$s --cache-to type=gha,mode=max,scope=$s backend
+            fi
+          done
+
+  deploy:
+    needs: images
+    runs-on: ubuntu-latest
+    environment: ${{ inputs.env || 'staging' }}
+    permissions: { contents: read, id-token: write }
+    outputs:
+      web_config: ${{ steps.web.outputs.config }}
+    # The environment's variables are the one source of these: a switch or a
+    # flag set there survives every deploy (a local apply would be undone by
+    # the next push). HCL/JSON values, e.g. SWITCHES = {"bookings":true,...}.
+    env:
+      # The cell and its region (ADR 0013, M-46), from the environment's variables.
+      AWS_REGION: ${{ vars.AWS_REGION || 'eu-central-1' }}
+      CELL: ${{ vars.CELL || 'eu' }}
+      TF_VAR_region: ${{ vars.AWS_REGION || 'eu-central-1' }}
+      TF_VAR_cell: ${{ vars.CELL || 'eu' }}
+      TF_VAR_legal: ${{ vars.LEGAL }}
+      TF_VAR_apps: ${{ vars.APPS || '{}' }}
+      TF_VAR_pager_endpoint: ${{ secrets.PAGER_ENDPOINT }}
+      TF_VAR_allow_no_pager: ${{ vars.ALLOW_NO_PAGER || 'false' }}
+      TF_VAR_switches: ${{ vars.SWITCHES || '{"bookings":true,"payouts":true,"listings":true}' }}
+      TF_VAR_feature_flags: ${{ vars.FEATURE_FLAGS }}
+    steps:
+      - uses: actions/checkout@v5
+        with: { ref: "${{ env.INFRA_REF }}" }
+
+      - uses: aws-actions/configure-aws-credentials@v5
+        with:
+          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: The operator's legal identity is set (invoices need it)
+        run: test -n "$TF_VAR_legal" || { echo "set the LEGAL variable on the ${{ env.ENV }} environment"; exit 1; }
+
+      - uses: hashicorp/setup-terraform@v3
+        with: { terraform_version: 1.12.2, terraform_wrapper: false }
+
+      - name: terraform init
+        working-directory: infra/envs/${{ env.ENV }}
+        # eu keeps the first state key; another cell has its own.
+        run: terraform init -input=false $([ "$CELL" = eu ] || echo "-backend-config=key=$CELL/$ENV/terraform.tfstate")
+
+      - name: Register the new migrate tasks
+        if: env.ROLLBACK != 'true'
+        working-directory: infra/envs/${{ env.ENV }}
+        run: |
+          terraform apply -input=false -auto-approve -var image_tag=$TAG \
+            -var zone_id=${{ vars.ZONE_ID }} -var alarm_email=${{ vars.ALARM_EMAIL }} \
+            -target=module.platform.aws_ecs_task_definition.migrate
+
+      - name: Migrate every database, before any service rolls
+        if: env.ROLLBACK != 'true'
+        working-directory: infra/envs/${{ env.ENV }}
+        run: |
+          out=$(terraform output -json platform)
+          cluster=$(echo "$out" | jq -r .cluster)
+          net=$(echo "$out" | jq -c '{awsvpcConfiguration:{subnets:.private_subnets,securityGroups:[.task_security_group],assignPublicIp:"DISABLED"}}')
+          arns=()
+          for td in $(echo "$out" | jq -r '.migrate_task_definitions[]'); do
+            arns+=($(aws ecs run-task --cluster "$cluster" --launch-type FARGATE --task-definition "$td" \
+              --network-configuration "$net" --query 'tasks[0].taskArn' --output text))
+          done
+          aws ecs wait tasks-stopped --cluster "$cluster" --tasks "${arns[@]}"
+          codes=$(aws ecs describe-tasks --cluster "$cluster" --tasks "${arns[@]}" --query 'tasks[].containers[0].exitCode' --output text)
+          echo "migrate exit codes: $codes"
+          for c in $codes; do [ "$c" = "0" ] || { echo "a migration failed; nothing was rolled out"; exit 1; }; done
+
+      - name: Roll out (ECS rolls back by itself if the new tasks do not get healthy)
+        working-directory: infra/envs/${{ env.ENV }}
+        run: |
+          terraform apply -input=false -auto-approve -var image_tag=$TAG \
+            -var zone_id=${{ vars.ZONE_ID }} -var alarm_email=${{ vars.ALARM_EMAIL }}
+          out=$(terraform output -json platform)
+          cluster=$(echo "$out" | jq -r .cluster)
+          aws ecs wait services-stable --cluster "$cluster" \
+            --services gateway catalog matching booking payments notifications
+          # "Stable" is also what a rolled-back service is: check each one is
+          # really running the task definition this deploy registered.
+          for s in gateway catalog matching booking payments notifications; do
+            want=$(echo "$out" | jq -r ".service_task_definitions.$s")
+            read -r got state < <(aws ecs describe-services --cluster "$cluster" --services "$s" \
+              --query "services[0].deployments[?status=='PRIMARY'] | [0].[taskDefinition,rolloutState]" --output text)
+            if [ "$got" != "$want" ] || [ "$state" != "COMPLETED" ]; then
+              echo "$s is on $got ($state), not $want: the release was rolled back"; exit 1
+            fi
+          done
+
+      - name: The web app's build settings, public values (region, client id)
+        id: web
+        working-directory: infra/envs/${{ env.ENV }}
+        run: echo "config=$(terraform output -json platform | jq -c .web_config)" >> "$GITHUB_OUTPUT"
+
+  web:
+    # No AWS here: npm packages run in this job, so it holds no credentials.
+    needs: deploy
+    runs-on: ubuntu-latest
+    permissions: { contents: read }
+    steps:
+      - uses: actions/checkout@v5
+        with: { ref: "${{ env.TAG }}" }
+      - uses: actions/setup-node@v5
+        with: { node-version: 22, cache: npm, cache-dependency-path: web/package-lock.json }
+      - name: Build the web app
+        working-directory: web
+        env:
+          WEB_CONFIG: ${{ needs.deploy.outputs.web_config }}
+        # A dotenv file Vite reads by itself: values with spaces and commas
+        # (addresses) survive, which `export $(...)` did not.
+        run: |
+          echo "$WEB_CONFIG" | jq -r 'to_entries[] | "\(.key)=\(.value | @json)"' > .env.production.local
+          npm ci --ignore-scripts && npm run build
+      - uses: actions/upload-artifact@v4
+        with: { name: web-dist, path: web/dist, include-hidden-files: true, retention-days: 7 }
+
+  publish:
+    needs: web
+    runs-on: ubuntu-latest
+    environment: ${{ inputs.env || 'staging' }}
+    permissions: { contents: read, id-token: write }
+    env:
+      # The cell and its region (ADR 0013, M-46), from the environment's variables.
+      AWS_REGION: ${{ vars.AWS_REGION || 'eu-central-1' }}
+      CELL: ${{ vars.CELL || 'eu' }}
+      TF_VAR_region: ${{ vars.AWS_REGION || 'eu-central-1' }}
+      TF_VAR_cell: ${{ vars.CELL || 'eu' }}
+    steps:
+      - uses: actions/checkout@v5
+        with: { ref: "${{ env.INFRA_REF }}" }
+
+      - uses: actions/download-artifact@v4
+        with: { name: web-dist, path: web/dist }
+
+      - uses: aws-actions/configure-aws-credentials@v5
+        with:
+          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - uses: hashicorp/setup-terraform@v3
+        with: { terraform_version: 1.12.2, terraform_wrapper: false }
+
+      - name: terraform init
+        working-directory: infra/envs/${{ env.ENV }}
+        # eu keeps the first state key; another cell has its own.
+        run: terraform init -input=false $([ "$CELL" = eu ] || echo "-backend-config=key=$CELL/$ENV/terraform.tfstate")
+
+      - name: Publish the web app
+        working-directory: infra/envs/${{ env.ENV }}
+        run: |
+          out=$(terraform output -json platform)
+          bucket=$(echo "$out" | jq -r .web_bucket)
+          # Hashed assets forever; the entry points never, or clients miss releases.
+          # No --delete (R2-9): a tab opened before this release still asks for
+          # the previous release's lazy chunks, so they stay until they are
+          # both gone from this build and older than 30 days.
+          aws s3 sync ../../../web/dist "s3://$bucket" --cache-control "public,max-age=31536000,immutable" \
+            --exclude index.html --exclude sw.js --exclude registerSW.js --exclude manifest.webmanifest
+          (cd ../../../web/dist && find assets -type f) | sort > /tmp/current
+          cutoff=$(date -u -d '30 days ago' +%Y-%m-%dT%H:%M:%S)
+          aws s3api list-objects-v2 --bucket "$bucket" --prefix assets/ \
+            --query "Contents[?LastModified<'$cutoff'].Key" --output text | tr '\t' '\n' | grep -v '^None$' | sort > /tmp/old || true
+          comm -23 /tmp/old /tmp/current | while read -r key; do aws s3 rm "s3://$bucket/$key"; done
+          for f in index.html sw.js registerSW.js manifest.webmanifest; do
+            [ -f "../../../web/dist/$f" ] && aws s3 cp "../../../web/dist/$f" "s3://$bucket/$f" --cache-control "no-cache"
+          done
+          # Deep-link files for the store apps: JSON, never cached for long.
+          for f in apple-app-site-association assetlinks.json; do
+            [ -f "../../../web/dist/.well-known/$f" ] && aws s3 cp "../../../web/dist/.well-known/$f" \
+              "s3://$bucket/.well-known/$f" --content-type application/json --cache-control "public,max-age=300"
+          done
+          aws cloudfront create-invalidation --distribution-id "$(echo "$out" | jq -r .cloudfront_id)" \
+            --paths /index.html /sw.js /registerSW.js /manifest.webmanifest '/.well-known/*'
+
+      - name: Smoke test the public address
+        run: |
+          url=$(cd infra/envs/$ENV && terraform output -json platform | jq -r .url)
+          curl -fsS "$url/" >/dev/null
+          test "$(curl -s -o /dev/null -w '%{http_code}' "$url/api/categories")" = 200
+          test "$(curl -s -o /dev/null -w '%{http_code}' "$url/api/internal/busy")" = 404
+          test "$(curl -s -o /dev/null -w '%{http_code}' "$url/api/bookings")" = 401

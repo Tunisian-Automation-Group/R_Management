@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import math
+from collections.abc import Mapping, Sequence
 from typing import Literal
 
 from cappy_common.jsmath import js_round, to_fixed
@@ -19,7 +20,7 @@ from cappy_common.models import (
 )
 from cappy_common.timeutil import ms_from_iso
 
-from .availability import Offer, earliest_offer
+from .availability import Interval, Offer, earliest_offer
 from .categories import duration_label
 from .feasibility import assess_feasibility
 from .pricing import hours_for, quote_for
@@ -40,6 +41,16 @@ def distance_km(a: tuple[float, float], b: tuple[float, float]) -> float:
     return 2 * EARTH_KM * math.asin(math.sqrt(h))
 
 
+def point_of(listing: AnyListing, districts: Mapping) -> tuple[float, float] | None:
+    """Where a listing is, for distances: its own point when it has one (M-5;
+    already snapped to 500 m by catalog, so no distance gives the exact place
+    away), else its district's centre."""
+    if listing.location is not None:
+        return listing.location.lat, listing.location.lng
+    d = districts.get(listing.district)
+    return (d.lat, d.lng) if d else None
+
+
 def _normalise(values: list[float]) -> list[float]:
     """Min-max to 0..1. All-equal collapses to 0.5 rather than dividing by zero."""
     lo, hi = min(values), max(values)
@@ -52,11 +63,23 @@ def _normalise(values: list[float]) -> list[float]:
 # data to learn from, which is what the rating loop is accumulating.
 W = {"price": 0.3, "soon": 0.2, "trust": 0.3, "near": 0.2}
 
+# What each weight means, in the words the public ranking page uses (P2B Art. 5,
+# § 5b UWG). GET /api/ranking serves both, so the page cannot drift from W (H-2).
+SIGNALS = {
+    "price": "The total price for your request: cheaper ranks higher.",
+    "trust": "The owner's reliability and ratings: owners who cancel accepted bookings or do not show up rank lower.",
+    "soon": "How soon the first free window starts: sooner ranks higher.",
+    "near": "Distance from the place you searched: nearer ranks higher.",
+}
+
 
 def trust_of(o: Owner) -> float:
-    """Reliability dominates; stars break ties; an unrated owner sits mid-scale."""
+    """Reliability dominates; stars break ties; an unrated owner sits mid-scale.
+    Owners who cancel accepted bookings (or do not show up) lose trust in
+    proportion: a 10% cancellation rate costs 5% of it (S-18)."""
     stars = rating(o)
-    return 0.6 * reliability(o) + 0.4 * (0.5 if stars is None else stars / 5)
+    base = 0.6 * reliability(o) + 0.4 * (0.5 if stars is None else stars / 5)
+    return base * (1 - 0.5 * (o.cancellation_rate or 0))
 
 
 def track_record(o: Owner) -> str:
@@ -79,15 +102,22 @@ def _reasons(fit_reasons: list[str], hours: float, km: float, owner: Owner) -> l
     ]
 
 
-def find_matches(req: AnyRequirement, world: World, now: Iso) -> list[Match]:
-    """Pure. Every input arrives as an argument, including ``now``."""
+def find_matches(
+    req: AnyRequirement, world: World, now: Iso, busy: Mapping[str, Sequence[Interval]] | None = None
+) -> list[Match]:
+    """Pure. Every input arrives as an argument, including ``now`` and what is
+    already booked (``busy``, by listing id)."""
+    busy = busy or {}
     origin = world.districts.get(req.district)
     if not origin:
         return []
 
     owners = {o.id: o for o in world.owners}
     until = _window_end(req)
-    if ms_from_iso(until) <= ms_from_iso(now):
+    # A window request searches from its own "from" when that is later than
+    # now (the web's From hour narrows the results).
+    start = req.earliest if req.mode == "window" and ms_from_iso(req.earliest) > ms_from_iso(now) else now
+    if ms_from_iso(until) <= ms_from_iso(start):
         return []
 
     slots_by_listing: dict[str, list] = {}
@@ -105,10 +135,10 @@ def find_matches(req: AnyRequirement, world: World, now: Iso) -> list[Match]:
         if not fit.feasible:
             continue
 
-        dest = world.districts.get(listing.district)
+        dest = point_of(listing, world.districts)
         if not dest:
             continue
-        km = distance_km((origin.lat, origin.lng), (dest.lat, dest.lng))
+        km = distance_km((origin.lat, origin.lng), dest)
         if km > req.max_distance_km:
             continue
 
@@ -117,7 +147,7 @@ def find_matches(req: AnyRequirement, world: World, now: Iso) -> list[Match]:
         if hours is None or quote is None:
             continue
 
-        offer = earliest_offer(slots_by_listing.get(listing.id, []), hours, now, until)
+        offer = earliest_offer(slots_by_listing.get(listing.id, []), hours, start, until, busy.get(listing.id))
         if not offer:
             continue
 
