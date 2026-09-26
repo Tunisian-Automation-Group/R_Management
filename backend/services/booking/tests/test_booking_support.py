@@ -9,7 +9,7 @@ from datetime import UTC, datetime, timedelta
 
 from booking.jobs import sweep_once
 from booking.tables import BookingRow, DisputeRow
-from cappy_common.events import BOOKING_STATUS_CHANGED, DISPUTE_OFFER, STAFF_ACTION
+from cappy_common.events import BOOKING_NOTICE, BOOKING_STATUS_CHANGED, DISPUTE_OFFER, STAFF_ACTION
 
 from .test_booking_api import (  # noqa: F401 - fixtures
     BUYER,
@@ -74,15 +74,20 @@ def test_the_two_sides_settle_a_dispute_with_an_offer(client, app, issuer, broke
     b = settled["booking"]
     assert b["status"] == "completed" and b["refundAmount"] == 2000, "partial: completed, part refunded"
     assert _events(app, broker, BOOKING_STATUS_CHANGED)[-1]["refundAmount"] == 2000
+    told = _events(app, broker, BOOKING_NOTICE)[-1]
+    assert told["kind"] == "dispute_partial" and told["how"] == "agreement" and told["refundAmount"] == 2000
+    assert set(told["to"]) == {BUYER, HOST}, "both sides hear how it ended (V5-7)"
     assert accept(HOST, 2000).status_code == 409, "settled once"
 
 
-def test_a_dispute_nobody_settles_in_72_hours_goes_to_staff(client, app, issuer):
+def test_a_dispute_nobody_settles_in_72_hours_goes_to_staff(client, app, issuer, broker):
     bid = _disputed(client, app, issuer)
     staff = _staff(issuer)
     assert call(app, sweep_once, app) == 0
     call(app, _set_dispute, app, bid, respond_by=datetime.now(UTC) - timedelta(minutes=1))
     assert call(app, sweep_once, app) == 1
+    told = _events(app, broker, BOOKING_NOTICE)[-1]
+    assert told["kind"] == "dispute_escalated" and set(told["to"]) == {BUYER, HOST}
     page = client.get("/admin/bookings", params={"status": "disputed"}, headers=staff).json()
     [item] = page["items"]
     assert item["id"] == bid and item["dispute"]["escalatedAt"] and item["requesterId"] == BUYER
@@ -114,7 +119,7 @@ def test_a_refund_above_the_staff_limit_needs_a_second_pair_of_eyes(client, app,
     assert ("staff-1", "propose_resolution") in actions and ("lead-1", "approve_resolution") in actions
 
 
-def test_within_the_limit_staff_settle_alone_and_partials_are_checked(client, app, issuer):
+def test_within_the_limit_staff_settle_alone_and_partials_are_checked(client, app, issuer, broker):
     bid = _disputed(client, app, issuer)  # €46
     staff = _staff(issuer)
     bad = {"outcome": "partial", "refundAmount": 4600, "reasonCode": "damage"}
@@ -128,6 +133,8 @@ def test_within_the_limit_staff_settle_alone_and_partials_are_checked(client, ap
     )
     ok = client.post(f"/admin/bookings/{bid}/resolve", json={**bad, "refundAmount": 1000}, headers=staff).json()
     assert ok["resolution"]["status"] == "done" and ok["booking"]["refundAmount"] == 1000
+    told = _events(app, broker, BOOKING_NOTICE)[-1]
+    assert (told["kind"], told["how"], told["refundAmount"]) == ("dispute_partial", "staff", 1000)
 
 
 def test_the_case_view_shows_everything_and_is_logged(client, app, issuer, broker):
@@ -180,6 +187,8 @@ def test_the_owner_claims_a_late_return_and_staff_decide(client, app, issuer, br
     c = claim(HOST, 95).json()
     assert c["amount"] == 4500 and c["status"] == "open" and c["currency"] == "EUR"
     assert claim(HOST, 95).json()["error"]["code"] == "claim_exists"
+    filed = _events(app, broker, BOOKING_NOTICE)[-1]
+    assert (filed["kind"], filed["to"], filed["claimAmount"]) == ("claim_filed", [BUYER], 4500), "the renter hears"
     assert [x["id"] for x in client.get(f"/bookings/{bid}/claims", headers=issuer.headers(BUYER)).json()] == [c["id"]]
 
     staff = _staff(issuer)
@@ -192,6 +201,7 @@ def test_the_owner_claims_a_late_return_and_staff_decide(client, app, issuer, br
     assert decided.json()["status"] == "confirmed" and decided.json()["decidedBy"] == "staff-1"
     assert client.post(f"/admin/claims/{c['id']}/decide", json={"decision": "reject"}, headers=staff).status_code == 409
     assert _events(app, broker, STAFF_ACTION)[-1]["action"] == "confirm_claim"
+    assert _events(app, broker, BOOKING_NOTICE)[-1]["kind"] == "claim_confirmed"
 
     other = _requested(client, app, issuer, start_h=60)
     _do(client, issuer, HOST, other, "accept")

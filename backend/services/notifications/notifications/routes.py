@@ -21,7 +21,7 @@ from cappy_common.timeutil import dt_from_iso, iso_from_datetime
 from .prefs import Prefs, prefs_of, save
 from .push import drop_devices
 from .tables import DeviceRow, InboxRow
-from .texts import render
+from .texts import render, summary
 
 router = ApiRouter(prefix="/notifications")
 internal = ApiRouter(prefix="/internal", dependencies=[Depends(require_internal)])
@@ -121,7 +121,7 @@ def _item(r: InboxRow, locale: str | None) -> Item:
     if r.params is not None:
         try:
             title, text = render(r.kind, locale, **r.params)
-            body = text.partition("\n\n")[0]
+            body = summary(r.kind, text)
         except (KeyError, ValueError):  # a text key or param that changed since: as sent
             pass
     return Item(

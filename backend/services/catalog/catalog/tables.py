@@ -100,6 +100,10 @@ class ListingRow(Base):
     # Held for a staff check before it goes live (a new owner listing
     # something expensive: the classic fake listing). Cleared on approval.
     held_at: Mapped[datetime | None] = mapped_column(UtcDateTime, nullable=True)
+    # Why it is held when it is not the price check: its place is outside a
+    # live market or the owner's country (V5-1). The owner fixes the place;
+    # staff cannot approve it as it is.
+    hold_reason: Mapped[str | None] = mapped_column(String(40), nullable=True)
     rules: Mapped[list] = mapped_column(JsonType)
     photos: Mapped[list] = mapped_column(JsonType, default=list)
     active: Mapped[bool] = mapped_column(Boolean, default=True)

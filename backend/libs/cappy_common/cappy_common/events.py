@@ -90,6 +90,10 @@ LISTING_IDLE = "listing.idle"
 STAFF_ACTION = "staff.action"
 # One side of a dispute offered the other a refund amount to settle it (S-21).
 DISPUTE_OFFER = "booking.dispute_offer"
+# Something about a booking the parties must hear that is not a status of
+# its own (V5-7): how a dispute ended, that it went to staff, a late-return
+# claim and its decision. ``kind`` is the notice, ``to`` who hears it.
+BOOKING_NOTICE = "booking.notice"
 
 ALL_TYPES = frozenset(
     {
@@ -117,6 +121,7 @@ ALL_TYPES = frozenset(
         LISTING_IDLE,
         STAFF_ACTION,
         DISPUTE_OFFER,
+        BOOKING_NOTICE,
     }
 )
 

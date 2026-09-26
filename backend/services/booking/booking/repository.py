@@ -92,6 +92,8 @@ def status_event(row: BookingRow, before: str | None, by: str) -> dict:
         "currency": row.currency,
         "refundAmount": row.refund_amount,
         "noShow": row.no_show,
+        # Why the owner said no: the renter hears it in the notice (V5-16).
+        "declineReason": row.decline_reason if row.status == "declined" else None,
         "windowStart": iso_from_datetime(row.window_start),
         "windowEnd": iso_from_datetime(row.window_end),
         # A request's answer-by (it lapses then): what the owner is told.

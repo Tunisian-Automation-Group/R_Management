@@ -423,3 +423,17 @@ def test_distance_is_from_the_listings_own_point(world, now, saw):
     bare = listing.model_copy(update={"location": None})
     k = world.districts["Kreuzberg"]
     assert point_of(bare, world.districts) == (k.lat, k.lng)
+
+
+def test_a_van_takes_no_more_than_it_has_room_for_and_loads(world, brackets):
+    """V5-22: two pallet spaces take two pallets, and its fixed part is loading."""
+    van = next(l for l in world.listings if l.category == "freight").model_copy(update={"max_quantity": 2})
+
+    def ask(n):
+        return brackets.model_copy(
+            update={"category": "freight", "quantity": n, "dims": None, "material": None, "tolerance_mm": None}
+        )
+
+    assert assess_feasibility(ask(2), van).feasible
+    assert "takes at most 2 per booking" in assess_feasibility(ask(3), van).blockers
+    assert quote_for(ask(2), van).extra_label == "Loading"

@@ -1463,8 +1463,9 @@ def test_a_weekly_schedule_keeps_eight_weeks_of_windows_open(client, issuer):
     created = r.json()
     lid, slots = created["listing"]["id"], created["slots"]
     assert created["listing"]["availability"]["timeZone"] == "Europe/Berlin"
-    assert 38 <= len(slots) <= 40, "five weekdays for eight weeks, less today if it started"
-    assert all(s["hoursUsable"] == 8 for s in slots)
+    assert 38 <= len(slots) <= 41, "five weekdays for eight weeks"
+    # Today's, if already under way, is cut short (V5-23); every other is whole.
+    assert all(0 < s["hoursUsable"] <= 8 for s in slots) and sum(s["hoursUsable"] < 8 for s in slots) <= 1
 
     # A hand-made window stays; a new schedule replaces only what the old one made.
     extra = {"start": "2027-06-06T08:00:00Z", "end": "2027-06-06T10:00:00Z", "hoursUsable": 2}
@@ -1473,7 +1474,7 @@ def test_a_weekly_schedule_keeps_eight_weeks_of_windows_open(client, issuer):
     body = {"listing": {**_window_listing(availability=weekends)}}
     assert client.put(f"/listings/{lid}", json=body, headers=h).status_code == 200
     after = client.get(f"/listings/{lid}").json()["slots"]
-    assert all(s["hoursUsable"] in (4, 2) for s in after) and any(s["hoursUsable"] == 2 for s in after)
+    assert all(0 < s["hoursUsable"] <= 4 for s in after) and any(s["hoursUsable"] == 2 for s in after)
 
     # An edit that does not mention the schedule keeps it.
     assert client.put(f"/listings/{lid}", json={"listing": _window_listing()}, headers=h).status_code == 200
@@ -1619,3 +1620,43 @@ def test_older_decisions_on_messages_find_their_author(client, app):
     assert _run(app, lambda: attribute_decisions_once(app)) == 1
     assert _run(app, who) == "user-b"
     assert _run(app, lambda: attribute_decisions_once(app)) == 0, "done once"
+
+
+def test_a_listing_outside_an_open_market_is_held_until_its_owner_moves_it(client, app, issuer):
+    """V5-1: a listing published before places were checked (l62, a German
+    owner's in Amsterdam) leaves search and detail; the owner sees why, staff
+    cannot wave it through, and moving it into an open market brings it back."""
+    from catalog.jobs import hold_out_of_market_once
+
+    assert client.get("/listings/l62").status_code == 200
+    assert _run(app, lambda: hold_out_of_market_once(app)) >= 1
+    assert _run(app, lambda: hold_out_of_market_once(app)) == 0, "once is enough"
+    assert client.get("/listings/l62").status_code == 404, "gone for everyone else"
+    mine = client.get("/me/listings", params={"limit": 100}, headers=issuer.headers("n7")).json()["items"]
+    view = next(v for v in mine if v["listing"]["id"] == "l62")
+    assert view["held"] is True and view["holdReason"] == "market_not_live"
+    held = client.get("/admin/listings/held", headers=_staff(issuer)).json()
+    assert next(h for h in held if h["id"] == "l62")["holdReason"] == "market_not_live"
+    refused = client.post("/admin/listings/l62/approve", headers=_staff(issuer))
+    assert refused.status_code == 409 and refused.json()["error"]["code"] == "market_not_live"
+    moved = {**view["listing"], "district": "Kreuzberg", "country": None, "location": None}
+    r = client.put("/listings/l62", json={"listing": moved}, headers=issuer.headers("n7"))
+    assert r.status_code == 200, r.text
+    assert client.get("/listings/l62").status_code == 200, "back once it is in an open market"
+
+
+def test_a_weekly_window_already_under_way_is_cut_not_dropped():
+    """V5-23: a Saturday 10:00-16:00 schedule seen at 10:34 still offers today
+    from 10:45; the last quarter hour is not worth a window."""
+    from datetime import UTC, datetime
+
+    from cappy_common.models import Availability
+    from catalog.schedule import windows
+
+    sat = Availability.model_validate(
+        {"weekly": [{"day": 6, "start": "10:00", "end": "16:00"}], "timeZone": "Europe/Berlin"}
+    )
+    night = datetime(2026, 9, 27, tzinfo=UTC)
+    [(start, end)] = windows(sat, datetime(2026, 9, 26, 8, 34, 12, tzinfo=UTC), night)
+    assert (start, end) == (datetime(2026, 9, 26, 8, 45, tzinfo=UTC), datetime(2026, 9, 26, 14, tzinfo=UTC))
+    assert windows(sat, datetime(2026, 9, 26, 13, 50, tzinfo=UTC), night) == []

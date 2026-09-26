@@ -387,16 +387,37 @@ class CatalogRepository:
         q = select(func.count()).where(ListingRow.owner_id == owner_id, ListingRow.created_at >= since)
         return (await self.s.execute(q)).scalar_one()
 
-    async def held_ids(self, listing_ids: set[str]) -> set[str]:
+    async def held_ids(self, listing_ids: set[str]) -> dict[str, str | None]:
+        """The held ones among them, each with why (None: the price check)."""
         if not listing_ids:
-            return set()
-        q = select(ListingRow.id).where(ListingRow.id.in_(listing_ids), ListingRow.held_at.is_not(None))
-        return set((await self.s.execute(q)).scalars())
+            return {}
+        q = select(ListingRow.id, ListingRow.hold_reason).where(
+            ListingRow.id.in_(listing_ids), ListingRow.held_at.is_not(None)
+        )
+        return dict((await self.s.execute(q)).all())
 
-    async def hold(self, listing_id: str) -> None:
+    async def hold(self, listing_id: str, reason: str | None = None) -> None:
         row = await self.s.get(ListingRow, listing_id)
-        row.held_at = _now()
+        row.held_at, row.hold_reason = _now(), reason
+        if reason:
+            row.active = False
         await self.s.flush()
+
+    async def out_of_market(self, live: set[str], limit: int) -> list[tuple[ListingRow, str]]:
+        """Live listings whose place is not in an open market, or not in their
+        owner's country (V5-1: listed before either was checked), with why."""
+        q = (
+            select(ListingRow, DistrictRow.country, OwnerRow.country)
+            .join(DistrictRow, DistrictRow.name == ListingRow.district)
+            .join(OwnerRow, OwnerRow.id == ListingRow.owner_id)
+            .where(ListingRow.deleted_at.is_(None), ListingRow.held_at.is_(None))
+            .where(or_(DistrictRow.country.not_in(live), DistrictRow.country != OwnerRow.country))
+            .limit(limit)
+        )
+        return [
+            (row, "market_not_live" if place not in live else "district_not_in_country")
+            for row, place, _ in (await self.s.execute(q)).all()
+        ]
 
     async def is_suspended(self, owner_id: str) -> bool:
         row = await self.s.get(OwnerRow, owner_id)

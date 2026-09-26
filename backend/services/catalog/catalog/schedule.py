@@ -39,15 +39,21 @@ def _at(day: date, hhmm: str, tz: ZoneInfo) -> datetime:
 
 def windows(a: Availability, now: datetime, until: datetime) -> list[tuple[datetime, datetime]]:
     """Every opening from ``now`` to ``until``, UTC, soonest first. One that
-    already started is left out rather than cut: half a window is a surprise."""
+    already started is cut to start at the next quarter hour, so a Saturday
+    schedule made at 10:34 still offers today from 10:45 (V5-23); nothing is
+    made of the last quarter hour."""
     tz = zone(a.time_zone)
     out = []
     day = now.astimezone(tz).date()
+    soonest = now + timedelta(minutes=-(now.minute % 15) % 15, seconds=-now.second, microseconds=-now.microsecond)
+    if soonest < now:
+        soonest += timedelta(minutes=15)
     while _at(day, "00:00", tz) < until:
         for w in a.weekly:
             if w.day == day.isoweekday():
                 start, end = _at(day, w.start, tz), _at(day, w.end, tz)
-                if start >= now and start < until:
+                start = max(start, soonest)
+                if end - start >= timedelta(minutes=15) and start < until:
                     out.append((start, end))
         day += timedelta(days=1)
     return sorted(out)

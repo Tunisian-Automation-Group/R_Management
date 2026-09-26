@@ -580,7 +580,7 @@ def test_a_dispute_settled_with_a_partial_refund_refunds_part_and_pays_the_rest(
     assert broker.of_type(PAYMENT_REFUNDED)[0].data["amount"] == 2300
     assert broker.of_type(PAYOUT_SENT)[0].data["amount"] == 2000
     state = client.get("/internal/bookings/bk_1/payment", headers=INTERNAL)
-    assert state.json()["refunded"] and state.json()["paidOut"] and state.json()["status"] == "refunded"
+    assert state.json()["refunded"] and state.json()["paidOut"] and state.json()["status"] == "partially_refunded"
     assert client.get("/internal/bookings/bk_1/payment").status_code == 403
     assert client.get("/internal/bookings/nope/payment", headers=INTERNAL).status_code == 404
 

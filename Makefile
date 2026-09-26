@@ -36,8 +36,8 @@ seed-demo: ## Load the demo world (additive; local and staging only)
 codes: ## Sign-up and reset codes cognito-local "emailed", with the address each went to
 	@docker compose logs --no-color cognito | sed 's/\x1b\[[0-9;]*m//g' | awk '{for(i=1;i<NF;i++){if($$i=="Destination:")d=$$(i+1); if($$i=="Code:")print d"\t"$$(i+1)}}' | tail -20
 
-confirm: ## Finish a local sign-up by hand: make confirm EMAIL=you@example.com [ADMIN=1]
-	$(BACKEND) EMAIL="$(EMAIL)" ADMIN="$(ADMIN)" uv run python ../local/confirm.py
+confirm: ## Finish a local sign-up by hand: make confirm EMAIL=you@example.com [ADMIN=1] [LEAD=1]
+	$(BACKEND) EMAIL="$(EMAIL)" ADMIN="$(ADMIN)" LEAD="$(LEAD)" uv run python ../local/confirm.py
 
 test: ## Unit and API tests (no Docker needed)
 	$(BACKEND) uv run ruff check . && uv run ruff format --check . && uv run pytest -q

@@ -20,7 +20,8 @@ OUTBOX, PROCESSED = event_tables(Base.metadata)
 
 class PaymentRow(Base):
     """status: created -> authorised -> captured -> transferred
-    and from created/authorised -> cancelled, from captured -> refunded."""
+    and from created/authorised -> cancelled, from captured -> refunded (all of it) or partially_refunded (the rest
+    paid out: a late cancellation or a dispute settled in part)."""
 
     __tablename__ = "payments"
     booking_id: Mapped[str] = mapped_column(String(40), primary_key=True)

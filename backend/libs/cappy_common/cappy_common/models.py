@@ -258,6 +258,9 @@ class BatchListing(_ListingBase):
     setup_hours: float
     rate_per_hour: Cents
     setup_fee: Cents
+    # The most one booking can take, in the category's unit: two pallet
+    # spaces in a van (V5-22). Absent: no limit beyond the time it takes.
+    max_quantity: int | None = Field(default=None, ge=1, le=1_000_000)
 
 
 Listing = Annotated[WindowListing | BatchListing, Field(discriminator="mode")]

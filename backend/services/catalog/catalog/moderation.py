@@ -562,6 +562,7 @@ class HeldListing(CamelModel):
     category: str
     rate_per_hour: int
     held_at: Iso
+    hold_reason: str | None = None
 
 
 @admin.get("/listings/held", response_model=list[HeldListing])
@@ -580,6 +581,7 @@ async def held(session: AsyncSession = Tx, _: Principal = Depends(require_admin)
             category=r.category,
             rate_per_hour=int(r.spec.get("ratePerHour", 0)),
             held_at=iso_from_datetime(r.held_at),
+            hold_reason=r.hold_reason,
         )
         for r in (await session.execute(q.limit(200))).scalars()
     ]
@@ -594,6 +596,10 @@ async def approve(
     row = await session.get(ListingRow, listing_id, with_for_update=True)
     if row is None or row.held_at is None:
         raise NotFound(f"no held listing {listing_id}")
+    if row.hold_reason:
+        raise Conflict(
+            "its place is not in an open market; the owner moves it, staff cannot approve it", code=row.hold_reason
+        )
     row.held_at, row.active, row.updated_at = None, True, datetime.now(UTC)
     await _record(session, p.sub, "approve", "listing", listing_id, "Checked and approved", person=row.owner_id)
     await _outbox(request).add(session, LISTING_CHANGED, {"listingId": listing_id, "change": "approved"})

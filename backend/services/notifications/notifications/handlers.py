@@ -15,6 +15,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from cappy_common.events import (
     BOOKING_MESSAGE,
+    BOOKING_NOTICE,
     BOOKING_STATUS_CHANGED,
     DISPUTE_OFFER,
     LISTING_IDLE,
@@ -31,7 +32,7 @@ from .mail import Directory, Email, Mailer
 from .prefs import prefs_of, wanted
 from .push import Pusher, drop_devices
 from .tables import DeviceRow, InboxRow, PrefsRow
-from .texts import render
+from .texts import render, summary
 
 log = logging.getLogger(__name__)
 
@@ -44,14 +45,36 @@ def messages(event: Event, web: str) -> list[Message]:
     in each recipient's language."""
     d = event.data
     if event.type == PAYOUT_SENT:
+        # Named by the listing and its start, never the booking id (V5-13).
+        about = {"_start": d["windowStart"]} if d.get("windowStart") else {}
+        tz = {"_tz": d["timeZone"]} if d.get("timeZone") else {}
         return [
             (
                 d["ownerId"],
                 None,
                 "paid",
-                {"booking": d["bookingId"], "web": web, "_cents": (d["amount"], d["currency"])},
+                {
+                    "booking": d["bookingId"],
+                    "title": d.get("title") or "your booking",
+                    "web": web,
+                    "_cents": (d["amount"], d["currency"]),
+                    **about,
+                    **tz,
+                },
             )
         ]
+    if event.type == BOOKING_NOTICE:
+        # V5-7: how a dispute ended, that we decide it now, a late-return
+        # claim and its decision: each told to who the event names.
+        amount = d.get("refundAmount") if "refundAmount" in d else d.get("claimAmount")
+        params = {
+            "title": d.get("title") or "your booking",
+            "link": f"{web}/bookings/{d['bookingId']}",
+            **({"_cents": (amount, d["currency"])} if amount is not None else {}),
+            **({"_tz": d["timeZone"]} if d.get("timeZone") else {}),
+            **SETTLED_BY[d.get("how", "staff")],
+        }
+        return [(sub, None, d["kind"], params) for sub in d["to"]]
     if event.type == LISTING_IDLE:
         # H-4: the listing has nothing free next week; adding times fixes it.
         return [
@@ -65,7 +88,18 @@ def messages(event: Event, web: str) -> list[Message]:
         return [(d["to"], None, "dispute_offer", {**params, "_deadline": d.get("respondBy"), **tz})]
     if event.type != BOOKING_STATUS_CHANGED:
         return []
+    if d.get("from") == "disputed":
+        # A dispute settled: booking.notice says how, to both sides; a plain
+        # "cancelled" or "how was it?" would contradict it (V5-7).
+        return []
     params = {"title": d.get("title", "your booking"), "link": f"{web}/bookings/{d['bookingId']}"}
+    if d["to"] == "declined":
+        reason = (d.get("declineReason") or "").strip().rstrip(".")
+        params |= {
+            "reason_en": f"\nReason: {reason}." if reason else "",
+            "reason_de": f"\nGrund: {reason}." if reason else "",
+            "reason_fr": f"\nMotif\u00a0: {reason}." if reason else "",
+        }
     if d["to"] == "requested":
         params["_deadline"] = d.get("expiresAt")
         if d.get("timeZone"):
@@ -94,6 +128,16 @@ def messages(event: Event, web: str) -> list[Message]:
         out += [(owner, None, "disputed_owner", params), (requester, None, "disputed_renter", params)]
     return out
 
+
+# Who settled a dispute, in each language (the text picks its own).
+SETTLED_BY = {
+    "agreement": {
+        "how_en": "You agreed a settlement:",
+        "how_de": "Ihr habt euch geeinigt:",
+        "how_fr": "Vous vous êtes mis d’accord\u00a0:",
+    },
+    "staff": {"how_en": "Cappy decided:", "how_de": "Cappy hat entschieden:", "how_fr": "Cappy a décidé\u00a0:"},
+}
 
 MESSAGE_EMAIL_EVERY = timedelta(minutes=15)
 
@@ -234,6 +278,7 @@ def handlers(directory: Directory, mailer: Mailer, web: str, pusher: Pusher | No
         MODERATION_DECISION: notify,
         LISTING_IDLE: notify,
         DISPUTE_OFFER: notify,
+        BOOKING_NOTICE: notify,
         PROFILE_DELETED: forget,
     }
 
@@ -264,7 +309,8 @@ async def _keep(
     the language it is read in (V3-13); title and body are the words as sent."""
     item_id = "ntf_" + hashlib.sha256(f"{event.id}:{sub}:{key}".encode()).hexdigest()[:32]
     if await session.get(InboxRow, item_id) is None:
-        body = text.partition("\n\n")[0]
+        # The column holds 2000; the bell renders from params anyway.
+        body = summary(key, text)[:2000]
         session.add(
             InboxRow(
                 id=item_id,

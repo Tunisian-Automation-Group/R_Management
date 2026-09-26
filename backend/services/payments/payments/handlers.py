@@ -78,6 +78,8 @@ def handlers(
             return
         now = datetime.now(UTC)
         facts = {"bookingId": row.booking_id, "ownerId": row.owner_id, "requesterId": row.requester_id}
+        # What the payout notice names instead of the booking id (V5-13).
+        about = {k: d[k] for k in ("title", "windowStart", "timeZone") if d.get(k)}
 
         if to == "accepted" and row.status in ("created", "authorised"):
             try:
@@ -107,7 +109,8 @@ def handlers(
                 await outbox.add(session, PAYMENT_REFUNDED, {**facts, "amount": refund, "currency": row.currency})
             kept = row.amount - refund
             owner_part = kept * row.owner_net // row.amount if row.amount else 0
-            row.status = "refunded"
+            # Part back and the rest paid out is its own state, not "refunded".
+            row.status = "refunded" if refund == row.amount else "partially_refunded"
             if owner_part > 0 and (not payouts_on or row.chargeback_at is not None):
                 # Refund done; the owner's share waits like any payout would.
                 raise NotReady(f"payout for {row.booking_id} held (payouts off or a chargeback)")
@@ -123,7 +126,9 @@ def handlers(
                     account_id=account.account_id,
                     charge_id=row.charge_id,
                 )
-                await outbox.add(session, PAYOUT_SENT, {**facts, "amount": owner_part, "currency": row.currency})
+                await outbox.add(
+                    session, PAYOUT_SENT, {**facts, **about, "amount": owner_part, "currency": row.currency}
+                )
                 await issue(
                     session,
                     booking_id=row.booking_id,
@@ -151,7 +156,9 @@ def handlers(
                 charge_id=row.charge_id,
             )
             row.status = "transferred"
-            await outbox.add(session, PAYOUT_SENT, {**facts, "amount": row.owner_net, "currency": row.currency})
+            await outbox.add(
+                session, PAYOUT_SENT, {**facts, **about, "amount": row.owner_net, "currency": row.currency}
+            )
             await issue(
                 session,
                 booking_id=row.booking_id,

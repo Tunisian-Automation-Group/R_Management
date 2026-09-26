@@ -47,7 +47,7 @@ async def sweep_once(app: FastAPI) -> int:
             break
     # Disputes nobody settled between them in time go to staff (S-21).
     async with app.state.db.transaction() as s:
-        moved += await escalate_due(s, datetime.now(UTC), BATCH)
+        moved += await escalate_due(s, app.state.outbox, datetime.now(UTC), BATCH)
     if moved:
         app.state.relay.wake()
     return moved

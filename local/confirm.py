@@ -1,8 +1,9 @@
-"""Finish a local sign-up by hand (`make confirm EMAIL=… [ADMIN=1]`).
+"""Finish a local sign-up by hand (`make confirm EMAIL=… [ADMIN=1] [LEAD=1]`).
 
 cognito-local confirms a sign-up without marking the email verified, and
 Cappy only emails verified addresses; this marks it, confirms the account if
-the code was never entered, and with ADMIN=1 adds it to the staff group.
+the code was never entered, with ADMIN=1 adds it to the staff group, and
+with LEAD=1 to the leads too (higher refund limits, H-6).
 Local stack only: it talks to cognito-local on :9229.
 """
 
@@ -19,7 +20,7 @@ ENV = dict(
     for line in (Path(__file__).parents[1] / ".local" / "local.env").read_text().splitlines()
     if "=" in line
 )
-email = os.environ.get("EMAIL") or sys.exit("usage: make confirm EMAIL=you@example.com [ADMIN=1]")
+email = os.environ.get("EMAIL") or sys.exit("usage: make confirm EMAIL=you@example.com [ADMIN=1] [LEAD=1]")
 pool = ENV["USER_POOL_ID"]
 idp = boto3.client(
     "cognito-idp",
@@ -39,6 +40,13 @@ idp.admin_update_user_attributes(
     Username=name,
     UserAttributes=[{"Name": "email", "Value": email}, {"Name": "email_verified", "Value": "true"}],
 )
-if os.environ.get("ADMIN") == "1":
-    idp.admin_add_user_to_group(UserPoolId=pool, Username=name, GroupName="admin")
-print(f"{email}: confirmed, email verified" + (", in the admin group" if os.environ.get("ADMIN") == "1" else ""))
+lead = os.environ.get("LEAD") == "1"
+groups = ["admin", "admin-lead"] if lead else ["admin"] if os.environ.get("ADMIN") == "1" else []
+for group in groups:
+    try:
+        idp.create_group(GroupName=group, UserPoolId=pool)
+    except Exception as e:  # noqa: BLE001 - cognito-local and AWS say "already exists" differently
+        if "exist" not in str(e).lower():
+            raise
+    idp.admin_add_user_to_group(UserPoolId=pool, Username=name, GroupName=group)
+print(f"{email}: confirmed, email verified" + (f", in {' and '.join(groups)}" if groups else ""))

@@ -445,7 +445,7 @@ def test_french_readers_are_written_to_in_french_and_everything_is_translated():
     assert subject == "Nouvelle demande\u00a0: Scie" and "sam. 26 sept., 14:00" in body
     assert money(123456, "cad", "fr-CA") == "1 234,56 $" and money(123456, "usd", "en-US") == "$1,234.56"
     assert (
-        render("paid", "es-ES", amount="x", booking="b", web="w", _cents=(100, "eur"))[0] == "You have been paid €1.00"
+        render("paid", "es-ES", title="Saw", booking="b", web="w", _cents=(100, "eur"))[0] == "You have been paid €1.00"
     )
 
 
@@ -532,3 +532,104 @@ def test_times_follow_the_readers_clock():
     assert when(t, "en-US", "America/New_York") == "Sat, Sep 26, 11:05 AM"
     assert when(t, "en-CA", "America/Toronto").endswith("11:05 AM")
     assert when(datetime(2026, 9, 26, 4, 0, tzinfo=UTC), "en-US", "America/New_York").endswith("12:00 AM")
+
+
+def test_how_a_dispute_ended_reaches_both_sides_and_says_the_money(app):
+    """V5-7: whoever settled it, both hear the outcome and the amount; the
+    plain status notices of that move are not sent on top."""
+    from cappy_common.events import BOOKING_NOTICE
+
+    notice = lambda kind, **extra: _event(  # noqa: E731
+        BOOKING_NOTICE,
+        bookingId="bk_1",
+        kind=kind,
+        to=["buyer", "host"],
+        title="Table saw",
+        currency="EUR",
+        **extra,
+    )
+    sent = _sent(
+        app,
+        notice("dispute_partial", refundAmount=1500, how="agreement"),
+        _change("completed", by="host", frm="disputed", refundAmount=1500),
+        notice("dispute_escalated"),
+    )
+    assert sent == [
+        ("buyer@example.com", "Settled: Table saw"),
+        ("host@example.com", "Settled: Table saw"),
+        ("buyer@example.com", "We are deciding now: Table saw"),
+        ("host@example.com", "We are deciding now: Table saw"),
+    ], "no 'How was Table saw?' after a dispute"
+    [text] = [m.text for m in app.state.mailer.sent[:1]]
+    assert "You agreed a settlement: €15.00 goes back to the renter" in text
+
+
+def test_every_new_notice_renders_in_every_language():
+    from notifications.handlers import messages
+    from notifications.texts import render
+
+    from cappy_common.events import BOOKING_NOTICE, Event
+
+    for kind, extra in (
+        ("dispute_refunded", {"refundAmount": 4600, "how": "staff"}),
+        ("dispute_partial", {"refundAmount": 1000, "how": "agreement"}),
+        ("dispute_owner_paid", {"refundAmount": 0, "how": "staff"}),
+        ("dispute_escalated", {}),
+        ("claim_filed", {"claimAmount": 4500}),
+        ("claim_confirmed", {"claimAmount": 4500}),
+        ("claim_rejected", {"claimAmount": 4500}),
+    ):
+        ev = Event(
+            id="ev",
+            type=BOOKING_NOTICE,
+            source="booking",
+            occurred_at="2026-09-27T10:00:00Z",
+            data={"bookingId": "bk_1", "kind": kind, "to": ["buyer"], "title": "Saw", "currency": "CHF", **extra},
+        )
+        [(_, _, key, params)] = messages(ev, "https://cappy.test")
+        for lang in ("en", "de-CH", "fr-CA"):
+            subject, text = render(key, lang, **params)
+            assert "Saw" in subject and "{" not in text and "https://cappy.test/bookings/bk_1" in text, (kind, lang)
+
+
+def test_a_payout_and_a_decline_say_what_and_why(app):
+    """V5-13: the listing and its start, not bk_…; V5-16: the owner's reason."""
+    sent = _sent(
+        app,
+        _change("declined", by="host", frm="requested", declineReason="Needs a repair first"),
+        _event(
+            PAYOUT_SENT,
+            bookingId="bk_1",
+            ownerId="host",
+            requesterId="buyer",
+            amount=1275,
+            currency="EUR",
+            title="Table saw",
+            windowStart="2026-10-03T08:00:00Z",
+            timeZone="Europe/Berlin",
+        ),
+    )
+    assert sent == [("buyer@example.com", "Declined: Table saw"), ("host@example.com", "You have been paid €12.75")]
+    decline, paid = (m.text for m in app.state.mailer.sent)
+    assert "Reason: Needs a repair first." in decline
+    assert "Table saw, Sat 3 Oct, 10:00" in paid and "bk_1" not in paid
+
+
+def test_the_bell_shows_a_decisions_whole_statement():
+    """V5-31: why, the ground and how to contest, in the app too."""
+    from notifications.texts import render, summary
+
+    params = {
+        "web": "w",
+        "statement": "Spam",
+        "ground_en": "g",
+        "ground_de": "g",
+        "ground_fr": "g",
+        "automated_en": "no",
+        "automated_de": "nein",
+        "automated_fr": "non",
+    }
+    _, text = render("content_removed", "en", **params)
+    assert "Why: Spam" in summary("content_removed", text) and "contest" in summary("content_removed", text)
+    _, text = render("requested", "en", title="t", link="l", _deadline=None)
+    assert "\n\n" not in summary("requested", text)

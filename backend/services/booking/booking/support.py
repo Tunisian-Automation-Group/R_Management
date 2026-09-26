@@ -33,7 +33,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from cappy_common.app import ApiRouter
 from cappy_common.auth import Principal, require_admin, require_internal, require_principal, staff_role
 from cappy_common.errors import Conflict, Forbidden, Invalid, NotFound
-from cappy_common.events import DISPUTE_OFFER, STAFF_ACTION, Outbox
+from cappy_common.events import BOOKING_NOTICE, DISPUTE_OFFER, STAFF_ACTION, Outbox
 from cappy_common.idempotency import IdempotencyKey, fingerprint, remember, replayed
 from cappy_common.ids import new_id
 from cappy_common.markets import market_of_currency
@@ -227,6 +227,25 @@ async def _dispute_of(s: AsyncSession, row: BookingRow, *, lock: bool = False) -
     return d
 
 
+async def notice(s: AsyncSession, outbox: Outbox, row: BookingRow, kind: str, to: list[str], **extra) -> None:
+    """Tell the parties something about their booking (V5-7): in the
+    listing's time zone, in the booking's money."""
+    snap = row.listing_snapshot or {}
+    await outbox.add(
+        s,
+        BOOKING_NOTICE,
+        {
+            "bookingId": row.id,
+            "kind": kind,
+            "to": to,
+            "title": snap.get("title", ""),
+            "currency": row.currency,
+            "timeZone": snap.get("timeZone") or market_of_currency(row.currency).time_zone,
+            **extra,
+        },
+    )
+
+
 # --- settling: one place moves the money ---------------------------------------------------
 
 
@@ -252,6 +271,19 @@ async def settle(repo: BookingRepository, row: BookingRow, refund: int, by: str,
         raise Conflict(f"only a disputed booking can be settled; this one is {row.status}")
     to = "cancelled" if refund == row.amount else "completed"
     await repo.move(row, to, by, now, **({"refund_amount": refund} if refund else {}))
+    # Both sides hear how it ended and what happens to the money, whoever
+    # settled it: they by agreement, or staff (V5-7).
+    await notice(
+        repo.s,
+        repo.outbox,
+        row,
+        {"pay_owner": "dispute_owner_paid", "refund_buyer": "dispute_refunded", "partial": "dispute_partial"}[
+            outcome_of(refund, row)
+        ],
+        [row.requester_id, row.owner_id],
+        refundAmount=refund,
+        how="staff" if by.startswith("support:") else "agreement",
+    )
 
 
 # --- the two sides settling it themselves (S-21) --------------------------------------------
@@ -354,8 +386,9 @@ async def accept_offer(
     return answer
 
 
-async def escalate_due(s: AsyncSession, now: datetime, limit: int) -> int:
-    """Disputes whose deadline passed with no agreement go to staff."""
+async def escalate_due(s: AsyncSession, outbox: Outbox, now: datetime, limit: int) -> int:
+    """Disputes whose deadline passed with no agreement go to staff, and both
+    sides hear that we decide now."""
     q = (
         select(DisputeRow)
         .join(BookingRow, BookingRow.id == DisputeRow.booking_id)
@@ -366,6 +399,8 @@ async def escalate_due(s: AsyncSession, now: datetime, limit: int) -> int:
     rows = list((await s.execute(q)).scalars())
     for d in rows:
         d.escalated_at = now
+        row = await s.get(BookingRow, d.booking_id)
+        await notice(s, outbox, row, "dispute_escalated", [row.requester_id, row.owner_id])
     return len(rows)
 
 
@@ -790,6 +825,8 @@ async def report_late_return(
     )
     repo.s.add(c)
     await repo.s.flush()
+    await notice(repo.s, repo.outbox, row, "claim_filed", [row.requester_id], claimAmount=amount)
+    request.app.state.relay.wake()
     return _claim(c)
 
 
@@ -823,6 +860,15 @@ async def decide_claim(
         raise Conflict(f"this claim is already {c.status}")
     c.status = "confirmed" if body.decision == "confirm" else "rejected"
     c.decided_by, c.decided_at, c.decision_note = p.sub, _now(), body.note.strip() or None
+    row = await repo.get(c.booking_id)
+    await notice(
+        repo.s,
+        repo.outbox,
+        row,
+        "claim_confirmed" if c.status == "confirmed" else "claim_rejected",
+        [row.requester_id, row.owner_id],
+        claimAmount=c.amount,
+    )
     await audit(repo.s, repo.outbox, p.sub, f"{body.decision}_claim", "booking", c.booking_id, body.note or c.kind)
     request.app.state.relay.wake()
     return _claim(c)

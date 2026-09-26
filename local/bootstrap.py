@@ -58,6 +58,7 @@ CONSUMERS = {
         "moderation.decision",
         "listing.idle",
         "booking.dispute_offer",
+        "booking.notice",
     ],
 }
 DEMO_PASSWORD = "Demo-pass-123!"

@@ -46,6 +46,8 @@ def assess_feasibility(req: AnyRequirement, listing: AnyListing) -> Feasibility:
         if req.hours > listing.max_hours:
             blockers.append(f"maximum booking is {_num(listing.max_hours)} h")
     elif req.mode == "batch" and listing.mode == "batch":
+        if listing.max_quantity is not None and req.quantity > listing.max_quantity:
+            blockers.append(f"takes at most {listing.max_quantity} per booking")
         if req.material:
             # A listing that does not describe materials at all cannot promise one.
             if listing.materials and req.material in listing.materials:

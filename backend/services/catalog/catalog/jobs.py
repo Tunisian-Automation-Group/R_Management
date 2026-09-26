@@ -9,7 +9,7 @@ from datetime import UTC, datetime, timedelta
 
 from fastapi import FastAPI
 
-from cappy_common.events import jittered
+from cappy_common.events import LISTING_CHANGED, jittered
 
 from .repository import CatalogRepository
 
@@ -120,9 +120,27 @@ async def attribute_decisions_once(app: FastAPI) -> int:
     return done
 
 
+async def hold_out_of_market_once(app: FastAPI) -> int:
+    """V5-1: listings published before places were checked against the
+    owner's market stay out of search and detail until the owner moves them
+    into an open market; each is logged so staff can see what went."""
+    from cappy_common.markets import markets
+
+    live = {cc for cc, m in markets().items() if m.live}
+    async with app.state.db.transaction() as s:
+        repo = CatalogRepository(s)
+        found = await repo.out_of_market(live, BATCH)
+        for row, reason in found:
+            await repo.hold(row.id, reason)
+            log.warning("listing %s (%s) held: %s", row.id, row.district, reason)
+            await app.state.outbox.add(s, LISTING_CHANGED, {"listingId": row.id, "change": "held"})
+    return len(found)
+
+
 async def sweep_orphans(app: FastAPI) -> None:
     await sweep_orphans_once(app)
     await forget_reporters_once(app)
     await keep_schedules_once(app)
     await attribute_decisions_once(app)
+    await hold_out_of_market_once(app)
     await asyncio.sleep(jittered(3600))

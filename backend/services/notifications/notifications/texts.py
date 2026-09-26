@@ -13,7 +13,7 @@ TEXTS: dict[str, dict[str, tuple[str, str]]] = {
     "en": {
         "paid": (
             "You have been paid {amount}",
-            "Your share for booking {booking} is on its way to your bank.\n\n{web}/earn",
+            "Your share for {title} is on its way to your bank.\n\n{web}/earn",
         ),
         "requested": (
             "New request: {title}",
@@ -24,7 +24,10 @@ TEXTS: dict[str, dict[str, tuple[str, str]]] = {
             "New booking: {title}",
             "{title} was booked instantly. The details are in the app.\n\n{link}",
         ),
-        "declined": ("Declined: {title}", "Your request for {title} was declined. Nothing was charged.\n\n{link}"),
+        "declined": (
+            "Declined: {title}",
+            "Your request for {title} was declined. Nothing was charged.{reason_en}\n\n{link}",
+        ),
         "cancelled": ("Cancelled: {title}", "The booking of {title} was cancelled.\n\n{link}"),
         "expired": ("Expired: {title}", "Your request for {title} lapsed. Nothing was charged.\n\n{link}"),
         "completed": ("How was {title}?", "Your booking is complete. Rate it to help the next buyer.\n\n{link}"),
@@ -69,6 +72,34 @@ TEXTS: dict[str, dict[str, tuple[str, str]]] = {
             "Your report: our decision",
             "Having looked at your report, we took action.\n\n{statement}\n\nReference: {report}",
         ),
+        "dispute_refunded": (
+            "Settled: {title}",
+            "{how_en} the renter gets the full price back ({amount}). The owner is not paid for this booking.\n\n{link}",
+        ),
+        "dispute_partial": (
+            "Settled: {title}",
+            "{how_en} {amount} goes back to the renter, and the owner is paid for the rest.\n\n{link}",
+        ),
+        "dispute_owner_paid": (
+            "Settled: {title}",
+            "{how_en} the owner is paid in full and nothing is refunded.\n\n{link}",
+        ),
+        "dispute_escalated": (
+            "We are deciding now: {title}",
+            "There was no agreement within 72 hours, so Cappy now looks at what happened with {title} and decides. You will hear from us.\n\n{link}",
+        ),
+        "claim_filed": (
+            "A late return was reported: {title}",
+            "The owner reports that {title} came back late and asks for {amount}. Nothing is charged: we look at it and tell you what we decide. If you see it differently, say so in the conversation.\n\n{link}",
+        ),
+        "claim_confirmed": (
+            "Late return: our decision on {title}",
+            "We looked at the late return and confirmed it: {amount} is owed to the owner. We will be in touch about paying it.\n\n{link}",
+        ),
+        "claim_rejected": (
+            "Late return: our decision on {title}",
+            "We looked at the late return and did not confirm it: nothing is owed.\n\n{link}",
+        ),
         "report_outcome_none": (
             "Your report: our decision",
             "Having looked at your report, we found no breach of the law or our terms.\n\n{statement}\n\nReference: {report}",
@@ -77,7 +108,7 @@ TEXTS: dict[str, dict[str, tuple[str, str]]] = {
     "de": {
         "paid": (
             "Du hast {amount} erhalten",
-            "Dein Anteil für die Buchung {booking} ist auf dem Weg zu deiner Bank.\n\n{web}/earn",
+            "Dein Anteil für {title} ist auf dem Weg zu deiner Bank.\n\n{web}/earn",
         ),
         "requested": (
             "Neue Anfrage: {title}",
@@ -90,7 +121,7 @@ TEXTS: dict[str, dict[str, tuple[str, str]]] = {
         ),
         "declined": (
             "Abgelehnt: {title}",
-            "Deine Anfrage für {title} wurde abgelehnt. Es wurde nichts berechnet.\n\n{link}",
+            "Deine Anfrage für {title} wurde abgelehnt. Es wurde nichts berechnet.{reason_de}\n\n{link}",
         ),
         "cancelled": ("Storniert: {title}", "Die Buchung von {title} wurde storniert.\n\n{link}"),
         "expired": (
@@ -142,6 +173,34 @@ TEXTS: dict[str, dict[str, tuple[str, str]]] = {
             "Deine Meldung: unsere Entscheidung",
             "Wir haben deine Meldung geprüft und Maßnahmen ergriffen.\n\n{statement}\n\nAktenzeichen: {report}",
         ),
+        "dispute_refunded": (
+            "Geklärt: {title}",
+            "{how_de} Die mietende Person bekommt den vollen Preis zurück ({amount}). Für diese Buchung wird nichts ausgezahlt.\n\n{link}",
+        ),
+        "dispute_partial": (
+            "Geklärt: {title}",
+            "{how_de} {amount} gehen an die mietende Person zurück, der Rest wird ausgezahlt.\n\n{link}",
+        ),
+        "dispute_owner_paid": (
+            "Geklärt: {title}",
+            "{how_de} Der volle Betrag wird ausgezahlt, es wird nichts erstattet.\n\n{link}",
+        ),
+        "dispute_escalated": (
+            "Wir entscheiden jetzt: {title}",
+            "Innerhalb von 72 Stunden gab es keine Einigung. Deshalb prüft Cappy jetzt, was bei {title} passiert ist, und entscheidet. Wir melden uns.\n\n{link}",
+        ),
+        "claim_filed": (
+            "Eine verspätete Rückgabe wurde gemeldet: {title}",
+            "Die vermietende Person meldet, dass {title} verspätet zurückkam, und fordert {amount}. Es wird nichts abgebucht: Wir prüfen es und teilen dir unsere Entscheidung mit. Wenn du es anders siehst, schreib es ins Gespräch.\n\n{link}",
+        ),
+        "claim_confirmed": (
+            "Verspätete Rückgabe: unsere Entscheidung zu {title}",
+            "Wir haben die verspätete Rückgabe geprüft und bestätigt: {amount} stehen der vermietenden Person zu. Wir melden uns wegen der Zahlung.\n\n{link}",
+        ),
+        "claim_rejected": (
+            "Verspätete Rückgabe: unsere Entscheidung zu {title}",
+            "Wir haben die verspätete Rückgabe geprüft und nicht bestätigt: Es ist nichts zu zahlen.\n\n{link}",
+        ),
         "report_outcome_none": (
             "Deine Meldung: unsere Entscheidung",
             "Wir haben deine Meldung geprüft und keinen Verstoß gegen Recht oder unsere Bedingungen festgestellt.\n\n{statement}\n\nAktenzeichen: {report}",
@@ -150,7 +209,7 @@ TEXTS: dict[str, dict[str, tuple[str, str]]] = {
     "fr": {
         "paid": (
             "Vous avez reçu {amount}",
-            "Votre part pour la réservation {booking} est en route vers votre banque.\n\n{web}/earn",
+            "Votre part pour {title} est en route vers votre banque.\n\n{web}/earn",
         ),
         "requested": (
             "Nouvelle demande : {title}",
@@ -163,7 +222,7 @@ TEXTS: dict[str, dict[str, tuple[str, str]]] = {
         ),
         "declined": (
             "Refusée : {title}",
-            "Votre demande pour {title} a été refusée. Rien n’a été facturé.\n\n{link}",
+            "Votre demande pour {title} a été refusée. Rien n’a été facturé.{reason_fr}\n\n{link}",
         ),
         "cancelled": ("Annulée : {title}", "La réservation de {title} a été annulée.\n\n{link}"),
         "expired": (
@@ -215,12 +274,51 @@ TEXTS: dict[str, dict[str, tuple[str, str]]] = {
             "Votre signalement : notre décision",
             "Après examen de votre signalement, nous avons pris des mesures.\n\n{statement}\n\nRéférence : {report}",
         ),
+        "dispute_refunded": (
+            "Réglé : {title}",
+            "{how_fr} la personne locataire récupère le prix complet ({amount}). Rien n’est versé pour cette réservation.\n\n{link}",
+        ),
+        "dispute_partial": (
+            "Réglé : {title}",
+            "{how_fr} {amount} sont remboursés à la personne locataire, et le reste est versé.\n\n{link}",
+        ),
+        "dispute_owner_paid": (
+            "Réglé : {title}",
+            "{how_fr} le montant complet est versé et rien n’est remboursé.\n\n{link}",
+        ),
+        "dispute_escalated": (
+            "Nous décidons maintenant : {title}",
+            "Aucun accord n’a été trouvé en 72 heures : Cappy examine maintenant ce qui s’est passé avec {title} et décide. Nous vous recontacterons.\n\n{link}",
+        ),
+        "claim_filed": (
+            "Un retour tardif a été signalé : {title}",
+            "La personne propriétaire signale que {title} a été rendu en retard et demande {amount}. Rien n’est prélevé : nous examinons la demande et vous communiquerons notre décision. Si vous voyez les choses autrement, dites-le dans la conversation.\n\n{link}",
+        ),
+        "claim_confirmed": (
+            "Retour tardif : notre décision concernant {title}",
+            "Nous avons examiné le retour tardif et l’avons confirmé : {amount} sont dus à la personne propriétaire. Nous vous recontacterons au sujet du paiement.\n\n{link}",
+        ),
+        "claim_rejected": (
+            "Retour tardif : notre décision concernant {title}",
+            "Nous avons examiné le retour tardif et ne l’avons pas confirmé : rien n’est dû.\n\n{link}",
+        ),
         "report_outcome_none": (
             "Votre signalement : notre décision",
             "Après examen de votre signalement, nous n’avons constaté aucune infraction à la loi ou à nos conditions.\n\n{statement}\n\nRéférence : {report}",
         ),
     },
 }
+
+
+# Decisions about someone's content or account: the app shows the whole
+# statement of reasons (DSA Art. 17), as the email does (V5-31).
+STATEMENTS = frozenset({"taken_down", "suspended", "content_removed"})
+
+
+def summary(key: str, text: str) -> str:
+    """What the bell shows of a notice: its first paragraph, or for a
+    decision the whole statement (why, ground, how to contest)."""
+    return text if key in STATEMENTS else text.partition("\n\n")[0]
 
 
 def language(locale: str | None) -> str:
@@ -236,6 +334,8 @@ def render(key: str, locale: str | None, **params) -> tuple[str, str]:
     if "_cents" in params:
         params["amount"] = money(*params.pop("_cents"), locale)
     zone = params.pop("_tz", None) or DEFAULT_TIME_ZONE
+    if "_start" in params:
+        params["title"] = f"{params['title']}, {when(dt_from_iso(params.pop('_start')), locale, zone)}"
     if "_deadline" in params:
         at = params.pop("_deadline")
         params["deadline"] = (

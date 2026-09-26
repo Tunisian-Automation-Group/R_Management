@@ -21,8 +21,10 @@ class CategoryMeta(CamelModel):
     blurb: str
     # Window categories: the durations people actually book.
     quick_hours: list[float] | None = None
-    # Batch categories: the unit a buyer counts in.
+    # Batch categories: the unit a buyer counts in, and what the fixed part
+    # of the price is for (a van loads; a mill is set up and programmed).
     unit_noun: str | None = None
+    setup_label: str = "Setup and programming"
     # EU DAC7 (PStTG): which reportable activity this is, if any. Tagged by
     # what the owner provides; confirmed by counsel before the first report
     # (docs/research/2026-09-launch-gaps.md).
@@ -99,6 +101,7 @@ CATEGORIES: list[CategoryMeta] = [
         icon="truck",
         blurb="Van, pallet and groupage space on runs already going",
         unit_noun="pallets",
+        setup_label="Loading",
     ),
     _c(
         id="warehousing",

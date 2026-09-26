@@ -74,6 +74,9 @@ class ListingView(CamelModel):
     address: str | None = None
     # Waiting for a staff check before it goes live.
     held: bool | None = None
+    # Why, when it is not the price check: ``market_not_live`` or
+    # ``district_not_in_country`` (V5-1). Only the owner fixes it, by moving it.
+    hold_reason: str | None = None
 
 
 class TagCount(CamelModel):
@@ -571,6 +574,7 @@ async def my_listings(
     held = await repo.held_ids({v.listing.id for v in views})
     for v in views:
         v.held = v.listing.id in held or None
+        v.hold_reason = held.get(v.listing.id)
         v.slots = slots.get(v.listing.id, [])
         v.address = addresses.get(v.listing.id)
     return Page(items=views, next_cursor=nxt)
@@ -643,6 +647,9 @@ async def update_listing(
         p.sub,
         already_shown=frozenset(row.photos or []),
     )
+    if row.hold_reason:
+        # Moved into an open market (the checks above passed): out of the hold.
+        row.held_at, row.hold_reason, row.active = None, None, True
     updated = await repo.update_listing(listing_id, listing)
     after = listing.availability.model_dump(mode="json", by_alias=True) if listing.availability else None
     if after != before:

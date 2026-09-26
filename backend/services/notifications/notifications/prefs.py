@@ -57,6 +57,13 @@ CATEGORY = {
     "disputed_renter": "bookings",
     "listing_idle": "bookings",
     "dispute_offer": "bookings",
+    "dispute_refunded": "bookings",
+    "dispute_partial": "bookings",
+    "dispute_owner_paid": "bookings",
+    "dispute_escalated": "bookings",
+    "claim_filed": "bookings",
+    "claim_confirmed": "bookings",
+    "claim_rejected": "bookings",
     "message": "messages",
     "paid": "payouts",
 }
@@ -70,6 +77,13 @@ ALWAYS_EMAILED = frozenset(
         "payment_failed",
         "disputed_owner",
         "disputed_renter",
+        # How a dispute or a claim about money ended is part of the contract,
+        # not a nudge: always emailed.
+        "dispute_refunded",
+        "dispute_partial",
+        "dispute_owner_paid",
+        "claim_confirmed",
+        "claim_rejected",
     }
 )
 

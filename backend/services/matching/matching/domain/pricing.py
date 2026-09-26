@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import math
 
+from cappy_common.categories import _BY_ID
 from cappy_common.jsmath import js_round
 from cappy_common.models import AnyListing, AnyRequirement, Cents, Quote
 
@@ -42,6 +43,12 @@ def duration_discount(hours: float, base: Cents, listing: AnyListing) -> tuple[C
     return 0, ""
 
 
+def _setup_label(category: str) -> str:
+    """A van's fixed part is loading, a mill's is setup and programming."""
+    found = _BY_ID.get(category)
+    return found.setup_label if found else "Setup and programming"
+
+
 def quote_for(req: AnyRequirement, listing: AnyListing) -> Quote | None:
     # A listing that cannot be priced (zero throughput, a negative fee: older
     # rows from before the write-time bounds) is no offer, never a 500 (P-1).
@@ -56,7 +63,7 @@ def quote_for(req: AnyRequirement, listing: AnyListing) -> Quote | None:
     if listing.mode == "window":
         extra, extra_label = listing.extra_fee, listing.extra_label
     else:
-        extra, extra_label = listing.setup_fee, "Setup and programming"
+        extra, extra_label = listing.setup_fee, _setup_label(listing.category)
     total: Cents = base - discount + extra
     platform_fee = bps(total, PLATFORM_FEE_BPS)
 

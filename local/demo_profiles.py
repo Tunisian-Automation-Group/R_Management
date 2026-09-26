@@ -52,6 +52,9 @@ for role, name in NAMES.items():
 # once they own anything. (No CHF listing: the seed has no Swiss places yet.)
 WEEKDAYS = {"weekly": [{"day": d, "start": "09:00", "end": "18:00"} for d in range(1, 6)], "timeZone": "Europe/Berlin"}
 WEEKENDS = {"weekly": [{"day": d, "start": "10:00", "end": "16:00"} for d in (6, 7)], "timeZone": "Europe/Berlin"}
+# Every day, weekends too, so a tester can always book "5 minutes from now"
+# (V5-24): the plunge saw (l9) and the bandsaw.
+EVERY_DAY = {"weekly": [{"day": d, "start": "08:00", "end": "22:00"} for d in range(1, 8)], "timeZone": "Europe/Berlin"}
 HOST2_LISTINGS = [
     {
         "category": "workshop",
@@ -68,7 +71,7 @@ HOST2_LISTINGS = [
         "extraFee": 0,
         "extraLabel": "",
         "instantBook": True,
-        "availability": WEEKDAYS,
+        "availability": EVERY_DAY,
     },
     {
         "category": "freight",
@@ -82,6 +85,7 @@ HOST2_LISTINGS = [
         "setupHours": 1,
         "ratePerHour": 2500,
         "setupFee": 2000,
+        "maxQuantity": 2,
         "instructions": "Palletised and wrapped. Pickup at the yard gate.",
         "rules": ["No hazardous goods"],
         "active": True,
@@ -127,3 +131,18 @@ if not httpx.get(f"{API}/me/listings", headers=h).raise_for_status().json()["ite
         r.raise_for_status()
         held = " (held for review)" if r.json().get("held") else ""
         print(f"demo host2: {listing['title']}{held}, {len(r.json()['slots'])} windows")
+
+
+def every_day(h: dict, match) -> None:
+    """Give a demo listing the every-day schedule if it has none yet, on a
+    stack seeded before (the edit keeps everything else as it is)."""
+    for v in httpx.get(f"{API}/me/listings", headers=h, params={"limit": 100}).raise_for_status().json()["items"]:
+        listing = v["listing"]
+        if match(listing) and (listing.get("availability") or {}).get("weekly") != EVERY_DAY["weekly"]:
+            body = {"listing": {**listing, "availability": EVERY_DAY}}
+            httpx.put(f"{API}/listings/{listing['id']}", headers=h, json=body).raise_for_status()
+            print(f"demo: {listing['title']} is open every day")
+
+
+every_day(signed_in("host"), lambda l: l["id"] == "l9")
+every_day(h, lambda l: l["title"].startswith("Bandsaw"))
