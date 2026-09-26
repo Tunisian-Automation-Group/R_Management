@@ -445,7 +445,7 @@ export function Browse() {
                 title={t('No idle capacity fits that')}
                 body={
                   meta.mode === 'window'
-                    ? t('Nobody within {distance} has {duration} free in the next {days} days. A shorter booking or a wider radius usually fixes it.', { distance: formatRadius(search.maxDistanceKm), duration: durationLabel(search.hours), days: search.withinDays })
+                    ? t('Nobody within {distance} has {duration} free {days}. A shorter booking or a wider radius usually fixes it.', { distance: formatRadius(search.maxDistanceKm), duration: durationLabel(search.hours), days: plural(search.withinDays, 'in the next 24 hours', 'in the next {n} days') })
                     : t('No machine within {distance} can finish {n} {unit} by then. Try a longer lead time or a wider radius.', { distance: formatRadius(search.maxDistanceKm), n: search.quantity, unit: meta.unitNoun ?? '' })
                 }
                 action={

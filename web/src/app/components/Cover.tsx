@@ -4,8 +4,13 @@ import { category } from '../../domain/categories.ts'
 import { locale, t } from '../../i18n.ts'
 import { weekday2 } from '../format.ts'
 
-/** Matching's minimum lead time: nothing can be booked to start sooner. */
-const BOOKING_LEAD_MS = 2 * 3_600_000
+/** Matching's minimum lead time: nothing can be booked to start sooner. The
+ *  deployed 2 hours; the dev server runs against the local stack, which books
+ *  5 minutes ahead (compose.yaml MIN_LEAD_MINUTES, V7-20). */
+const BOOKING_LEAD_MS = Number(import.meta.env.VITE_MIN_LEAD_MINUTES ?? (import.meta.env.DEV ? 5 : 120)) * 60_000
+/** Offers start on the half hour: the plate names a start that exists. */
+const STEP_MS = 30 * 60_000
+const nextStep = (ms: number) => Math.ceil(ms / STEP_MS) * STEP_MS
 const DAY = 86_400_000
 
 type Props = {
@@ -34,7 +39,8 @@ type Props = {
   children?: ReactNode
 }
 
-const HH = { format: (d: Date) => d.toLocaleTimeString(locale(), { hour: '2-digit', minute: '2-digit', hour12: false }) }
+// The reader's own clock: 17:30 in Berlin, 5:30 PM in Toronto (V7-20).
+const HH = { format: (d: Date) => d.toLocaleTimeString(locale(), { hour: 'numeric', minute: '2-digit' }) }
 
 /**
  * A listing has no photograph, and a stock photo of someone else's machine
@@ -94,7 +100,7 @@ export function Plate({
       // BOOKING_LEAD of notice for the owner, and the window must still hold
       // an hour after that. A window with 24 minutes left is not "free now".
       .map((s) => {
-        const start = Math.max(Date.parse(s.start), now + BOOKING_LEAD_MS)
+        const start = Math.max(Date.parse(s.start), nextStep(now + BOOKING_LEAD_MS))
         return Date.parse(s.end) - start >= 3_600_000 ? start : null
       })
       .filter((t): t is number => t !== null)

@@ -192,7 +192,8 @@ export function Listing({ preview }: { preview?: { detail: ListingDetail; banner
   const stars = rating(owner)
   // Staff previewing get the owner's read-only view: nothing to book (V5-4).
   const mine = owner.id === ME || Boolean(preview)
-  const first = owner.name.split(' ')[0]
+  // A business goes by its whole name: "Eindhoven Additive BV", not "Eindhoven" (V7-26).
+  const first = owner.kind === 'business' ? owner.name : owner.name.split(' ')[0]
   // Instant book has no "owner accepts" moment: the address comes with the confirmation (V5-21).
   const addressNote = listing.instantBook
     ? t('Approximate area. The exact address is shared once the booking is confirmed.')
@@ -306,10 +307,11 @@ export function Listing({ preview }: { preview?: { detail: ListingDetail; banner
           style={{ viewTransitionName: 'hero' }}
         >
           <span
-            className="absolute left-20 right-5 flex items-center justify-end gap-2"
+            // Wraps at large text instead of cutting the category to "At…" (V7-27).
+            className="absolute left-20 right-5 flex flex-wrap items-center justify-end gap-2"
             style={{ top: 'calc(var(--safe-top) + 14px)' }}
           >
-            <span className="glass glass-dark min-w-0 truncate rounded-full px-3 py-1 text-[0.75rem] font-semibold">
+            <span className="glass glass-dark min-w-0 max-w-full truncate rounded-full px-3 py-1 text-[0.75rem] font-semibold">
               {meta.label}
             </span>
             <WhenBadge
@@ -461,7 +463,9 @@ export function Listing({ preview }: { preview?: { detail: ListingDetail; banner
         <p className="t-sm mt-2 flex items-start gap-1.5 text-[var(--ink-3)]">
           <Icon name="info" size={14} className="mt-[3px] shrink-0 text-[var(--ink-4)]" />
           {owner.kind === 'business'
-            ? t('Business. EU consumer rights apply to your booking.')
+            ? preview
+              ? t('Business. EU consumer rights apply to bookings with it.')
+              : t('Business. EU consumer rights apply to your booking.')
             : t('Private person, not a business. EU consumer rights toward businesses do not apply; Cappy’s terms and payment protection do.')}
         </p>
         {owner.business && (
@@ -480,7 +484,8 @@ export function Listing({ preview }: { preview?: { detail: ListingDetail; banner
       {/* ------------------------------------------------------- capacity */}
       <SectionHead title={t('Idle time this week')} className="mt-7" />
       <Card className="p-5">
-        <CapacityBar slots={slots} booked={selected} intent="buy" showLegend />
+        {/* Staff see the listing as its owner does: free and sold, not "your booking" (V7-26). */}
+        <CapacityBar slots={slots} booked={selected} intent={preview ? 'earn' : 'buy'} showLegend />
       </Card>
 
       {preview?.address && (
@@ -654,7 +659,7 @@ export function Listing({ preview }: { preview?: { detail: ListingDetail; banner
       <Card className="p-5">
         <p className="text-[0.9375rem] font-semibold">{policyName(policy)}</p>
         <p className="t-sm mt-1 text-[var(--ink-3)]">
-          {policyText(policy)} {t('If the owner cancels, you get everything back.')}
+          {policyText(policy)} {preview ? t('If the owner cancels, the renter gets everything back.') : t('If the owner cancels, you get everything back.')}
         </p>
       </Card>
 

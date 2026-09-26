@@ -42,7 +42,8 @@ export function EvidencePanel({
   status: BookingStatus
   otherName: string
   prompt: EvidenceStage | null
-  onPromptClosed: () => void
+  /** `saved`: photos went up before the sheet closed (the hand-back question comes back, V7-22). */
+  onPromptClosed: (saved: boolean) => void
 }) {
   const id = useId()
   const me = useMe()
@@ -76,11 +77,11 @@ export function EvidencePanel({
   const items = evidence.data ?? []
   if (stages.length === 0 && items.length === 0) return null
 
-  const close = () => {
+  const close = (saved = false) => {
     setStage(null)
     setFiles([])
     setNote('')
-    onPromptClosed()
+    onPromptClosed(saved)
   }
   const save = async () => {
     if (!open || files.length === 0) return
@@ -111,7 +112,7 @@ export function EvidencePanel({
       attempt.settle()
       await qc.invalidateQueries({ queryKey: ['evidence', bookingId] })
       toast(t(SAVED[open]))
-      close()
+      close(true)
     } catch (err) {
       toast(messageOf(err), 'error')
     } finally {
@@ -178,7 +179,7 @@ export function EvidencePanel({
 
       <Sheet
         open={Boolean(open)}
-        onClose={close}
+        onClose={() => close()}
         title={open ? LABEL[open] : ''}
         footer={
           <div className="space-y-2">
@@ -191,7 +192,7 @@ export function EvidencePanel({
                     ? plural(files.length, 'Save {n} photo', 'Save {n} photos')
                     : t('Save photos')}
             </Button>
-            <Button block variant="quiet" onClick={close}>
+            <Button block variant="quiet" onClick={() => close()}>
               {t('Not now')}
             </Button>
           </div>

@@ -6,6 +6,7 @@ import {
   ApiError,
   approveListing,
   decideReport,
+  getAdminListing,
   getHeldListings,
   getAdminReports,
   reinstateOwner,
@@ -25,7 +26,7 @@ import { SignedOut } from '../components/SignedOut.tsx'
 import { Button, Card, Check, EmptyState, Field, Input, Segmented, Sheet, Textarea } from '../components/ui.tsx'
 import { ago } from '../format.ts'
 import { plural, t } from '../../i18n.ts'
-import { Approvals, AuditLog, Cases } from './AdminCases.tsx'
+import { Approvals, AuditLog, Cases, Person } from './AdminCases.tsx'
 import { holdText } from '../format.ts'
 
 type Status = Report['status']
@@ -103,8 +104,23 @@ const clean = (g: Grounds): Grounds => ({ ground: g.ground, automated: g.automat
 
 /** Where the reported thing lives, for a staff member to look at it. */
 function targetLink(r: Report): string | null {
-  if (r.targetType === 'listing') return `/listing/${r.targetId}`
+  // The staff view opens held and hidden listings too (V6-2).
+  if (r.targetType === 'listing') return `/admin/listing/${r.targetId}`
   return null
+}
+
+/** The reported thing by name, not by id (V7-19): a person's name, a
+ *  listing's title; messages and reviews keep a short id. */
+function TargetName({ r }: { r: Report }) {
+  const listing = useQuery({
+    queryKey: ['adminListing', r.targetId],
+    queryFn: () => getAdminListing(r.targetId),
+    enabled: r.targetType === 'listing',
+    staleTime: 60_000,
+  })
+  if (r.targetType === 'owner') return <Person id={r.targetId} />
+  if (r.targetType === 'listing') return <>{listing.data?.detail.listing.title ?? r.targetId}</>
+  return <span className="tnum text-[var(--ink-3)]">{r.targetId.slice(0, 10)}…</span>
 }
 
 /**
@@ -275,10 +291,10 @@ function Queue() {
                     {t(REASON_LABEL[r.reason] ?? r.reason)} · {targetLabel(r.targetType)}{' '}
                     {link ? (
                       <Link className="underline" to={link}>
-                        {r.targetId}
+                        <TargetName r={r} />
                       </Link>
                     ) : (
-                      <span className="tnum text-[var(--ink-3)]">{r.targetId}</span>
+                      <TargetName r={r} />
                     )}
                   </p>
                   <p className="t-sm text-[var(--ink-4)]">
@@ -365,6 +381,15 @@ function Decide({ report, onClose }: { report: Report | null; onClose: () => voi
       }
     >
       <div className="space-y-4 pb-3">
+        {/* What was reported, so nobody decides blind (V7-26). */}
+        {report && (
+          <div className="rounded-[var(--radius-control)] bg-[var(--sunken)] p-3">
+            <p className="text-[0.9375rem] font-semibold">
+              {t(REASON_LABEL[report.reason] ?? report.reason)} · {targetLabel(report.targetType)} <TargetName r={report} />
+            </p>
+            <p className="t-sm mt-1 whitespace-pre-wrap text-[var(--ink-2)]">{report.details}</p>
+          </div>
+        )}
         <div className="flex flex-wrap gap-2" role="radiogroup" aria-label={t('Decision')}>
           {actions.map((a) => (
             <Button key={a} size="sm" variant={a === action ? 'ink' : 'secondary'} aria-pressed={a === action} onClick={() => setAction(a)}>

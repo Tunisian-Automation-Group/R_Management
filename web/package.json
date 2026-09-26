@@ -11,7 +11,8 @@
     "check:flags": "node scripts/check-flags.ts",
     "check:size": "node scripts/check-size.ts",
     "check:a11y": "node scripts/check-a11y.ts",
-    "check:attempt": "node scripts/check-attempt.ts"
+    "check:attempt": "node scripts/check-attempt.ts",
+    "check:money": "node scripts/check-money.ts"
   },
   "dependencies": {
     "@capacitor/android": "^8.5.2",

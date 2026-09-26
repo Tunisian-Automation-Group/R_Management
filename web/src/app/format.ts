@@ -57,6 +57,8 @@ export function range(startIso: string, endIso: string): string {
 export function relative(iso: string): string {
   const mins = Math.round((Date.parse(iso) - Date.now()) / 60_000)
   if (mins < 0) return t('now')
+  // Never "in 0 min" in the last minute (V7-21); it fits every sentence it is put in.
+  if (mins < 1) return t('in under a minute')
   if (mins < 60) return t('in {n} min', { n: mins })
   const h = Math.round(mins / 60)
   if (h < 24) return t('in {n} h', { n: h })
@@ -119,7 +121,8 @@ export function formatDistance(km: number, loc: string = locale()): string {
 /** A search radius, rounded the way a person says it: "20 km", "12 mi". */
 export const formatRadius = (km: number, loc: string = locale()): string =>
   unitFor(loc) === 'mile'
-    ? new Intl.NumberFormat(loc, { style: 'unit', unit: 'mile', maximumFractionDigits: 0 }).format(km / 1.609344)
+    ? // A 1 km radius is 0.6 mi, not "1 mi" (V7-17).
+      new Intl.NumberFormat(loc, { style: 'unit', unit: 'mile', maximumFractionDigits: km < 16 ? 1 : 0 }).format(km / 1.609344)
     : new Intl.NumberFormat(loc, { style: 'unit', unit: 'kilometer', maximumFractionDigits: 0 }).format(km)
 
 /** The cancellation policies, as booking/cancellation.py applies them. */

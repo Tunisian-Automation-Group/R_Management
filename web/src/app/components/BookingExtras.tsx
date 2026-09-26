@@ -203,7 +203,10 @@ export function Extend({ booking }: { booking: Booking }) {
       const made = await extendBooking(booking.id, hours, attempt.keyFor(body))
       attempt.settle()
       setOpen(false)
-      toast(made.booking.status === 'accepted' ? t('Extended') : t('Asked for more time'))
+      // Instant book answers awaiting_payment first; the held card confirms it a
+      // moment later, so the listing's own setting says which it is (V7-7).
+      const instant = made.booking.status === 'accepted' || Boolean(listing?.instantBook ?? booking.listing?.instantBook)
+      toast(instant ? t('Extended') : t('Asked for more time'))
       nav(`/bookings/${made.booking.id}`)
     } catch (err) {
       attempt.settle(err)
@@ -251,7 +254,9 @@ const DAY = 86_400_000
 
 /** The owner reports a late return within 24 hours after the end (S-12). Staff
  *  confirm it; nothing is charged yet. */
-export function LateReturn({ booking, renterName }: { booking: Booking; renterName: string }) {
+/** The owner reports a late return; the renter sees the claim against them,
+ *  with its amount and Cappy's decision, and how to answer it (V7-15). */
+export function LateReturn({ booking, renterName, asOwner = true }: { booking: Booking; renterName: string; asOwner?: boolean }) {
   const id = useId()
   const qc = useQueryClient()
   const toast = useToast()
@@ -259,7 +264,7 @@ export function LateReturn({ booking, renterName }: { booking: Booking; renterNa
   const end = Date.parse(booking.match.end)
   // The server says from when (lateReturnFrom: the end, earlier locally).
   const from = booking.lateReturnFrom ? Date.parse(booking.lateReturnFrom) : end
-  const inWindow = ['active', 'completed', 'disputed'].includes(booking.status) && Date.now() >= from && Date.now() <= end + DAY
+  const inWindow = asOwner && ['active', 'completed', 'disputed'].includes(booking.status) && Date.now() >= from && Date.now() <= end + DAY
   const claims = useClaims(booking.id, ['active', 'completed', 'disputed'].includes(booking.status))
   const [open, setOpen] = useState(false)
   const [minutes, setMinutes] = useState('')
@@ -290,6 +295,13 @@ export function LateReturn({ booking, renterName }: { booking: Booking; renterNa
           {c.status === 'open' ? t('Cappy is looking at it') : c.status === 'confirmed' ? t('Confirmed by Cappy') : t('Not confirmed by Cappy')}
         </p>
       ))}
+      {!asOwner && items.length > 0 && (
+        <p className="t-sm mt-2 text-[var(--ink-3)]">
+          {items.some((c) => c.status === 'open')
+            ? t('The owner says it came back late. Not so? Tell Cappy with “Get help with this booking” below, with anything that shows when you returned it.')
+            : t('Questions about this decision? Use “Get help with this booking” below.')}
+        </p>
+      )}
       {inWindow && items.length === 0 && (
         <>
           <p className="t-sm text-[var(--ink-3)]">{t('Came back late? Report it within 24 hours after the end. The first 30 minutes are free.')}</p>

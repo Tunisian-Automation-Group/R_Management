@@ -47,5 +47,33 @@ for (const file of sources) {
     for (const k of [m[1], m[2]].map(unq)) if (!(k in DE)) untranslated.add(`${file}: ${k}`)
 }
 for (const u of untranslated) console.error(`no translation: ${u}`)
+// The French legal pages (Legal.tsx) are prose written in the page, not in the
+// catalogue: the same typography rule over their French text (V7-9). French is
+// the *Fr components, the `fr: (…)` JSX blocks and the `fr:` strings.
+{
+  const src = readFileSync(new URL('../src/app/screens/Legal.tsx', import.meta.url).pathname, 'utf8')
+  const blocks: string[] = []
+  for (const m of src.matchAll(/^function \w+Fr\(\)[\s\S]*?(?=^(?:export )?(?:function|const) |(?![\s\S]))/gm)) blocks.push(m[0])
+  for (const m of src.matchAll(/\bfr:\s*\(/g)) {
+    let depth = 0
+    let i = m.index! + m[0].length - 1
+    for (; i < src.length; i++) if (src[i] === '(') depth++; else if (src[i] === ')' && --depth === 0) break
+    blocks.push(src.slice(m.index!, i))
+  }
+  const texts: string[] = []
+  for (const m of src.matchAll(/\bfr:\s*\[?\s*((?:'(?:[^'\\]|\\.)*'\s*,?\s*)+)/g))
+    for (const q of m[1].matchAll(/'((?:[^'\\]|\\.)*)'/g)) texts.push(q[1].replace(/\\u00a0/g, ' ').replace(/\\u202f/g, ' '))
+  for (let b of blocks) {
+    // Template literals are prose too (the withdrawal form); their ${…} is not.
+    for (const m of b.matchAll(/`([^`]*)`/g)) for (const line of m[1].replace(/\$\{[^}]*\}/g, 'X').split('\n')) texts.push(line)
+    // Code in braces is not prose; what is left between tags is. Only braces
+    // holding no markup go, so a function body never swallows its JSX.
+    while (/\{[^{}<>]*\}/.test(b)) b = b.replace(/\{[^{}<>]*\}/g, 'X')
+    for (const m of b.matchAll(/>([^<>]+)</g)) texts.push(m[1].replace(/&nbsp;/g, '\u00a0').replace(/&#8239;/g, '\u202f').replace(/[ \t\r\n]+/g, ' '))
+  }
+  const bad = texts.filter((s) => /[^\u00a0]:(?=[ \t\r\n]|$)|[^\u202f;?!][;?!]/.test(prose(s)))
+  for (const s of bad) console.error(`fr (Legal.tsx): typography (U+00A0 before ":", U+202F before ; ? !):\n  ${s.trim()}`)
+  if (bad.length) failed = true
+}
 if (failed || onlyDe.length || onlyFr.length || untranslated.size) process.exit(1)
 console.log(`i18n: ${Object.keys(DE).length} German and ${Object.keys(FR).length} French entries, same keys, placeholders match`)

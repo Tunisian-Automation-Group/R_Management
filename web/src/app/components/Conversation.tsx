@@ -1,6 +1,6 @@
 import { useEffect, useId, useRef, useState, type ReactNode } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
-import { ApiError, HIDDEN_CONTACT, sendMessage, useAttemptKey, useMessages, type Message } from '../../data/repo.ts'
+import { ApiError, HIDDEN_CONTACT, sendMessage, unblockPerson, useAttemptKey, useBlocks, useMessages, type Message } from '../../data/repo.ts'
 import { messageOf, useToast } from '../store.tsx'
 import { ago } from '../format.ts'
 import { Button, Card, Textarea } from './ui.tsx'
@@ -61,6 +61,7 @@ export function Conversation({
   bookingId,
   status,
   otherName,
+  otherId,
   accepted,
   closed = false,
 }: {
@@ -68,6 +69,8 @@ export function Conversation({
   /** The booking's status: a change reads the thread again (masking follows it, V5-5). */
   status?: string
   otherName: string
+  /** Whom a block would stop: blocked either way, nothing more is sent (V7-5). */
+  otherId?: string
   /** Before acceptance the server masks phone numbers, emails and links. */
   accepted: boolean
   /** Declined, cancelled, lapsed: the conversation stays readable, nothing more is sent. */
@@ -90,6 +93,11 @@ export function Conversation({
   // window): its 409 closes the composer here, with the reason (FL, V4-18).
   const [closedHere, setClosedHere] = useState(false)
   closed = closed || closedHere
+  const blocks = useBlocks()
+  // Blocked by me (the list) or by them (the server refuses with 403).
+  const [refusedHere, setRefusedHere] = useState(false)
+  const iBlocked = Boolean(otherId && blocks.data?.includes(otherId))
+  const blocked = iBlocked || refusedHere
   const end = useRef<HTMLDivElement>(null)
   const items = messages.data?.items ?? []
 
@@ -113,6 +121,7 @@ export function Conversation({
       await qc.invalidateQueries({ queryKey: ['messages', bookingId] })
     } catch (err) {
       if (err instanceof ApiError && err.code === 'conversation_closed') setClosedHere(true)
+      else if (err instanceof ApiError && err.status === 403) setRefusedHere(true)
       else toast(messageOf(err), 'error')
     } finally {
       setBusy(false)
@@ -134,7 +143,7 @@ export function Conversation({
       )}
       {items.length === 0 ? (
         // No invitation to write on a booking nobody can write on (V4-18).
-        closed ? null : (
+        closed || blocked ? null : (
           <p className="t-sm py-3 text-[var(--ink-3)]">{t('No messages yet. Ask about the hand-over, access or anything you need.')}</p>
         )
       ) : (
@@ -147,6 +156,30 @@ export function Conversation({
       )}
       {closed ? (
         <p className="t-sm mt-3 text-[var(--ink-3)]">{t('This booking is closed, so no new messages can be sent.')}</p>
+      ) : blocked ? (
+        <p className="t-sm mt-3 flex flex-wrap items-center gap-x-3 text-[var(--ink-3)]">
+          {iBlocked
+            ? t('You blocked {name}, so no messages can be sent.', { name: otherName })
+            : t('Messages to {name} cannot be sent.', { name: otherName })}
+          {iBlocked && otherId && (
+            <button
+              type="button"
+              className="font-semibold text-[var(--ink)] underline"
+              onClick={async () => {
+                try {
+                  await unblockPerson(otherId)
+                  toast(t('Unblocked'))
+                } catch (err) {
+                  toast(messageOf(err), 'error')
+                } finally {
+                  await qc.invalidateQueries({ queryKey: ['blocks'] })
+                }
+              }}
+            >
+              {t('Unblock')}
+            </button>
+          )}
+        </p>
       ) : (
         <form
           className="mt-3 flex items-end gap-2"

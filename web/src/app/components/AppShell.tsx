@@ -452,7 +452,7 @@ export function LanguageSwitch() {
   const current = lang()
   const options = LANGS
   return (
-    <div role="group" aria-label={t('Language')} className="inline-flex rounded-full border border-[var(--line)] p-0.5">
+    <div role="group" aria-label={t('Language')} className="inline-flex max-w-full flex-wrap rounded-[1.25rem] border border-[var(--line)] p-0.5">
       {options.map((o) => (
         <button
           key={o.value}

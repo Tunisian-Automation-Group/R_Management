@@ -72,7 +72,7 @@ const PAYMENT_STATUS: Record<string, string> = {
 const reasonLabel = (c?: string) => t(REASON_CODES.find(([k]) => k === c)?.[1] ?? c ?? '')
 
 /** A person by name where the profile is readable, else the start of their id. */
-function Person({ id }: { id?: string }) {
+export function Person({ id }: { id?: string }) {
   const p = useOwner(id)
   if (!id) return null
   return <>{p.data?.name ?? `${id.slice(0, 8)}…`}</>

@@ -97,6 +97,15 @@ const CODE_TEXT: Record<string, () => string> = {
   claim_exists: () => t('A late return is already reported for this booking.'),
 }
 
+/** Server sentences with no code of their own, in the reader's words and
+ *  language rather than the server's lower-case English (V7-5, V7-18). */
+const MESSAGE_TEXT: Record<string, () => string> = {
+  'we already have your reports from today; we will be in touch': () =>
+    t('We already have your reports from today. We will be in touch.'),
+  'you cannot message this person': () => t('Messages to this person cannot be sent.'),
+  'cannot accept a booking that is accepted': () => t('This request is already accepted.'),
+}
+
 async function send(method: string, path: string, body?: unknown, headers?: Record<string, string>): Promise<Response> {
   const form = body instanceof FormData
   const attempt = async () => {
@@ -181,6 +190,8 @@ async function read<T>(res: Response): Promise<T> {
                 // one translated sentence instead of raw English (V6-4).
                 err?.message?.startsWith('not feasible')
                 ? t('That does not fit this listing. Pick a length or amount it takes.')
+                : err?.message && MESSAGE_TEXT[err.message]
+                  ? MESSAGE_TEXT[err.message]()
                 : // The server speaks English; the catalogue translates what it knows.
                   err?.message
                   ? t(err.message)
@@ -577,7 +588,20 @@ export const requestBooking = (
 ) => post<BookingCreated>('/bookings', body, { 'Idempotency-Key': idempotencyKey })
 
 export type BookingAction = 'accept' | 'start' | 'complete' | 'cancel'
-export const actOnBooking = (id: string, action: BookingAction) => post<Booking>(`/bookings/${id}/${action}`)
+const ACTION_DONE: Record<BookingAction, string> = { accept: 'accepted', start: 'active', complete: 'completed', cancel: 'cancelled' }
+/** A second tap, or a retry after a lost answer, finds the booking already
+ *  where the first one took it: that is success, not a conflict (V7-6). */
+export async function actOnBooking(id: string, action: BookingAction): Promise<Booking> {
+  try {
+    return await post<Booking>(`/bookings/${id}/${action}`)
+  } catch (err) {
+    if (err instanceof ApiError && err.status === 409) {
+      const now = await get<Booking>(`/bookings/${id}`).catch(() => undefined)
+      if (now?.status === ACTION_DONE[action]) return now
+    }
+    throw err
+  }
+}
 export const declineBooking = (id: string, reason: string) => post<Booking>(`/bookings/${id}/decline`, { reason })
 export const disputeBooking = (id: string, reason: string) => post<Booking>(`/bookings/${id}/dispute`, { reason })
 /** The card step for a booking still awaiting payment (404 once there is nothing to pay). */

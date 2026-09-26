@@ -102,7 +102,7 @@ export function AccountDeletion() {
               <em>Vous → Vos données</em>.
             </p>
             <p>
-              Vous ne pouvez plus vous connecter&nbsp;? Écrivez à {contactAddr()}&nbsp;; nous supprimerons le compte après avoir
+              Vous ne pouvez plus vous connecter&#8239;? Écrivez à {contactAddr()}&#8239;; nous supprimerons le compte après avoir
               vérifié qu’il est bien le vôtre.
             </p>
           </>
@@ -498,9 +498,9 @@ function Reporting() {
     fr: (
       <>
         <p>
-          Vous voyez quelque chose d’illégal, de dangereux ou de contraire à nos conditions&nbsp;? Utilisez «&nbsp;Signaler&nbsp;»
+          Vous voyez quelque chose d’illégal, de dangereux ou de contraire à nos conditions&#8239;? Utilisez «&nbsp;Signaler&nbsp;»
           sur l’annonce, le profil, le message ou l’évaluation, ou le formulaire ci-dessous. Vous n’avez pas besoin de
-          compte&nbsp;; sans compte, laissez une adresse courriel pour que nous puissions répondre. Nous accusons réception de
+          compte&#8239;; sans compte, laissez une adresse courriel pour que nous puissions répondre. Nous accusons réception de
           chaque signalement, l’examinons et vous communiquons notre décision. Lorsque nous retirons un contenu ou
           restreignons un compte, nous en expliquons les raisons à la personne concernée, ainsi que la manière de contester.
         </p>
@@ -752,7 +752,7 @@ function PrivacyFr() {
         </li>
         <li>
           <strong>Réservations et paiements</strong>&nbsp;: ce que vous avez réservé ou loué, quand, à quel prix, et l’état du
-          paiement. Vous saisissez vos données de carte et bancaires chez Stripe&nbsp;; elles ne nous parviennent jamais.
+          paiement. Vous saisissez vos données de carte et bancaires chez Stripe&#8239;; elles ne nous parviennent jamais.
           Art. 6, par. 1, point b) du RGPD, ainsi que les obligations légales de conservation (art. 6, par. 1, point c) du
           RGPD).
         </li>
@@ -763,7 +763,7 @@ function PrivacyFr() {
         </li>
         <li>
           <strong>Vérification d’identité</strong> (uniquement pour les réservations de valeur plus élevée)&nbsp;: Stripe
-          vérifie une pièce d’identité et un selfie&nbsp;; nous ne recevons que le résultat. Art. 6, par. 1, points b) et f)
+          vérifie une pièce d’identité et un selfie&#8239;; nous ne recevons que le résultat. Art. 6, par. 1, points b) et f)
           du RGPD.
         </li>
         <li>
@@ -806,7 +806,7 @@ function TermsFr() {
       <p>
         Cappy met en relation les propriétaires d’une capacité inutilisée (machines, ateliers, véhicules, espaces) avec des
         personnes qui veulent l’utiliser pour un temps. Le contrat de location est conclu entre le propriétaire et la
-        personne qui réserve&nbsp;; Cappy exploite la plateforme et gère le paiement. Cappy est exploité par {operatorName()}.
+        personne qui réserve&#8239;; Cappy exploite la plateforme et gère le paiement. Cappy est exploité par {operatorName()}.
       </p>
       <H>Comptes</H>
       <p>
@@ -817,7 +817,7 @@ function TermsFr() {
       <p>
         Les propriétaires décrivent leur offre de manière véridique, ne proposent que ce qu’ils ont le droit de louer, la
         maintiennent sûre à l’usage et sont présents (ou la mettent à disposition) aux horaires indiqués. Le paiement passe
-        uniquement par Cappy&nbsp;; demander un paiement en dehors de la plateforme n’est pas autorisé.
+        uniquement par Cappy&#8239;; demander un paiement en dehors de la plateforme n’est pas autorisé.
       </p>
       <H>Réserver et payer</H>
       <ul className="list-disc space-y-2 pl-5">
@@ -827,7 +827,7 @@ function TermsFr() {
       </ul>
       <H>Annulation et problèmes</H>
       <p>
-        Chaque partie peut annuler avant le début du créneau réservé&nbsp;; la personne qui a réservé est alors remboursée
+        Chaque partie peut annuler avant le début du créneau réservé&#8239;; la personne qui a réservé est alors remboursée
         intégralement. Une fois le créneau commencé, elle peut signaler un problème&nbsp;: le versement au propriétaire est
         retenu pendant que Cappy examine le cas et décide d’un remboursement ou d’un versement. Les droits légaux ne sont
         pas affectés.
@@ -837,14 +837,14 @@ function TermsFr() {
         Si vous réservez en tant que consommateur auprès d’un propriétaire qui est une entreprise, vous disposez d’un droit
         légal de rétractation. Les détails et le modèle de formulaire se trouvent sous{' '}
         <NavLink to="/legal/withdrawal" className="underline">Droit de rétractation</NavLink>. Les réservations auprès de
-        particuliers n’ouvrent pas de droit légal de rétractation&nbsp;; vous pouvez tout de même les annuler avant le début
+        particuliers n’ouvrent pas de droit légal de rétractation&#8239;; vous pouvez tout de même les annuler avant le début
         selon les présentes conditions et être remboursé intégralement.
       </p>
       <H>Évaluations, classement et signalements</H>
       <p>
         Les évaluations proviennent uniquement de réservations terminées. La manière dont les résultats sont classés est
-        expliquée sous «&nbsp;Classement des résultats&nbsp;»&nbsp;; personne ne peut payer pour être mieux placé. Chacun peut
-        signaler une annonce, un profil, un message ou une évaluation avec «&nbsp;Signaler&nbsp;»&nbsp;; nous communiquons notre
+        expliquée sous «&nbsp;Classement des résultats&nbsp;»&#8239;; personne ne peut payer pour être mieux placé. Chacun peut
+        signaler une annonce, un profil, un message ou une évaluation avec «&nbsp;Signaler&nbsp;»&#8239;; nous communiquons notre
         décision à l’auteur du signalement et la motivons auprès de toute personne dont nous retirons un contenu ou
         restreignons le compte.
       </p>
@@ -852,7 +852,7 @@ function TermsFr() {
       <p>
         Les propriétaires répondent de ce qu’ils louent, les personnes qui réservent de l’usage qu’elles en font. Cappy est
         responsable sans limite en cas de faute intentionnelle ou de négligence grave ainsi qu’en cas d’atteinte à la vie,
-        au corps ou à la santé&nbsp;; pour le reste, uniquement en cas de manquement à des obligations contractuelles
+        au corps ou à la santé&#8239;; pour le reste, uniquement en cas de manquement à des obligations contractuelles
         essentielles, dans la limite du dommage typique et prévisible pour ce type de contrat.
       </p>
       <H>Modifications et droit applicable</H>
@@ -872,7 +872,7 @@ function WithdrawalFr() {
       <p>
         Ceci s’applique lorsque vous réservez en tant que consommateur auprès d’un propriétaire qui est une entreprise
         (indiqué «&nbsp;Entreprise&nbsp;» sur sa fiche). Les réservations auprès de particuliers n’ouvrent pas de droit légal de
-        rétractation&nbsp;; vous pouvez tout de même les annuler avant le début selon nos conditions et être remboursé
+        rétractation&#8239;; vous pouvez tout de même les annuler avant le début selon nos conditions et être remboursé
         intégralement.
       </p>
       <H>Droit de rétractation</H>
@@ -891,7 +891,7 @@ function WithdrawalFr() {
         En cas de rétractation de votre part du présent contrat, nous vous rembourserons tous les paiements reçus de vous,
         sans retard excessif et, en tout état de cause, au plus tard quatorze jours à compter du jour où nous sommes
         informés de votre décision de rétractation du présent contrat. Nous procéderons au remboursement en utilisant le
-        même moyen de paiement que celui que vous aurez utilisé pour la transaction initiale&nbsp;; en tout état de cause, ce
+        même moyen de paiement que celui que vous aurez utilisé pour la transaction initiale&#8239;; en tout état de cause, ce
         remboursement n’occasionnera pas de frais pour vous. Si vous avez demandé de commencer la prestation de services
         pendant le délai de rétractation, vous devrez nous payer un montant proportionnel à ce qui a été fourni jusqu’au
         moment où vous nous avez informés de votre rétractation du présent contrat, par rapport à l’ensemble des
@@ -900,14 +900,14 @@ function WithdrawalFr() {
       </p>
       <H>Modèle de formulaire de rétractation</H>
       <p className="whitespace-pre-line rounded-[var(--radius-card)] bg-[var(--sunken)] p-4">
-        {`À l’attention de ${OPERATOR.company ?? '[exploitant]'}, ${OPERATOR.address ?? '[adresse]'}, ${OPERATOR.email ?? '[courriel]'} :
-Je/Nous (*) vous notifie/notifions (*) par la présente ma/notre (*) rétractation du contrat portant sur la prestation de services (*) ci-dessous :
-Numéro de réservation :
-Commandé le (*)/reçu le (*) :
-Nom du (des) consommateur(s) :
-Adresse du (des) consommateur(s) :
-Signature du (des) consommateur(s) (uniquement en cas de notification du présent formulaire sur papier) :
-Date :
+        {`À l’attention de ${OPERATOR.company ?? '[exploitant]'}, ${OPERATOR.address ?? '[adresse]'}, ${OPERATOR.email ?? '[courriel]'} :
+Je/Nous (*) vous notifie/notifions (*) par la présente ma/notre (*) rétractation du contrat portant sur la prestation de services (*) ci-dessous :
+Numéro de réservation :
+Commandé le (*)/reçu le (*) :
+Nom du (des) consommateur(s) :
+Adresse du (des) consommateur(s) :
+Signature du (des) consommateur(s) (uniquement en cas de notification du présent formulaire sur papier) :
+Date :
 (*) Rayez la mention inutile.`}
       </p>
     </>
@@ -924,7 +924,7 @@ function AccessibilityFr() {
       <H>État de conformité</H>
       <p>Partiellement conforme. Il s’agit de notre propre évaluation, pas encore d’un audit indépendant. Ce que nous savons manquer&nbsp;:</p>
       <ul className="list-disc space-y-1 pl-5">
-        <li>Déplacer et zoomer la carte dans Explorer demande une souris ou le tactile&nbsp;; la liste montre les mêmes annonces.</li>
+        <li>Déplacer et zoomer la carte dans Explorer demande une souris ou le tactile&#8239;; la liste montre les mêmes annonces.</li>
         <li>Les photos téléversées par les propriétaires ont pour description le titre de l’annonce, pas une description de l’image.</li>
         <li>Les très grandes tailles de texte ne sont pas encore vérifiées sur chaque écran des applications.</li>
       </ul>
@@ -937,7 +937,7 @@ function AccessibilityFr() {
       </p>
       <H>Nous signaler un problème</H>
       <p>
-        Quelque chose vous est inutilisable&nbsp;? Écrivez à {contactAddr()} en précisant quoi et où. Nous répondons sous deux
+        Quelque chose vous est inutilisable&#8239;? Écrivez à {contactAddr()} en précisant quoi et où. Nous répondons sous deux
         semaines.
       </p>
       <H>Recours</H>

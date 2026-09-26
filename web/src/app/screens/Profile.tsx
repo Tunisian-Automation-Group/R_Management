@@ -633,20 +633,15 @@ function Channels() {
   }
   return (
     <>
-    <table className="mt-4 w-full border-t border-[var(--line)] text-left">
-      <thead>
-        <tr className="t-sm text-[var(--ink-4)]">
-          <th className="py-2 font-semibold">{t('Tell me about')}</th>
-          <th className="w-16 py-2 text-center font-semibold">{t('Push')}</th>
-          <th className="w-16 py-2 text-center font-semibold">{t('Email')}</th>
-        </tr>
-      </thead>
-      <tbody>
-        {(Object.keys(CATEGORY_LABEL) as NoticeCategory[]).map((c) => (
-          <tr key={c} className="border-t border-[var(--line)]">
-            <td className="py-3 text-[0.9062rem]">{t(CATEGORY_LABEL[c])}</td>
+    {/* Rows that wrap, not a table with fixed columns: at 200 % text in
+        French a table ran 409 px wide on a 390 px phone (V7-8). */}
+    <ul className="mt-4 border-t border-[var(--line)]">
+      {(Object.keys(CATEGORY_LABEL) as NoticeCategory[]).map((c) => (
+        <li key={c} className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1 border-b border-[var(--line)] py-3">
+          <span className="min-w-0 text-[0.9062rem]">{t(CATEGORY_LABEL[c])}</span>
+          <span className="flex gap-4">
             {(['push', 'email'] as const).map((ch) => (
-              <td key={ch} className="py-3 text-center">
+              <label key={ch} className="t-sm flex items-center gap-1.5 text-[var(--ink-3)]">
                 <input
                   type="checkbox"
                   className="h-5 w-5 accent-[var(--ink)]"
@@ -654,12 +649,13 @@ function Channels() {
                   checked={settings.categories[c]?.[ch] ?? false}
                   onChange={() => flip(c, ch)}
                 />
-              </td>
+                {ch === 'push' ? t('Push') : t('Email')}
+              </label>
             ))}
-          </tr>
-        ))}
-      </tbody>
-    </table>
+          </span>
+        </li>
+      ))}
+    </ul>
     <p className="t-sm mt-2 text-[var(--ink-3)]">
       {t('Booking confirmations and changes always arrive by email, whatever you choose here.')}
     </p>

@@ -9,7 +9,7 @@ import { rating } from '../../domain/types.ts'
 import { durationLabel } from '../../domain/categories.ts'
 import { trackRecord } from '../../domain/match.ts'
 import { formatMoney } from '../../domain/money.ts'
-import { PLATFORM_FEE_BPS } from '../../domain/pricing.ts'
+import { moved, PLATFORM_FEE_BPS } from '../../domain/pricing.ts'
 import {
   useAttemptKey,
   actOnBooking,
@@ -59,6 +59,15 @@ const STEPS: { id: BookingStatus; label: string; note: string; ownerNote: string
 const DEAD: BookingStatus[] = ['declined', 'cancelled', 'expired', 'payment_failed']
 // Used only if the server does not say (canStartFrom): the deployed rule.
 const START_EARLY_MS = 30 * 60_000
+
+/** Reasons the server declines with on its own (booking/handlers.py, routes.py):
+ *  a headline that does not blame the owner (translated in i18n.de/fr). */
+const SYSTEM_DECLINE: Record<string, string> = {
+  'The listing was taken down by Cappy': 'Cappy removed this listing',
+  'The listing was removed by its owner': 'The listing was removed',
+  'The booking it extends was cancelled': 'The booking this extended was cancelled',
+  'The account was suspended': 'Cappy stopped this request',
+}
 
 export function BookingDetail() {
   const { id } = useParams()
@@ -122,6 +131,7 @@ function Detail({
   const online = useOnline()
   const [busy, setBusy] = useState(false)
   const [evidencePrompt, setEvidencePrompt] = useState<EvidenceStage | null>(null)
+  const backToFinish = useRef(false)
   const [blocking, setBlocking] = useState(false)
   const [ratingRenter, setRatingRenter] = useState(false)
   const [renterStars, setRenterStars] = useState(0)
@@ -148,6 +158,7 @@ function Detail({
   const first = ownerName.split(' ')[0]
   const stepIndex = STEPS.findIndex((s) => s.id === booking.status)
   const dead = DEAD.includes(booking.status)
+  const money = moved(booking)
   // requesterId is only ever sent to the owner.
   const asOwner = Boolean(booking.requesterId)
   const buyer = requester?.name.split(' ')[0] ?? t('The buyer')
@@ -205,6 +216,7 @@ function Detail({
       await Promise.all([
         qc.invalidateQueries({ queryKey: ['booking', booking.id] }),
         qc.invalidateQueries({ queryKey: ['bookings'] }),
+        qc.invalidateQueries({ queryKey: ['blocks'] }),
       ])
     }
   }
@@ -400,7 +412,11 @@ function Detail({
       {booking.status === 'declined' ? (
         <Banner
           tone="danger"
-          title={asOwner ? t('You declined this request') : t('{name} could not take this one', { name: first })}
+          title={
+            // Declined by the system, not the owner: say what happened (V7-14).
+            (booking.declineReason && SYSTEM_DECLINE[booking.declineReason] && t(SYSTEM_DECLINE[booking.declineReason])) ||
+            (asOwner ? t('You declined this request') : t('{name} could not take this one', { name: first }))
+          }
           body={
             <>
               <span className="block">{booking.declineReason ? t('Reason: {reason}.', { reason: t(booking.declineReason) }) : t('No reason given.')}</span>
@@ -642,6 +658,7 @@ function Detail({
           bookingId={booking.id}
           status={booking.status}
           otherName={asOwner ? buyer : first}
+          otherId={other?.id}
           accepted={['accepted', 'active', 'completed', 'disputed'].includes(booking.status)}
           // Also a completed booking once its 14-day review window has passed (booking/messages.py).
           closed={dead || (booking.status === 'completed' && Date.now() > Date.parse(booking.match.end) + 14 * 86_400_000)}
@@ -673,8 +690,11 @@ function Detail({
           status={booking.status}
           otherName={asOwner ? buyer : first}
           prompt={evidencePrompt}
-          onPromptClosed={() => {
+          onPromptClosed={(saved) => {
             setEvidencePrompt(null)
+            // Photos first, then the question they came from (V7-22).
+            if (saved && backToFinish.current) setFinishing(true)
+            backToFinish.current = false
             // After the sheet has handed focus back to its opener, which may be gone (V5-14).
             setTimeout(() => evidenceRef.current?.focus({ preventScroll: false }), 60)
           }}
@@ -682,7 +702,7 @@ function Detail({
       </div>
 
       {!asOwner && <Extend booking={booking} />}
-      {asOwner && <LateReturn booking={booking} renterName={buyer} />}
+      <LateReturn booking={booking} renterName={buyer} asOwner={asOwner} />
 
       <Card className="mt-3 flex flex-wrap items-center justify-between gap-3 p-5">
         <p className="t-sm text-[var(--ink-3)]">{t('Something not right? Tell us, and we see this booking with it.')}</p>
@@ -713,25 +733,20 @@ function Detail({
           }
         />
         <div className="my-2 border-t border-[var(--line)]" />
-        {dead ? (
-          booking.status === 'cancelled' && booking.refundAmount ? (
-            <Row label={t('Refunded')} value={formatMoney(booking.refundAmount, cur)} strong />
-          ) : (
-            <Row
-              label={t('Charged')}
-              value={t('Nothing: hold released')}
-              strong
-            />
-          )
+        {money.charged === 0 ? (
+          <Row label={t('Charged')} value={t('Nothing: hold released')} strong />
+        ) : money.refunded >= money.charged ? (
+          <Row label={t('Refunded')} value={formatMoney(money.refunded, cur)} strong />
         ) : (
           <>
-            <Row label={t('Total')} value={formatMoney(quote.total, cur)} strong />
+            <Row label={t('Total')} value={formatMoney(money.charged, cur)} strong />
+            {money.refunded > 0 && <Row label={t('Refunded')} value={`−${formatMoney(money.refunded, cur)}`} />}
             <Row
               label={`${t('Cappy fee')} · ${percent(PLATFORM_FEE_BPS / 10_000)}`}
-              value={formatMoney(quote.platformFee, cur)}
+              value={formatMoney(money.fee, cur)}
               tone="muted"
             />
-            <Row label={asOwner ? t('You receive') : t('{name} receives', { name: first })} value={formatMoney(quote.ownerNet, cur)} tone="accent" />
+            <Row label={asOwner ? t('You receive') : t('{name} receives', { name: first })} value={formatMoney(money.ownerNet, cur)} tone="accent" />
           </>
         )}
       </Card>
@@ -799,6 +814,7 @@ function Detail({
               icon="camera"
               onClick={() => {
                 setFinishing(false)
+                backToFinish.current = true
                 setEvidencePrompt('check_out')
               }}
             >

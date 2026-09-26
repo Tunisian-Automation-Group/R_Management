@@ -67,6 +67,7 @@ jobs:
       - run: npm run check:flags
       - run: npm run check:attempt
       - run: npm run check:a11y
+      - run: npm run check:money
 
   images:
     runs-on: ubuntu-latest

@@ -1,6 +1,7 @@
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import type { Booking, BookingStatus } from '../../domain/types.ts'
 import { formatMoney } from '../../domain/money.ts'
+import { moved } from '../../domain/pricing.ts'
 import { useBookings } from '../../data/repo.ts'
 import { useAuthReady, useSession } from '../../data/auth.ts'
 import { SignedOut } from '../components/SignedOut.tsx'
@@ -236,7 +237,7 @@ function BookingRow({ booking, hosting, onOpen }: { booking: Booking; hosting: b
             {title}
           </span>
           <span className="tnum shrink-0 text-[0.9688rem] font-bold">
-            {formatMoney(hosting ? booking.match.quote.ownerNet : booking.match.quote.total, booking.currency ?? booking.match.quote.currency)}
+            {formatMoney(amountOf(booking, hosting), booking.currency ?? booking.match.quote.currency)}
           </span>
         </span>
         <span className="t-sm mt-0.5 block truncate text-[var(--ink-3)]">{ownerName}</span>
@@ -249,4 +250,14 @@ function BookingRow({ booking, hosting, onOpen }: { booking: Booking; hosting: b
       </span>
     </button>
   )
+}
+
+/** The price, or once money came back (a refund, a partial settlement) what
+ *  really stayed: the renter's net cost, the owner's share of it (V7-3). */
+function amountOf(b: Booking, hosting: boolean): number {
+  if (b.refundAmount === undefined && b.noShow !== 'renter') return hosting ? b.match.quote.ownerNet : b.match.quote.total
+  const m = moved(b)
+  // Everything back (or nothing taken): the price, as for any ended booking; its status says the rest.
+  if (m.charged - m.refunded <= 0) return hosting ? b.match.quote.ownerNet : b.match.quote.total
+  return hosting ? m.ownerNet : m.charged - m.refunded
 }
