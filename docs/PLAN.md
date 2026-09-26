@@ -9,6 +9,74 @@ Branch: `prod-readiness`. Commits as tunisian-automation. Not pushed.
 Status: `[x]` done (with the commit that did it) · `[~]` in progress ·
 `[ ]` not started · `[-]` dropped (with the reason).
 
+## Resume here (end of 2026-09-26)
+
+**How a day runs** (GOAL 15; the user's words: "continue again tomorrow doing
+exactly the same thing"). Each round:
+1. research agents study the big apps, law and security and add tasks to
+   [`TASKS.md`](TASKS.md), with their sources in `docs/research/`;
+2. one backend fork and one web fork build in parallel. Each owns its
+   files, commits nothing and never stashes. I commit after `make test`
+   and every web `check:*` pass, chaining with `&&` so a red suite can't
+   commit;
+3. an independent verifier checks the web version (desktop) and the app
+   version (390 px) in Chrome, signing in only with the demo buttons;
+4. a docs-sync agent brings FEATURES, INFRA, FLOWS and DATA up to date
+   (CLAUDE.md "Living docs").
+
+Nothing is ever pushed or applied to real AWS (GOAL 12). Markets are all
+of Europe, the US and Canada (GOAL 16, ADR 0013).
+
+**Start tomorrow with:**
+1. `make up`, then `make e2e`, to prove the stack from clean.
+2. **Verification round 4** on both versions, in EN, DE and FR, as buyer,
+   host and staff. It covers everything built since round 3:
+   - 18+, business identity, no-shows, good faith;
+   - private evidence, the ID-check consent, the staff console approving
+     held listings and removing content;
+   - the public report form, the offline start, `/pay/return`, currency
+     formatting and French.
+3. **The web follow-ups the last backend round (235eeaa) created.** They're
+   in FLOWS.md §23:
+   - `conversation_closed`;
+   - the `charged` flag in the cancel sheet;
+   - the new decline reason, in DE and FR;
+   - the "messages are not emailed" copy;
+   - the country at payout onboarding;
+   - `identityProvider` driving the ID-check UI;
+   - booking currency lowercase vs quote currency uppercase.
+4. **The next build tasks, in order:**
+   - M-2: the market configuration, which the thresholds and ranking marked
+     `ponytail` still need;
+   - M-5 to M-8: places as geo points instead of Berlin districts;
+   - U-17: the Keychain and Keystore;
+   - the open technical P items: P-5 CSP in the shells, P-11 TLS inside the
+     VPC, P-31 app hardening, P-32 scanning and pinning;
+   - the S items: S-12 late return, S-17 bank fingerprints, S-20 duplicate
+     photos, S-21 dispute offers, S-23 web vitals, S-27 review prompt,
+     S-28 review-collusion signals;
+   - T-35c per-journey burn alarms; M-46 names per cell;
+   - pruning `revoked_sessions` and `rate_hits`.
+5. **A fresh research pass** on what nobody has looked at yet: seller
+   onboarding and listing-quality benchmarks, search relevance, support
+   tooling, and pricing and fee transparency across markets.
+
+**Waiting on the owner** (business and legal, not code):
+- G-B1: insurance. It blocks S-8 and S-9, damage claims and deposits.
+- G-B2 to G-B4: counsel on the withdrawal right per category and on the
+  policies; the DPAs and DPIA; the BZSt/DAC7 registration.
+- M-1: the North America legal entity and Stripe platform. M-11: VAT and
+  sales tax on the fee per market, with a tax adviser.
+- P-13, P-15, P-17, P-19, P-21, P-29, P-30: the privacy programme per
+  jurisdiction (breach procedure, policies, biometric consent, transfers,
+  privacy officer and representatives, CPRA process).
+- The GitHub environments need `LEGAL`, `AWS_IMAGES_ROLE_ARN` and so on
+  before any deploy (runbook step 2). The first real AWS apply is the
+  owner's call.
+- Rotate the LocalStack and GitHub tokens that were pasted in chat, purge
+  the `Capacity_Exchange_*.pptx` decks from git history, and consider
+  making the repository private.
+
 ## Phase 0 — Understand and decide
 - [x] Read every service, the frontend's data layer, compose and docs
 - [x] Baseline: 111 backend tests pass, lint clean
@@ -149,8 +217,18 @@ Status: `[x]` done (with the commit that did it) · `[~]` in progress ·
 - [x] Soon-after-launch features: instant book, blind two-way reviews, cancellation policies with partial
       refunds (gated on counsel), duration discounts, fee invoices, analytics pipeline
 - [x] Soak: 20 min, flat latency, memory, connections and queues; third review round fixed (3942e35)
-- [ ] Web for the latest features, then verification round 3
-- [ ] First AWS apply; breakpoint and soak tests on staging (L-5)
+- [x] Web for the latest features (b120dd0), verification round 3 (d2baff3, 23 findings, all fixed)
+- [ ] First AWS apply; breakpoint and soak tests on staging (L-5) — the owner's call
+
+## Phase 15 — Members only, a welcome, the loop, every market (GOAL 13–16)
+- [x] Signed-in only, enforced by the server (0d0d1b5) and the web (f081c9f); a welcome for first-timers
+- [x] App UX research (U-1..U-40, 33 done), stores and marketplace (S-1..S-32, 13 done)
+- [x] Security review (P-1..P-34): the technical highs and mediums fixed (9d28a0e, ffb2990, 40fbc5f, f303350)
+- [x] Data rights: deletion and export complete, with a test that walks every table (235eeaa)
+- [x] Living docs: FEATURES, INFRA, FLOWS, DATA (1928895..1216719), kept in sync each round
+- [x] Markets: research and ADR 0013 (0472163); currency per listing, the owner's country, French (db417ca, f42a4ef, 235eeaa)
+- [ ] Verification round 4 on both versions (tomorrow)
+- [ ] Market configuration and places as geo points (M-2, M-5..M-8)
 
 ## Definition of done
 
@@ -191,3 +269,8 @@ Status: `[x]` done (with the commit that did it) · `[~]` in progress ·
 - 2026-09-25 — Migrate creates a database and role per service; services never use the master user.
 - 2026-09-25 — Independent reviews found real defects in the money flow and CI trust; fixed in
   phase 12, decisions in ADR 0011. Catalog migration 0002 was edited in place (never deployed).
+- 2026-09-26 — Members only (GOAL 13), the welcome (GOAL 14) and the loop (GOAL 15) built.
+  The markets are Europe, the US and Canada (GOAL 16), so ADR 0013 gives two cells, and
+  currencies, countries and French came in. The living docs were added at the owner's request.
+  One commit (235eeaa) landed with a timing-dependent test red; it was fixed in 7ef9b2c, and
+  commits are now chained on a green suite.

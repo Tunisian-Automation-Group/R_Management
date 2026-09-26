@@ -37,3 +37,13 @@ One codebase, one verification pass, three stores. Native-only features
 (push notifications, camera tuned for listing photos) come through Capacitor
 plugins when they are worth adding. Push is the first candidate: today's
 notifications are email only.
+
+## Correction (2026-09-26)
+
+Two statements above are out of date. The refresh token is kept in Capacitor
+Preferences (UserDefaults / SharedPreferences), not web-view storage, and
+backups and device transfers exclude it on Android; moving it into the
+Keychain and Keystore is U-17. Notifications are not email only: push through
+SNS Mobile Push (APNs, FCM) is built, asked for after the first booking
+request or listing. The shells also run without a CSP of their own (P-5).
+The decision itself stands.

@@ -501,5 +501,5 @@ So that a feature can move to another third party by adding an adapter, not by e
 - [x] FL-17 [web] PushPrime states the real answer deadline (min(24 h, window start)) — (web, uncommitted) says "before the request lapses" (24 h at most, sooner if the booked time starts first)
 - [x] FL-18 [backend] Messages refused on closed bookings (cancelled, declined, expired, payment_failed; completed after the review window) (backend, uncommitted)
 - [x] FL-19 [app] Payment `return_url` for redirect methods in the shells is a universal/app link on Cappy's domain (with U-7) (web, uncommitted)
-- [ ] FL-20 [docs] ADR 0012: refresh token in Capacitor Preferences (Keychain is U-17), push built — a dated correction
+- [x] FL-20 [docs] ADR 0012: refresh token in Capacitor Preferences (Keychain is U-17), push built — a dated correction
 - [x] FL-21 [app] Release entitlements: real associated domain, `aps-environment` production in the release configuration (web, uncommitted — Release signs with App.release.entitlements (production); domain from CAPPY_DOMAIN)
