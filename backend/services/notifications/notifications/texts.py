@@ -28,6 +28,10 @@ TEXTS: dict[str, dict[str, tuple[str, str]]] = {
         "cancelled": ("Cancelled: {title}", "The booking of {title} was cancelled.\n\n{link}"),
         "expired": ("Expired: {title}", "Your request for {title} lapsed. Nothing was charged.\n\n{link}"),
         "completed": ("How was {title}?", "Your booking is complete. Rate it to help the next buyer.\n\n{link}"),
+        "listing_idle": (
+            "No free time next week: {title}",
+            "{title} has no free time in the next seven days, so nobody can book it. Add opening hours or windows to keep it bookable.\n\n{link}",
+        ),
         "message": ("New message: {title}", "Open the conversation\n\n{link}"),
         "payment_failed": (
             "Payment failed: {title}",
@@ -93,6 +97,10 @@ TEXTS: dict[str, dict[str, tuple[str, str]]] = {
             "Wie war {title}?",
             "Deine Buchung ist abgeschlossen. Bewerte sie und hilf der nächsten Person.\n\n{link}",
         ),
+        "listing_idle": (
+            "Nächste Woche nichts frei: {title}",
+            "{title} hat in den nächsten sieben Tagen keine freie Zeit, deshalb kann es niemand buchen. Füge Öffnungszeiten oder Zeitfenster hinzu, damit es buchbar bleibt.\n\n{link}",
+        ),
         "message": ("Neue Nachricht: {title}", "Zum Gespräch\n\n{link}"),
         "payment_failed": (
             "Zahlung fehlgeschlagen: {title}",
@@ -157,6 +165,10 @@ TEXTS: dict[str, dict[str, tuple[str, str]]] = {
         "completed": (
             "Comment s’est passé {title}?",
             "Votre réservation est terminée. Évaluez-la pour aider la prochaine personne.\n\n{link}",
+        ),
+        "listing_idle": (
+            "Aucun créneau libre la semaine prochaine : {title}",
+            "{title} n’a aucun créneau libre dans les sept prochains jours : personne ne peut le réserver. Ajoutez des horaires d’ouverture ou des créneaux pour qu’il reste réservable.\n\n{link}",
         ),
         "message": ("Nouveau message : {title}", "Ouvrir la conversation\n\n{link}"),
         "payment_failed": (

@@ -116,3 +116,33 @@ def test_asking_to_pay_around_cappy_is_flagged_not_blocked():
     fine = ["I paid through the app", "the transfer of the van is at 10:00", "direct sunlight in the workshop"]
     assert [t for t in asks if not flagged(t)] == []
     assert [t for t in fine if flagged(t)] == []
+
+
+def test_the_local_time_shortcuts_never_reach_a_deployed_environment():
+    """GD-3: compose shortens the windows so testers can walk every flow;
+    deployed settings refuse the same values."""
+    import pytest
+
+    from booking.settings import Settings as BookingSettings
+    from cappy_common.settings import UnsafeSettings
+    from matching.settings import Settings as MatchingSettings
+
+    def prod(service: str) -> dict:
+        return dict(
+            app_env="prod",
+            internal_token=f"{service}:" + "x" * 40,
+            internal_callers="catalog=" + "0" * 64,
+            event_bus_url="sns://arn:aws:sns:eu-central-1:123:cappy-events",
+            auth_issuer="https://cognito-idp.eu-central-1.amazonaws.com/eu-central-1_abc",
+            auth_client_ids="client-1",
+            database_url="postgresql+asyncpg://u:p@db/booking",
+        )
+
+    assert BookingSettings(**prod("booking")).deployed
+    with pytest.raises(UnsafeSettings, match="START_EARLY_MINUTES"):
+        BookingSettings(**prod("booking"), start_early_minutes=100000)
+    with pytest.raises(UnsafeSettings, match="AUTO_COMPLETE_AFTER_HOURS"):
+        BookingSettings(**prod("booking"), auto_complete_after_hours=1)
+    assert MatchingSettings(**prod("matching")).deployed
+    with pytest.raises(UnsafeSettings, match="MIN_LEAD_MINUTES"):
+        MatchingSettings(**prod("matching"), min_lead_minutes=5)

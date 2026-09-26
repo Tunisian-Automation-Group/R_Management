@@ -1060,6 +1060,20 @@ def test_owner_reliability_comes_from_booking_and_shows_on_the_owner(client, app
     assert client.get("/owners/o1").json().get("cancellationRate") is None
 
 
+def test_response_time_is_what_booking_measured_and_nothing_else(client, app):
+    """H-1: the seed's figure stays until booking has measured one; a
+    response event never touches the cancellation rate, nor the reverse."""
+    from cappy_common.events import OWNER_RELIABILITY
+
+    _event(app, OWNER_RELIABILITY, {"ownerId": "o1", "rate": 0.2, "bookings": 10, "failures": 2})
+    _event(app, OWNER_RELIABILITY, {"ownerId": "o1", "responseMins": 42, "responseRate": 0.9})
+    o = client.get("/owners/o1").json()
+    assert (o["responseMins"], o["responseRate"], o["cancellationRate"]) == (42, 0.9, 0.2)
+    _event(app, OWNER_RELIABILITY, {"ownerId": "o1", "responseMins": None, "responseRate": None})
+    o = client.get("/owners/o1").json()
+    assert o.get("responseMins") is None and o.get("responseRate") is None and o["cancellationRate"] == 0.2
+
+
 def test_flags_join_the_queue_once_while_open(client, app, issuer):
     from cappy_common.events import PERSON_FLAGGED
 
@@ -1363,3 +1377,129 @@ def test_markets_decide_where_people_join_list_and_in_which_currency(client, iss
     assert created.status_code == 201 and created.json()["listing"]["currency"] == "CHF", "the market's currency"
     r = client.post("/listings", json={"listing": {**listing, "currency": "EUR"}}, headers=h)
     assert r.json()["error"]["code"] == "currency_not_in_market"
+
+
+# --- weekly schedules and listings that went dark (H-4) ---------------------------
+
+
+WEEKDAYS = {"weekly": [{"day": d, "start": "09:00", "end": "17:00"} for d in range(1, 6)], "timeZone": "Europe/Berlin"}
+
+
+def test_a_weekly_schedule_keeps_eight_weeks_of_windows_open(client, issuer):
+    _profile(client, issuer)
+    h = issuer.headers("user-a")
+    r = client.post("/listings", json={"listing": _window_listing(availability=WEEKDAYS)}, headers=h)
+    assert r.status_code == 201, r.text
+    created = r.json()
+    lid, slots = created["listing"]["id"], created["slots"]
+    assert created["listing"]["availability"]["timeZone"] == "Europe/Berlin"
+    assert 38 <= len(slots) <= 40, "five weekdays for eight weeks, less today if it started"
+    assert all(s["hoursUsable"] == 8 for s in slots)
+
+    # A hand-made window stays; a new schedule replaces only what the old one made.
+    extra = {"start": "2027-06-06T08:00:00Z", "end": "2027-06-06T10:00:00Z", "hoursUsable": 2}
+    assert client.post(f"/listings/{lid}/slots", json=[extra], headers=h).status_code == 201
+    weekends = {"weekly": [{"day": 6, "start": "10:00", "end": "14:00"}], "timeZone": "Europe/Berlin"}
+    body = {"listing": {**_window_listing(availability=weekends)}}
+    assert client.put(f"/listings/{lid}", json=body, headers=h).status_code == 200
+    after = client.get(f"/listings/{lid}").json()["slots"]
+    assert all(s["hoursUsable"] in (4, 2) for s in after) and any(s["hoursUsable"] == 2 for s in after)
+
+    # An edit that does not mention the schedule keeps it.
+    assert client.put(f"/listings/{lid}", json={"listing": _window_listing()}, headers=h).status_code == 200
+    assert client.get(f"/listings/{lid}").json()["listing"]["availability"] == weekends
+
+
+@pytest.mark.parametrize(
+    "bad, message",
+    [
+        ({"weekly": [{"day": 1, "start": "17:00", "end": "09:00"}]}, "end after"),
+        ({"weekly": [{"day": 8, "start": "09:00", "end": "17:00"}]}, "validate"),
+        ({"weekly": [{"day": 1, "start": "09:00", "end": "17:00"}], "timeZone": "Mars/Olympus"}, "time zone"),
+    ],
+)
+def test_a_schedule_is_checked(client, issuer, bad, message):
+    _profile(client, issuer)
+    r = client.post("/listings", json={"listing": _window_listing(availability=bad)}, headers=issuer.headers("user-a"))
+    assert r.status_code == 422 and message in r.json()["error"]["message"], r.text
+
+
+def test_the_schedule_rolls_on_and_an_idle_listing_tells_its_owner_once_a_week(client, app, issuer, broker):
+    from datetime import UTC, datetime, timedelta
+
+    from cappy_common.events import LISTING_IDLE
+    from catalog.jobs import keep_schedules_once
+
+    _profile(client, issuer)
+    h = issuer.headers("user-a")
+    dark = client.post("/listings", json={"listing": _window_listing()}, headers=h).json()["listing"]["id"]
+    kept = client.post("/listings", json={"listing": _window_listing(availability=WEEKDAYS)}, headers=h).json()
+    before = len(kept["slots"])
+
+    later = datetime.now(UTC) + timedelta(days=9)
+    assert app.state._portal.call(keep_schedules_once, app, later) > 0, "rolled on past the old horizon"
+    assert len(client.get(f"/listings/{kept['listing']['id']}").json()["slots"]) > before - 10
+    flush(app)
+    told = [e.data for e in broker.of_type(LISTING_IDLE) if e.data["ownerId"] == "user-a"]
+    assert [t["listingId"] for t in told] == [dark], "only the one with nothing free"
+    app.state._portal.call(keep_schedules_once, app, later + timedelta(days=1))
+    flush(app)
+    assert len([e for e in broker.of_type(LISTING_IDLE) if e.data["ownerId"] == "user-a"]) == 1, "once a week"
+
+
+def test_a_schedule_follows_the_clocks_going_back():
+    """25 Oct 2026, Berlin: Sunday 09:00-17:00 is 07-15 UTC before, 08-16 UTC
+    after, eight real hours both times."""
+    from datetime import UTC, datetime
+
+    from cappy_common.models import Availability
+    from catalog.schedule import windows
+
+    a = Availability.model_validate({"weekly": [{"day": 7, "start": "09:00", "end": "17:00"}]})
+    got = windows(a, datetime(2026, 10, 17, tzinfo=UTC), datetime(2026, 10, 27, tzinfo=UTC))
+    assert got == [
+        (datetime(2026, 10, 18, 7, tzinfo=UTC), datetime(2026, 10, 18, 15, tzinfo=UTC)),
+        (datetime(2026, 10, 25, 8, tzinfo=UTC), datetime(2026, 10, 25, 16, tzinfo=UTC)),
+    ]
+    late = Availability.model_validate({"weekly": [{"day": 6, "start": "20:00", "end": "24:00"}]})
+    [(start, end)] = windows(late, datetime(2026, 10, 24, tzinfo=UTC), datetime(2026, 10, 25, 12, tzinfo=UTC))
+    assert (end - start).total_seconds() == 4 * 3600, "midnight is the next day's, whatever the offset"
+
+
+# --- where a listing is (M-5, M-6) ------------------------------------------------
+
+
+def test_the_exact_point_waits_for_an_accepted_booking(client, issuer):
+    _profile(client, issuer)
+    h = issuer.headers("user-a")
+    exact = {"lat": 52.49871, "lng": 13.41912}
+    body = {"listing": _window_listing(location=exact, country="DE", postalCode="10999")}
+    lid = client.post("/listings", json=body, headers=h).json()["listing"]["id"]
+
+    public = client.get(f"/listings/{lid}").json()["listing"]
+    assert public["location"] != exact and "postalCode" not in public
+    assert (
+        abs(public["location"]["lat"] - exact["lat"]) < 0.0045
+        and abs(public["location"]["lng"] - exact["lng"]) < 0.0045
+    )
+    nearby = {"lat": 52.49872, "lng": 13.41913}
+    other = client.post("/listings", json={"listing": _window_listing(location=nearby)}, headers=h).json()["listing"][
+        "id"
+    ]
+    assert client.get(f"/listings/{other}").json()["listing"]["location"] == public["location"], (
+        "same square, same answer"
+    )
+
+    [mine] = [v["listing"] for v in client.get("/me/listings", headers=h).json()["items"] if v["listing"]["id"] == lid]
+    assert mine["location"] == exact and mine["postalCode"] == "10999", "the owner sees their own point"
+    handover = client.get(f"/internal/listings/{lid}/handover", headers=INTERNAL).json()
+    assert handover["location"] == exact and handover["postalCode"] == "10999"
+
+
+def test_a_point_must_be_in_its_district(client, issuer):
+    _profile(client, issuer)
+    far = _window_listing(location={"lat": 48.137, "lng": 11.575})  # Munich, filed under Kreuzberg
+    r = client.post("/listings", json={"listing": far}, headers=issuer.headers("user-a"))
+    assert r.status_code == 422 and r.json()["error"]["code"] == "location_outside_district"
+    bad = _window_listing(location={"lat": 95, "lng": 13})
+    assert client.post("/listings", json={"listing": bad}, headers=issuer.headers("user-a")).status_code == 422

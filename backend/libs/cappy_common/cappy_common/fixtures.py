@@ -82,9 +82,20 @@ def build_reviews(tz: str = "Europe/Berlin", at: datetime | None = None) -> list
 
 def build_world(tz: str = "Europe/Berlin", at: datetime | None = None) -> World:
     r = raw()
+    # Seeded listings stand at their district's centre until someone moves
+    # them (M-5): every listing has a point, and the seed's country.
+    where = {d["name"]: d for d in r["districts"]}
+    listings = [
+        {
+            "location": {"lat": where[l["district"]]["lat"], "lng": where[l["district"]]["lng"]},
+            "country": where[l["district"]]["country"],
+            **l,
+        }
+        for l in r["listings"]
+    ]
     return World(
         owners=[Owner.model_validate(o) for o in r["owners"]],
-        listings=_listings.validate_python(r["listings"]),
+        listings=_listings.validate_python(listings),
         slots=build_slots(tz, at),
         districts={d["name"]: District.model_validate(d) for d in r["districts"]},
         reviews=build_reviews(tz, at),

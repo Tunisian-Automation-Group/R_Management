@@ -466,3 +466,23 @@ def test_the_bell_keeps_a_year():
         assert c.portal.call(expire_inbox_once, app, soon) == 0, "younger than a year stays"
         assert c.portal.call(expire_inbox_once, app, soon + timedelta(days=2)) == 1
         assert c.get("/notifications", headers=issuer.headers("host")).json()["items"] == []
+
+
+def test_an_idle_listing_tells_its_owner_where_to_add_time():
+    from notifications.handlers import messages
+    from notifications.texts import render
+
+    from cappy_common.events import LISTING_IDLE, Event
+
+    ev = Event(
+        id="ev1",
+        type=LISTING_IDLE,
+        source="catalog",
+        occurred_at="2026-09-27T10:00:00Z",
+        data={"listingId": "l9", "ownerId": "o1", "title": "Plunge saw"},
+    )
+    [(sub, email, key, params)] = messages(ev, "https://cappy.test")
+    assert (sub, email, key, params["link"]) == ("o1", None, "listing_idle", "https://cappy.test/earn/edit/l9")
+    for lang in ("en", "de", "fr"):
+        subject, text = render(key, lang, **params)
+        assert "Plunge saw" in subject and params["link"] in text

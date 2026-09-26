@@ -63,13 +63,19 @@ async def on_booking_rated(session: AsyncSession, event: Event) -> None:
 
 
 async def on_owner_reliability(session: AsyncSession, event: Event) -> None:
-    """Booking counted an owner's cancellations and no-shows (S-18)."""
+    """Booking measured an owner: cancellations and no-shows (S-18), or how
+    fast and how often they answer requests (H-1). Each event carries one of
+    the two; a field it does not carry is left as it was."""
     from .tables import OwnerRow
 
     d = event.data
     row = await session.get(OwnerRow, d["ownerId"], with_for_update=True)
-    if row is not None:
-        row.cancellation_rate = d.get("rate")
+    if row is None:
+        return
+    if "rate" in d:
+        row.cancellation_rate = d["rate"]
+    if "responseMins" in d:
+        row.response_mins, row.response_rate = d["responseMins"], d.get("responseRate")
 
 
 async def on_person_flagged(session: AsyncSession, event: Event) -> None:

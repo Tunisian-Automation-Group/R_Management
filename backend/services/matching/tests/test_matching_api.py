@@ -188,8 +188,21 @@ def test_nothing_starts_too_soon_for_the_owner_to_answer(client):
 
 
 def test_shared_vocabulary_is_cacheable_at_the_edge(client):
-    for path in ("/groups", "/categories", "/review-tags"):
+    for path in ("/groups", "/categories", "/review-tags", "/ranking"):
         assert client.get(path).headers["cache-control"] == "public, max-age=300"
+
+
+def test_the_ranking_page_is_the_ranker(client):
+    """H-2 (P2B Art. 5): the published signals and weights are exactly the ones
+    the ranker multiplies. Changing W changes this answer, or this test fails."""
+    from matching.domain.match import SIGNALS, W
+
+    body = client.get("/ranking", headers={"Authorization": ""}).json()
+    assert (
+        {s["key"]: s["weight"] for s in body["signals"]} == W == {"price": 0.3, "trust": 0.3, "soon": 0.2, "near": 0.2}
+    )
+    assert set(SIGNALS) == set(W) and all(s["description"] for s in body["signals"])
+    assert body["signals"][0]["weight"] >= body["signals"][-1]["weight"] and body["textSearch"] == "newest first"
 
 
 def test_search_keeps_working_when_booking_is_down(client, fakes):

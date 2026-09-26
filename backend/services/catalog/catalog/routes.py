@@ -18,12 +18,13 @@ from cappy_common.events import LISTING_CHANGED, PERSON_SIGNED_OUT, PROFILE_CREA
 from cappy_common.guard import hit, revoke
 from cappy_common.idempotency import IdempotencyKey, fingerprint, remember, replayed
 from cappy_common.markets import Market, live_market, market
-from cappy_common.models import CamelModel, District, Iso, Listing, Owner, Review, Slot, World
+from cappy_common.models import CamelModel, District, Handover, Iso, Listing, Owner, Review, Slot, World
 from cappy_common.pagination import Page, clamp_limit
 from cappy_common.runtime import ReadTx, Tx
 from cappy_common.timeutil import HOUR_MS, dt_from_iso, ms_from_iso, now_iso
 
-from . import media
+from . import media, schedule
+from .geo import haversine_km
 from .repository import CatalogRepository, to_listing
 from .tables import IDEMPOTENCY, RATE_HITS
 
@@ -39,6 +40,8 @@ internal = ApiRouter(prefix="/internal", dependencies=[Depends(require_internal)
 _listing = TypeAdapter(Listing)
 _DECODING = asyncio.Semaphore(2)
 MAX_PHOTOS = 12
+# A listing's point may lie this far from its district's centre (M-5).
+MAX_KM_FROM_DISTRICT = 30
 MAX_RULES = 12
 MAX_SLOTS_PER_CALL = 200
 
@@ -251,8 +254,22 @@ async def _validate_listing(
     if listing.rate_per_hour <= 0:
         raise Invalid("ratePerHour must be positive")
     _check_numbers(listing, where)
+    if listing.availability is not None:
+        schedule.check(listing.availability)
     if not await repo.has_district(listing.district):
         raise Invalid(f"unknown district: {listing.district}")
+    if listing.location is not None:
+        # The district is the search bucket (candidates walk districts nearest
+        # first, T-10): a point far from its district would be missed by it.
+        # ponytail: districts as buckets; a point index (PostGIS or H3) when a
+        # market has no districts yet (M-5).
+        home = await repo.district(listing.district)
+        km = haversine_km(home.lat, home.lng, listing.location.lat, listing.location.lng)
+        if km > MAX_KM_FROM_DISTRICT:
+            raise Invalid(
+                f"that point is {km:.0f} km from {listing.district}; pick the district it is in",
+                code="location_outside_district",
+            )
     photos = listing.photos or []
     if len(photos) > MAX_PHOTOS:
         raise Invalid(f"at most {MAX_PHOTOS} photos per listing")
@@ -559,6 +576,9 @@ async def create_listing(
     listing = await _validate_listing(request, repo, body.listing, p.sub)
     created, slots = await repo.create_listing(listing, _validate_slots(body.slots))
     await repo.set_address(created.id, body.address)
+    if listing.availability is not None:
+        await repo.apply_schedule(created.id, listing.availability, datetime.now(UTC), replace=False)
+        slots = await repo.upcoming_slots({created.id}, after=datetime.now(UTC))
     owner = await repo.owner(p.sub)
     if owner.jobs_done == 0 and listing.rate_per_hour > market(owner.country).held_listing_above:
         await repo.hold(created.id)
@@ -581,14 +601,22 @@ async def update_listing(
     p: Principal = Depends(require_principal),
 ):
     row = await _owned(repo, listing_id, p.sub)
+    # An edit that does not mention the schedule keeps it; null removes it.
+    raw = {**body.listing, "mode": row.mode, "category": row.category}
+    if "availability" not in raw and (row.spec or {}).get("availability"):
+        raw["availability"] = row.spec["availability"]
+    before = (row.spec or {}).get("availability")
     listing = await _validate_listing(
         request,
         repo,
-        {**body.listing, "mode": row.mode, "category": row.category},
+        raw,
         p.sub,
         already_shown=frozenset(row.photos or []),
     )
     updated = await repo.update_listing(listing_id, listing)
+    after = listing.availability.model_dump(mode="json", by_alias=True) if listing.availability else None
+    if after != before:
+        await repo.apply_schedule(listing_id, listing.availability, datetime.now(UTC), replace=True)
     owner = await repo.owner(p.sub)
     if (
         owner.jobs_done == 0
@@ -783,14 +811,15 @@ async def evidence_photo(name: str, request: Request) -> Response:
     return Response(data, media_type="image/webp", headers={"Cache-Control": "private, no-store"})
 
 
-class Handover(CamelModel):
-    address: str | None = None
-    instructions: str
-
-
 @internal.get("/listings/{listing_id}/handover", response_model=Handover)
 async def handover(listing_id: str, repo=Depends(get_repo)) -> Handover:
     """For booking to give the two sides of an accepted booking. Works for a
     listing removed since, because the booking still happens."""
     row = await repo.listing_row(listing_id, include_deleted=True)
-    return Handover(address=row.address, instructions=row.instructions)
+    spec = row.spec or {}
+    return Handover(
+        address=row.address,
+        instructions=row.instructions,
+        location=spec.get("location"),
+        postal_code=spec.get("postalCode"),
+    )

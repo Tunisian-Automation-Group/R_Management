@@ -34,6 +34,7 @@ from gateway.settings import Settings
         ("/matches", MATCHING),
         ("/quote", MATCHING),
         ("/categories", MATCHING),
+        ("/ranking", MATCHING),
         ("/browse/spotlight", MATCHING),
         ("/bookings", BOOKING),
         ("/bookings/bk_1/accept", BOOKING),

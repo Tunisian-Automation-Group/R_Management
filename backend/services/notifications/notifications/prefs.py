@@ -55,6 +55,7 @@ CATEGORY = {
     "payment_failed": "bookings",
     "disputed_owner": "bookings",
     "disputed_renter": "bookings",
+    "listing_idle": "bookings",
     "message": "messages",
     "paid": "payouts",
 }

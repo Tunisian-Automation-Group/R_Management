@@ -55,12 +55,16 @@ CONSUMERS = {
         "booking.message",
         "moderation.report_received",
         "moderation.decision",
+        "listing.idle",
     ],
 }
 DEMO_PASSWORD = "Demo-pass-123!"
 DEMO = {
     "host": ("host@demo.cappy.local", "o1"),
     "buyer": ("buyer@demo.cappy.local", None),
+    # A Swiss host (CHF) with new-owner listings, made through the API by
+    # local/demo_profiles.py: one instant book, a van, one held for review (GD-5).
+    "host2": ("host2@demo.cappy.local", None),
     # A moderator, for the admin console (member of the "admin" group).
     "staff": ("staff@demo.cappy.local", None),
 }

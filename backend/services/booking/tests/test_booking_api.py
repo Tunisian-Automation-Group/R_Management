@@ -324,6 +324,25 @@ async def _age(app, bid: str, **fields) -> None:
             setattr(row, k, v)
 
 
+async def _age_transition(app, bid: str, to_status: str, at: datetime) -> None:
+    """Move the moment a booking entered a status into the past."""
+    from sqlalchemy import update
+
+    from booking.tables import TransitionRow
+
+    async with app.state.db.transaction() as s:
+        await s.execute(
+            update(TransitionRow)
+            .where(TransitionRow.booking_id == bid, TransitionRow.to_status == to_status)
+            .values(at=at)
+        )
+
+
+async def _expire(app, bid: str) -> None:
+    await _age(app, bid, expires_at=datetime.now(UTC) - timedelta(minutes=1))
+    return await sweep_once(app)
+
+
 def test_unpaid_and_unanswered_requests_lapse(client, app, issuer):
     unpaid = _book(client, issuer)["booking"]["id"]
     unanswered = _requested(client, app, issuer, start_h=40)
@@ -880,6 +899,33 @@ def test_owner_cancellations_set_a_rate_and_three_in_a_month_reach_staff(client,
     assert _events(app, broker, OWNER_RELIABILITY)[-1] == {"ownerId": HOST, "rate": 0.6, "bookings": 5, "failures": 3}
     [flag] = _events(app, broker, PERSON_FLAGGED)
     assert flag["personId"] == HOST and flag["reason"] == "reliability"
+
+
+def test_owners_response_time_and_rate_are_measured_not_made_up(client, app, issuer, broker):
+    """H-1: nothing is claimed under three requests; then the median minutes
+    to answer and the share answered before the request lapsed. A lapse
+    counts against the owner, a renter withdrawing does not count at all."""
+    from cappy_common.events import OWNER_RELIABILITY
+
+    def measured() -> dict:
+        return [e for e in _events(app, broker, OWNER_RELIABILITY) if "responseMins" in e][-1]
+
+    asked_ago = lambda bid, minutes: call(  # noqa: E731
+        app, _age_transition, app, bid, "requested", datetime.now(UTC) - timedelta(minutes=minutes)
+    )
+    first = _requested(client, app, issuer, start_h=40)
+    asked_ago(first, 30)
+    _do(client, issuer, HOST, first, "accept")
+    assert measured() == {"ownerId": HOST, "responseMins": None, "responseRate": None}, "one request says nothing"
+
+    second = _requested(client, app, issuer, start_h=50)
+    asked_ago(second, 90)
+    assert _do(client, issuer, HOST, second, "decline", reason="Booked elsewhere that day").status_code == 200
+    withdrawn = _requested(client, app, issuer, start_h=60)
+    _do(client, issuer, BUYER, withdrawn, "cancel")
+    lapsed = _requested(client, app, issuer, start_h=70)
+    assert call(app, _expire, app, lapsed) == 1
+    assert measured() == {"ownerId": HOST, "responseMins": 60, "responseRate": 0.6667}
 
 
 def test_a_card_a_suspended_account_used_puts_the_new_account_in_front_of_staff(client, app, issuer, broker):

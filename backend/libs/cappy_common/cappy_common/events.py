@@ -82,6 +82,9 @@ OWNER_RELIABILITY = "booking.owner_reliability"
 # Something for staff to look at that nobody reported: an owner cancelling a
 # lot, a card shared with a suspended account (S-17, S-18).
 PERSON_FLAGGED = "moderation.person_flagged"
+# A live listing has no free window in the next seven days (H-4): its owner
+# hears of it, at most once a week.
+LISTING_IDLE = "listing.idle"
 
 ALL_TYPES = frozenset(
     {
@@ -106,6 +109,7 @@ ALL_TYPES = frozenset(
         IDENTITY_VERIFIED,
         OWNER_RELIABILITY,
         PERSON_FLAGGED,
+        LISTING_IDLE,
     }
 )
 

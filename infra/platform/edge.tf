@@ -523,6 +523,17 @@ resource "aws_cloudfront_distribution" "main" {
     cache_policy_id        = aws_cloudfront_cache_policy.api_public.id
   }
 
+  # How results are ordered (H-2): public, cached like the vocabulary.
+  ordered_cache_behavior {
+    path_pattern           = "/api/ranking"
+    target_origin_id       = "api"
+    viewer_protocol_policy = "https-only"
+    allowed_methods        = ["GET", "HEAD", "OPTIONS"]
+    cached_methods         = ["GET", "HEAD"]
+    compress               = true
+    cache_policy_id        = aws_cloudfront_cache_policy.api_public.id
+  }
+
   # Shared vocabulary: cached for what the origin says (5 minutes).
   ordered_cache_behavior {
     path_pattern           = "/api/review-tags"

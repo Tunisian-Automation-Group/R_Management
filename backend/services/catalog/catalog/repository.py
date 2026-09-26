@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import math
 from dataclasses import dataclass
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 
 from pydantic import TypeAdapter
 from sqlalchemy import Integer, and_, cast, delete, exists, func, insert, or_, select, true, update
@@ -20,17 +20,21 @@ from cappy_common.errors import Invalid, NotFound
 from cappy_common.ids import new_id
 from cappy_common.models import (
     AnyListing,
+    Availability,
     District,
     Listing,
+    Location,
     Outcome,
     Owner,
     Review,
     Slot,
     World,
+    snapped,
 )
 from cappy_common.pagination import decode_cursor, encode_cursor
 from cappy_common.timeutil import dt_from_iso, iso_from_datetime
 
+from . import schedule
 from .tables import (
     IDEMPOTENCY,
     DistrictRow,
@@ -93,6 +97,7 @@ def to_owner(r: OwnerRow) -> Owner:
         on_time_jobs=r.on_time_jobs,
         joined_year=r.joined_year,
         response_mins=r.response_mins,
+        response_rate=r.response_rate,
         renter_rating_sum=r.renter_rating_sum or 0,
         renter_jobs=r.renter_jobs or 0,
         # A person's address is never public; a trader's must be.
@@ -120,6 +125,11 @@ def to_listing(r: ListingRow, *, private: bool = False) -> AnyListing:
     }
     if r.photos:
         data["photos"] = r.photos
+    if not private:
+        # Where exactly and the postal code wait for an accepted booking (M-6).
+        data.pop("postalCode", None)
+        if data.get("location"):
+            data["location"] = snapped(Location.model_validate(data["location"])).model_dump()
     return _listing.validate_python(data)
 
 
@@ -241,6 +251,8 @@ class CatalogRepository:
                 business=None,
                 verified=False,
                 cancellation_rate=None,
+                response_mins=None,
+                response_rate=None,
             )
         )
         await self.s.execute(
@@ -426,7 +438,8 @@ class CatalogRepository:
             # nothing of the old record comes back. A suspension does stay.
             row.deleted_at, row.verified, row.business, row.cancellation_rate = None, False, None, None
             row.rating_sum = row.jobs_done = row.on_time_jobs = row.renter_rating_sum = row.renter_jobs = 0
-            row.response_mins, row.joined_year, row.created_at, row.adult_confirmed_at = 60, now.year, now, now
+            row.response_mins = row.response_rate = None
+            row.joined_year, row.created_at, row.adult_confirmed_at = now.year, now, now
         if row is None:
             row = OwnerRow(
                 business=business,
@@ -442,7 +455,6 @@ class CatalogRepository:
                 jobs_done=0,
                 on_time_jobs=0,
                 joined_year=now.year,
-                response_mins=60,
                 created_at=now,
                 updated_at=now,
             )
@@ -598,6 +610,84 @@ class CatalogRepository:
         out = [await self._add_slot(listing_id, s) for s in slots]
         await self.s.flush()
         return out
+
+    async def apply_schedule(
+        self, listing_id: str, availability: Availability | None, now: datetime, *, replace: bool
+    ) -> int:
+        """Windows from the weekly schedule, up to eight weeks ahead (H-4).
+        ``replace`` (the owner changed the schedule): the windows it made
+        before that have not ended go first. Bookings are the booking service's: a window
+        removed under one leaves the booking as it is. Rolling on (``replace``
+        false) only adds, so an offer a buyer is looking at keeps its window.
+        Never overlaps a window already there. Returns how many it added."""
+        row = await self.s.get(ListingRow, listing_id, with_for_update=True)
+        if row is None:
+            return 0
+        if replace:
+            await self.s.execute(
+                delete(SlotRow).where(SlotRow.listing_id == listing_id, SlotRow.generated, SlotRow.end > now)
+            )
+        if availability is None:
+            row.scheduled_until = None
+            return 0
+        until = now + schedule.HORIZON
+        taken = [
+            (r.start, r.end)
+            for r in (
+                await self.s.execute(select(SlotRow).where(SlotRow.listing_id == listing_id, SlotRow.end > now))
+            ).scalars()
+        ]
+        added = 0
+        for start, end in schedule.free_of(schedule.windows(availability, now, until), taken):
+            self.s.add(
+                SlotRow(
+                    id=new_id("sl"),
+                    listing_id=listing_id,
+                    start=start,
+                    end=end,
+                    hours_usable=(end - start).total_seconds() / 3600,
+                    generated=True,
+                )
+            )
+            added += 1
+        row.scheduled_until = until
+        await self.s.flush()
+        return added
+
+    async def schedules_due(self, now: datetime, limit: int) -> list[tuple[str, dict]]:
+        """Scheduled listings whose windows reach less than a week short of
+        the horizon: the job rolls them on, a day or so at a time."""
+        rows = (
+            await self.s.execute(
+                select(ListingRow.id, ListingRow.spec)
+                .where(
+                    ListingRow.scheduled_until < now + schedule.HORIZON - timedelta(days=1),
+                    ListingRow.deleted_at.is_(None),
+                )
+                .order_by(ListingRow.scheduled_until)
+                .limit(limit)
+            )
+        ).all()
+        return [(r.id, r.spec) for r in rows]
+
+    async def idle_listings(self, now: datetime, limit: int) -> list[ListingRow]:
+        """Live listings with no window open in the next seven days whose owner
+        has not been told this week (H-4): a listing that went dark."""
+        soon = now + timedelta(days=7)
+        has_time = exists().where(SlotRow.listing_id == ListingRow.id, SlotRow.end > now, SlotRow.start < soon)
+        q = (
+            select(ListingRow)
+            .where(
+                ListingRow.deleted_at.is_(None),
+                ListingRow.active,
+                ListingRow.held_at.is_(None),
+                or_(ListingRow.idle_notice_at.is_(None), ListingRow.idle_notice_at < now - timedelta(days=7)),
+                ~has_time,
+            )
+            .limit(limit)
+            .with_for_update(skip_locked=True)
+        )
+        return list((await self.s.execute(q)).scalars())
 
     async def remove_slot(self, listing_id: str, slot_id: str) -> None:
         result = await self.s.execute(delete(SlotRow).where(SlotRow.id == slot_id, SlotRow.listing_id == listing_id))

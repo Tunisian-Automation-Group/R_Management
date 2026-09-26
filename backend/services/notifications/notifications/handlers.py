@@ -16,6 +16,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from cappy_common.events import (
     BOOKING_MESSAGE,
     BOOKING_STATUS_CHANGED,
+    LISTING_IDLE,
     MODERATION_DECISION,
     PAYOUT_SENT,
     PERSON_SIGNED_OUT,
@@ -49,6 +50,11 @@ def messages(event: Event, web: str) -> list[Message]:
                 "paid",
                 {"booking": d["bookingId"], "web": web, "_cents": (d["amount"], d["currency"])},
             )
+        ]
+    if event.type == LISTING_IDLE:
+        # H-4: the listing has nothing free next week; adding times fixes it.
+        return [
+            (d["ownerId"], None, "listing_idle", {"title": d["title"], "link": f"{web}/earn/edit/{d['listingId']}"})
         ]
     if event.type != BOOKING_STATUS_CHANGED:
         return []
@@ -219,6 +225,7 @@ def handlers(directory: Directory, mailer: Mailer, web: str, pusher: Pusher | No
         BOOKING_MESSAGE: notify,
         REPORT_RECEIVED: notify,
         MODERATION_DECISION: notify,
+        LISTING_IDLE: notify,
         PROFILE_DELETED: forget,
     }
 

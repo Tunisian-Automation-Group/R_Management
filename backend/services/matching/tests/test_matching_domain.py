@@ -408,3 +408,18 @@ def test_a_quote_is_in_its_listing_s_currency(world, brackets):
     batch = next(l for l in world.listings if l.mode == "batch")
     assert quote_for(brackets, batch).currency == "EUR"
     assert quote_for(brackets, batch.model_copy(update={"currency": "CAD"})).currency == "CAD"
+
+
+def test_distance_is_from_the_listings_own_point(world, now, saw):
+    """M-5: a listing's point (snapped by catalog) wins over its district's
+    centre; a listing without one still measures from the district."""
+    from matching.domain.match import point_of
+
+    listing = next(l for l in world.listings if l.district == "Kreuzberg")
+    from cappy_common.models import Location
+
+    moved = listing.model_copy(update={"location": Location(lat=52.52, lng=13.405)})
+    assert point_of(moved, world.districts) == (52.52, 13.405)
+    bare = listing.model_copy(update={"location": None})
+    k = world.districts["Kreuzberg"]
+    assert point_of(bare, world.districts) == (k.lat, k.lng)

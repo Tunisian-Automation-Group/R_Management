@@ -7,6 +7,7 @@ caller's transaction. Payments and notifications act on that event.
 
 from __future__ import annotations
 
+import statistics
 from datetime import datetime, timedelta
 
 from pydantic import TypeAdapter
@@ -65,6 +66,9 @@ START_EARLY = timedelta(minutes=30)
 REVIEW_WINDOW = timedelta(days=14)
 RELIABILITY_WINDOW = timedelta(days=365)
 RELIABILITY_MIN_BOOKINGS = 5
+# H-1: how fast and how often owners answer, over 90 days, shown from 3 requests.
+RESPONSE_WINDOW = timedelta(days=90)
+RESPONSE_MIN_REQUESTS = 3
 
 
 # The two sides see where to meet once the booking is on, and afterwards.
@@ -202,8 +206,53 @@ class BookingRepository:
         # no-show is the owner doing their part.
         by_owner = by == row.owner_id and row.no_show != "renter"
         failed = before == "accepted" and to == "cancelled" and (by_owner or row.no_show == "owner")
+        if before == "requested" and to in ("accepted", "declined", "expired"):
+            await self.owner_responsiveness(row.owner_id, now)
         if to == "accepted" or failed:
             await self.owner_reliability(row.owner_id, now, failed=failed)
+
+    async def owner_responsiveness(self, owner_id: str, now: datetime) -> None:
+        """H-1: of the requests that reached an owner in 90 days and were
+        answered or lapsed, the median minutes to answer and the share
+        answered in time. A decline the system made (listing removed, owner
+        suspended) is not the owner answering, and a request the renter
+        withdrew never needed one: both are left out."""
+        since = now - RESPONSE_WINDOW
+        rows = (
+            await self.s.execute(
+                select(
+                    TransitionRow.booking_id,
+                    TransitionRow.from_status,
+                    TransitionRow.to_status,
+                    TransitionRow.by,
+                    TransitionRow.at,
+                )
+                .join(BookingRow, TransitionRow.booking_id == BookingRow.id)
+                .where(
+                    BookingRow.owner_id == owner_id,
+                    TransitionRow.at >= since - timedelta(days=2),
+                    or_(TransitionRow.to_status == "requested", TransitionRow.from_status == "requested"),
+                )
+            )
+        ).all()
+        asked = {r.booking_id: r.at for r in rows if r.to_status == "requested"}
+        answered, lapsed = [], 0
+        for r in rows:
+            if r.from_status != "requested" or r.at < since or r.booking_id not in asked:
+                continue
+            if r.to_status == "expired":
+                lapsed += 1
+            elif r.to_status in ("accepted", "declined") and r.by == owner_id:
+                answered.append((r.at - asked[r.booking_id]).total_seconds() / 60)
+        total = len(answered) + lapsed
+        if total < RESPONSE_MIN_REQUESTS:
+            mins = rate = None
+        else:
+            rate = round(len(answered) / total, 4)
+            mins = round(statistics.median(answered)) if answered else None
+        await self.outbox.add(
+            self.s, OWNER_RELIABILITY, {"ownerId": owner_id, "responseMins": mins, "responseRate": rate}
+        )
 
     async def owner_reliability(self, owner_id: str, now: datetime, *, failed: bool) -> None:
         """S-18: of the bookings an owner accepted in 12 months, the share they

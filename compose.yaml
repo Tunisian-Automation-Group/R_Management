@@ -84,7 +84,12 @@ services:
     <<: *service
     build: { context: ./backend, args: { SERVICE: matching } }
     command: ["run.sh", "matching"]
-    environment: *env
+    environment:
+      <<: *env
+      # Local only: a booking can start 5 minutes from now, so no-shows,
+      # disputes and reviews can be walked in minutes (GUIDE §A). Deployed,
+      # the default (120) holds and settings refuse anything under 60.
+      MIN_LEAD_MINUTES: "5"
 
   booking:
     <<: *service

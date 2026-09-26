@@ -21,7 +21,7 @@ RULES: list[tuple[re.Pattern[str], str]] = [
     (re.compile(r"^/me/blocks(/[^/]+)?$"), BOOKING),
     (re.compile(r"^/payments(/|$)"), PAYMENTS),
     (re.compile(r"^/notifications(/read|/settings|/devices(/[^/]+)?)?$"), NOTIFICATIONS),
-    (re.compile(r"^/(matches|quote|feasibility|categories|groups|review-tags)$"), MATCHING),
+    (re.compile(r"^/(matches|quote|feasibility|categories|groups|review-tags|ranking)$"), MATCHING),
     (re.compile(r"^/browse/[a-z-]+$"), MATCHING),
     (re.compile(r"^/listings/[^/]+/offers$"), MATCHING),
     (re.compile(r"^/admin/bookings/[^/]+/resolve$"), BOOKING),

@@ -11,6 +11,7 @@ the app runs its own domain rules on the world it loads, and those rules test
 
 from __future__ import annotations
 
+import math
 from typing import Annotated, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
@@ -139,7 +140,11 @@ class Owner(CamelModel):
     jobs_done: int
     on_time_jobs: int
     joined_year: int
-    response_mins: int
+    # Measured by booking over 90 days (H-1): the median minutes to answer a
+    # request and the share answered before it lapsed. None until at least
+    # three requests: never a made-up number.
+    response_mins: int | None = None
+    response_rate: float | None = None
     # As a renter: what owners said after completed bookings (two-way reviews).
     renter_rating_sum: int = 0
     renter_jobs: int = 0
@@ -154,6 +159,46 @@ class Owner(CamelModel):
 # Amounts are always minor units of the listing's own currency; nothing is
 # converted, and a booking takes its listing's currency (M-3).
 Currency = Literal["EUR", "GBP", "CHF", "SEK", "NOK", "DKK", "PLN", "CZK", "HUF", "RON", "ISK", "USD", "CAD"]
+
+
+class Location(CamelModel):
+    """Where a listing is (M-5). Stored exactly; answered snapped to a grid of
+    about 500 m (M-6) until a booking is accepted, like the address."""
+
+    lat: float = Field(ge=-90, le=90, allow_inf_nan=False)
+    lng: float = Field(ge=-180, le=180, allow_inf_nan=False)
+
+
+# About 500 m north–south everywhere; east–west it narrows towards the poles,
+# which only makes the square smaller, never larger than 500 m.
+SNAP_DEG = 0.0045
+
+
+def snapped(loc: Location) -> Location:
+    """The middle of the grid square the point is in: stable (the same point
+    always gives the same answer, so averaging answers learns nothing)."""
+
+    def mid(v: float) -> float:
+        return round((math.floor(v / SNAP_DEG) + 0.5) * SNAP_DEG, 5)
+
+    return Location(lat=mid(loc.lat), lng=mid(loc.lng))
+
+
+class WeeklyHours(CamelModel):
+    """Open every week on one day (1 = Monday … 7 = Sunday, ISO), local time."""
+
+    day: int = Field(ge=1, le=7)
+    start: str = Field(pattern=r"^([01]\d|2[0-3]):[0-5]\d$")
+    end: str = Field(pattern=r"^([01]\d|2[0-3]):[0-5]\d$|^24:00$")
+
+
+class Availability(CamelModel):
+    """A weekly schedule (H-4): the server keeps windows open from it, eight
+    weeks ahead, in the listing's own time zone, so a listing never goes
+    dark because nobody added windows by hand."""
+
+    weekly: list[WeeklyHours] = Field(min_length=1, max_length=21)
+    time_zone: str = "Europe/Berlin"
 
 
 class _ListingBase(CamelModel):
@@ -181,6 +226,14 @@ class _ListingBase(CamelModel):
     week_discount_pct: int = Field(default=0, ge=0, le=50)
     # The currency its prices are in.
     currency: Currency = "EUR"
+    # Opening hours the server turns into windows (H-4); None: windows by hand.
+    availability: Availability | None = None
+    # Where it is (M-5): the district stays as the place's name and the search
+    # bucket; this is the point. Public answers snap it (M-6); the postal code
+    # goes with the address, after acceptance.
+    location: Location | None = None
+    country: str | None = Field(default=None, pattern=r"^[A-Z]{2}$")
+    postal_code: str | None = Field(default=None, max_length=12)
 
 
 class WindowListing(_ListingBase):
@@ -343,6 +396,9 @@ class MatchView(CamelModel):
 class Handover(CamelModel):
     address: str | None = None
     instructions: str
+    # The exact point and postal code (M-6), once a booking is accepted.
+    location: Location | None = None
+    postal_code: str | None = None
 
 
 class Booking(CamelModel):

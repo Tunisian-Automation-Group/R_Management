@@ -13,7 +13,7 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from sqlalchemy import Boolean, Float, ForeignKey, Index, Integer, String
+from sqlalchemy import Boolean, Float, ForeignKey, Index, Integer, String, false
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
 from cappy_common.db import JsonType, UtcDateTime, new_metadata
@@ -62,7 +62,9 @@ class OwnerRow(Base):
     renter_jobs: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
     on_time_jobs: Mapped[int] = mapped_column(Integer, default=0)
     joined_year: Mapped[int] = mapped_column(Integer)
-    response_mins: Mapped[int] = mapped_column(Integer, default=60)
+    # Kept by booking (booking.owner_reliability, H-1); None until measured.
+    response_mins: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    response_rate: Mapped[float | None] = mapped_column(Float, nullable=True)
     created_at: Mapped[datetime] = mapped_column(UtcDateTime)
     updated_at: Mapped[datetime] = mapped_column(UtcDateTime)
     # Set when the person deleted their account: the row stays (as "Former
@@ -108,6 +110,10 @@ class ListingRow(Base):
     created_at: Mapped[datetime] = mapped_column(UtcDateTime)
     updated_at: Mapped[datetime] = mapped_column(UtcDateTime)
     deleted_at: Mapped[datetime | None] = mapped_column(UtcDateTime, nullable=True)
+    # Weekly schedule (H-4): windows exist up to here; the job rolls it on.
+    scheduled_until: Mapped[datetime | None] = mapped_column(UtcDateTime, nullable=True, index=True)
+    # The last "no free time next week" notice to its owner (at most weekly).
+    idle_notice_at: Mapped[datetime | None] = mapped_column(UtcDateTime, nullable=True)
 
 
 # The search path: category + live + where. District carries the coordinates.
@@ -144,6 +150,9 @@ class SlotRow(Base):
     start: Mapped[datetime] = mapped_column(UtcDateTime)
     end: Mapped[datetime] = mapped_column(UtcDateTime)
     hours_usable: Mapped[float] = mapped_column(Float)
+    # Made from the listing's weekly schedule (H-4), not by hand: a new
+    # schedule replaces the future ones it made.
+    generated: Mapped[bool] = mapped_column(Boolean, default=False, server_default=false())
 
 
 # "Does this listing have a window still open after T?" is the hot predicate.

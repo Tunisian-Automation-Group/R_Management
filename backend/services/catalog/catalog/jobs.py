@@ -63,7 +63,33 @@ async def forget_reporters_once(app: FastAPI, now: datetime | None = None) -> in
     return r.rowcount or 0
 
 
+async def keep_schedules_once(app: FastAPI, now: datetime | None = None) -> int:
+    """H-4: roll weekly schedules on, so a scheduled listing always has eight
+    weeks of windows; then tell owners whose live listing has no free time
+    in the next week (at most once a week each)."""
+    from cappy_common.events import LISTING_IDLE
+    from cappy_common.models import Availability
+
+    now = now or datetime.now(UTC)
+    added = 0
+    async with app.state.db.transaction() as s:
+        repo = CatalogRepository(s)
+        for listing_id, spec in await repo.schedules_due(now, BATCH):
+            if spec.get("availability"):
+                added += await repo.apply_schedule(
+                    listing_id, Availability.model_validate(spec["availability"]), now, replace=False
+                )
+    async with app.state.db.transaction() as s:
+        for row in await CatalogRepository(s).idle_listings(now, BATCH):
+            row.idle_notice_at = now
+            await app.state.outbox.add(
+                s, LISTING_IDLE, {"listingId": row.id, "ownerId": row.owner_id, "title": row.title}
+            )
+    return added
+
+
 async def sweep_orphans(app: FastAPI) -> None:
     await sweep_orphans_once(app)
     await forget_reporters_once(app)
+    await keep_schedules_once(app)
     await asyncio.sleep(jittered(3600))

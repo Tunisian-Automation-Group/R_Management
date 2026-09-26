@@ -9,7 +9,7 @@ from cappy_common.models import AnyListing, CamelModel, Cents, District, Iso, Li
 from cappy_common.timeutil import HOUR_MS, ms_from_iso
 
 from .availability import Interval, Offer, earliest_offer
-from .match import distance_km, trust_of
+from .match import distance_km, point_of, trust_of
 
 
 class Spotlight(CamelModel):
@@ -93,11 +93,11 @@ def available_soon(
         if not listing.active:
             continue
         owner = owners.get(listing.owner_id)
-        dest = world.districts.get(listing.district)
+        dest = point_of(listing, world.districts)
         if not owner or not dest:
             continue
 
-        km = distance_km((origin.lat, origin.lng), (dest.lat, dest.lng))
+        km = distance_km((origin.lat, origin.lng), dest)
         if km > max_km:
             continue
 
@@ -150,8 +150,8 @@ def idle_nearby(world: World, district: str, max_km: float, now: Iso, horizon_ho
     for listing in world.listings:
         if not listing.active:
             continue
-        dest = world.districts.get(listing.district)
-        if not dest or distance_km((origin.lat, origin.lng), (dest.lat, dest.lng)) > max_km:
+        dest = point_of(listing, world.districts)
+        if not dest or distance_km((origin.lat, origin.lng), dest) > max_km:
             continue
 
         listing_hours = 0.0

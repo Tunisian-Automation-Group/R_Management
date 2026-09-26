@@ -38,6 +38,7 @@ expected = {
         "booking.message",
         "moderation.report_received",
         "moderation.decision",
+        "listing.idle",
     },
 }
 # Every type anyone subscribes to, plus one nobody does (it must reach no queue).

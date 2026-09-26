@@ -41,6 +41,16 @@ def distance_km(a: tuple[float, float], b: tuple[float, float]) -> float:
     return 2 * EARTH_KM * math.asin(math.sqrt(h))
 
 
+def point_of(listing: AnyListing, districts: Mapping) -> tuple[float, float] | None:
+    """Where a listing is, for distances: its own point when it has one (M-5;
+    already snapped to 500 m by catalog, so no distance gives the exact place
+    away), else its district's centre."""
+    if listing.location is not None:
+        return listing.location.lat, listing.location.lng
+    d = districts.get(listing.district)
+    return (d.lat, d.lng) if d else None
+
+
 def _normalise(values: list[float]) -> list[float]:
     """Min-max to 0..1. All-equal collapses to 0.5 rather than dividing by zero."""
     lo, hi = min(values), max(values)
@@ -52,6 +62,15 @@ def _normalise(values: list[float]) -> list[float]:
 # Hand-tuned weights. A learned ranker only makes sense once there is real outcome
 # data to learn from, which is what the rating loop is accumulating.
 W = {"price": 0.3, "soon": 0.2, "trust": 0.3, "near": 0.2}
+
+# What each weight means, in the words the public ranking page uses (P2B Art. 5,
+# § 5b UWG). GET /api/ranking serves both, so the page cannot drift from W (H-2).
+SIGNALS = {
+    "price": "The total price for your request: cheaper ranks higher.",
+    "trust": "The owner's reliability and ratings: owners who cancel accepted bookings or do not show up rank lower.",
+    "soon": "How soon the first free window starts: sooner ranks higher.",
+    "near": "Distance from the place you searched: nearer ranks higher.",
+}
 
 
 def trust_of(o: Owner) -> float:
@@ -113,10 +132,10 @@ def find_matches(
         if not fit.feasible:
             continue
 
-        dest = world.districts.get(listing.district)
+        dest = point_of(listing, world.districts)
         if not dest:
             continue
-        km = distance_km((origin.lat, origin.lng), (dest.lat, dest.lng))
+        km = distance_km((origin.lat, origin.lng), dest)
         if km > req.max_distance_km:
             continue
 

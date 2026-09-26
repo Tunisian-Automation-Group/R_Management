@@ -25,7 +25,16 @@ from .domain.availability import Offer, offers_for
 from .domain.browse import Spotlight, available_soon
 from .domain.categories import CATEGORIES, GROUP_IDS, GROUPS, CategoryMeta, GroupMeta, categories_in
 from .domain.feasibility import Feasibility, assess_feasibility
-from .domain.match import SortKey, distance_km, find_matches, match_for_offer, sort_matches
+from .domain.match import (
+    SIGNALS,
+    SortKey,
+    W,
+    distance_km,
+    find_matches,
+    match_for_offer,
+    point_of,
+    sort_matches,
+)
 from .domain.pricing import hours_for, quote_for
 from .domain.reviews import REVIEW_TAGS
 
@@ -161,6 +170,27 @@ async def list_review_tags(
     return list(REVIEW_TAGS)
 
 
+class Signal(CamelModel):
+    key: str
+    weight: float
+    description: str
+
+
+class Ranking(CamelModel):
+    signals: list[Signal]
+    text_search: str
+
+
+@vocab.get("/ranking", response_model=Ranking)
+async def ranking(response: Response) -> Ranking:
+    """How results are ordered, from the weights the ranker uses (H-2)."""
+    response.headers["Cache-Control"] = PUBLIC_CACHE
+    return Ranking(
+        signals=[Signal(key=k, weight=w, description=SIGNALS[k]) for k, w in sorted(W.items(), key=lambda kv: -kv[1])],
+        text_search="newest first",
+    )
+
+
 # --- search ----------------------------------------------------------------------------
 
 
@@ -237,7 +267,7 @@ async def match_for_offer_route(body: MatchForOfferIn, request: Request) -> Matc
     req = body.requirement
     world, busy = await _context(request, body.listing_id, origin=req.district, strict=True)
     listing, owner = world.listings[0], world.owners[0]
-    origin, dest = world.districts.get(req.district), world.districts.get(listing.district)
+    origin, dest = world.districts.get(req.district), point_of(listing, world.districts)
     if not origin or not dest:
         raise Invalid("unknown district")
     if not listing.active:
@@ -257,7 +287,7 @@ async def match_for_offer_route(body: MatchForOfferIn, request: Request) -> Matc
     if any(a < end and start < b for a, b in busy.get(listing.id, [])):
         raise Conflict("that window was just taken; pick another")
 
-    km = distance_km((origin.lat, origin.lng), (dest.lat, dest.lng))
+    km = distance_km((origin.lat, origin.lng), dest)
     offer = Offer(slot_id=slot.id, start=iso_from_ms(start), end=iso_from_ms(end))
     match = match_for_offer(req, listing, owner, offer, km)
     if not match:

@@ -64,4 +64,9 @@ class Settings(CommonSettings):
         problems = super().unsafe_reasons()
         if not self.database_url.startswith("postgresql"):
             problems.append("DATABASE_URL must be Postgres (the no-double-booking constraint needs it)")
+        # The local shortcuts (GUIDE §A, compose.yaml) never reach real people.
+        if self.start_early_minutes > 60:
+            problems.append("START_EARLY_MINUTES above 60 is a local testing shortcut")
+        if self.auto_complete_after_hours < 24:
+            problems.append("AUTO_COMPLETE_AFTER_HOURS under 24 leaves no time to report a problem")
         return problems
