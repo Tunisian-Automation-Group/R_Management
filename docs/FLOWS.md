@@ -6,8 +6,8 @@ Capacitor shells for the App Store and Google Play (ADR 0012). Where the two
 behave differently, the flow says so.
 
 This file describes the **committed code**. It was written against commit
-`ac716b5` on `prod-readiness` and last synced with `c454c92` (the code as of
-`7ef9b2c`: `44a5520` and `235eeaa` since the previous sync). Numbers come from the code, and each has its
+`ac716b5` on `prod-readiness` and last synced with the code as of `61b15b8`
+(`747ed6b` and `61b15b8` since the previous sync at `c454c92`). Numbers come from the code, and each has its
 source file next to it. If the code and this file disagree, the code wins, and
 this file needs fixing (see the last section).
 
@@ -62,10 +62,10 @@ The booking lifecycle diagram is in [section 7](#the-booking-lifecycle).
 
 | What | Value | Where |
 |---|---|---|
-| Soonest bookable start | now + 120 min | `matching/settings.py` `min_lead_minutes` |
+| Soonest bookable start | now + 120 min (locally 5 min, `compose.yaml`; deployed settings refuse under 60) | `matching/settings.py` `min_lead_minutes` |
 | Time to pay before the window is released | 30 min | `booking/settings.py` `payment_timeout_minutes` |
 | Time the owner has to answer | 24 h, and never past the window's start | `booking/settings.py` `answer_within_hours`, `booking/handlers.py` `answer_deadline` |
-| Hand-over can be marked from | 30 min before the start | `booking/settings.py` `start_early_minutes` |
+| Hand-over can be marked from | 30 min before the start (locally at once; deployed settings refuse above 60) | `booking/settings.py` `start_early_minutes` |
 | No-show: renter reports owner | from the start until start + 2 h | `booking/routes.py` `NO_SHOW_REPORTABLE` |
 | No-show: owner reports renter | from start + 30 min until start + 2 h | `booking/routes.py` `NO_SHOW_GRACE` |
 | Auto-complete (owner paid) | 48 h after the window ends, from `accepted` or `active` | `booking/settings.py` `auto_complete_after_hours` |
@@ -74,13 +74,18 @@ The booking lifecycle diagram is in [section 7](#the-booking-lifecycle).
 | Stripe reconciliation | intents still `created` after 10 min, checked about every 300 s | `payments/jobs.py` |
 | Unpaid bookings one person may have at once | 3 | `booking/settings.py` `max_unpaid` |
 | Booking requests per person per 24 h | 10 | `booking/settings.py` `max_requests_per_day` |
-| ID check needed | booking total above 30 000 minor units of the listing's currency (EUR 300 for a euro listing); no categories | `booking/settings.py` `verify_above_cents`, `verify_categories` |
+| ID check needed | booking total above the listing owner's market's threshold: EUR 300 in DE and AT, CHF 280 in CH; no categories | `cappy_common/markets.json` `id_check_above`, `booking/settings.py` `verify_categories` |
 | Paid cancellation policies | **off**: every cancellation refunds in full, unless the feature flag `paidCancellationPolicies` is at 100 | `booking/settings.py` `paid_cancellation_policies`, `FEATURE_FLAGS` |
 | Platform fee | 15 %, inside the total | `matching/domain/pricing.py`, `web/src/domain/pricing.ts` |
 | New listings per owner per 24 h | 20 | `catalog/settings.py` `max_listings_per_day` |
-| Listing held for a staff check | owner with 0 completed jobs and a rate above 10 000 minor units an hour (EUR 100) | `catalog/settings.py` `review_above_cents` |
+| Listing held for a staff check | owner with 0 completed jobs and a rate above the market's threshold: EUR 100 an hour in DE and AT, CHF 95 in CH | `cappy_common/markets.json` `held_listing_above` |
+| Highest hourly rate | EUR 10 000 in DE and AT, CHF 9 500 in CH | `markets.json` `max_rate_per_hour` |
+| Where Cappy is open (profiles, listings, payouts) | DE, AT, CH; any other of the 34 markets is refused (`market_not_live`, payouts `country_unsupported`) | `markets.json` `status` |
+| Listing point in public | snapped to a grid of about 500 m; exact only in the hand-over; at most 30 km from its district | `cappy_common/models.py` `SNAP_DEG`, `catalog/routes.py` `MAX_KM_FROM_DISTRICT` |
+| Weekly opening hours | windows kept 8 weeks ahead, rolled on hourly; "no free time next week" at most once a week | `catalog/schedule.py` `HORIZON`, `catalog/jobs.py` |
+| Response time shown | median minutes to answer and answer rate over 90 days, from 3 answered or lapsed requests | `booking/repository.py` `RESPONSE_WINDOW`, `RESPONSE_MIN_REQUESTS` |
 | Photos | 12 per listing, 12 MB each, 100 uploads per person per day; shrunk on the device to 2048 px | `catalog/routes.py`, `catalog/settings.py`, `web/src/app/photos.ts` |
-| Hand-over photo links | valid 15 min; the app re-reads the list every 10 min | `booking/messages.py` `LINK_TTL`, `web/src/data/repo.ts` `useEvidence` |
+| Hand-over photo links | valid 15 min; the app re-reads the list every 10 min; in a data export, a day | `booking/messages.py` `LINK_TTL`, `EXPORT_LINK_TTL`, `web/src/data/repo.ts` `useEvidence` |
 | Owner reliability | cancels and no-shows over 12 months, shown after 5 accepted bookings; 3 in 30 days flags the owner to staff | `booking/repository.py` |
 | Access and id token | 15 min; the app refreshes 60 s before expiry | `infra/platform/identity.tf`, `web/src/data/auth.ts` |
 | A session ended elsewhere stops working | at once in catalog; in booking, payments and notifications when the event arrives (seconds), then within 30 s on every replica; matching at token expiry | `cappy_common/guard.py` `Revocations` |
@@ -94,6 +99,7 @@ The booking lifecycle diagram is in [section 7](#the-booking-lifecycle).
 | Message emails | at most one per conversation per 15 min (every message is pushed) | `notifications/handlers.py` `MESSAGE_EMAIL_EVERY` |
 | Reporter's details on a report | cleared 183 days after the decision | `catalog/jobs.py` `REPORTER_KEPT` |
 | Stored answers to retried creates | 24 h | `cappy_common/idempotency.py` `KEEP` |
+| Bell items kept | 12 months, deleted hourly | `notifications/settings.py` `inbox_retention_days`, `notifications/jobs.py` |
 | Fee invoices kept | 10 years from the end of the year of issue, then deleted | `payments/settings.py` `invoice_retention_years`, `payments/jobs.py` |
 | Data exports | 5 per person per 24 h | `catalog/routes.py` `export_me` |
 | Sign out everywhere | 5 per person per hour | `catalog/routes.py` `sign_out_everywhere` |
@@ -321,14 +327,17 @@ profile exists. Web and app are the same.
    is locked by it.
 5. **I am 18 or older**, which is required. The client refuses without it,
    and so does the server: `upsert_profile` raises "Cappy is for people aged
-   18 or over…" for a new profile without `adult`.
+   {n} or over…" for a new profile without `adult`, with the market's
+   minimum age since `747ed6b` (18, or 19 in CA; `markets.json`).
 6. Accepting the terms and privacy policy is stated in words next to the
    button ("By continuing you accept the Terms…").
 7. `PUT /me` creates the profile, and the catalog publishes `profile.created`.
    The app reloads `/me` and the product appears. The server also takes a
    `country` (ISO code, default `DE`), which sets the payout account's
-   country ([section 18](#18-payouts-and-invoices)); the app does not send it
-   yet.
+   country ([section 18](#18-payouts-and-invoices)) and, since `747ed6b`, the
+   person's market: it must be open (DE, AT or CH), else 422
+   `market_not_live` ("Cappy is not open in … yet"), or `market_unknown` for
+   a country Cappy does not serve. The app does not send it yet.
 
 Editing later (Profile, **Edit profile**) uses the same `PUT /me`. It changes
 the name, kind, district and business details. The track record is never
@@ -366,7 +375,8 @@ the same. The phone layout has a bottom dock; the desktop has a header.
    slots, sorted by best match, cheapest, soonest or nearest. The sort is kept
    in the URL (`?sort=`). The filters sheet changes hours or quantity and the
    radius. The results can be shown as a list or on a map.
-5. Matching never offers a start sooner than **now + 120 min**, never the
+5. Matching never offers a start sooner than **now + 120 min** (locally 5
+   min, so testers can walk every flow; since `61b15b8`), never the
    person's own listings, and, when deployed, only owners Stripe can pay
    (`REQUIRE_PAYABLE_OWNERS` must be true outside local, per
    `catalog/settings.py`).
@@ -377,6 +387,10 @@ the same. The phone layout has a bottom dock; the desktop has a header.
 
 - *Nothing fits.* "No idle capacity fits that", with **Widen to 90 km** (or
   "56 mi" in a miles locale) and **Allow 3 weeks**.
+- *Distances* are measured from the searched district's centre to the
+  listing's own point, snapped to about 500 m, when it has one, else to its
+  district's centre (since `61b15b8`). A listing's exact point is never in a
+  search or listing answer.
 - *Distances* read in km (and m under 1 km), or in miles where the formatting
   locale's region is the US or the UK; under 300 m it says "Nearby"
   (`format.ts` `formatDistance`, `formatRadius`). An English reader whose
@@ -416,7 +430,12 @@ What the page shows, and the calls behind it:
   converted.
 - **The host**: name, verified shield, track record, cancellation rate (if
   there is one), response time, and whether they are a business or a private
-  person (consumer rights differ). A business shows its legal identity
+  person (consumer rights differ). The response time is measured since
+  `61b15b8` (H-1: median minutes to answer over 90 days) and is null until
+  the owner has 3 answered or lapsed requests; the page does not handle null
+  yet and prints "Replies in ~null min" ([section 23](#23-known-gaps-between-code-ui-and-docs)).
+- **Where it is**: the district; a listing with a point has it snapped to
+  about 500 m in the answer, and no postal code (M-6, `61b15b8`). A business shows its legal identity
   (`TraderNote`).
 - **Cancellation policy**: while paid policies are off, every listing shows
   as flexible (`format.ts` `policyInForce` with the flag
@@ -464,9 +483,11 @@ same.
      never taken from the client;
    - refuses your own listing, anyone blocked either way ("this listing is not
      available to you"), and a suspended account;
-   - asks for the ID check if the total is above 30 000 minor units (EUR 300)
-     ([section 16](#16-the-id-check));
-   - inserts the booking as `awaiting_payment` in the listing's currency,
+   - asks for the ID check if the total is above the listing owner's
+     market's threshold (EUR 300 in DE and AT, CHF 280 in CH;
+     `markets.json`, since `747ed6b`) ([section 16](#16-the-id-check));
+   - inserts the booking as `awaiting_payment` in the listing's currency
+     (upper-case ISO 4217 since `747ed6b`, as every answer gives it),
      holding the window.
      `expires_at` is now + 30 min. An advisory lock per listing and a Postgres
      exclusion constraint (ADR 0004) make a second overlapping booking fail
@@ -689,7 +710,9 @@ made, and "Answer {when}, or the request lapses".
    and only before `expires_at`.
 2. The booking becomes `accepted`, `expires_at` is cleared, and
    `booking.status_changed` goes out. The owner's reliability figures are
-   recomputed (`owner.reliability` event).
+   recomputed (`booking.owner_reliability` event), and since `61b15b8` so
+   are their response time and rate (H-1: the same event, recomputed on
+   every accept, owner decline and lapse of a request).
 3. Payments **captures** the card and publishes `payment.captured`.
 4. The renter gets "Confirmed: {title}" (email, whatever the settings, plus
    push and bell).
@@ -715,7 +738,7 @@ made, and "Answer {when}, or the request lapses".
 At `expires_at`, which is min(request time + 24 h, window start), the sweep
 moves the booking to `expired`. Payments releases the hold, and the renter
 gets "Expired: {title}… Nothing was charged." (email, always). The owner gets
-nothing. A late tap on Accept gets 409 "this request has lapsed", even before
+nothing, but the lapse counts against their answer rate (since `61b15b8`). A late tap on Accept gets 409 "this request has lapsed", even before
 the sweep has run.
 
 **Edge cases**
@@ -896,7 +919,10 @@ Locally MFA is not required (cognito-local has none).
 
 1. The renter says what went wrong (1 to 500 characters).
    `POST /bookings/{id}/dispute {reason}`. The server refuses before the
-   start ("nothing to report before the booked time; cancel instead").
+   start ("nothing to report before the booked time; cancel instead"). From
+   the start it is open for as long as the booking is `accepted` or
+   `active`: until the renter completes it, or the sweep does 48 h after the
+   end.
 2. The booking becomes `disputed`. The captured money stays with Cappy: no
    payout, and **no auto-complete**.
 3. The renter sees "Under review: … The payment is on hold" and gets "We
@@ -912,10 +938,12 @@ Locally MFA is not required (cognito-local has none).
    - `pay_owner`: `disputed` to `completed`. The owner's share is transferred
      and invoiced, the owner gets "You have been paid", and the renter gets
      "How was {title}?".
-   - `refund_buyer`: `disputed` to `cancelled`. There is no `refund_amount`,
-     so payments refunds in full. The renter gets "Cancelled: {title}"; the
-     owner gets no email.
-5. The transition is recorded as `by = support:{staff sub}`.
+   - `refund_buyer`: `disputed` to `cancelled`, with `refund_amount` set to
+     the full amount since `747ed6b`, so the booking page says what was
+     refunded; payments refunds in full. The renter gets "Cancelled:
+     {title}"; the owner gets no email.
+5. The transition is recorded as `by = support:{staff sub}`; the analytics
+   lake receives it as `by: "staff"` (since `747ed6b`).
 
 Evidence photos (`GET /bookings/{id}/evidence` works for staff with MFA,
 not only the two sides) and the message thread are what staff look at. Card
@@ -1019,8 +1047,9 @@ composer on an old completed booking
 
 ## 16. The ID check
 
-**Who and where.** A renter whose booking total is **above 30 000 minor
-units** of the listing's currency (EUR 300). There
+**Who and where.** A renter whose booking total is above the listing
+owner's market's threshold (**EUR 300** in DE and AT, CHF 280 in CH;
+`markets.json` `id_check_above`, since `747ed6b`). There
 are no categories in the list today. It starts from the listing page, when
 `POST /bookings` answers 403 `verification_required`. The check is done once
 per person.
@@ -1081,18 +1110,29 @@ in is the **Earn** tab (`/earn`; "List your first thing" when empty) or
    `Idempotency-Key` per attempt (the slots start at the next quarter hour, so
    a retry sends the same body). The catalog checks: the listings
    kill switch (503), that a profile exists (403), that the account is not
-   suspended (403), 20 listings a day (429), every field and number within
-   bounds, category and mode matching, a known district, and that every photo
-   is the owner's own upload. It then publishes `listing.changed`
+   suspended (403), 20 listings a day (429), that the owner's market is open
+   (422 `market_not_live`) and the currency is that market's (a missing one
+   is filled in, another is 422 `currency_not_in_market`; since `747ed6b`),
+   every field and number within bounds (the price cap is the market's), category and
+   mode matching, a known district, a point (when sent) within 30 km of it
+   (422 `location_outside_district`, since `61b15b8`), weekly opening hours
+   (when sent) that end after they start in a known time zone, and that
+   every photo is the owner's own upload. It then publishes `listing.changed`
    (`created`).
+   - **Weekly opening hours** (API only; the web form sends its own windows
+     and no `availability` yet): with `availability.weekly`, the server makes
+     the windows itself, eight weeks ahead in the listing's time zone, and
+     rolls them on hourly (since `61b15b8`, H-4). Changing the schedule in an
+     edit replaces the future windows it made; hand-made windows stay.
 5. The app says "{title} is live" (or, when the server held it, "{title} is
    saved and waiting for a quick check before people can book it"), goes to
    `/earn`, and offers push the first time.
 
 ### Held listings
 
-If the owner has **no completed jobs** and the rate is **above EUR 100/h**,
-the listing is **held**: it exists, but nobody else can see or book it until
+If the owner has **no completed jobs** and the rate is above their market's
+threshold (**EUR 100/h** in DE and AT, CHF 95 in CH; `markets.json` since
+`747ed6b`), the listing is **held**: it exists, but nobody else can see or book it until
 staff approve it (`POST /admin/listings/{id}/approve`, which publishes
 `listing.changed` `approved`). Raising the price of a listing past that line
 before the first completed job holds it again. The owner's Earn card shows
@@ -1111,6 +1151,10 @@ there.
   holds. Confirmed bookings stand.
 - **View as a guest** opens the public page, also for a held or paused
   listing (since `235eeaa`).
+- **No free time next week** (since `61b15b8`, H-4): when a live listing has
+  no window open in the next seven days, the owner gets "No free time next
+  week: {title}" (email, push, bell; the Bookings category), linking to
+  `/earn/edit/{id}`, at most once a week per listing.
 - The Earn screen also shows idle hours this week and their value, hours sold,
   earned (completed) and "to come" (accepted or active), what is coming up,
   invoices, and the owner's record.
@@ -1131,9 +1175,10 @@ Deployed, the catalog hides listings of owners Stripe cannot pay yet.
 2. `POST /payments/connect/onboarding` creates the connected account if there
    is none and returns a Stripe-hosted onboarding link. The app navigates to
    it. Cappy never sees identity or bank details. Since `235eeaa` the call
-   takes `{country}` and creates the account there; a country outside the
-   EEA, Switzerland, the UK, the US and Canada gets 422 `country_unsupported`.
-   The app sends none, so the account is German.
+   takes `{country}` and creates the account there. Since `747ed6b` owners
+   are paid only where Cappy is open: a country that is not a live market
+   (today anything but DE, AT and CH) gets 422 `country_unsupported`. The
+   app sends none, so the account is German.
 3. Stripe sends the owner back to `{WEB_BASE_URL}/earn?payments=done` (or
    `?payments=retry`). `/earn` is an App Link path, so in the store apps the
    return opens the app.
@@ -1197,6 +1242,7 @@ Profile screen under **Notifications**.
 | to `disputed` | renter | "We received your report: …" | **always** | per setting | yes |
 | payout sent | owner | "You have been paid {amount}" | per setting | per setting | yes |
 | new message | recipient | "New message: …" | per setting, at most once per conversation per 15 min | per setting | yes |
+| a live listing has no free time in the next 7 days (`listing.idle`, since `61b15b8`) | owner | "No free time next week: …" | per setting (Bookings), at most once a week per listing | per setting | yes |
 | report received | reporter | "We received your report" | always | never | yes, if signed in |
 | moderation decision | person affected, reporter | statement of reasons / outcome | always | never | yes, if signed in |
 
@@ -1209,7 +1255,8 @@ something you wrote" for a removed message or review.
   for any `fr…` (one neutral French for France and Québec, since `235eeaa`),
   English otherwise. The bell re-renders each item in the language it is read
   in, with the same three languages. Amounts are written in the booking's
-  currency in the reader's format.
+  currency in the reader's format. The bell keeps items for 12 months;
+  older ones are deleted hourly (since `747ed6b`).
 - **Times** in emails are told in Europe/Berlin (`texts.py`
   `DEFAULT_TIME_ZONE`), because listings carry no time zone yet.
 - **Emails** only go to a verified address.
@@ -1337,9 +1384,12 @@ people who cannot sign in.
    payments (payout link, ID-check status, invoices with the recipient
    details, payments with whether they were charged, refunded and paid out;
    never card details) and notifications (bell items, settings, devices, and
-   the sign-in's email and language). The additions are from `235eeaa`. It
-   returns one JSON file, `cappy-my-data.json`. Hand-over photos appear as
-   `evidence:…` references, not pictures.
+   the sign-in's email and language). The additions are from `235eeaa`.
+   Since `747ed6b` it also has the ID-check consent (when, and which text
+   version), moderation decisions about the person's messages and reviews
+   (decisions now record whom they are about), and hand-over photos as links
+   signed for a day instead of `evidence:…` references. It returns one JSON
+   file, `cappy-my-data.json`.
 2. The web downloads the file (or uses the share sheet on phones that cannot
    save a download). The store apps write it to the cache and open the share
    sheet.
@@ -1355,8 +1405,10 @@ people who cannot sign in.
    wait for your payouts, before deleting your account. You can delete your
    account from {date}."
 3. Otherwise the catalog **forgets** the person: listings are soft-deleted
-   and lose their title, description, instructions, rules, photos and
-   address; every photo they uploaded is deleted within the hour; saved
+   and lose their title, description, instructions, rules, photos, address
+   and the free text in their details (the extra's label, the machine; since
+   `747ed6b`); every photo they uploaded is deleted within the hour and
+   purged from the CDN (since `747ed6b`); saved
    listings, the payable flag and stored answers are removed; reports they
    filed lose their name, email and words; the profile becomes an anonymous
    "Former member" without its badge or business; and reviews they wrote are
@@ -1508,32 +1560,23 @@ intended behaviour. Each keeps the number of its `FL-` task in
 Items marked **fixed** are kept, struck through, with the commit that fixed
 them, until the next pass removes them. The pass at `c454c92` removed those
 fixed in `f42a4ef` and `f22f143` (FL-1, 4, 5, 10, 11, 13, 14, 16, 17, 19 and
-21).
+21). The pass at `61b15b8` removed those wholly fixed in `235eeaa`, `44a5520`
+and `c454c92` (FL-2, 6, 7, 15, 20, miles for English readers, the partial
+rollout of `paidCancellationPolicies`); the partly fixed ones stay.
 
-- **FL-2.** ~~**Nobody is told about `payment_failed` or `disputed`.**~~
-  **Fixed in `235eeaa`**: a failed payment tells the renter, and the owner too
-  when the capture failed after they accepted; a dispute tells both sides
-  (all always emailed, [section 19](#19-notifications-and-their-settings)).
-  `active` still tells no one, by design (the other side sees it on the
-  page).
 - **FL-3.** ~~**The Messages email toggle does nothing.**~~ **Fixed on the
   server in `235eeaa`**: messages are emailed at most once per conversation
   per 15 minutes, per the setting. The Profile text shown before the settings
   load still says "Everything also arrives by email" (`Profile.tsx:596`); see
   the open web items below.
-- **FL-6.** ~~**The owner of a held listing gets 404 on its page.**~~ **Fixed
-  in `235eeaa`**: the owner can open their own held or paused listing, so
-  **View as a guest** works.
-- **FL-7.** ~~**Removing or suspending from a message or review report
-  fails.**~~ **Fixed in `235eeaa`**: the server accepts `remove_content` and
-  suspends the message's or review's author.
-- **FL-8.** **"Refunded" shown when nothing was charged.** ~~The server
+- **FL-8.** ~~**"Refunded" shown when nothing was charged.**~~ ~~The server
   recorded a full `refund_amount` for a request cancelled before the
   accept.~~ **Fixed on the server in `235eeaa`**: nothing is recorded, and the
-  cancellation quote says `charged: false`. Still open in the app: after a
-  staff **Refund the buyer** there is no `refundAmount` either, so the
-  booking page says "The hold on your card is released; nothing was charged"
-  (`BookingDetail.tsx:418-426`) although the charge was refunded in full.
+  cancellation quote says `charged: false`. ~~After a staff **Refund the
+  buyer** there is no `refundAmount`, so the booking page says nothing was
+  charged~~: **fixed in `747ed6b`**, the resolution records the full amount
+  and the page shows "{amount} is refunded to the card"
+  (`BookingDetail.tsx:419-420`).
 - **FL-9.** ~~**The removal reason blames the owner when moderation did
   it.**~~ **Fixed in `235eeaa`**: a staff take-down declines with "The
   listing was taken down by Cappy". The app shows it in English only (open
@@ -1542,35 +1585,33 @@ fixed in `f42a4ef` and `f22f143` (FL-1, 4, 5, 10, 11, 13, 14, 16, 17, 19 and
   `235eeaa`** (D-1): every upload of the person goes with the next hourly
   sweep. The deletion sheet (fixed in `f22f143`) no longer promises it, so it
   now says less than happens.
-- **FL-15.** ~~**The owner sees unpaid bookings.**~~ **Fixed in `235eeaa`**:
-  `GET /bookings?role=owner` and the booking page hide `awaiting_payment`
-  bookings and payments that failed before the owner saw them.
 - **FL-18.** ~~**Server and client disagree on closed conversations.**~~
   **Fixed on the server in `235eeaa`**: `POST /bookings/{id}/messages`
   answers 409 `conversation_closed` for cancelled, declined, expired and
   `payment_failed` bookings, and for completed ones after the 14-day review
   window. The app closes the composer for the first four only and does not
   handle the code (open web items).
-- **FL-20.** ~~**ADR 0012 is out of date on two points.**~~ **Fixed in
-  `c454c92`**: the ADR carries a dated correction (Capacitor Preferences for
-  the refresh token, push built).
 - **One market in the code.** ~~Bookings are always `currency="eur"`.~~
-  **Fixed in `235eeaa`** (M-3): a booking takes its listing's currency. Still
-  one market: email times are Berlin time, the business VAT check only knows
-  EU formats, the ID-check and held-listing thresholds are one number of
-  minor units for every currency, and the report sheet says "call 112"
+  **Fixed in `235eeaa`** (M-3). ~~The ID-check and held-listing thresholds
+  are one number of minor units for every currency~~: **fixed in `747ed6b`**
+  (M-2), per market in `markets.json`, as are the price cap, the payout
+  countries and the minimum age's wording. Still one market: email times are
+  Berlin time, the business VAT check only knows EU formats, the fee and the
+  invoice issuer are one for all, and the report sheet says "call 112"
   (`Report.tsx:224`), which is not the emergency number in the US and Canada
-  (GOAL 16).
-- ~~**Miles for English readers in Europe.**~~ **Fixed in `44a5520`**: English
-  without an English region of its own formats as `en-IE` (km, 24 h).
-- ~~**A partial rollout of `paidCancellationPolicies` splits the app from the
-  server.**~~ **Fixed in `44a5520`**: the app reads it with `useGlobalFlag`,
-  where only 100 % counts, as booking does.
-- **Stale docstring on account deletion.** `delete_me`
-  (`catalog/routes.py:349-352`) still says the app deletes the sign-in and
-  that bookings and payments "hold no personal data"; the server deletes the
-  sign-in since `f303350`, and bookings keep redacted records
-  ([`DATA.md`](DATA.md) §5.4).
+  (GOAL 16), although `app-config` now carries each market's
+  `emergencyNumber`.
+- ~~**Stale docstring on account deletion.**~~ **Fixed in `747ed6b`**:
+  `delete_me` now says what happens (the server deletes the sign-in, and
+  bookings keep redacted records, [`DATA.md`](DATA.md) §5.4).
+- **Response time with no measurement.** Since `61b15b8` (H-1) an owner's
+  `responseMins` is null until 3 answered or lapsed requests in 90 days; the
+  app's `responseTime` (`format.ts:73`, `types.ts:102` typed as a number)
+  does not handle null and prints "Replies in ~null min" on the listing page
+  and the booking page.
+- **The ranking page is still hand-written.** `GET /api/ranking` (H-2,
+  `61b15b8`) serves the ranker's weights and descriptions; the `Legal.tsx`
+  ranking page does not read it.
 
 ### Open web items from the backend round (`235eeaa`)
 
@@ -1584,8 +1625,8 @@ The server changed; the app does not follow yet (`web/` is unchanged since
 - **The `charged` flag in the cancel sheet.** `GET /bookings/{id}/cancellation`
   now says whether anything was charged; the sheet fetches it only for
   `accepted` bookings and words the rest by status
-  (`BookingDetail.tsx:164`, `:745-750`). Use `charged`, and fix the
-  **Refund the buyer** banner (FL-8 above).
+  (`BookingDetail.tsx:164`, `:745-750`). Use `charged`. (The **Refund the
+  buyer** banner is right since `747ed6b`, FL-8 above.)
 - **German and French for the new decline reason** "The listing was taken
   down by Cappy". The app translates `declineReason` through `t()`
   (`BookingDetail.tsx:377`), and neither `i18n.de.ts` nor `i18n.fr.ts` has
@@ -1603,11 +1644,29 @@ The server changed; the app does not follow yet (`web/` is unchanged since
 - **`identityProvider` driving the ID-check UI.** `/payments/config` names the
   ID-check provider and a session may answer a hosted `url`; the app always
   opens Stripe.js `verifyIdentity` (`Listing.tsx:222-244`).
-- **Currency case.** Listings and quotes carry upper-case codes (`EUR`,
-  `CAD`), bookings, payments and cancellation quotes lower-case (`eur`,
-  Stripe's form). `formatMoney` upper-cases before formatting, so display is
-  right, but the client should normalise one form before comparing or
-  storing currencies.
+- ~~**Currency case.**~~ **Fixed in `747ed6b`**: every answer (listings,
+  quotes, bookings, payments, invoices, cancellation quotes) carries
+  upper-case ISO 4217; only the Stripe calls lower-case it.
+
+### Open web items from the backend round (`747ed6b`, `61b15b8`)
+
+The server changed; the app does not follow yet (no `web/` file changed in
+these two commits).
+
+- **Markets in `app-config`.** `markets` (currency, languages, units,
+  emergency number, status, minimum age per country) is unused; the report
+  sheet's "call 112" and the 18+ wording could come from it.
+- **New refusals.** `market_not_live`, `market_unknown`,
+  `currency_not_in_market` and `location_outside_district` are English
+  server messages with no entry in `i18n.de.ts` or `i18n.fr.ts`.
+- **Weekly opening hours.** The listing form sends its own windows and never
+  `availability`, so owners cannot set a weekly schedule; the "No free time
+  next week" email says "Add opening hours or windows" and links to
+  `/earn/edit/{id}`, where only windows can be added.
+- **Listing points.** The form sends no `location`, `country` or
+  `postalCode`, and the booking page does not show the hand-over's exact
+  point or postal code.
+- **Response time** (null) and **the ranking page** (static), above.
 
 ---
 

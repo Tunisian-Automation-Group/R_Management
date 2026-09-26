@@ -6,8 +6,8 @@ not the plan: planned work appears only as task ids from
 [`TASKS.md`](TASKS.md). Markets are all of Europe, the US and Canada
 ([GOAL 16](GOAL.md), [ADR 0013](adr/0013-markets.md)). Where the code
 assumes one market (German tax, Berlin time, EU-shaped rules), this file
-says so. Last synced at `c454c92` (the code as of `7ef9b2c`, covering
-`44a5520` and `235eeaa`).
+says so. Last synced with the code as of `61b15b8` (covering `747ed6b` and
+`61b15b8` since the previous sync at `c454c92`).
 
 Paths are relative to the repository root. `path:line` points at the
 definition. "Seam" means the interface or module boundary a replacement
@@ -57,9 +57,11 @@ changes to several services.
 | Listings, windows, saved | In-house (Postgres) | n/a | n/a |
 | Photo storage | S3 + CloudFront (listing photos), S3 private prefix (hand-over evidence); Pillow re-encode | Yes (`MediaStore`, public and private instances) | S |
 | CDN purge on take-down | CloudFront `CreateInvalidation` | Yes (`Cdn`, `catalog/cdn.py`, since `235eeaa`, F-4) | S |
-| Places, distance, map | Own `districts` table, haversine, own SVG map | No geocoder at all | M (M-5, M-7) |
+| Markets (currency, thresholds, open countries) | In-house configuration, `cappy_common/markets.json` (since `747ed6b`, M-2) | n/a (a launch is a config change) | n/a |
+| Places, distance, map | Own `districts` table, a point per listing (snapped to about 500 m in public), haversine, own SVG map | No geocoder at all | M (M-7) |
 | Free-text search | Postgres `LIKE` + trigram index | No (in `CatalogRepository.search`) | M |
-| Matching, ranking, pricing | In-house (`matching/domain`) | n/a | n/a |
+| Matching, ranking, pricing | In-house (`matching/domain`); the weights published at `GET /api/ranking` | n/a | n/a |
+| Weekly opening hours | In-house (`catalog/schedule.py`) | n/a | n/a |
 | Booking state machine, no double booking | In-house (Postgres exclusion constraint) | n/a | n/a |
 | Instant book, cancellation policies, discounts | In-house | n/a | n/a |
 | Card authorise, capture, cancel, refund | Stripe PaymentIntents (manual capture) | Yes (`payments/provider.py` `Provider`) | L |
@@ -290,7 +292,10 @@ Store builds older than the minimum are asked to update.
 
 - **Where:** `GET /api/app-config` (`backend/services/gateway/gateway/main.py:210`)
   returns `minVersion` and `latestVersion` from `APP_MIN_VERSION` and
-  `APP_LATEST_VERSION` (`gateway/settings.py:34-35`). The app sends
+  `APP_LATEST_VERSION` (`gateway/settings.py:34-35`), and since `747ed6b`
+  `markets`: per country its currency, languages, units, emergency number,
+  status and minimum age (`public_markets`, `main.py:232`; nothing about
+  entities or tax). The web does not read `markets` yet. The app sends
   `X-App-Version` (`web/src/data/repo.ts:82`) and compares versions with
   `versionBelow` (`repo.ts:421`). CloudFront caches the answer
   (`infra/platform/edge.tf:494`).
@@ -309,7 +314,10 @@ picks a home district and confirms they are 18 or older.
   The input is `ProfileIn` (`routes.py:127`); `adult` is required at creation
   and stored as `owners.adult_confirmed_at` (`catalog/tables.py:77`).
   `country` (ISO 3166-1 alpha-2, default `DE`, since `235eeaa`, M-9) is stored
-  on `owners.country`; the web does not send it yet. The event
+  on `owners.country`; the web does not send it yet. Since `747ed6b` (M-2) it
+  must be a live market (`live_market`, `routes.py:341`): an unknown country
+  is 422 `market_unknown`, a planned one 422 `market_not_live`. Only DE, AT
+  and CH are live (`cappy_common/markets.json`). The event
   `profile.created` is emitted at `routes.py:340`. Public profile:
   `GET /api/owners/{id}` (`routes.py:448`). Screens: `Onboarding.tsx` (the 18+
   checkbox is at `:106`), `Profile.tsx`.
@@ -322,8 +330,19 @@ picks a home district and confirms they are 18 or older.
   - Districts are the only notion of place (see 4.3), plus the profile's
     `country`, which only sets the payout account's country (7.2). There is no
     address or time zone on a person.
-  - The minimum age is one rule for every market. Age by market and category is
+  - The minimum age comes from the market since `747ed6b` (`minimum_age`: 18
+    everywhere but 19 in CA), but it is only in the refusal's wording: the
+    check is still the one 18+ tick, not a date of birth. Age by category is
     M-38. The terms text and store questionnaires are still open (S-5).
+  - The response time and rate shown on the profile are measured since
+    `61b15b8` (H-1): booking takes, over 90 days, the requests an owner
+    answered or let lapse (not system declines or withdrawn ones) and sends
+    the median minutes to answer and the answered share on
+    `booking.owner_reliability` (`booking/repository.py:214`); catalog stores
+    them on `owners.response_mins` and `response_rate`. Both are null under 3
+    such requests; the invented 60-minute default is gone (migration 0016).
+    The web still treats `responseMins` as a number (`format.ts:73`), so an
+    unmeasured owner reads "Replies in ~null min".
   - `Owner.verified` (`cappy_common/models.py:137`) is set by a passed ID
     check since `235eeaa` (F-10): catalog handles `payment.identity_verified`
     (`catalog/handlers.py:84-90`). New profiles get `False`, and deletion
@@ -365,7 +384,8 @@ resume and remove a listing.
   `GET /api/listings/{id}` `:453` (since `235eeaa` the owner can open their
   own held or paused listing; anyone else gets 404, FL-6). Validation (text
   limits, category mode, numeric bounds `_check_numbers` `:277`, photo
-  ownership) is at `:226`.
+  ownership) is at `:230`; since `747ed6b` it first takes the owner's market,
+  which must be live (422 `market_not_live`).
   Categories, including their `dac7` tag, are in
   `backend/libs/cappy_common/cappy_common/categories.py`. Events:
   `listing.changed`. Screens: `AddListing.tsx`, `Earn.tsx`, `Listing.tsx`.
@@ -376,18 +396,47 @@ resume and remove a listing.
 - **Provider:** none (Postgres).
 - **Status and limits:**
   - Prices are integers in minor units of the listing's `currency`, one of
-    twelve ISO 4217 codes (EUR, GBP, CHF, SEK, NOK, DKK, PLN, CZK, HUF, RON,
-    USD, CAD; default EUR; `cappy_common/models.py:156`, `:183`), since
-    `235eeaa` (M-3). Quotes carry it upper-case and bookings lower-case
-    (`booking/routes.py:181`); nothing is converted. The price bounds scale
-    roughly with the currency (`catalog/routes.py:273-289`). The web formats
-    and inputs money per currency (`formatMoney`, `currencySymbol`:
-    `web/src/domain/money.ts`, M-4) and now gets the currency from the API.
-  - Listings have no time zone or coordinates, only a district (M-5, M-15). The
-    address is free text (M-8).
+    thirteen ISO 4217 codes (EUR, GBP, CHF, SEK, NOK, DKK, PLN, CZK, HUF, RON,
+    ISK since `747ed6b`, USD, CAD; `cappy_common/models.py`), since `235eeaa`
+    (M-3). Since `747ed6b` (M-2) a listing without a currency takes its
+    owner's market's, and any other currency is 422 `currency_not_in_market`.
+    Every answer (listing, quote, booking, payment, invoice) carries it
+    upper-case; only the Stripe calls lower-case it (migrations booking 0015
+    and payments 0009 upper-cased stored rows). Nothing is converted. The
+    price cap is the market's `max_rate_per_hour` (`_check_numbers`,
+    `catalog/routes.py:299`). The web formats and inputs money per currency
+    (`formatMoney`, `currencySymbol`: `web/src/domain/money.ts`, M-4) and
+    gets the currency from the API.
+  - **A point per listing** (since `61b15b8`, M-5/M-6): `location` (lat/lng),
+    `country` and `postalCode` in the listing's spec (`models.py:164`). A
+    point more than 30 km from its district's centre is 422
+    `location_outside_district` (`MAX_KM_FROM_DISTRICT`, `routes.py:44`,
+    `:268`): the district stays the search bucket. Public answers snap the
+    point to the middle of a grid square of about 500 m (`snapped`,
+    `SNAP_DEG`, `models.py:174`; `to_listing`, `repository.py:109-133`) and
+    drop the postal code; the exact point and postal code go only to the two
+    sides of an accepted booking, with the address (`/internal/listings/{id}/handover`,
+    `routes.py:815`). Seeded listings stand at their district's centre. No
+    geocoder fills it (M-7); the web does not send it; no time zone on the
+    listing itself (M-15). The address is free text (M-8).
+  - **Weekly opening hours** (since `61b15b8`, H-4): an optional
+    `availability` (`weekly`: day 1 to 7 with `HH:MM` start and end, up to 21
+    rows; `timeZone`, default `Europe/Berlin`) makes the server keep windows
+    open eight weeks ahead in the listing's own time zone, one day at a time
+    so a DST change keeps the local hours, never overlapping a window
+    already there (`catalog/schedule.py`, `apply_schedule` in
+    `repository.py`). Changing the schedule replaces the future windows it
+    made (`slots.generated`); an edit that leaves it out keeps it, `null`
+    removes it. The catalog's hourly job rolls schedules on and, for a live
+    listing with no free window in the next seven days, emits `listing.idle`
+    at most once a week (`keep_schedules_once`, `catalog/jobs.py:66`), which
+    notifications sends as "No free time next week" (EN/DE/FR, `bookings`
+    category). The web's listing form does not offer weekly hours yet.
   - The kill switch `ACCEPTING_LISTINGS` is at `catalog/settings.py:41`.
   - Account deletion clears the listing's title, blurb, instructions, rules,
-    photos and address; the row stays for bookings and reviews (D-2).
+    photos and address, and since `747ed6b` the free text in its spec
+    (`extraLabel`, `machine`: `_SPEC_WORDS`, `repository.py:163`); the row
+    and its numbers stay for bookings and reviews (D-2).
 
 ### 3.2 Saved listings
 
@@ -461,8 +510,10 @@ its photos are, for a year.
 - **Seam:** **yes,** `Cdn.purge(paths)`.
 - **To swap it** (Fastly, Cloudflare): a `Cdn` subclass, a branch in
   `make_cdn` and its setting and secret; the IAM statement goes.
-- **Limits:** an account deletion does not purge the person's photos; they
-  leave the edge when their cache expires.
+- **Account deletion** (since `747ed6b`): the hourly photo sweep purges every
+  file it deletes from the CDN too (`catalog/jobs.py:44`), so a deleted
+  person's photos leave the edge when the sweep reaches them. ~~An account
+  deletion does not purge the person's photos~~: fixed in `747ed6b`.
 
 ---
 
@@ -481,11 +532,25 @@ far). Matching returns ranked offers with a quote.
   `repository.py:613`: nearest districts first, capped at `CANDIDATE_CAP` = 300).
   Busy windows come from booking (`booking/routes.py:626`). Search degrades
   without them if booking is down (`matching/routes.py:75`).
-- **Ranking:** hand-tuned weights (`matching/domain/match.py:54`): price 0.3,
-  soon 0.2, trust 0.3, near 0.2. Trust is cut by the owner's cancellation rate
-  (`match.py:57`). This is explained on the ranking page (`Legal.tsx`, G-6).
+- **Ranking:** hand-tuned weights (`W`, `matching/domain/match.py:64`): price
+  0.3, soon 0.2, trust 0.3, near 0.2. Trust is cut by the owner's
+  cancellation rate. This is explained on the ranking page (`Legal.tsx`,
+  G-6). Since `61b15b8` (H-2) `GET /api/ranking` (`matching/routes.py:184`,
+  public, cached like the vocabulary, its own CloudFront behaviour in
+  `edge.tf`) serves the same `W` with a description of each signal
+  (`SIGNALS`, `match.py:68`) and `textSearch: "newest first"`; a test fails
+  if the two drift. `Legal.tsx` still has its own wording and does not read
+  it.
+- **Distance** (since `61b15b8`): from the searched district's centre to the
+  listing's own point when it has one, already snapped to about 500 m, else
+  its district's centre (`point_of`, `match.py:44`), in matches, offers,
+  spotlight and idle-nearby. Candidates are still gathered by district.
+- **Measured** (`61b15b8`, commit message; no number is kept in the repo):
+  the candidate search at 100 000 listings took 10.6 ms local and 9.8 ms
+  EU-wide.
 - **Provider:** none.
-- **Limits:** distance is between district centres, not points (M-5). The
+- **Limits:** a listing without a point is placed at its district's centre,
+  and no geocoder sets points (M-7). The
   API works in km; the web shows distances and radius presets in miles for
   US and GB locales and km elsewhere (`formatDistance`, `formatRadius`:
   `web/src/app/format.ts:77-97`), though the presets are still km values
@@ -529,13 +594,18 @@ or a Europe view of cities.
   map library (`web/src/app/components/CapacityMap.tsx`). The district picker is
   `LocationPicker.tsx` and `DistrictSelect.tsx`. The browser's geolocation is
   not used.
+- **Listing points:** since `61b15b8` a listing may carry its own point,
+  country and postal code, snapped to about 500 m in every public answer
+  (3.1, M-5/M-6). It is stored as JSON in the listing's spec, not as a
+  PostGIS `geography(Point)`, and search still walks districts.
 - **Seam:** none, and **no provider**: there is no geocoder, no autocomplete and
   no tile service.
-- **To add one** (Amazon Location, Google Maps, Mapbox): this is M-5 to M-7.
-  Add `geography(Point)` and a time zone to listings. Put a `Geocoder`
-  interface in the catalog, called when an address is saved. Store only
-  storable results (`IntendedUse=Storage` on Amazon Location; Google's terms
-  restrict caching). Snap public coordinates to about 500 m (M-6). A tile
+- **To add one** (Amazon Location, Google Maps, Mapbox): this is M-7 (and the
+  PostGIS part of M-5). Put a `Geocoder` interface in the catalog, called
+  when an address is saved, filling `location`, `country` and `postalCode`.
+  Store only storable results (`IntendedUse=Storage` on Amazon Location;
+  Google's terms restrict caching). Public coordinates are already snapped
+  (M-6, `61b15b8`). A tile
   map in the web needs a CSP change (`edge.tf:405-420`) and a consent check if
   the tile host sets cookies. Legal: Google's terms require Google maps when
   Google geocoding results are shown.
@@ -555,7 +625,7 @@ system completes it 48 hours after the end.
   - State machine as data: `backend/services/booking/booking/state.py:67`
     (`TRANSITIONS`), `:80` (`SYSTEM`).
   - Create: `POST /api/bookings` (`booking/routes.py:122`), in the listing's
-    currency (`:181`, M-3). Matching prices the
+    currency, stored upper-case like every answer since `747ed6b` (M-3). Matching prices the
     window. It then checks the per-listing advisory lock, the Postgres
     exclusion constraint (ADR 0004, `booking/tables.py:5-7`), the
     `Idempotency-Key`, `MAX_UNPAID` (3) and 10 requests a day.
@@ -574,8 +644,13 @@ system completes it 48 hours after the end.
   `ANSWER_WITHIN_HOURS` 24, `AUTO_COMPLETE_AFTER_HOURS` 48,
   `START_EARLY_MINUTES` 30, `MAX_UNPAID`, `MAX_REQUESTS_PER_DAY`, and the kill
   switch `ACCEPTING_BOOKINGS` (`:52`).
-- **Limits:** one set of thresholds in minor units for every currency (M-2).
-  Cross-cell bookings are not
+- **Soonest start:** matching never offers a start sooner than
+  `MIN_LEAD_MINUTES` (120) from now; locally compose sets 5 so every flow can
+  be walked in minutes, and since `61b15b8` deployed settings refuse under 60
+  (`matching/settings.py`). Booking likewise refuses `START_EARLY_MINUTES`
+  above 60 and `AUTO_COMPLETE_AFTER_HOURS` under 24 when deployed.
+- **Limits:** ~~one set of thresholds in minor units for every currency~~:
+  per market since `747ed6b` (M-2, `markets.json`). Cross-cell bookings are not
   refused (M-23). No extension or late return (S-12). No 3DS return into the
   store shells (U-7).
 - **Retries (FL-1, `f42a4ef`):** every create in the web (booking, listing,
@@ -598,7 +673,9 @@ the renter.
   hold; FL-8, `235eeaa`), admin resolution `POST /api/admin/bookings/{id}/resolve`
   (`:504`) and its internal twin (`:512`). Screens: `BookingDetail.tsx`, `Admin.tsx`.
 - **Provider:** none. The refund is carried as `refundAmount` on
-  `booking.status_changed` and executed by payments (7.1). A cancellation
+  `booking.status_changed` and executed by payments (7.1). Since `747ed6b` a
+  staff **refund the buyer** records the full amount as `refund_amount`
+  (`booking/routes.py:524`), so the booking says what was refunded. A cancellation
   before the accept records none (`routes.py:228-231`, `:326-328`;
   `cancellation.py:31-36` returns 0 when nothing was charged).
 - **Notifications:** a dispute tells the owner ("A problem was reported") and
@@ -692,7 +769,8 @@ A 15% fee sits inside the total the renter pays.
 
 - **Where:** `PLATFORM_FEE_BPS = 1500` (`matching/domain/pricing.py:14`). It is
   computed in `quote_for` (`:45`) and carried as `ownerNet` to payments.
-- **Limits:** one fee for every market and category. A per-market fee is M-2.
+- **Limits:** one fee for every market and category. `markets.json` (M-2,
+  `747ed6b`) has no fee field, so a per-market fee is still open.
 
 ---
 
@@ -726,7 +804,11 @@ part) if it is cancelled after capture.
     transfers (7.2). The events it emits are `payment.captured`,
     `payment.refunded`, `payment.failed` and `payment.payout_sent`.
   - Webhooks: `POST /api/payments/webhooks/stripe` (`payments/routes.py:419`),
-    deduplicated by Stripe event id in `processed_events`.
+    deduplicated by Stripe event id in `processed_events`. Since `747ed6b` the
+    gateway forwards a signature header only to its own route
+    (`WEBHOOK_SIGNATURES`, `gateway/main.py:47`: `stripe-signature` to
+    `/payments/webhooks/stripe` and `/payments/webhooks/identity`); no other
+    route receives it.
     `payment_intent.amount_capturable_updated` marks the payment authorised,
     which emits `payment.authorised` with the card fingerprint.
   - Reconciliation: `payments/jobs.py:29` looks up intents still `created`
@@ -780,8 +862,8 @@ part) if it is cancelled after capture.
      capture failure, chargeback, account status, KYC) onto the same calls:
      `_authorised`, `_update_account`, `_verified` and `chargeback_at`. The
      gateway already routes `/api/payments/*`. Add the path to the WAF
-     exemptions and the `stripe-signature`-style header to the gateway's
-     forwarded headers (`gateway/main.py:34-44`).
+     exemptions and the route with its signature header to
+     `WEBHOOK_SIGNATURES` (`gateway/main.py:47`), one line.
   3. Web: replace `PayStep.tsx` with the provider's drop-in. Extend
      `/payments/config` with what the drop-in needs. Update the CSP.
   4. Data: in-flight bookings are tied to Stripe intents. Drain them first
@@ -799,11 +881,14 @@ part) if it is cancelled after capture.
 - **Status and limits:**
   - Separate charges and transfers, with no `on_behalf_of`.
   - One Stripe platform for all markets. Since `235eeaa` accounts are created
-    in the owner's country with the full service agreement, which lets a
-    German platform pay US and Canadian accounts (`provider.py:160-175`, M-9).
+    in the owner's country with the full service agreement, which would let a
+    German platform pay US and Canadian accounts (`provider.py:160-175`, M-9);
+    since `747ed6b` those countries are refused until their markets go live.
     A client per platform is M-10.
-  - Charges are in the listing's currency (M-3, `235eeaa`); nothing is
-    converted, and payout currency and FX are M-39.
+  - Charges are in the listing's currency (M-3, `235eeaa`), stored and
+    answered upper-case and lower-cased only in the Stripe calls
+    (`provider.py`, `747ed6b`); nothing is converted, and payout currency and
+    FX are M-39.
   - No saved card or deposit (S-9). No 3DS return into the shells (U-7).
   - The kill switch is `PAYOUTS_ON` (7.2).
 
@@ -816,9 +901,10 @@ cancellation.
 - **Where:**
   - `POST /api/payments/connect/onboarding` (`payments/routes.py:228`, Express
     account plus account link). Since `235eeaa` it takes `{"country": "CA"}`
-    (default `DE`): the account is created in that country, and one outside
-    `PAYOUT_COUNTRIES` (the EEA, CH, GB, US, CA: `routes.py:33-35`) gets 422
-    `country_unsupported`. Stripe fixes an account's country at creation. The
+    (default `DE`): the account is created in that country. Since `747ed6b`
+    owners are paid only where Cappy is open: a country that is not a live
+    market in `markets.json` (today anything but DE, AT, CH) gets 422
+    `country_unsupported` (`routes.py:236`; `PAYOUT_COUNTRIES` is gone). Stripe fixes an account's country at creation. The
     web sends no country yet, so every account is German.
     `GET /api/payments/connect/status` (`:253`).
   - `account.updated` webhook (`:439`) → `payment.payouts_ready` →
@@ -912,14 +998,15 @@ fee. Numbers have no gaps per year, and an invoice never changes once issued.
 ## 9. Identity verification
 
 A renter proves who they are once (government ID and a live selfie) before a
-booking above 30 000 minor units (€300 for a euro listing), or in categories
-configured for it.
+booking above its market's threshold (€300 in DE and AT, CHF 280 in CH), or in
+categories configured for it.
 
 - **Where:**
-  - Gate: `create_booking` returns 403 `verification_required` when
-    `total > VERIFY_ABOVE_CENTS` (30 000, one number for every currency) or the
-    category is in `VERIFY_CATEGORIES` (`booking/routes.py:160-164`,
-    `booking/settings.py:33-37`) and the person is not in `verified_people`.
+  - Gate: `create_booking` returns 403 `verification_required` when the total
+    is above the listing owner's market's `id_check_above` (`markets.json`,
+    in that currency's minor units; since `747ed6b`, `VERIFY_ABOVE_CENTS` is
+    gone) or the category is in `VERIFY_CATEGORIES` (`booking/routes.py:162`,
+    `booking/settings.py`) and the person is not in `verified_people`.
   - Session: `POST /api/payments/identity/session` (`payments/routes.py:294-322`)
     requires `{"consent": true}` (422 `consent_required` otherwise) and stores
     `consent_at` and `consent_version` (`identity-2026-09`, `:287`) on the
@@ -973,9 +1060,9 @@ configured for it.
      (today payments gets no `IDENTITY_PROVIDER`, so it follows
      `PAYMENTS_PROVIDER=stripe`).
   3. Webhook: point the vendor at `/api/payments/webhooks/identity`. The WAF
-     already exempts `/api/payments/webhooks/`; the gateway forwards only
-     `stripe-signature` of the signature headers (`gateway/main.py:34-44`), so
-     add the vendor's.
+     already exempts `/api/payments/webhooks/`; the gateway forwards a
+     signature header only to the route named in `WEBHOOK_SIGNATURES`
+     (`gateway/main.py:47`, `747ed6b`), so add the vendor's header there.
   4. Web: choose the UI from `identityProvider` (Stripe.js with the client
      secret, or open the hosted `url`); not built. The shells may need camera
      permission strings (S-2). Update the CSP.
@@ -987,10 +1074,11 @@ configured for it.
      app's text), the vendor's DPA and its data location.
 - **Limits:**
   - The verified name is not compared with the profile (the rest of P-28).
-  - The consent is recorded per person, overwritten on each new session, and
-    is not in the data export.
-  - The threshold is one number of minor units for every currency, so SEK or
-    HUF bookings ask sooner (M-2).
+  - The consent is recorded per person and overwritten on each new session.
+    ~~It is not in the data export~~: `consentAt` and `consentVersion` are,
+    since `747ed6b` (`payments/routes.py:381`).
+  - ~~One threshold for every currency~~: per market since `747ed6b` (M-2).
+    It is the owner's market, not the renter's.
 
 ---
 
@@ -1076,7 +1164,10 @@ decisions, in the recipient's language.
   `LogMailer` (`:124`). Selected in `notifications/main.py:26` by `MAILER`
   (`log` or `ses`; deployed must be `ses`, `settings.py:12,25`) and `MAIL_FROM`.
   Always-emailed kinds are in `prefs.py:61-72` (since `235eeaa` also
-  `payment_failed`, `disputed_owner`, `disputed_renter`).
+  `payment_failed`, `disputed_owner`, `disputed_renter`). Since `61b15b8`
+  `listing.idle` becomes `listing_idle` ("No free time next week: …", in the
+  `bookings` category, linking to `/earn/edit/<id>`; 3.1). Money formats ISK
+  with no decimals, like HUF (`747ed6b`).
 - **Seam:** **yes,** `Mailer.send(Email(to, subject, text))`.
 - **Provider-specific data:** none stored. Bounces and complaints are handled
   by SES's account suppression list (`infra/platform/email.tf:50`), with alarms
@@ -1180,6 +1271,9 @@ count, rendered in the reader's language.
   (`routes.py:132`, uses `Accept-Language`, which the gateway forwards at
   `gateway/main.py:38`) and `POST /api/notifications/read` (`:174`). Screen:
   `web/src/app/screens/Notifications.tsx`. The bell is in `AppShell.tsx`.
+- **Retention** (since `747ed6b`): items older than `INBOX_RETENTION_DAYS`
+  (365) are deleted by an hourly loop (`expire_inbox_once`,
+  `notifications/jobs.py:16`; `docs/retention.md`).
 - **Provider:** none.
 
 ### 12.5 Notification settings
@@ -1239,7 +1333,10 @@ reasons. Both sides are told, and every action is audited.
   (`DecisionIn`, `:101-102`): a review keeps its rating and loses its text and
   tags, a message's words are replaced through booking
   `POST /internal/messages/{id}/remove` (`_remove_content`, `:339-349`), and
-  the author is told ("We removed something you wrote"). `suspend` finds the
+  the author is told ("We removed something you wrote"). Since `747ed6b`
+  every recorded decision names whom it is about (`moderation_actions.person_id`:
+  the listing's owner, a message's or review's author), so that person's
+  export finds it. `suspend` finds the
   person behind any target: the owner of a listing or profile, the author of
   a review, or of a message through booking `GET /internal/messages/{id}`
   (`_affected`, `:318-336`). A take-down or suspension publishes
@@ -1261,11 +1358,12 @@ reasons. Both sides are told, and every action is audited.
 
 ### 13.3 Held listings (fraud rule)
 
-A new owner's listing above €100 an hour waits for a staff check.
+A new owner's listing above its market's threshold (€100 an hour in DE and
+AT, CHF 95 in CH) waits for a staff check.
 
-- **Where:** `create_listing` and `update_listing` (`catalog/routes.py:530`,
-  `:566`), `REVIEW_ABOVE_CENTS` (`catalog/settings.py:49`, one number of minor
-  units for every currency), and admin `GET /api/admin/listings/held` and
+- **Where:** `create_listing` and `update_listing` (`catalog/routes.py:583`,
+  `:623`), the owner's market's `held_listing_above` (`markets.json`, since
+  `747ed6b`; `REVIEW_ABOVE_CENTS` is gone), and admin `GET /api/admin/listings/held` and
   `POST .../approve` (`moderation.py:507`, `:528`). The owner can open their
   held listing (`catalog/routes.py:453-473`, FL-6).
 - **Provider:** none.
@@ -1275,7 +1373,9 @@ A new owner's listing above €100 an hour waits for a staff check.
 - **Owner reliability (S-18):** booking counts an owner's cancellations and
   no-shows over 12 months (`booking/repository.py:208`). It emits
   `booking.owner_reliability`, which becomes `owners.cancellation_rate`, a
-  ranking signal (4.1), shown on the listing. Three failures in 30 days emit
+  ranking signal (4.1), shown on the listing. Since `61b15b8` the same event
+  also carries the owner's measured response time and rate (H-1, 2.1); each
+  event carries one of the two, and catalog leaves the other as it was. Three failures in 30 days emit
   `moderation.person_flagged`, which joins the queue (`moderation.py:547`).
 - **Linked cards (S-17):** payments reads the card fingerprint on
   authorisation (`payments/routes.py:102-110`, `Provider.card_fingerprint`). Booking
@@ -1339,10 +1439,15 @@ A member downloads one JSON file with everything held about them.
 - **Provider data not included:** anything held by Stripe (cards, KYC, ID
   documents), and Cognito's password and MFA data. The export says so only
   implicitly.
-- **Limits:** 5 a day per person (`rate_hits`, P-12). Hand-over photos
-  appear as `evidence:<name>` references, not files. The ID-check consent and
-  decisions on the person's messages or reviews are missing (DATA.md §5.3).
-  No CCPA or Law 25 request workflow (P-29).
+- **Since `747ed6b`:** hand-over photos come as booking links signed for a
+  day (`EXPORT_LINK_TTL`, `booking/routes.py:597-625`) instead of
+  `evidence:<name>` references; payments adds the ID-check `consentAt` and
+  `consentVersion`; catalog's moderation decisions include those about the
+  person's messages and reviews (`person_id`, `repository.py:278`; decisions
+  recorded before `747ed6b` on messages and reviews stay unattributed).
+- **Limits:** 5 a day per person (`rate_hits`, P-12). ~~Hand-over photos as
+  references; consent and message or review decisions missing~~: fixed in
+  `747ed6b`. No CCPA or Law 25 request workflow (P-29).
 
 ### 14.2 Account deletion
 
@@ -1354,7 +1459,7 @@ reason and a date.
   `/internal/people/{id}/open` (`booking/routes.py:556`) and payments
   `/internal/people/{id}/open` (`payments/routes.py:351`), then
   `repository.forget` (`catalog/repository.py:189`: listings down with their
-  words and photos cleared, every upload handed to the photo sweep, reports
+  words, spec free text (`747ed6b`) and photos cleared, every upload handed to the photo sweep, reports
   they filed without the reporter, stored answers deleted, the profile a
   "Former member", reviews anonymised), and ends the person's sessions in
   catalog at once (`routes.py:370-375`). `profile.deleted` goes to:
@@ -1378,9 +1483,9 @@ reason and a date.
 - **Provider data:** the Stripe Connect account stays with Stripe, which keeps
   what financial regulation requires. Invoices are kept for the issuer's
   legal period, then purged (8.1).
-- **Limits:** CloudFront keeps the person's listing photos until they expire
-  from the edge. The `delete_me` docstring (`catalog/routes.py:349-352`) still
-  says the app deletes the sign-in and that bookings hold no personal data.
+- **Limits:** ~~CloudFront keeps the person's listing photos until they
+  expire~~: the photo sweep purges them from the CDN since `747ed6b` (3.4).
+  ~~The `delete_me` docstring is out of date~~: rewritten in `747ed6b`.
 
 ---
 
@@ -1537,8 +1642,10 @@ Stop new bookings, stop payouts or stop new listings without a deploy.
   days) and can be queried in Athena as `cappy_events`
   (`infra/platform/analytics.tf`, `docs/analytics.md`). On the way a Lambda
   keeps only the envelope and an allowlist of non-identifying fields
-  (`infra/platform/analytics/scrub.py`, P-6, `f303350`). There is no client
-  SDK.
+  (`infra/platform/analytics/scrub.py`, P-6, `f303350`). Since `747ed6b` a
+  status change made by support (`by: "support:<who>"`) arrives as `by:
+  "staff"`, so no staff name or id reaches the lake (`scrub.py:35`). There
+  is no client SDK.
 - **Seam:** infra only (an SNS subscription and the Firehose transform).
 - **To swap it** (for example to Segment, Amplitude or BigQuery): add a
   subscriber to the events topic that forwards to the vendor, through the
@@ -1580,7 +1687,7 @@ smallest refactor that would create one:
 |---|---|---|
 | Staff MFA (Cognito `AdminGetUser`) | `cappy_common/auth.py:186-219` | The MFA check behind a directory interface, or an `amr` claim check (the role claim is settings since `235eeaa`) |
 | Free-text search (Postgres LIKE/trigram) | `catalog/repository.py:721` | A `SearchIndex` protocol with the current SQL as the default, fed by `listing.changed` |
-| Places and geocoding (none exists) | `districts` table, `catalog/repository.py:339` | A `Geocoder` interface when addresses become structured (M-5, M-7, M-8) |
+| Places and geocoding (none exists) | `districts` table, `catalog/repository.py:339`; listing points are whatever the owner sends (`61b15b8`) | A `Geocoder` interface when addresses become structured, filling `location`, `country`, `postalCode` (M-7, M-8, F-6) |
 | Tax on the fee (fixed rate) | `payments/invoices.py:93` (`Issuer.tax_rate_bps`) | A `tax_for(owner, market, fee)` function per invoice line (M-12) |
 | Stripe webhook event handling | `payments/routes.py:419-460` | Have `Provider.parse_webhook` return neutral events (`authorised`, `account_changed`, `chargeback`) instead of Stripe's event dict, as `IdentityProvider.parse_webhook` already does for ID checks |
 | Identity verification UI (Stripe.js modal) | `web/src/app/screens/Listing.tsx:222-244` | Pick the flow from `/payments/config.identityProvider` and open the session's `url` for a hosted provider (the backend seam exists since `235eeaa`) |

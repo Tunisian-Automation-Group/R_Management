@@ -15,7 +15,10 @@ committed. The reasons behind them are in the ADRs, mainly
 > under `compose.yaml`. Where this file says "creates", read "would create
 > when applied".
 
-References are `path:line` in the committed tree.
+References are `path:line` in the committed tree. Last synced with the code
+as of `61b15b8` (`747ed6b` and `61b15b8`: `listing.idle` in the consumers,
+the `/api/ranking` behaviour, the local shortcuts, `make confirm`, the second
+demo host). Neither commit adds an AWS resource or a cost.
 
 Contents: [1 Overview](#1-overview) · [2 Terraform, file by file](#2-terraform-file-by-file) ·
 [3 Environments and cells](#3-environments-and-cells) · [4 Security](#4-security) ·
@@ -173,7 +176,8 @@ adding a service starts there.
   (sign-out and deletion are handled by every runtime) and receive every type
   it handles. `person.signed_out` goes to booking, payments and
   notifications; `payment.identity_verified` goes to booking and, since
-  `235eeaa`, catalog (the profile's `verified`).
+  `235eeaa`, catalog (the profile's `verified`); `listing.idle` (catalog's
+  "no free time next week", since `61b15b8`) goes to notifications.
 - **Database services** (`:5`): catalog, booking, payments, notifications.
   Matching and the gateway have no database.
 - DB subnet group on the private subnets (`:20-23`); security group allowing
@@ -308,7 +312,7 @@ adding a service starts there.
   | Path | Origin | Caching |
   |---|---|---|
   | default | web bucket | `Managed-CachingOptimized`; a CloudFront Function rewrites extension-less paths to `/index.html` (`:349-360`); security headers attached |
-  | `/api/app-config`, `/api/categories`, `/api/groups`, `/api/review-tags` | ALB | `api_public` policy (`:365-383`): keyed on the query string only, no headers or cookies, TTL as the origin says (max 1 h) |
+  | `/api/app-config`, `/api/categories`, `/api/groups`, `/api/ranking` (since `61b15b8`, `:527-535`: the ranker's published weights), `/api/review-tags` | ALB | `api_public` policy (`:365-383`): keyed on the query string only, no headers or cookies, TTL as the origin says (max 1 h) |
   | `/api/*` | ALB | `Managed-CachingDisabled`, all viewer headers except Host forwarded |
   | `/media/*` | media bucket | `Managed-CachingOptimized` |
 
@@ -361,7 +365,8 @@ adding a service starts there.
   `cappy-<env>-analytics-scrub` (`:74-84`), Python 3.12, 256 MB, 60 s
   (`:106-115`), zipped from `infra/platform/analytics/scrub.py` by
   `data "archive_file"` (`:87-91`, into `infra/platform/.build/`). It keeps
-  the envelope and an allowlist of scalar fields and drops anything it cannot
+  the envelope and an allowlist of scalar fields, rewrites a `by` of
+  `support:<who>` to `staff` (since `747ed6b`), and drops anything it cannot
   parse ([`DATA.md`](DATA.md) §3.1). Its role has only
   `AWSLambdaBasicExecutionRole` (`:93-104`).
 - SNS subscribes the Firehose to **every** event, raw delivery (`:133-139`),
@@ -471,9 +476,16 @@ reviewed but has never run against an account.
 - Local differences, all deliberate: `APP_ENV=local`, one fixed non-secret
   internal token shared by all services (no `INTERNAL_CALLERS`), LocalStack
   test credentials (`compose.yaml:23-35`); no staff MFA;
-  `SWEEP_SECONDS=5` and `START_EARLY_MINUTES=100000` on booking so the e2e can
-  walk a booking to payout in a minute (`compose.yaml:96-99`);
-  `PAYMENTS_PROVIDER=fake` unless Stripe test keys are set (`:109`).
+  `MIN_LEAD_MINUTES=5` on matching (since `61b15b8`, `compose.yaml:92`) so a
+  booking can start 5 minutes out and testers can walk no-shows, disputes
+  and reviews in minutes; `SWEEP_SECONDS=5` and `START_EARLY_MINUTES=100000`
+  on booking so the e2e can walk a booking to payout in a minute
+  (`compose.yaml:101-104`); `PAYMENTS_PROVIDER=fake` unless Stripe test keys
+  are set (`:114`). Deployed, the services refuse to start with
+  `MIN_LEAD_MINUTES` under 60, `START_EARLY_MINUTES` above 60 or
+  `AUTO_COMPLETE_AFTER_HOURS` under 24 (`unsafe_reasons` in
+  `matching/settings.py` and `booking/settings.py`, since `61b15b8`), so the
+  shortcuts cannot reach staging or prod.
 - **Stripe CLI profile.** With `COMPOSE_PROFILES=stripe`,
   `PAYMENTS_PROVIDER=stripe` and test keys in `.env`, the `stripe` container
   listens for the five webhook events the prod endpoint subscribes to and
@@ -890,20 +902,21 @@ and `LOCALSTACK_AUTH_TOKEN` in `.env` (compose refuses to start without it,
 | `down` | Stops the stack, keeps data | 16 |
 | `clean` | Stops it and deletes volumes and `.local/*.env` | 19-21 |
 | `logs` | Follows the six services' logs | 23 |
-| `seed-demo` | Loads the demo world (additive; refuses outside local and staging), creates the demo buyer and staff profiles (`local/demo_profiles.py`), and with real Stripe gives demo owners verified test accounts | 26-33 |
-| `codes` | Shows sign-up confirmation codes from cognito-local's log | 35 |
-| `test` | ruff check, ruff format check, pytest; no Docker | 38-39 |
-| `test-pg` | pytest including the Postgres tests, against the compose Postgres on 5433 | 41-42 |
-| `test-stripe` | Starts stripe-mock on 12111 and runs the Stripe contract tests | 44-46 |
-| `e2e` | The whole journey against the running stack (`local/e2e.py`) | 48-49 |
-| `web` | `npm ci && npm run build` in `web/` | 51-52 |
-| `infra-validate` | `terraform fmt -check` and `validate` in every root | 56-57 |
-| `infra-local` | Applies `infra/localstack` and runs `check.py` | 59-60 |
-| `openapi` | Regenerates `docs/api/*.json` | 64-65 |
-| `load` | 50 users for 60 s: no 5xx, one winner per contested window | 69-70 |
-| `load-spike` | 10× arrival rate for 60 s; shedding may answer 503 | 74-75 |
-| `load-mixed` | Open-model mix: 90 % browse, 8 % signed in, contested bookings | 77-78 |
-| `load-soak` | An hour at a steady rate; connections, memory and queue ages stay flat | 80-81 |
+| `seed-demo` | Loads the demo world (additive; refuses outside local and staging), creates the demo buyer, second host and staff profiles and the second host's three listings through the API (`local/demo_profiles.py`), and with real Stripe gives demo owners verified test accounts | 26-33 |
+| `codes` | The last 20 sign-up and reset codes from cognito-local's log, each with the email it went to (since `61b15b8`) | 35-36 |
+| `confirm` | `make confirm EMAIL=… [ADMIN=1]`: marks a local account's email verified, confirms it if unconfirmed, and with `ADMIN=1` adds it to the `admin` group (`local/confirm.py`, cognito-local on :9229 only; since `61b15b8`) | 38-39 |
+| `test` | ruff check, ruff format check, pytest; no Docker | 41-42 |
+| `test-pg` | pytest including the Postgres tests, against the compose Postgres on 5433 | 44-45 |
+| `test-stripe` | Starts stripe-mock on 12111 and runs the Stripe contract tests | 47-49 |
+| `e2e` | The whole journey against the running stack (`local/e2e.py`) | 51-52 |
+| `web` | `npm ci && npm run build` in `web/` | 54-55 |
+| `infra-validate` | `terraform fmt -check` and `validate` in every root | 59-60 |
+| `infra-local` | Applies `infra/localstack` and runs `check.py` | 62-63 |
+| `openapi` | Regenerates `docs/api/*.json` | 67-68 |
+| `load` | 50 users for 60 s: no 5xx, one winner per contested window | 72-73 |
+| `load-spike` | 10× arrival rate for 60 s; shedding may answer 503 | 77-78 |
+| `load-mixed` | Open-model mix: 90 % browse, 8 % signed in, contested bookings | 80-81 |
+| `load-soak` | An hour at a steady rate; connections, memory and queue ages stay flat | 83-84 |
 
 The web dev server is `cd web && npm run dev` (Vite; it proxies `/api` to the
 gateway, `web/vite.config.ts:13`, `:89`).
@@ -929,12 +942,13 @@ inside the compose network, as in AWS.
 
 ### Demo accounts
 
-Created by `local/bootstrap.py:59-65`; the password is printed by `make up`
-and is in that file.
+Created by `local/bootstrap.py:61-70` (`DEMO`), with verified emails; the
+password is printed by `make up` and is in that file.
 
 | Role | Email |
 |---|---|
-| Host (owner of the demo listings) | `host@demo.cappy.local` |
+| Host (the seeded owner `o1`, one listing) | `host@demo.cappy.local` |
+| Second host (since `61b15b8`, GD-5): a new owner in Neukölln, DE, whose three listings `local/demo_profiles.py` makes through the API: an instant-book workshop, a freight (batch) van run, and a studio above the market's review threshold that waits for staff approval; all on weekly schedules | `host2@demo.cappy.local` |
 | Buyer | `buyer@demo.cappy.local` |
 | Staff (in the `admin` group, for the admin console) | `staff@demo.cappy.local` |
 
@@ -957,9 +971,15 @@ cognito-local has no MFA.
   JWKS URL are separate settings (`local/bootstrap.py:204-205`); it does not
   set `email_verified` on confirmation; and it answers 500 on
   `GlobalSignOut`.
-- Sign-up codes are not emailed locally: `make codes`.
+- Sign-up codes are not emailed locally: `make codes` (with the address each
+  went to). A fresh account gets no email until `make confirm EMAIL=…`,
+  because cognito-local leaves `email_verified` false.
+- cognito-local cannot sign a person out on other devices (no global
+  sign-out), so sign-out-everywhere does not end another browser's session
+  locally (GD-4, a stated limitation).
 - Booking's `START_EARLY_MINUTES` is huge locally so the e2e can hand over
-  at once; deployed, the default holds (`compose.yaml:97-99`).
+  at once, and matching's `MIN_LEAD_MINUTES` is 5; deployed, the defaults
+  hold and settings refuse the local values (`compose.yaml:92`, `:104`).
 - `make test-pg` and `make e2e` need `make up` first.
 
 ---

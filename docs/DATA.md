@@ -3,11 +3,13 @@
 The services, their tables, the events between them, who reads what, how
 long things are kept, and where personal data lives. This is a living doc
 (see [`CLAUDE.md`](../CLAUDE.md)). It describes the code **as committed at
-`c454c92`** (whose last code change is `7ef9b2c`). The last sync covered `44a5520` (web and CI) and `235eeaa`: the
-data-rights round (D-1 to D-15: deletion and export coverage, the register of
-personal data in `cappy_common/privacy.py` and its test, the retention jobs,
-[`retention.md`](retention.md)), the flow fixes, the identity-provider seam,
-and currency per listing (M-3) and payout country (M-9).
+`61b15b8`**. This sync covered `747ed6b` (markets as configuration, M-2;
+upper-case currency and its migrations; export and deletion leftovers; inbox
+retention; guard pruning) and `61b15b8` (measured response times, weekly
+schedules and `listing.idle`, listing points, the local shortcuts). The one
+before covered `44a5520` and `235eeaa` (the data-rights round D-1 to D-15,
+[`retention.md`](retention.md)). Line references not touched by this sync may
+have drifted by a few lines.
 
 References are `path:line` from the repository root. **PII** marks personal
 data. **Sensitive** marks data that needs extra care: government ID and
@@ -30,15 +32,17 @@ that crosses a boundary goes through an event (§3) or an `/internal/*` call (§
 |---|---|---|---|---|
 | gateway | none | none | none | none (HTTP edge, routes `/api/*`, blocks `/internal/*`: `backend/services/gateway/gateway/routing.py:4`) |
 | matching | none (stateless; asks catalog and booking) | none | none | none |
-| catalog | `catalog` | yes | yes | hourly: orphan-photo sweep, public and private stores, then reporters forgotten 6 months after the decision (`backend/services/catalog/catalog/jobs.py:24-66`) |
+| catalog | `catalog` | yes | yes | hourly: orphan-photo sweep, public and private stores, with a CDN purge of every deleted file (since `747ed6b`); then reporters forgotten 6 months after the decision; then weekly schedules rolled on and `listing.idle` for listings with no free time next week (since `61b15b8`) (`backend/services/catalog/catalog/jobs.py`) |
 | booking | `booking` | yes | yes | expiry, auto-complete and review sweeps (`backend/services/booking/booking/jobs.py:18-54`) |
 | payments | `payments` | no | yes | Stripe reconciliation, every ~5 min; invoice purge after the retention period, daily (`backend/services/payments/payments/jobs.py:29-88`) |
-| notifications | `notifications` | no | yes | none |
+| notifications | `notifications` | no | yes | hourly: bell items older than `INBOX_RETENTION_DAYS` (365) deleted (`notifications/jobs.py:16`, since `747ed6b`) |
 
 Every service that has a database also runs the outbox relay, its SQS consumer,
 and an hourly prune of `outbox` and `processed_events` and, where the service
 has one, of `idempotency_keys` older than 24 h
-(`backend/libs/cappy_common/cappy_common/runtime.py:132-140`, `:165-173`). It
+(`backend/libs/cappy_common/cappy_common/runtime.py:132-140`, `:165-178`), and
+since `747ed6b` of `revoked_sessions` rows older than 25 h and `rate_hits`
+older than 2 days (`prune_guards`, `cappy_common/guard.py:56`). It
 also checks every signed-in request against its own `revoked_sessions` table
 (`runtime.py:119`, `cappy_common/auth.py:168-174`; §1 "Tables every database
 has"). Matching and the gateway have no database, so they do not.
@@ -77,8 +81,8 @@ has"). Matching and the gateway have no database, so they do not.
 |---|---|---|---|
 | `outbox` | Events written in the same transaction as the change they describe (ADR 0003) | `id`. Partial index `ix_outbox_unsent` on `created_at WHERE sent_at IS NULL` (`events.py:163`) | Sent rows are kept **7 days** (`events.py:325`). A row that fails 20 times is set aside and kept until someone deals with it (`events.py:218`, `:254-257`); since `235eeaa` the relay logs `OUTBOX_SET_ASIDE` for it (`:278-286`) and the `outbox-set-aside` alarm pages (D-14; runbook). **PII:** the body is the whole event payload (§3) |
 | `processed_events` | Ids of events this consumer has handled, for idempotency. Payments also stores Stripe webhook event ids here, and `idv:<session>:<status>` keys for the identity webhook (`backend/services/payments/payments/routes.py:419-477`) | `event_id` | **21 days**, which outlives the DLQ's 14 (`events.py:326`) |
-| `revoked_sessions` | "Tokens of this person issued before `not_before` no longer count" (P-24). Written by catalog when it takes a sign-out-everywhere or a deletion, and by every other service with a database when `person.signed_out` or `profile.deleted` reaches it (`backend/libs/cappy_common/cappy_common/guard.py:49-77`). Read on every signed-in request through a 30 s cache per replica (`guard.py:80-106`) | `sub` (`guard.py:28-34`, created by `event_tables`, `events.py:174-177`) | **Kept for ever**: no prune. Pseudonymous id and a time |
-| `rate_hits` (catalog only) | Per-person counters for limits no other table can count: `export:<sub>` (5 a day) and `sign-out:<sub>` (5 an hour) (`backend/services/catalog/catalog/routes.py:377-418`, P-12) | `id`; index `ix_rate_hits_key_at` (`guard.py:37-46`) | A key's rows older than its window are deleted on its next use (`guard.py:109-117`); a key never used again keeps its rows. **PII:** the `sub` in the key |
+| `revoked_sessions` | "Tokens of this person issued before `not_before` no longer count" (P-24). Written by catalog when it takes a sign-out-everywhere or a deletion, and by every other service with a database when `person.signed_out` or `profile.deleted` reaches it (`backend/libs/cappy_common/cappy_common/guard.py:49-77`). Read on every signed-in request through a 30 s cache per replica (`guard.py:80-106`) | `sub` (`guard.py:28-34`, created by `event_tables`, `events.py:174-177`) | **25 hours** since `747ed6b` (`REVOCATION_KEPT`): a revocation only matters while a token issued before it can still be valid (Cognito caps access tokens at a day; ours last 15 min). Pruned hourly (`prune_guards`, `guard.py:56`). Pseudonymous id and a time |
+| `rate_hits` (catalog only) | Per-person counters for limits no other table can count: `export:<sub>` (5 a day) and `sign-out:<sub>` (5 an hour) (`backend/services/catalog/catalog/routes.py:377-418`, P-12) | `id`; index `ix_rate_hits_key_at` (`guard.py:37-46`) | A key's rows older than its window are deleted on its next use (`guard.py:109-117`), and since `747ed6b` every row older than **2 days** by the hourly prune (`RATE_HITS_KEPT`, `prune_guards`). **PII:** the `sub` in the key |
 | `idempotency_keys` (catalog, booking) | `Idempotency-Key` replay for creating POSTs | (`principal`, `key`) (`backend/libs/cappy_common/cappy_common/idempotency.py:34-44`) | **24 hours** (`KEEP`, `idempotency.py:31`): deleted by the hourly prune (`expire`, `:85-89`), and a person's rows on account deletion (`forget`, `:92-94`). D-4, `235eeaa`. **PII:** `response` is the first answer as JSON, for example a report's details or a listing |
 
 ---
@@ -101,14 +105,14 @@ legal bases: [`retention.md`](retention.md).
 | Table | Purpose and key columns | Constraints and indexes that matter | Personal data | Retention |
 |---|---|---|---|---|
 | `districts` (`:35-42`) | Reference places: `name` PK, `city`, `metro`, `country`, `lat`, `lng` | `ix_districts_lat_lng` (`:130`), `metro` index | none | Reference data |
-| `owners` (`:45-80`) | Every signed-up person (id = Cognito `sub`): `name`, `initials`, `kind` (person/business), `district`, `country` (ISO 3166-1 alpha-2, default `DE`; since `235eeaa`, migration `0014_owner_country`, M-9), `verified` (set by a passed ID check since `235eeaa`, F-10), rating counters, `renter_*`, `joined_year`, `deleted_at`, `suspended_at`, `business` JSON, `adult_confirmed_at`, `cancellation_rate` | PK `id`; FK `district` → districts | **PII:** `name`, `initials`, `district` and `country` (coarse location; both public on the profile), `verified`, `business` (legal name, **address**, register number, VAT ID: `backend/libs/cappy_common/cappy_common/models.py:119-127`), `adult_confirmed_at`, reliability and suspension | Redacted on deletion: "Former member", `business`, `verified` and `cancellation_rate` cleared; the row stays as a shell (§5.4). The same `sub` signing up again starts afresh (FL-11) |
-| `listings` (`:83-110`) | `owner_id`, `category`, `mode`, `title`, `blurb`, `district`, `instructions`, `address`, `moderated_at`, `held_at`, `rules`, `photos`, `active`, `spec` JSON (prices, sizes and, since `235eeaa`, `currency`), `deleted_at` (soft delete) | `ix_listings_search` (`:112`); partial `ix_listings_live` and `ix_listings_live_district` `WHERE deleted_at IS NULL AND active` (`:115-120`, `:128-132`); `ix_listings_owner_created` (`:126`); trigram GIN `ix_listings_title_trgm`, `ix_listings_blurb_trgm`, created only in the migration (`catalog/migrations/versions/0001_initial_catalog_schema.py:153-154`; allowed list `tables.py:125`) | **Sensitive:** `address` (private until a booking is accepted: `:91-93`) and `instructions` (door codes, where the key is; never public: `backend/services/catalog/catalog/repository.py:104-123`). `photos` | Soft-deleted for ever. On account deletion `title` becomes "Removed listing" and `blurb`, `instructions`, `rules`, `photos` and `address` are cleared; `spec` stays (D-2) |
-| `slots` (`:138-146`) | Idle windows: `listing_id`, `start`, `end`, `hours_usable` | FK cascade; `ix_slots_listing_end` (`:148`) | none | Kept with the listing |
+| `owners` (`:45-80`) | Every signed-up person (id = Cognito `sub`): `name`, `initials`, `kind` (person/business), `district`, `country` (ISO 3166-1 alpha-2, default `DE`; since `235eeaa`, migration `0014_owner_country`, M-9), `verified` (set by a passed ID check since `235eeaa`, F-10), rating counters, `renter_*`, `joined_year`, `deleted_at`, `suspended_at`, `business` JSON, `adult_confirmed_at`, `cancellation_rate`, `response_mins` and `response_rate` (nullable since `61b15b8`, migration `0016_response_metrics`: measured by booking over 90 days, null under 3 requests; the old 60-minute default was cleared, H-1) | PK `id`; FK `district` → districts | **PII:** `name`, `initials`, `district` and `country` (coarse location; both public on the profile), `verified`, `business` (legal name, **address**, register number, VAT ID: `backend/libs/cappy_common/cappy_common/models.py:119-127`), `adult_confirmed_at`, reliability and suspension | Redacted on deletion: "Former member", `business`, `verified`, `cancellation_rate`, `response_mins` and `response_rate` cleared; the row stays as a shell (§5.4). The same `sub` signing up again starts afresh (FL-11) |
+| `listings` (`:83-110`) | `owner_id`, `category`, `mode`, `title`, `blurb`, `district`, `instructions`, `address`, `moderated_at`, `held_at`, `rules`, `photos`, `active`, `spec` JSON (prices, sizes and, since `235eeaa`, `currency`; since `61b15b8` optionally `availability` (weekly hours, time zone), `location` (lat/lng), `country` and `postalCode`), `deleted_at` (soft delete), `scheduled_until` (how far the weekly schedule's windows reach; indexed) and `idle_notice_at` (the last "no free time next week" notice), both since `61b15b8` (migration `0017_weekly_schedule`) | `ix_listings_search` (`:112`); partial `ix_listings_live` and `ix_listings_live_district` `WHERE deleted_at IS NULL AND active` (`:115-120`, `:128-132`); `ix_listings_owner_created` (`:126`); trigram GIN `ix_listings_title_trgm`, `ix_listings_blurb_trgm`, created only in the migration (`catalog/migrations/versions/0001_initial_catalog_schema.py:153-154`; allowed list `tables.py:125`) | **Sensitive:** `address` (private until a booking is accepted: `:91-93`) and `instructions` (door codes, where the key is; never public: `backend/services/catalog/catalog/repository.py:109-133`). `photos`. **Sensitive:** `spec.location` and `spec.postalCode` (where the thing is, often someone's home): public answers snap the point to about 500 m and drop the postal code (`snapped`, `cappy_common/models.py:174`); the exact values go only to an accepted booking's hand-over (M-6) | Soft-deleted for ever. On account deletion `title` becomes "Removed listing" and `blurb`, `instructions`, `rules`, `photos` and `address` are cleared, and since `747ed6b` the spec's free text (`extraLabel`, `machine` → ""); the rest of `spec`, including `location` and `postalCode`, stays (D-2) |
+| `slots` (`:138-146`) | Idle windows: `listing_id`, `start`, `end`, `hours_usable`, `generated` (made from the weekly schedule, since `61b15b8`; a new schedule deletes the future generated ones) | FK cascade; `ix_slots_listing_end` (`:148`) | none | Kept with the listing |
 | `reviews` (`:153-167`) | Renter → owner reviews: `rv_<bookingId>` PK, `author`, `initials`, `author_id`, `rating`, `on_time`, `text`, `tags`, `at` | `ix_reviews_listing_at` (`:170`); `owner_id` index | **PII:** `author` (shown as "Ada L.": `backend/services/catalog/catalog/handlers.py:14-17`), `author_id`, `text` (free text) | Author anonymised on deletion; the text stays. A moderation `remove_content` empties `text` and `tags` and keeps the rating (`catalog/moderation.py:339-349`, FL-7) |
 | `saved_listings` (`:173-182`) | Hearts: (`user_id`, `listing_id`) PK, `saved_at` | `ix_saved_user_at` | **PII:** what someone shortlisted | Deleted with the account |
 | `payable_owners` (`:185-193`) | Payments' latest word on `ready`, with `as_of` (older news loses) | PK `owner_id` | Pseudonymous | Deleted with the account |
 | `reports` (`:196-215`) | DSA Art. 16 notices, plus system flags: `target_type`, `target_id`, `reason`, `details`, `reporter_id`, `reporter_email`, `status`, the decision, `statement`, `statement_of_reasons` | `ix_reports_status_created` (`:218`) | **PII:** `reporter_email` (people without an account), `reporter_id`, `details` (free text about someone) | Since `235eeaa` (D-3): `reporter_id`, `reporter_email` and `details` are cleared when the reporter deletes their account, and for every report **183 days after its decision** (DSA Art. 20 contest window; `REPORTER_KEPT`, `jobs.py:21`, `forget_reporters_once` `:45-60`). The case, decision and statement stay |
-| `moderation_actions` (`:221-236`) | Audit trail: `actor_id`, `action` (`dismiss`, `take_down`, `suspend`, `remove_content`, `reinstate`), target, `report_id`, `statement`, `statement_of_reasons`, `at` | `ix_moderation_actions_at` | **PII:** staff ids, statements about people | Kept for ever (the DSA record, Art. 17 and 24; the register's reason) |
+| `moderation_actions` (`:221-236`) | Audit trail: `actor_id`, `action` (`dismiss`, `take_down`, `suspend`, `remove_content`, `reinstate`, `approve`), target, `report_id`, `statement`, `statement_of_reasons`, `at`, and since `747ed6b` `person_id`, whom the decision is about (the listing's owner, a message's or review's author; migration `0015_moderation_person` back-filled owners and listings, not messages or reviews) | `ix_moderation_actions_at`, `ix_moderation_actions_person` | **PII:** staff ids, statements about people, `person_id` | Kept for ever (the DSA record, Art. 17 and 24; the register's reason) |
 | `media` (`:239-253`) | Uploaded photos (content hash) per owner: (`name`, `owner_id`) PK, `bytes`, `width`, `height`, `used` | `owner_id` index | **PII:** photos can show people and places. Hand-over evidence has rows here too; its files are in the private store (`s3://<media>/private/`, never behind CloudFront: `catalog/media.py:155-175`, P-27) | Unused uploads swept after **1 day**, from both stores (`jobs.py:17`, `:24-42`). Used photos stay while the account exists; on deletion every row of the person is marked unused and dated 2000, so the next hourly sweep deletes the rows and the files, except a file another person also holds (D-1, `repository.py:212-214`) |
 | `outbox`, `processed_events`, `revoked_sessions`, `rate_hits`, `idempotency_keys` | §1 | | | |
 
@@ -116,13 +120,13 @@ legal bases: [`retention.md`](retention.md).
 
 | Table | Purpose and key columns | Constraints and indexes that matter | Personal data | Retention |
 |---|---|---|---|---|
-| `bookings` (`:36-82`) | `requester_id`, `owner_id`, `listing_id`, `status`, `window_start`/`window_end`, `expires_at`, `amount` (minor units), `currency`, `requirement`, `match` (quote), `listing_snapshot`, `decline_reason`, `outcome` (the renter's review), `renter_rating`, `refund_amount`, `rated_at`, `reviews_published_at`, `idempotency_key`, `request_hash`, `handover`, `no_show`, `card_fingerprint` | **`ex_bookings_no_double_booking`**: `EXCLUDE USING gist (listing_id WITH =, tstzrange(window_start, window_end, '[)') WITH &&) WHERE status IN ('awaiting_payment','requested','accepted','active','completed','disputed')` (`booking/migrations/versions/0003_completed_bookings_keep_their_window.py:21-31`; `btree_gist` in `0001_initial_booking_schema.py:21`; ADR 0004). Violations become 409 (`backend/services/booking/booking/routes.py:203-217`). `uq_bookings_requester_idempotency` and `ck_bookings_window_forward` (`:79-82`). Indexes `ix_bookings_requester_created`, `ix_bookings_owner_created`, `ix_bookings_listing_window`, `ix_bookings_status_expires`, `ix_bookings_status_window_end` and `ix_bookings_card_fingerprint` (`:157-164`) | **PII:** both parties' ids; `listing_snapshot.ownerName` and `ownerBusiness` (`routes.py:184-194`); `handover` (**sensitive**: address and instructions copied at accept, `routes.py:111-113`); `outcome.note` and `decline_reason` (free text); **sensitive:** `card_fingerprint`. `currency` is the listing's, lowercase, since `235eeaa` (`routes.py:181`, M-3; the column default `"eur"` at `tables.py:50` is no longer used by creation) | Kept for ever as the financial record. Since `235eeaa` account deletion redacts what names or locates the person: `handover`, the owner's snapshot name and business, the owner's `decline_reason`, the renter's `outcome.note` and, unless they are suspended, the renter's `card_fingerprint` (`redact_bookings`, `booking/handlers.py:38-65`, D-5; §5.4) |
+| `bookings` (`:36-82`) | `requester_id`, `owner_id`, `listing_id`, `status`, `window_start`/`window_end`, `expires_at`, `amount` (minor units), `currency`, `requirement`, `match` (quote), `listing_snapshot`, `decline_reason`, `outcome` (the renter's review), `renter_rating`, `refund_amount`, `rated_at`, `reviews_published_at`, `idempotency_key`, `request_hash`, `handover`, `no_show`, `card_fingerprint` | **`ex_bookings_no_double_booking`**: `EXCLUDE USING gist (listing_id WITH =, tstzrange(window_start, window_end, '[)') WITH &&) WHERE status IN ('awaiting_payment','requested','accepted','active','completed','disputed')` (`booking/migrations/versions/0003_completed_bookings_keep_their_window.py:21-31`; `btree_gist` in `0001_initial_booking_schema.py:21`; ADR 0004). Violations become 409 (`backend/services/booking/booking/routes.py:203-217`). `uq_bookings_requester_idempotency` and `ck_bookings_window_forward` (`:79-82`). Indexes `ix_bookings_requester_created`, `ix_bookings_owner_created`, `ix_bookings_listing_window`, `ix_bookings_status_expires`, `ix_bookings_status_window_end` and `ix_bookings_card_fingerprint` (`:157-164`) | **PII:** both parties' ids; `listing_snapshot.ownerName` and `ownerBusiness` (`routes.py:184-194`); `handover` (**sensitive**: address and instructions copied at accept, `routes.py:111-113`); `outcome.note` and `decline_reason` (free text); **sensitive:** `card_fingerprint`. `currency` is the listing's (M-3), upper-case ISO 4217 since `747ed6b` (migration `0015_currency_upper` upper-cased old rows; the column has no default any more). `handover` since `61b15b8` also holds the listing's exact `location` and `postalCode` (**sensitive**) | Kept for ever as the financial record. A staff `refund_buyer` resolution records `refund_amount` = `amount` since `747ed6b`. Since `235eeaa` account deletion redacts what names or locates the person: `handover`, the owner's snapshot name and business, the owner's `decline_reason`, the renter's `outcome.note` and, unless they are suspended, the renter's `card_fingerprint` (`redact_bookings`, `booking/handlers.py:38-65`, D-5; §5.4) |
 | `booking_messages` (`:85-102`) | Chat per booking: `sender_id`, `body` (contact details masked before acceptance), `unmasked` (the words as written), `flagged` | FK cascade; `ix_booking_messages_booking_at` | **PII, sensitive:** free text, phone numbers and emails in `unmasked` | On deletion the sender's words are replaced (§5.4). A moderation `remove_content` replaces them with "[removed by Cappy: it broke our rules]" (`booking/routes.py:545-553`, FL-7) |
 | `blocks` (`:105-111`) | (`blocker_id`, `blocked_id`) PK | | **PII** (who blocked whom) | Deleted with either account |
 | `verified_people` (`:114-119`) | Copy of payments' identity outcome | PK `person_id` | **PII:** "ID-checked" | Deleted with the account |
 | `suspended` (`:122-127`) | Copy of moderation's suspension | PK `person_id` | **PII** | Kept after deletion (fraud: card links, S-17). Removed on reinstatement |
 | `booking_evidence` (`:130-141`) | Hand-over and return photos: `by`, `stage`, `photos` (URLs), `note` | `booking_id` index | **PII:** photos and `note`. `photos` hold `evidence:<name>` references to the private store; the two sides and staff (with MFA) get them as links signed for 15 minutes, served by booking itself (`booking/messages.py:299-370`, P-27). Rows from before `f303350` may still hold public URLs | Kept for disputes. On the author's deletion `photos` → `[]` and `note` → null (D-5), and catalog's sweep deletes the files |
-| `booking_transitions` (`:144-154`) | Every status change: `from_status`, `to_status`, `by`, `at` | `booking_id` index | Pseudonymous ids | Kept for ever (audit and reliability, `backend/services/booking/booking/repository.py:192-253`) |
+| `booking_transitions` (`:144-154`) | Every status change: `from_status`, `to_status`, `by`, `at` | `booking_id` index | Pseudonymous ids | Kept for ever (audit, reliability and, since `61b15b8`, response time: `owner_responsiveness`, `booking/repository.py:214`) |
 | `outbox`, `processed_events`, `revoked_sessions`, `idempotency_keys` | §1 | | | |
 
 Booking states: `HOLDING` keeps the window and `OPEN` blocks account deletion
@@ -132,11 +136,11 @@ Booking states: `HOLDING` keeps the window and `OPEN` blocks account deletion
 
 | Table | Purpose and key columns | Constraints | Personal data | Retention |
 |---|---|---|---|---|
-| `payments` (`:21-44`) | One per booking: `booking_id` PK, `intent_id`, `requester_id`, `owner_id`, `amount`, `owner_net`, `currency`, `status` (created → authorised → captured → transferred, or cancelled or refunded), `charge_id`, `transfer_id`, `refund_id`, `chargeback_at`, `card_fingerprint` | `intent_id` unique; indexes on requester and owner | Pseudonymous ids; **sensitive:** `card_fingerprint`. The card itself stays with Stripe | Kept for ever (financial record). `card_fingerprint` is cleared when either party deletes their account (`payments/handlers.py:157-175`, since `235eeaa`) |
+| `payments` (`:21-44`) | One per booking: `booking_id` PK, `intent_id`, `requester_id`, `owner_id`, `amount`, `owner_net`, `currency` (upper-case since `747ed6b`, migration `0009_currency_upper`, which also upper-cased `invoices.currency`), `status` (created → authorised → captured → transferred, or cancelled or refunded), `charge_id`, `transfer_id`, `refund_id`, `chargeback_at`, `card_fingerprint` | `intent_id` unique; indexes on requester and owner | Pseudonymous ids; **sensitive:** `card_fingerprint`. The card itself stays with Stripe | Kept for ever (financial record). `card_fingerprint` is cleared when either party deletes their account (`payments/handlers.py:157-175`, since `235eeaa`) |
 | `identities` (`:47-61`) | ID-check outcome: `person_id` PK, `session_id` (the `IdentityProvider`'s session: Stripe Identity today, `payments/identity.py`, F-1), `status` (`pending`, `requires_input`, `failed`, `verified`), `verified_at`, and the recorded consent: `consent_at`, `consent_version` (`identity-2026-09`: `payments/routes.py:287-322`, P-18) | `session_id` unique; a verdict counts only for the row's current `session_id`, from the Stripe webhook or the identity webhook (`_identity_result`, `routes.py:325-340`, P-28) | **PII:** that an ID check happened, how it went, and when the person agreed to it. The document and selfie stay with the provider | Deleted with the account, and the session is redacted at the provider first (`IdentityProvider.redact`, D-6, since `235eeaa`) |
 | `invoices` (`:64-85`) | The platform's fee invoice to an owner: `number` PK, `booking_id` unique, `owner_id`, `net`/`vat_rate_bps`/`vat`/`gross`, `currency`, `issued_at`, `title`, `service_start`/`end`, `recipient_name`, `recipient_address`, `recipient_vat_id` | Never updated once issued (GoBD) | **PII:** the recipient's name, address and VAT ID | The issuer's legal period from the end of the year of issue: `INVOICE_RETENTION_YEARS`, 10 by default (`payments/invoices.py:50`, `payments/settings.py:40`), then deleted by the daily `purge_invoices_once` (`payments/jobs.py:61-77`, D-9, since `235eeaa`). Account deletion keeps them |
 | `invoice_counters` (`:88-94`) | `year` PK, `last`, taken under a row lock | | none | Kept |
-| `connect_accounts` (`:97-106`) | An owner's Stripe Express account, created in the country the app sends at onboarding (default `DE`; since `235eeaa`, M-9): `owner_id` PK, `account_id`, `payouts_enabled`, `details_submitted` | `account_id` unique | Pseudonymous. Identity and bank details stay with Stripe | Deleted with the account (the Stripe account is not) |
+| `connect_accounts` (`:97-106`) | An owner's Stripe Express account, created in the country the app sends at onboarding (default `DE`; since `235eeaa`, M-9; since `747ed6b` only a live market's): `owner_id` PK, `account_id`, `payouts_enabled`, `details_submitted` | `account_id` unique | Pseudonymous. Identity and bank details stay with Stripe | Deleted with the account (the Stripe account is not) |
 | `outbox`, `processed_events`, `revoked_sessions` | §1 | | | |
 
 ### 2.4 notifications (`backend/services/notifications/notifications/tables.py`)
@@ -144,7 +148,7 @@ Booking states: `HOLDING` keeps the window and `OPEN` blocks account deletion
 | Table | Purpose and key columns | Personal data | Retention |
 |---|---|---|---|
 | `devices` (`:21-33`) | Push devices: `token` PK (APNs or FCM), `user_id`, `platform`, `endpoint` (SNS platform endpoint ARN), `created_at`, `install_hash` (sha256 of the app install's random id; a token moves to another person only from the same install, else 409 `device_taken`: `backend/services/notifications/notifications/routes.py:39-76`, P-33). At most 10 per person (`routes.py:29`, `:91-97`) | **PII:** device token | Removed on sign-out, sign-out-everywhere (`person.signed_out`), a dead endpoint, account deletion, the 10-device cap, or a move to another person. Since `235eeaa` every removal deletes the SNS endpoint first (`drop_devices`, `push.py:85-94`, D-7) |
-| `inbox` (`:36-55`) | The bell: an id derived from (event, recipient, key), `user_id`, `kind`, `params`, `title`, `body`, `link`, `at`, `read_at`. Index `ix_inbox_user_at`. Also what limits message emails to one per conversation per 15 minutes (`_recently_told`, `notifications/handlers.py:88-99`, FL-3) | **PII:** what happened to someone; listing titles | **No retention**; deleted with the account |
+| `inbox` (`:36-55`) | The bell: an id derived from (event, recipient, key), `user_id`, `kind`, `params`, `title`, `body`, `link`, `at`, `read_at`. Index `ix_inbox_user_at`. Also what limits message emails to one per conversation per 15 minutes (`_recently_told`, `notifications/handlers.py:88-99`, FL-3) | **PII:** what happened to someone; listing titles | **12 months** since `747ed6b` (`INBOX_RETENTION_DAYS` = 365, deleted by the hourly `expire_inbox`, `notifications/jobs.py`); deleted with the account |
 | `notification_prefs` (`:58-65`) | `user_id` PK, `prefs` JSON | Preferences | Deleted with the account |
 | `outbox`, `processed_events`, `revoked_sessions` | §1. Notifications publishes nothing, but the runtime creates the outbox anyway | | |
 
@@ -212,7 +216,9 @@ verified addresses (`mail.py:60-61`). The data export reads them the same way
   `refundAmount`, `noShow`, `windowStart`, `windowEnd`, `expiresAt`, `change`,
   `rating`, `quality`, `reason`, `targetType`, `decision`, `category`,
   `district`, `ready`, `status`, `cancellationRate`, `mode`, `hours`
-  (`scrub.py:15-31`). Names, business details, emails, card fingerprints,
+  (`scrub.py:15-31`). Since `747ed6b` a `by` of `support:<who>` (a staff
+  resolution) is rewritten to `staff`, so no staff identity reaches the lake
+  (`scrub.py:35`). Names, business details, emails, card fingerprints,
   titles, statements, notes and the trace context never reach the lake. A
   record it cannot parse is dropped, never stored raw (P-6, fixed). Its
   self-check asserts that `outcome.note`, a moderation `statement` and
@@ -230,7 +236,7 @@ and `infra/localstack/check.py:13-42`). They match each service's handler
 map: catalog `backend/services/catalog/catalog/main.py:35-42` (`HANDLERS`),
 booking `backend/services/booking/booking/handlers.py:171-179`, payments
 `backend/services/payments/payments/handlers.py:177`, notifications
-`backend/services/notifications/notifications/handlers.py:215-223`. Since
+`backend/services/notifications/notifications/handlers.py` (`handlers`). Since
 `235eeaa` a test holds all of this together
 (`backend/libs/cappy_common/tests/test_subscriptions.py`, D-13): the four
 subscription lists must be equal, every subscribed type must be in the
@@ -245,11 +251,11 @@ pseudonymous id. Ids (`sub`s) are pseudonymous personal data everywhere.
 
 | Event | Producer (file:line) | Consumers | Payload (PII marked) |
 |---|---|---|---|
-| `booking.status_changed` | booking: `booking/repository.py:190`, `:200` (built at `:74-94`) | payments, notifications | `bookingId`, `from`, `to`, `by`, `requesterId`, `ownerId`, `listingId`, `title`, **`ownerName` (PII)**, **`ownerBusiness` (PII: legal name, address, register number, VAT ID)**, `amount`, `currency` (the listing's, lowercase, since `235eeaa`), `refundAmount` (absent when nothing was charged, FL-8), `noShow`, `windowStart`, `windowEnd`, `expiresAt` |
+| `booking.status_changed` | booking: `booking/repository.py:190`, `:200` (built at `:74-94`) | payments, notifications | `bookingId`, `from`, `to`, `by`, `requesterId`, `ownerId`, `listingId`, `title`, **`ownerName` (PII)**, **`ownerBusiness` (PII: legal name, address, register number, VAT ID)**, `amount`, `currency` (the listing's, upper-case since `747ed6b`), `refundAmount` (absent when nothing was charged, FL-8; the full amount on a staff `refund_buyer` since `747ed6b`), `noShow`, `windowStart`, `windowEnd`, `expiresAt` |
 | `booking.rated` | booking: `repository.py:343-356` | catalog | `bookingId`, `ownerId`, `listingId`, `requesterId`, `outcome` {`quality`, `onTime`, **`note` (PII: free text)**, `tags`}, `at`, `ratedAt` |
 | `booking.renter_rated` | booking: `repository.py:358-367` | catalog | `bookingId`, `renterId`, `ownerId`, `quality` |
 | `booking.message` | booking: `booking/messages.py:191-195` | notifications | `bookingId`, `senderId`, `recipientId`, `title` (never the message text) |
-| `booking.owner_reliability` | booking: `repository.py:238-242` | catalog | `ownerId`, `rate`, `bookings`, `failures` |
+| `booking.owner_reliability` | booking: `owner_reliability` (`repository.py:257-293`) and, since `61b15b8`, `owner_responsiveness` (`:214-255`; the latter on every `requested` → accepted, declined or expired) | catalog (`on_owner_reliability`: applies only the fields the event carries) | either `ownerId`, `rate`, `bookings`, `failures` (S-18), or `ownerId`, `responseMins`, `responseRate` (H-1; both null under 3 requests) |
 | `moderation.person_flagged` | booking: `repository.py:245-253`, `booking/handlers.py:94-110` | catalog | `personId`, `reason`, **`details` (free text naming a booking and a suspended account)** |
 | `payment.authorised` | payments: `payments/routes.py:112-114`; reconciliation `payments/jobs.py:51` (no fingerprint) | booking | `bookingId`, **`cardFingerprint` (sensitive)** |
 | `payment.failed` | payments: `payments/handlers.py:78` | booking | `bookingId`, `ownerId`, `requesterId`, `stage` |
@@ -266,6 +272,7 @@ pseudonymous id. Ids (`sub`s) are pseudonymous personal data everywhere.
 | `moderation.decision` | catalog: `moderation.py:384-399`, `:426-437`, `:449-460` | notifications | `reportId?`, `action` (now also `remove_content`), `targetType`, `targetId`, `affectedId` (for a message or review, its author since `235eeaa`), `reporterId`, **`reporterEmail` (PII)**, **`statement` (free text)**, `statementOfReasons` |
 | `moderation.owner_suspended` | catalog: `moderation.py:378`, `:448` | booking | `ownerId` |
 | `moderation.owner_reinstated` | catalog: `moderation.py:475` | booking | `ownerId` |
+| `listing.idle` (since `61b15b8`, H-4) | catalog: `keep_schedules_once`, `catalog/jobs.py:66` (a live, unheld listing with no window in the next 7 days, at most once a week: `listings.idle_notice_at`) | notifications (`listing_idle`, the `bookings` category) | `listingId`, `ownerId`, `title` |
 
 `booking.requested` and `booking.created`, declared but never produced, were
 removed from the catalogue in `235eeaa` (D-12).
@@ -277,7 +284,7 @@ Notifications reads a `timeZone` field on `booking.status_changed`
 
 | Producer ↓ / consumer → | catalog | booking | payments | notifications | analytics only |
 |---|---|---|---|---|---|
-| **catalog** | – | `listing.changed`, `moderation.owner_suspended`, `moderation.owner_reinstated`, `profile.deleted`, `person.signed_out` | `profile.deleted`, `person.signed_out` | `profile.deleted`, `person.signed_out`, `moderation.report_received`, `moderation.decision` | `profile.created` |
+| **catalog** | – | `listing.changed`, `moderation.owner_suspended`, `moderation.owner_reinstated`, `profile.deleted`, `person.signed_out` | `profile.deleted`, `person.signed_out` | `profile.deleted`, `person.signed_out`, `moderation.report_received`, `moderation.decision`, `listing.idle` | `profile.created` |
 | **booking** | `booking.rated`, `booking.renter_rated`, `booking.owner_reliability`, `moderation.person_flagged` | – | `booking.status_changed` | `booking.status_changed`, `booking.message` | – |
 | **payments** | `payment.payouts_ready`, `payment.identity_verified` | `payment.authorised`, `payment.failed`, `payment.identity_verified` | – | `payment.payout_sent` | `payment.captured`, `payment.refunded` |
 | **notifications** | – | – | – | – | – |
@@ -304,17 +311,17 @@ Locally and in tests all services share one token.
 | matching → catalog | `GET /internal/listings/{id}/context` | one listing's world (ReadTx) | `matching/clients.py:51-52` | `catalog/routes.py:740-744` |
 | matching → booking | `POST /internal/busy` | taken intervals (ReadTx) | `matching/clients.py:65` | `booking/routes.py:626-633` |
 | booking → matching | `POST /internal/match-for-offer` | the quote (with its `currency` since `235eeaa`), listing and owner (including **owner name and business**) for a new booking | `backend/services/booking/booking/clients.py:79` | `backend/services/matching/matching/routes.py:233` |
-| booking → catalog | `GET /internal/listings/{id}/handover` | **address and instructions (sensitive)**, copied into `bookings.handover` at accept | `booking/clients.py:61` | `catalog/routes.py:779-784` |
+| booking → catalog | `GET /internal/listings/{id}/handover` | **address and instructions (sensitive)**, and since `61b15b8` the exact `location` and `postalCode`, copied into `bookings.handover` at accept | `booking/clients.py:61` | `catalog/routes.py:815-825` |
 | booking → catalog | `POST /internal/media/evidence` | checks the `evidence:<name>` references are the person's own private uploads, marks them used (never swept) | `booking/clients.py:64` | `catalog/routes.py:752-764` |
 | booking → catalog | `GET /internal/evidence/{name}` | **a hand-over photo's bytes**, for booking's signed link (P-27) | `booking/clients.py:66-67` | `catalog/routes.py:767-771` |
 | booking → payments | `POST /internal/intents` | booking id, parties, amount, owner net, currency (the listing's) → client secret | `booking/clients.py:98` | `backend/services/payments/payments/routes.py:121` |
 | catalog → booking | `GET /internal/people/{p}/open` | open bookings count, and until when (account deletion) | `backend/services/catalog/catalog/clients.py:63-64` | `booking/routes.py:556-560` |
-| catalog → booking | `GET /internal/people/{p}/export` | bookings, messages sent, evidence (with notes), who they blocked, `identityVerified`, `suspended`, their card fingerprints (data export; D-10) | `catalog/clients.py:66-68` | `booking/routes.py:586-623` |
+| catalog → booking | `GET /internal/people/{p}/export` | bookings, messages sent, evidence (with notes, and since `747ed6b` photo links signed for a day), who they blocked, `identityVerified`, `suspended`, their card fingerprints (data export; D-10) | `catalog/clients.py:66-68` | `booking/routes.py:591-633` |
 | catalog → booking | `GET /internal/stats/active-people` | a count (DSA stats) | `catalog/clients.py:70-72` | `booking/routes.py:567-572` |
 | catalog → booking | `GET /internal/messages/{id}` | **who wrote a reported message** (`senderId`), so moderation can suspend the author (FL-7, since `235eeaa`) | `catalog/clients.py:74-75` | `booking/routes.py:534-542` |
 | catalog → booking | `POST /internal/messages/{id}/remove` | a moderation `remove_content`: the message's words are replaced | `catalog/clients.py:77-78` | `booking/routes.py:545-553` |
 | catalog → payments | `GET /internal/people/{p}/open` | pending payouts (account deletion) | `catalog/clients.py:52-53` | `payments/routes.py:351-360` |
-| catalog → payments | `GET /internal/people/{p}/export` | payout account, identity status, invoices (with the recipient fields), payments (charged, refunded, paid out, the renter's card fingerprint) | `catalog/clients.py:49-50` | `payments/routes.py:363-414` |
+| catalog → payments | `GET /internal/people/{p}/export` | payout account, identity status (with `consentAt`, `consentVersion` since `747ed6b`), invoices (with the recipient fields), payments (charged, refunded, paid out, the renter's card fingerprint) | `catalog/clients.py:49-50` | `payments/routes.py:363-414` |
 | catalog → notifications | `GET /internal/people/{p}/export` | inbox items, settings, devices (platform, registration time) and the Cognito email and locale (`signIn`) | `catalog/clients.py:96-98` | `backend/services/notifications/notifications/routes.py:184-200` |
 | support (runbook) → booking | `POST /internal/bookings/{id}/resolve` | settles a dispute. Staff normally use `/admin/bookings/{id}/resolve`. The runbook runs it from a catalog task with catalog's token, since booking accepts only matching and catalog | `docs/runbook.md` | `booking/routes.py:512-521` |
 
@@ -328,7 +335,7 @@ Services also call out to AWS and Stripe directly:
 - catalog and booking → Cognito `AdminGetUser`, to check a staff account has TOTP MFA, cached 5 minutes (`cappy_common/auth.py:186-219`, P-3);
 - notifications → SES `SendEmail` (`mail.py:106-121`);
 - notifications → SNS Mobile Push, and `DeleteEndpoint` whenever a device row goes: a moved token, sign-out, sign-out-everywhere, deletion, the 10-device cap and a dead endpoint (`push.py:45-94`, D-7);
-- catalog → S3 (`media/` public, `private/` evidence) and CloudFront invalidations of a taken-down listing's photos, `/media/<name>`, through the `Cdn` seam (`catalog/media.py:116-175`, `catalog/cdn.py`, `catalog/moderation.py:242-253`, F-4);
+- catalog → S3 (`media/` public, `private/` evidence) and CloudFront invalidations, `/media/<name>`, through the `Cdn` seam: a taken-down listing's photos, and since `747ed6b` every file the hourly sweep deletes (`catalog/jobs.py:44`) (`catalog/media.py:116-175`, `catalog/cdn.py`, `catalog/moderation.py:242-253`, F-4);
 - payments → Stripe: payments and Connect (`payments/provider.py`), and Stripe Identity sessions and their redaction behind `IdentityProvider` (`payments/identity.py`, F-1).
 
 ---
@@ -345,7 +352,7 @@ Services also call out to AWS and Stripe directly:
 | **Photos** | S3 media bucket, content-addressed, versioned, old versions expire after 30 days (`infra/platform/storage.tf:10-47`): listing photos under `media/` (public through CloudFront), hand-over evidence under `private/` (CloudFront may read only `media/*`: `storage.tf:62-64`); `catalog.media`; `listings.photos`; `booking_evidence.photos`; `listing_snapshot.photo` | S3, CloudFront for listing photos only (a year of immutable caching, ADR 0007) |
 | **ID checks** | Outcome and consent only: `payments.identities` (with `consent_at`, `consent_version`), `booking.verified_people`, `catalog.owners.verified` (since `235eeaa`), `payment.identity_verified`. The document and selfie stay with the provider, behind `IdentityProvider` (`payments/identity.py`), and are redacted there on deletion (`payments/tables.py:47-61`) | Stripe Identity |
 | **Payments** | `payments.payments`, `invoices`, `connect_accounts`; `bookings.amount`/`refund_amount`/`currency`; **card fingerprints** in `payments.card_fingerprint`, `bookings.card_fingerprint` and `payment.authorised` (cleared on deletion, except booking's copy for a suspended person) | Stripe (cards, Connect KYC and bank details) |
-| **Location** | `owners.district` and `country` (since `235eeaa`; also sent to Stripe as the Connect account's country); `listings.address` (private) and `district`; `bookings.handover.address`; `profile.created.district`. `GET /districts/nearest?lat&lng` does not store the coordinates (`catalog/routes.py:435-445`); the web keeps the chosen district in `localStorage` (`web/src/app/store.tsx:79`, `:97`) | none (Amazon Location is planned, M-7) |
+| **Location** | `owners.district` and `country` (since `235eeaa`; also sent to Stripe as the Connect account's country); `listings.address` (private) and `district`; since `61b15b8` `listings.spec.location` (exact point, public only snapped to ~500 m), `country` and `postalCode` (private until accepted); `bookings.handover.address`, and its `location` and `postalCode`; `profile.created.district`. `GET /districts/nearest?lat&lng` does not store the coordinates (`catalog/routes.py:435-445`); the web keeps the chosen district in `localStorage` (`web/src/app/store.tsx:79`, `:97`) | none (Amazon Location is planned, M-7) |
 | **Device tokens** | `notifications.devices.token`, `endpoint` and `install_hash`; SNS platform endpoints (deleted with their row since `235eeaa`) | SNS Mobile Push → APNs (Apple) and FCM (Google) |
 | **Analytics** | S3 analytics lake: every event reduced to the allowlist in §3.1 (pseudonymous ids, statuses, amounts, times, categories, districts), gzipped JSON, 730 days, Glacier after 90 (`infra/platform/analytics.tf`, `analytics/scrub.py`); Athena `cappy_events` | Firehose, Lambda, S3, Athena |
 | **Logs** | CloudWatch, 90 days in prod and 14 elsewhere (`infra/platform/ecs.tf:129-133`); client crash reports are logged with emails and phone numbers replaced (`backend/services/gateway/gateway/main.py:103-109`, P-34), other free text kept. WAF keeps no sampled requests (`sampled_requests_enabled = false` on every rule, `40fbc5f`) | CloudWatch |
@@ -387,16 +394,16 @@ table exported or not, with a reason for every table left out, and
 | Saved listings | yes |
 | Reviews written | yes (rating, text, date) |
 | Reviews about them | yes (`reviewsAboutMe`, since `235eeaa`) |
-| Photos | names and upload times (`photos`); a listing photo's file is at `/media/<name>`. Hand-over photos are in the private store, which `/media/` does not serve |
+| Photos | names and upload times (`photos`); a listing photo's file is at `/media/<name>`. Hand-over photos are in the private store, which `/media/` does not serve; booking's part links them (next row) |
 | Bookings (both sides) | yes (`bookings`, as the viewer sees them) |
 | Messages sent | yes, the unmasked words |
-| Hand-over evidence | stage, photo references and, since `235eeaa`, the `note`. New photos still appear as `evidence:<name>` references the person cannot open, not as files or links |
+| Hand-over evidence | stage, the `note` (since `235eeaa`) and, since `747ed6b`, each photo as a booking link signed for a day (`EXPORT_LINK_TTL`, `booking/routes.py:597-625`), so the file can be saved from it. Rows from before `f303350` keep their public URLs |
 | Blocks they made; verified and suspended flags; their card fingerprints (booking) | yes (`blocked`, `identityVerified`, `suspended`, `cardFingerprints`, since `235eeaa`) |
 | Payments | yes: amount, currency, status, whether charged, refunded and paid out, and the renter's card fingerprint (`235eeaa`) |
 | Invoices | yes, with currency and the recipient's name, address and VAT ID (`235eeaa`) |
-| Payout account, identity status | yes, as summaries (connected, payouts enabled; status and `verifiedAt`). **The recorded consent (`consent_at`, `consent_version`) is still left out** |
+| Payout account, identity status | yes, as summaries (connected, payouts enabled; status and `verifiedAt`), and since `747ed6b` the recorded consent (`consentAt`, `consentVersion`, `payments/routes.py:381`) |
 | Reports they filed, with their details and `reporter_email` | yes (`reportsFiled`, since `235eeaa`) |
-| Moderation decisions about them | yes for decisions on their listings or profile (`moderationDecisionsAboutMe`: action, target, statement, statement of reasons). **A decision on one of their messages or reviews is missing**: its target is the message or review id, which the query does not match |
+| Moderation decisions about them | yes (`moderationDecisionsAboutMe`: action, target, statement, statement of reasons). Since `747ed6b` the query also matches `moderation_actions.person_id` (`catalog/repository.py:278`), so decisions on their messages and reviews are in. Such decisions recorded before `747ed6b` have no `person_id` (the migration could not back-fill them) and are still missing |
 | Notifications and settings | yes |
 | Push devices | yes: platform and registration time (`devices`, `235eeaa`) |
 | Email and locale (Cognito) | yes (`signIn`, read from Cognito at export time, `235eeaa`) |
@@ -420,9 +427,8 @@ minutes (`infra/platform/identity.tf:90-92`); only matching, which verifies
 tokens but has no revocation table, still accepts one until it expires. The
 app still calls Cognito `DeleteUser` itself afterwards, as the quick path, and
 signs out whatever happens (`web/src/data/auth.ts:282-287`, `Profile.tsx`
-`remove`). The `delete_me` docstring (`catalog/routes.py:349-352`) still says
-the app deletes the sign-in and that bookings and payments "hold no personal
-data"; neither is true.
+`remove`). ~~The `delete_me` docstring is wrong~~: rewritten in `747ed6b` to
+say what happens.
 
 Every row below is pinned by the register (`cappy_common/privacy.py`:
 `delete`, `redact` or `keep`, with the reason for each `keep`) and checked
@@ -431,14 +437,14 @@ by `test_privacy.py` (D-11, `235eeaa`).
 | Store | On deletion | Where |
 |---|---|---|
 | Cognito user | deleted by notifications on `profile.deleted`, and by the app | `notifications/mail.py:90-98`; `auth.ts:282` |
-| `revoked_sessions` (every database) | a row for the person is written (kept: an id and a time) | `guard.py:49-77` |
-| `catalog.owners` | name → "Former member", initials → "—", `business` → null, `verified` → false, `cancellation_rate` → null, `deleted_at` set; `district`, `country`, `adult_confirmed_at`, the rating counters and `suspended_at` kept. The same `sub` signing up again gets a fresh record (counters reset, 18+ asked again), and a suspension stays (FL-11) | `repository.py:224-238`, `:406-415` |
-| `catalog.listings` | all of them (also ones removed before): soft-deleted, `title` → "Removed listing", `blurb` and `instructions` → "", `rules` and `photos` → `[]`, `address` → null; `spec` kept | `repository.py:196-210` |
+| `revoked_sessions` (every database) | a row for the person is written (an id and a time), pruned after 25 h since `747ed6b` | `guard.py` |
+| `catalog.owners` | name → "Former member", initials → "—", `business` → null, `verified` → false, `cancellation_rate`, `response_mins` and `response_rate` → null, `deleted_at` set; `district`, `country`, `adult_confirmed_at`, the rating counters and `suspended_at` kept. The same `sub` signing up again gets a fresh record (counters reset, 18+ asked again), and a suspension stays (FL-11) | `repository.py:224-238`, `:406-415` |
+| `catalog.listings` | all of them (also ones removed before): soft-deleted, `title` → "Removed listing", `blurb` and `instructions` → "", `rules` and `photos` → `[]`, `address` → null; since `747ed6b` `spec.extraLabel` and `spec.machine` → ""; the rest of `spec` kept, **including `location` and `postalCode`** (since `61b15b8`) | `repository.py:210-230` |
 | `catalog.saved_listings` | deleted | `:220` |
 | `catalog.payable_owners` | deleted | `:221` |
 | `catalog.reviews` they wrote | author → "Former member", `author_id` → null; **`text` kept** | `:239-243` |
 | `catalog.reviews` about them | kept | none |
-| `catalog.media` and the S3 objects (`media/` and `private/`) | every row marked unused and dated 2000, so the next hourly sweep deletes the rows and the files in both stores, except a file another person also holds (D-1). **CloudFront's cached copies of their listing photos are not purged** (cached a year, ADR 0007) | `repository.py:212-214`, `jobs.py:24-42` |
+| `catalog.media` and the S3 objects (`media/` and `private/`) | every row marked unused and dated 2000, so the next hourly sweep deletes the rows and the files in both stores, except a file another person also holds (D-1). Since `747ed6b` the sweep also purges each deleted file from CloudFront (`jobs.py:44`) | `repository.py:233`, `jobs.py:24-45` |
 | `catalog.reports` they filed | `reporter_id` and `reporter_email` → null, `details` → "[removed: the account was deleted]"; the case stays (D-3). Reports about them are kept; every report loses its reporter 183 days after the decision | `repository.py:215-219`, `jobs.py:45-60` |
 | `catalog.moderation_actions` | kept (DSA record) | none |
 | `catalog.idempotency_keys` | deleted | `repository.py:220` (`idempotency.forget`) |
@@ -455,7 +461,7 @@ by `test_privacy.py` (D-11, `235eeaa`).
 | `payments.payments` | kept (financial); `card_fingerprint` → null on payments they were either party to | `payments/handlers.py:171-175` |
 | `payments.invoices` | kept, until the issuer's period ends (§2.3) | `payments/jobs.py:61-77` |
 | `notifications.devices` | deleted, each SNS platform endpoint first (D-7) | `notifications/handlers.py:188-196`, `push.py:85-94` |
-| `notifications.inbox` | deleted | `notifications/handlers.py:205` |
+| `notifications.inbox` | deleted (and otherwise kept 12 months since `747ed6b`) | `notifications/handlers.py:205` |
 | `notifications.notification_prefs` | deleted | `:206` |
 | `outbox` and `processed_events` | expire after 7 and 21 days | `events.py:325-326` |
 | SQS DLQs | expire after 14 days | `messaging/main.tf:32` |
@@ -491,7 +497,7 @@ The gaps, with their tasks:
 | ~~Names, business identity and reporter emails in event payloads reach the two-year lake~~. **Fixed in `f303350`**: the Firehose scrub keeps an allowlist (§3.1). The payloads still carry them between services, in `outbox` (7 days) and the DLQs (14 days) | P-6 |
 | ~~The Cognito user survives when the app skips `DeleteUser`~~. **Fixed in `f303350`** (`AdminDeleteUser` on `profile.deleted`). ~~Names still stay in booking snapshots~~: redacted since `235eeaa` (D-5) | P-23 |
 | ~~Tokens stay valid for up to 60 min after deletion~~. **Fixed in `f303350`**: services with a database refuse them once the event arrives, and tokens last 15 min. Matching still accepts one until it expires | P-24 |
-| ID-check data is special-category: CAI declaration, the DPA. Consent is recorded before a session starts (**`f303350`**, P-18), only the person's current session counts (**`f303350`**, P-28), ~~nothing redacts the Stripe Identity session on deletion~~ (**fixed in `235eeaa`**, D-6), and `retention.md` gives the schedule. The recorded consent is not in the export | P-17 |
+| ID-check data is special-category: CAI declaration, the DPA. Consent is recorded before a session starts (**`f303350`**, P-18), only the person's current session counts (**`f303350`**, P-28), ~~nothing redacts the Stripe Identity session on deletion~~ (**fixed in `235eeaa`**, D-6), and `retention.md` gives the schedule. ~~The recorded consent is not in the export~~ (**fixed in `747ed6b`**) | P-17 |
 | ~~Evidence photos sit behind public URLs~~. **Fixed in `f303350`**: a private prefix and 15-minute signed links. Rows from before it keep their public URLs | P-27 |
 | Client error logs keep free text. **Partly fixed in `f303350`**: emails and phone numbers are replaced, and the per-address limit uses the trusted proxy hop | P-34 |
 | ~~WAF sampled requests keep headers in us-east-1~~. **Fixed in `40fbc5f`** (sampled requests off on every rule) | P-20 |
@@ -501,7 +507,8 @@ The gaps, with their tasks:
 | Nothing documents the transfers (US and Canadian data in Frankfurt; EU data to US processors) | P-19 |
 | No CCPA/CPRA request process | P-29 |
 | No DPAs, records of processing or DPIA | G-B3, P-30 |
-| No task yet: CloudFront keeps a deleted person's listing photos until they expire from the edge (a year); the export gives hand-over photos as unusable `evidence:` references, omits the ID-check consent and misses moderation decisions on the person's messages and reviews; the `inbox` has no retention; `revoked_sessions` rows are kept for ever (accepted in the register); a listing's `spec` survives deletion; the `delete_me` docstring is wrong | none |
+| ~~CloudFront keeps a deleted person's listing photos; the export gives hand-over photos as unusable `evidence:` references, omits the ID-check consent and misses moderation decisions on the person's messages and reviews; the `inbox` has no retention; `revoked_sessions` rows are kept for ever; a listing's `spec` free text survives deletion; the `delete_me` docstring is wrong~~. **Fixed in `747ed6b`** (message and review decisions recorded before it stay unattributed) | none |
+| A deleted person's listings keep `spec.location` and `spec.postalCode` (since `61b15b8`): the exact point of what was often their home outlives the account. `forget` clears only `extraLabel` and `machine` | none yet |
 
 ---
 
@@ -514,29 +521,35 @@ The gaps, with their tasks:
   - Invoices: `net`, `vat` and `gross`.
   - Events: `amount`.
   - No floats anywhere on the money path.
-- **Currency** (M-3, since `235eeaa`): every listing carries one of twelve
-  ISO 4217 codes, upper-case, default `EUR` (`Currency`,
-  `cappy_common/models.py:156`, `:183`; stored in `listings.spec`). A quote
-  carries its listing's (`Quote.currency`, `models.py:252`, set at
-  `pricing.py:64`). A booking takes the listing's, **lower-cased** as Stripe
-  writes it (`booking/routes.py:181`; `Booking.currency`, `models.py:370`), and
-  so do the intent, `payments.currency`, `invoices.currency`,
-  `booking.status_changed.currency` and the cancellation quote; the intent
-  validates `^[a-z]{3}$` (`payments/routes.py:46-53`). Nothing converts
-  between currencies. The API therefore answers upper-case on listings and
-  quotes and lower-case on bookings; the web's `formatMoney` upper-cases
-  before formatting (`web/src/domain/money.ts`). Sanity bounds on listing
-  prices scale with the currency (`_MONEY_SCALE`, `catalog/routes.py:273-289`);
-  the ID-check threshold (`VERIFY_ABOVE_CENTS`) and the held-listing threshold
-  (`REVIEW_ABOVE_CENTS`) are one number of minor units for every currency
-  (ponytail notes at `booking/settings.py:34-36`, `catalog/settings.py:46-49`;
-  per currency with M-2). Emails format amounts per currency and language
-  (`money`, `notifications/texts.py:251-265`, HUF without decimals). The
-  booking column default `"eur"` (`booking/tables.py:50`) remains.
+- **Currency** (M-3, since `235eeaa`): every listing carries one of thirteen
+  ISO 4217 codes (ISK added in `747ed6b`), upper-case (`Currency`,
+  `cappy_common/models.py`; stored in `listings.spec`). Since `747ed6b` a
+  listing without one takes its owner's market's currency, and another one
+  is refused (`currency_not_in_market`). A quote carries its listing's
+  (`Quote.currency`, set at `pricing.py:64`). **Upper-case everywhere since
+  `747ed6b`:** the booking (`Booking.currency`, default `"EUR"`; the column
+  has no default), the intent (which accepts either case and stores
+  upper-case), `payments.currency`, `invoices.currency`,
+  `booking.status_changed.currency` and the cancellation quote. Migrations
+  booking `0015_currency_upper` and payments `0009_currency_upper` upper-cased
+  existing rows. Only the Stripe adapter lower-cases it
+  (`payments/provider.py`, `create_intent` and `transfer`). Nothing converts
+  between currencies.
+- **Market thresholds** (M-2, since `747ed6b`): `cappy_common/markets.json`
+  holds, per country, `id_check_above`, `held_listing_above` and
+  `max_rate_per_hour` in the market's own minor units (DE and AT: 30 000,
+  10 000 and 1 000 000 EUR cents; CH: 28 000, 9 500 and 950 000 CHF
+  centimes). Booking's ID-check gate and catalog's held-listing rule use the
+  listing owner's market (`market(owner.country)`); `_check_numbers` caps
+  every money field at the market's `max_rate_per_hour`.
+  `VERIFY_ABOVE_CENTS`, `REVIEW_ABOVE_CENTS`, `_MONEY_SCALE` and
+  `PAYOUT_COUNTRIES` are gone. Emails format amounts per currency and
+  language (`money`, `notifications/texts.py`, HUF and ISK without
+  decimals).
 - **Fee:** 15% (`PLATFORM_FEE_BPS = 1500`, `pricing.py:14`), inside the total.
   `owner_net = total - fee` (`pricing.py:61-72`). A partial refund pays the
   owner their pro-rata share of what is kept (`payments/handlers.py:88-106`).
-  Per-market fees come with M-2.
+  `markets.json` has no fee field, so the fee is still one for every market.
 - **Invoices** (`payments/invoices.py`) are issued once per booking, at the
   payout or when a late cancellation keeps a fee (`payments/handlers.py:107-115`, `:134-142`).
   - **Numbering:** `CAP-<year>-<7 digits>`, one series per calendar year of
@@ -556,9 +569,9 @@ The gaps, with their tasks:
   (`payments/routes.py:419-460`). Chargebacks hold payouts
   (`payments/routes.py:450-457`, `handlers.py:122-124`). Connect accounts are
   created in the owner's country with the full service agreement
-  (`payments/provider.py:160-175`), for the countries in `PAYOUT_COUNTRIES`
-  (the EEA, CH, GB, US and CA: `payments/routes.py:33-35`; others get 422
-  `country_unsupported`), M-9.
+  (`payments/provider.py:160-175`), M-9, and since `747ed6b` only in a live
+  market (DE, AT, CH; others get 422 `country_unsupported`,
+  `payments/routes.py:236`).
 - **Reconciliation:** every ~5 minutes (`payments/jobs.py:80-82`), intents
   still `created` after 10 minutes are looked up at Stripe:
   - `requires_capture` → authorised, and `payment.authorised` is sent;
@@ -628,12 +641,15 @@ The gaps, with their tasks:
   analytics lake and Stripe secrets (M-10). It is validated and applied to
   LocalStack only (GOAL 12).
 - **Nothing is replicated between cells.** Only the static web bundle, the
-  market config (M-2) and DNS are global.
+  market config (`cappy_common/markets.json`, built since `747ed6b`: each
+  market names its `cell`, `eu` or `na`) and DNS are global.
 - A person belongs to one cell, chosen from their country at sign-up. The app
   stores the cell and talks to `https://<cell>.api.<domain>` (M-22). Someone
   with accounts in both cells has two separate accounts, each exported and
   deleted separately.
-- A listing's market comes from its geocoded address (M-5, M-7). A booking
+- A listing's market is its owner's today (`747ed6b`); from its geocoded
+  address once there is a geocoder (M-7; listings carry a `country` since
+  `61b15b8`, but nothing uses it for the market yet). A booking
   takes the listing's market, currency and entity (M-23). A booking across
   cells is refused.
 - The US and Canadian tables, events and lake stay in Canada, and Québec

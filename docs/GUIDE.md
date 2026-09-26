@@ -4,8 +4,11 @@ Cappy is a members-only marketplace where people and firms rent out idle
 machines, rooms, vehicles and storage by the hour. It ships as a web app (an
 installable PWA) and as iOS and Android apps, which are Capacitor shells
 around the same build (ADR 0012). Markets are all of Europe, the US and
-Canada (GOAL 16, ADR 0013). The demo data is set in Berlin, with some
-listings in Amsterdam, Paris, Lyon, Milan, Brescia and Lisbon.
+Canada (GOAL 16, ADR 0013); each country is a market in
+`backend/libs/cappy_common/cappy_common/markets.json`, and only Germany,
+Austria and Switzerland are open (`live`) today. The demo data is set in
+Berlin, with some listings in Amsterdam, Paris, Lyon, Milan, Brescia and
+Lisbon.
 
 This guide has two parts:
 
@@ -95,20 +98,37 @@ change anything. Then read [B9](#b9-adding-a-feature).
 
 ### The demo accounts
 
-`make up` creates three accounts in the local sign-in service
-(`local/bootstrap.py`, the `DEMO` list):
+`make up` creates four accounts in the local sign-in service
+(`local/bootstrap.py`, the `DEMO` list), all with verified emails:
 
 | Role | Email | Password | What it is for |
 |---|---|---|---|
 | Host (owner) | `host@demo.cappy.local` | `Demo-pass-123!` | The seeded owner "Nadia Brandt" (Kreuzberg). Owns **one** demo listing: *Festool TS 55 plunge saw + 1.4 m rail* (Tempelhof, €4 an hour, 2 to 8 hours), with its seeded reviews and record. Use it to accept or decline requests, hand over, get paid and see invoices. |
+| Second host (new owner) | `host2@demo.cappy.local` | `Demo-pass-123!` | "Demo Host Two" (Neukölln, Germany), with no completed jobs, so it behaves like a brand-new owner. Owns the three listings below. Use it for instant book, weekly opening hours, a batch (van) listing and the staff approval of a held listing (since `61b15b8`, GD-5). |
 | Renter (buyer) | `buyer@demo.cappy.local` | `Demo-pass-123!` | "Demo Buyer", home district Kreuzberg. Use it to browse, book, pay, message, cancel, dispute and review. |
 | Staff (moderator) | `staff@demo.cappy.local` | `Demo-pass-123!` | "Cappy Staff", in the `admin` group. Opens the staff console at `/admin`: reports, held listings, direct actions, the audit log. |
 
-The buyer and staff profiles are made by `local/demo_profiles.py`, so they
-skip onboarding. The demo world also has about 70 other owners and 78
-listings, but **those owners have no sign-in**. You can book their listings,
-and nobody will ever answer, so a request to them simply lapses. For anything
-that needs the other side to act, book the host's plunge saw.
+The second host's listings are made through the API by
+`local/demo_profiles.py`, the way a new owner would make them (all in
+Neukölln, hand-over address "Weserstraße 1, 12047 Berlin"):
+
+| Listing | Price | Opening hours (weekly schedule, Berlin time) | What it is for |
+|---|---|---|---|
+| *Bandsaw and bench, book instantly* (workshop) | €15 an hour, 1 to 8 hours | Monday to Friday, 09:00 to 18:00 | **Instant book**: a booking is confirmed as soon as the card is held, with no host step (script 5) |
+| *Van run, Neukölln to Leipzig on Saturdays* (freight, booked by quantity) | €25 an hour plus a €20 setup fee | Saturday and Sunday, 10:00 to 16:00 | A batch listing (pallet spaces), booked by request |
+| *Photo studio with daylight wall (waits for review)* (creator) | €160 an hour, 2 to 10 hours | Monday to Friday, 09:00 to 18:00 | **Held for a staff check**: a new owner above €100 an hour. It waits under **Waiting for a check** in the console until staff approve it (scripts 15, 19) |
+
+Their free windows come from the weekly schedule: the server keeps eight
+weeks of windows open and rolls them on hourly, so these listings never run
+out of time to book. The web's listing form does not offer weekly opening
+hours yet; only the API does (FLOWS.md §23).
+
+The buyer, second host and staff profiles are made by
+`local/demo_profiles.py`, so they skip onboarding. The demo world also has
+about 70 other owners and 78 listings, but **those owners have no sign-in**.
+You can book their listings, and nobody will ever answer, so a request to
+them simply lapses. For anything that needs the other side to act, book the
+host's plunge saw or one of the second host's listings.
 
 Be aware:
 
@@ -118,7 +138,8 @@ Be aware:
   run in prod). The password `Demo-pass-123!` is a local-only value that
   appears in the repository on purpose. It is not a secret.
 - **The "Continue as demo …" buttons** (**Continue as demo host**,
-  **Continue as demo buyer**, **Continue as demo staff**) appear under the
+  **Continue as demo buyer**, **Continue as demo host2**, **Continue as demo
+  staff**) appear under the
   sign-in form only when the build has `VITE_DEMO_ACCOUNTS`. Only the local
   bootstrap writes that setting (into `web/.env.development.local`, via
   `make up`), so a deployed build never has them.
@@ -141,24 +162,35 @@ you reset (see [A6](#a6-resetting-the-local-data)).
    ```sh
    make codes
    ```
-   It prints the most recent codes, newest at the bottom. To see which code
-   belongs to which email, use
-   `docker compose logs cognito | grep -B1 'Code:'` (it shows a
-   `Destination:` line above each code).
+   It prints the last 20 sign-up and password-reset codes, newest at the
+   bottom, one per line: the email address it went to, then the code (since
+   `61b15b8`, GD-2).
 4. Type the six digits. The form submits by itself and signs you in.
 5. Onboarding asks for your name, person or business, district, what brings
    you to Cappy, and the 18+ tick.
 
 **Emails to fresh accounts.** The local sign-in service does not mark an
 address as verified when you confirm it, and Cappy only emails verified
-addresses. So a fresh account gets bell notifications but **no emails**. The
-demo accounts are created verified, so they do get emails. A developer can
-mark a fresh account as verified (recipe in [B11](#b11-debugging-recipes)).
+addresses. So a fresh account gets bell notifications but **no emails**
+until you run, from the project folder:
+
+```sh
+make confirm EMAIL=anna.test1@example.com
+```
+
+It marks the email verified, and also confirms the account if the code was
+never typed (`local/confirm.py`, since `61b15b8`, GD-2). The demo accounts
+are created verified, so they get emails already.
 
 **Making a fresh account staff.** Staff are members of the `admin` group in
-the sign-in service. Locally a developer adds them (recipe in
-[B11](#b11-debugging-recipes)). Then sign out and in again, because the group
-is read from the sign-in token. Or simply use `staff@demo.cappy.local`.
+the sign-in service. Locally:
+
+```sh
+make confirm EMAIL=anna.test1@example.com ADMIN=1
+```
+
+Then sign out and in again, because the group is read from the sign-in
+token. Or simply use `staff@demo.cappy.local`.
 
 ### Staff two-step sign-in (MFA)
 
@@ -256,7 +288,13 @@ The ID check opens Stripe Identity's own window in test mode.
 - **A booking's id** is the last part of its address, `/bookings/<id>`. Staff
   need it to settle disputes.
 - Locally, **the hand-over button is available at once**, whatever the booked
-  time (see [A5](#a5-shortcutting-time-based-steps)).
+  time, and **a booking can start 5 minutes from now** (deployed: 2 hours).
+  So every flow, no-shows, disputes and reviews included, can be walked in
+  minutes (see [A5](#a5-shortcutting-time-based-steps)).
+- **Where Cappy is open.** A profile or listing in a country that is not
+  open yet (anything but Germany, Austria and Switzerland) is refused with
+  "Cappy is not open in … yet" (`market_not_live`). A listing is priced in
+  its owner's country's currency; another currency is refused.
 
 ## A4. Test scripts, feature by feature
 
@@ -322,8 +360,9 @@ As the demo buyer.
       search." Type `saw`. **Expect:** matching listings, including the
       plunge saw.
 - [ ] Pick a category (for example Workshop & tools). Set hours, district and
-      radius. **Expect:** bookable times, never starting sooner than 2 hours
-      from now.
+      radius. **Expect:** bookable times, never starting sooner than 5
+      minutes from now locally (2 hours deployed; see
+      [A5](#a5-shortcutting-time-based-steps)).
 - [ ] Change the sort (best match, cheapest, soonest, nearest). **Expect:**
       the order changes and `?sort=` in the address changes with it.
 - [ ] Switch between the list and the map. Pick another district or city.
@@ -344,6 +383,11 @@ As the demo buyer, open the plunge saw (`/listing/l9`).
       incl. … service fee".
 - [ ] Choose a duration, then a day, then a time. **Expect:** the price
       updates; only free starts are offered.
+- [ ] The host card's response time. **Expect** it only for an owner with at
+      least 3 answered or lapsed requests in 90 days (measured since
+      `61b15b8`, H-1). Known gap, not a new bug: for an owner not yet
+      measured (the demo owners), the web still prints "Replies in ~null
+      min" (FLOWS.md §23).
 - [ ] Tap the heart. **Expect:** it fills at once; the listing appears under
       Saved on your profile. Tap again to remove it.
 - [ ] **Report** and **Block** are on the page (tested in scripts 18 and 13).
@@ -353,7 +397,8 @@ As the demo buyer, open the plunge saw (`/listing/l9`).
 
 ### 5. Booking by request and by instant book
 
-**By request** (the demo listings are all request-only):
+**By request** (every seeded listing is request-only; of the second host's,
+only the bandsaw is instant):
 
 - [ ] As the demo buyer, on the plunge saw, pick a time and tap **Request**.
       **Expect:** a confirm sheet with when, how long, where, "You pay",
@@ -366,7 +411,8 @@ As the demo buyer, open the plunge saw (`/listing/l9`).
 - [ ] In the host's window, **Expect:** a badge on **Earn**, the request in
       the Earn inbox, a bell item "New request: …", and an email.
 
-**By instant book** (you need a listing with Instant book on):
+**By instant book** (you need a listing with Instant book on). The second
+host's *Bandsaw and bench, book instantly* already has it on; or:
 
 - [ ] As the demo host, go to **Earn**, **Edit** the plunge saw, and turn
       **Instant book** on. Save.
@@ -445,10 +491,14 @@ With an accepted booking of the plunge saw.
 
 ### 9. No-show
 
-A no-show can only be reported from the booked start until 2 hours after it
-(the host: from 30 minutes after the start). This rule is not shortened
-locally, so you need an accepted booking whose start has just passed. See
-[A5](#a5-shortcutting-time-based-steps) for how to set one up.
+A no-show can only be reported on an accepted booking nobody has marked as
+handed over, from the booked start until 2 hours after it: the buyer
+reporting the host from the start itself, the host reporting the buyer from
+30 minutes after the start (the late renter's grace). These windows are not
+shortened locally, but the lead time is: book a start about 5 to 10 minutes
+from now, have the host accept, and wait for the start
+([A5](#a5-shortcutting-time-based-steps)). The host's side needs another 30
+minutes of waiting.
 
 - [ ] Before the start: **Expect:** no "did not show up" button.
 - [ ] Buyer, after the start, nobody marked the hand-over: **… did not show
@@ -478,7 +528,10 @@ locally, so you need an accepted booking whose start has just passed. See
 
 ### 11. Disputes
 
-Needs an accepted or in-progress booking whose start has passed
+Needs an accepted or in-progress booking whose start has passed. Only the
+buyer can report a problem, from the booked start until the booking
+completes (the buyer confirming it, or the system 48 hours after the end).
+Locally, book a start about 5 minutes from now, accept, and wait for it
 ([A5](#a5-shortcutting-time-based-steps)).
 
 - [ ] Buyer, before the start: **Expect:** no **Report a problem** button.
@@ -492,10 +545,11 @@ Needs an accepted or in-progress booking whose start has passed
       gets "You have been paid"; the buyer gets "How was …?".
 - [ ] On another disputed booking: **Resolve dispute: refund the buyer**.
       **Expect:** the booking is cancelled and refunded in full; the buyer gets
-      "Cancelled: …".
-- [ ] Known gap, not a new bug: after **Refund the buyer**, the booking page
-      says "nothing was charged" although it was refunded (FLOWS.md §23,
-      FL-8). There is also no list of disputed bookings in the console yet.
+      "Cancelled: …", and the booking page says the full amount "is refunded
+      to the card" (the resolution records `refundAmount` since `747ed6b`;
+      before, the page said "nothing was charged").
+- [ ] Known gap, not a new bug: there is no list of disputed bookings in the
+      console yet.
 - [ ] A disputed booking never completes by itself.
 
 ### 12. Two-way blind reviews
@@ -540,7 +594,10 @@ On a booking of the plunge saw, in **Messages with …**.
 
 ### 14. The ID check
 
-Needed once per person when a booking's total is **above €300**.
+Needed once per person when a booking's total is above the ID-check
+threshold of the listing owner's market (`markets.json`
+`id_check_above`): **€300** in Germany and Austria, CHF 280 in
+Switzerland. Every demo owner is German, so €300 here.
 
 - [ ] As the demo buyer, open *LED wall, 4 × 3 m* (Kreuzberg, €26 an hour)
       and book 12 hours or more. **Expect:** the sheet **Check your ID once**,
@@ -555,7 +612,10 @@ Needed once per person when a booking's total is **above €300**.
 ### 15. Becoming a host and creating a listing (held listings)
 
 Use a **fresh** account (the demo host already has completed jobs, so its
-listings are never held).
+listings are never held). To see a held listing without making one, the
+second host's photo studio is already waiting. The threshold is the owner's
+market's (`markets.json` `held_listing_above`): €100 an hour in Germany and
+Austria, CHF 95 in Switzerland.
 
 - [ ] Go to **Earn** → **List your first thing** (or Profile → **List
       something you own**). Pick a category.
@@ -576,6 +636,11 @@ listings are never held).
 - [ ] Manage a listing: **Edit** (mode and category cannot change),
       **Pause** (not offered; waiting requests stay), **Remove** (confirm;
       waiting requests are declined, confirmed bookings stand).
+- [ ] Leave a live listing with no free window in the next 7 days (a fresh
+      listing whose only window is further out). **Expect:** within about an
+      hour (the catalog's hourly job), a bell item and email "No free time
+      next week: …" linking to its edit page, at most once a week per
+      listing (since `61b15b8`, H-4).
 
 ### 16. Payouts and invoices
 
@@ -660,7 +725,10 @@ Use a **fresh** account for deletion.
 
 - [ ] Profile → **Your data** → **Download my data**. **Expect:** a file
       `cappy-my-data.json` with your profile, listings, bookings, messages,
-      payments, notifications and settings. No card numbers.
+      payments, notifications and settings. No card numbers. Since
+      `747ed6b` it also has the ID-check consent (when, which text), links
+      to your hand-over photos that work for a day, and staff decisions about
+      your messages and reviews.
 - [ ] Download 6 times in a day. **Expect:** the 6th is refused: "try again
       tomorrow".
 - [ ] With an open booking (requested, accepted, in progress or disputed):
@@ -682,7 +750,8 @@ Use a **fresh** account for deletion.
       other sessions, so Cappy skips that step and the other browser can
       refresh its sign-in and carry on. Its push devices are still removed.
       Note what you see, but do not report the other browser staying signed in
-      as a bug.
+      as a bug: this is a stated limitation of the local stack (GD-4, not
+      fixable on cognito-local, which has no global sign-out).
 - [ ] Try it 6 times in an hour. **Expect:** the 6th is refused.
 - [ ] Plain **Sign out**. **Expect:** back to sign-in; drafts are cleared.
 
@@ -720,41 +789,49 @@ scripts 1 to 22 again at 390 × 844 and check:
 Some steps depend on the clock. Locally a few are shortened; for the rest a
 developer can change a setting.
 
-**Already shortened locally** (`compose.yaml`, the `booking` service):
+**Already shortened locally** (`compose.yaml`):
 
-- `START_EARLY_MINUTES: "100000"`: the hand-over can be marked straight away
-  for any booking starting in the next ~69 days (deployed: 30 minutes before
-  the start). So you can walk a booking from request to payout in minutes:
-  request, accept, **I have handed it over**, **Mark as handed back**.
-- `SWEEP_SECONDS: "5"`: expiries and auto-completions are applied within
-  seconds of being due (deployed: 30 seconds).
+- `MIN_LEAD_MINUTES: "5"` (the `matching` service, since `61b15b8`, GD-3): a
+  booking can start 5 minutes from now (deployed: 120 minutes). This is what
+  makes no-shows, disputes and reviews walkable in minutes.
+- `START_EARLY_MINUTES: "100000"` (`booking`): the hand-over can be marked
+  straight away for any booking starting in the next ~69 days (deployed: 30
+  minutes before the start). So you can walk a booking from request to
+  payout in minutes: request, accept, **I have handed it over**, **Mark as
+  handed back**.
+- `SWEEP_SECONDS: "5"` (`booking`): expiries and auto-completions are applied
+  within seconds of being due (deployed: 30 seconds).
+
+These shortcuts never reach real people: deployed (staging, prod) a service
+refuses to start with `MIN_LEAD_MINUTES` under 60, `START_EARLY_MINUTES`
+above 60 or `AUTO_COMPLETE_AFTER_HOURS` under 24 (`unsafe_reasons` in
+`matching/settings.py` and `booking/settings.py`).
 
 **Not shortened** (so the time must really pass, or a developer changes the
 setting):
 
 | Step | Rule | Setting (service) |
 |---|---|---|
-| Earliest bookable start | now + 120 min | `MIN_LEAD_MINUTES` (matching) |
 | Unpaid booking expires | 30 min | `PAYMENT_TIMEOUT_MINUTES` (booking) |
 | Host must answer | 24 h, never past the start | `ANSWER_WITHIN_HOURS` (booking) |
 | Auto-complete | 48 h after the end | `AUTO_COMPLETE_AFTER_HOURS` (booking) |
-| No-show and dispute | only after the start; no-show until start + 2 h | fixed in code (`booking/routes.py`) |
+| No-show | from the start (the buyer reporting the host) or start + 30 min (the host reporting the buyer), until start + 2 h; only if nobody marked the hand-over | fixed in code (`booking/routes.py` `NO_SHOW_GRACE`, `NO_SHOW_REPORTABLE`) |
+| Dispute | the buyer, from the start until the booking completes | fixed in code (`booking/routes.py`) |
 | Review window | 14 days after the end | fixed in code |
+| Weekly schedule roll-on and the "no free time next week" notice | hourly | fixed in code (`catalog/jobs.py`) |
 
-**Testing no-shows and disputes.** You need a booking whose start has passed.
-The simplest way without changing anything:
+**Testing no-shows and disputes.** You need an accepted booking whose start
+has passed:
 
-1. As a host (demo or fresh), create or edit a listing with a free window
-   that starts a little more than 2 hours from now.
-2. As the buyer, book its earliest start; the host accepts.
-3. Wait until the start. For the next 2 hours you can test no-shows (do not
-   mark the hand-over) and disputes.
+1. As the buyer, book a start about 5 to 10 minutes from now (the plunge
+   saw, or one of the second host's listings); the host accepts.
+2. Wait until the start. For the next 2 hours you can test no-shows (do not
+   mark the hand-over; the host's report opens 30 minutes after the start)
+   and disputes.
 
-A developer can shorten the wait by adding a setting under the service's
-`environment:` in `compose.yaml`, for example `MIN_LEAD_MINUTES: "5"` on
-`matching`, then running `docker compose up -d matching`. Take it out again
-afterwards and do not commit it. (This mechanism is how every setting is read;
-the particular values have not been tried by hand.)
+To change any other setting, add it under the service's `environment:` in
+`compose.yaml`, then run `docker compose up -d <service>`. Take it out again
+afterwards and do not commit it.
 
 ## A6. Resetting the local data
 
@@ -922,8 +999,9 @@ browser ─► Vite dev server :5173 ─► /api, /media ─► gateway :8000 �
 | `down` | Stop the stack, keep data | |
 | `clean` | Stop it, delete volumes and `.local/*.env` | |
 | `logs` | Follow the six services' logs | stack |
-| `seed-demo` | Load the demo world (additive; local and staging only), the demo buyer and staff profiles, and in Stripe mode verified test payout accounts for demo owners | stack |
-| `codes` | Sign-up codes from cognito-local's log | stack |
+| `seed-demo` | Load the demo world (additive; local and staging only), the demo buyer, second host and staff profiles and the second host's three listings (`local/demo_profiles.py`, through the API; skipped once it owns anything), and in Stripe mode verified test payout accounts for demo owners | stack |
+| `codes` | The last 20 sign-up and reset codes from cognito-local's log, each with the email it went to | stack |
+| `confirm` | `make confirm EMAIL=… [ADMIN=1]`: mark a local account's email verified (so Cappy emails it), confirm it if the code was never typed, and with `ADMIN=1` add it to the `admin` group (`local/confirm.py`) | stack |
 | `test` | `ruff check`, `ruff format --check`, `pytest -q` | nothing |
 | `test-pg` | `pytest` including the Postgres tests, against the compose Postgres on 5433 | `make up` |
 | `test-stripe` | Start `stripe-mock` on 12111 and run the `stripe_mock` tests | Docker |
@@ -1064,8 +1142,8 @@ Checklist:
    change makes untrue, and this guide if a tester-visible step changes.
    Changing a decision needs a new ADR, not an edit.
 3. **Migrations.** Alembic per service, in
-   `<service>/migrations/versions/`, numbered (`0014_revocations.py` is the
-   latest in booking). Expand and contract: new code must work with the schema
+   `<service>/migrations/versions/`, numbered (`0015_currency_upper.py` is the
+   latest in booking, `0017_weekly_schedule.py` in catalog). Expand and contract: new code must work with the schema
    before and after the migration. `make test-pg` fails if migrations and
    models drift.
 4. **Events and subscriptions (D-13).** Event types are in
@@ -1096,6 +1174,12 @@ Checklist:
    `/api/app-config`). Kill switches are settings: `ACCEPTING_BOOKINGS`,
    `PAYOUTS_ON`, `ACCEPTING_LISTINGS` (`docs/runbook.md`, "Kill switches").
    A new provider or unsafe option adds its own `unsafe_reasons` check.
+   **Markets** are configuration, not code (since `747ed6b`, M-2):
+   `cappy_common/markets.json` gives each country its cell, currency,
+   languages, units, minimum age, emergency number and money thresholds (ID
+   check, held listing, price cap) in its own minor units, read through
+   `cappy_common/markets.py` (`market`, `live_market`). Opening a country is
+   setting its `status` to `live`; `tests/test_markets.py` checks the file.
 9. **Signed-in only** (GOAL 13): nothing of the product is reachable before
    sign-in, on the server too. New public routes need a reason (law or the
    stores).
@@ -1121,27 +1205,14 @@ shows it in "tell us reference …" errors, and it is in every log line.
 docker compose logs --no-color | grep <request-id>
 ```
 
-**Sign-up codes:** `make codes`, or with the email:
-`docker compose logs cognito | grep -B1 'Code:'`.
+**Sign-up codes:** `make codes` prints each code with the email it went to.
 
-**cognito-local helpers** (run from `backend/`; they read the pool id from
-`.local/local.env`):
-
-```sh
-cd backend && uv run python - <<'EOF'
-import boto3
-from pathlib import Path
-env = dict(l.split("=", 1) for l in Path("../.local/local.env").read_text().splitlines() if "=" in l)
-idp = boto3.client("cognito-idp", region_name="eu-central-1", endpoint_url="http://localhost:9229",
-                   aws_access_key_id="x", aws_secret_access_key="x")
-pool, email = env["USER_POOL_ID"], "anna.test1@example.com"
-# Let Cappy email this account (cognito-local does not verify on confirmation):
-idp.admin_update_user_attributes(UserPoolId=pool, Username=email,
-    UserAttributes=[{"Name": "email_verified", "Value": "true"}])
-# Make it staff (then sign out and in again):
-idp.admin_add_user_to_group(UserPoolId=pool, Username=email, GroupName="admin")
-EOF
-```
+**cognito-local helpers:** `make confirm EMAIL=anna.test1@example.com` lets
+Cappy email the account (cognito-local does not verify on confirmation) and
+confirms it if the code was never typed; add `ADMIN=1` to make it staff
+(then sign out and in again). The script is `local/confirm.py`: it reads the
+pool id from `.local/local.env` and talks to cognito-local on `:9229`, so it
+works on the local stack only.
 
 **cognito-local quirks** (INFRA.md §7, ADR 0009):
 
@@ -1149,7 +1220,7 @@ EOF
 - issues tokens with `iss=http://0.0.0.0:9229/<pool>`, which is why the
   issuer and the JWKS URL are separate settings;
 - does not set `email_verified` on confirmation (so fresh accounts get no
-  email; see above);
+  email until `make confirm`; see above);
 - answers 500 on `GlobalSignOut`, and cannot sign a user out everywhere, so
   notifications skips that step locally (`notifications/mail.py`);
 - has no MFA, so `ADMIN_MFA_REQUIRED` is off locally.
@@ -1209,7 +1280,9 @@ first real apply is the owner's decision.
 | Deploying and operating | `docs/runbook.md`, `docs/slo.md`, `docs/resilience.md` |
 | Store review notes | `docs/app-review.md` |
 | The API | `docs/api/*.json` |
-| The demo world | `backend/libs/cappy_common/cappy_common/fixtures/seed.json` (generated; do not edit by hand) |
+| The demo world | `backend/libs/cappy_common/cappy_common/fixtures/seed.json` (generated; do not edit by hand); the demo accounts in `local/bootstrap.py` (`DEMO`), their profiles and the second host's listings in `local/demo_profiles.py` |
+| Markets (which countries are open, currency, thresholds) | `backend/libs/cappy_common/cappy_common/markets.json` |
+| How results are ranked | `GET /api/ranking` (the ranker's own weights, `matching/domain/match.py` `W`, `SIGNALS`) |
 
 ---
 
