@@ -1391,4 +1391,7 @@ export const DE: Record<string, string> = {
   "Unread": "Ungelesen",
   "Messages about a booking appear here, for what you booked and for what people booked from you.": "Nachrichten zu Buchungen erscheinen hier: für das, was du gebucht hast, und für das, was andere bei dir gebucht haben.",
   "Your renter": "Deine mietende Person",
+  "When?": "Wann?",
+  "Any time": "Jederzeit",
+  "Any hour": "Jede Uhrzeit",
 }

@@ -1395,4 +1395,7 @@ export const FR: Record<string, string> = {
   "Unread": "Non lus",
   "Messages about a booking appear here, for what you booked and for what people booked from you.": "Les messages sur une réservation apparaissent ici, pour ce que vous avez réservé et pour ce que d’autres ont réservé chez vous.",
   "Your renter": "Votre personne locataire",
+  "When?": "Quand ?",
+  "Any time": "N’importe quand",
+  "Any hour": "N’importe quelle heure",
 }

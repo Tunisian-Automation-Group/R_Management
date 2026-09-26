@@ -21,6 +21,10 @@ export type Search = {
   /** How far out you are willing to look. */
   withinDays: number
   query: string
+  /** UX-15: a particular day ("2026-10-03", the device's calendar), or any. */
+  day: string | null
+  /** With a day: the hour to start from (0–23), or any time that day. */
+  from: number | null
 }
 
 export type Tone = 'ok' | 'error'
@@ -44,6 +48,8 @@ export const defaultSearch: Search = {
   maxDistanceKm: 75,
   withinDays: 14,
   query: '',
+  day: null,
+  from: null,
 }
 
 export function reduce(state: State, e: Event): State {
@@ -138,13 +144,23 @@ export const messageOf = (err: unknown) =>
 export function buildRequirement(search: Search, now: Date): Requirement | null {
   if (!search.categoryId) return null
   const meta = category(search.categoryId)
-  const until = new Date(now.getTime() + search.withinDays * 86_400_000).toISOString()
+  let earliest = now
+  let until = new Date(now.getTime() + search.withinDays * 86_400_000).toISOString()
+  if (search.day) {
+    // "When" (UX-15): that day from the chosen hour, results priced for it.
+    // ponytail: the device's calendar day; the listing's own time zone once
+    // search spans markets with other zones.
+    const [y, m, d] = search.day.split('-').map(Number)
+    const start = new Date(y, m - 1, d, search.from ?? 0)
+    earliest = start > now ? start : now
+    until = new Date(y, m - 1, d + 1).toISOString()
+  }
   if (meta.mode === 'window') {
     return {
       mode: 'window',
       category: search.categoryId,
       hours: search.hours,
-      earliest: now.toISOString(),
+      earliest: earliest.toISOString(),
       latest: until,
       district: search.district,
       maxDistanceKm: search.maxDistanceKm,

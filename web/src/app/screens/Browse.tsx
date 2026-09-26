@@ -23,7 +23,7 @@ import { LocationPicker } from '../components/LocationPicker.tsx'
 import { distanceKm } from '../../domain/match.ts'
 import { CapacityMap, type MapLevel } from '../components/CapacityMap.tsx'
 import { Banner, Button, Chip, EmptyState, oneDecimal, Sheet, Skeleton } from '../components/ui.tsx'
-import { formatDistance, formatRadius, relative, when } from '../format.ts'
+import { dayShort, formatDistance, formatRadius, relative, time, when } from '../format.ts'
 import { plural, t } from '../../i18n.ts'
 
 // The default has to be one of these or the filter opens with nothing selected.
@@ -522,6 +522,30 @@ export function Browse() {
         }
       >
         <div className="space-y-7 pb-4">
+          {/* When (UX-15): a day and a start hour, so "Saturday at 10:00" is a
+              search, not a scroll through every window. */}
+          <FilterGroup label={t('When?')}>
+            <Chip selected={!search.day} onClick={() => send({ type: 'SEARCH_CHANGED', patch: { day: null, from: null } })}>
+              {t('Any time')}
+            </Chip>
+            {nextDays(Math.min(14, search.withinDays)).map((d) => (
+              <Chip key={d.value} selected={search.day === d.value} onClick={() => send({ type: 'SEARCH_CHANGED', patch: { day: d.value } })}>
+                {d.label}
+              </Chip>
+            ))}
+          </FilterGroup>
+          {search.day && (
+            <FilterGroup label={t('From')}>
+              <Chip selected={search.from === null} onClick={() => send({ type: 'SEARCH_CHANGED', patch: { from: null } })}>
+                {t('Any hour')}
+              </Chip>
+              {[8, 10, 12, 14, 16, 18, 20].map((h) => (
+                <Chip key={h} selected={search.from === h} onClick={() => send({ type: 'SEARCH_CHANGED', patch: { from: h } })}>
+                  {time(new Date(2000, 0, 1, h).toISOString())}
+                </Chip>
+              ))}
+            </FilterGroup>
+          )}
           {meta?.mode === 'window' ? (
             <FilterGroup label={t('How long do you need it?')}>
               {(meta.quickHours ?? [1, 2, 4]).map((h) => (
@@ -584,6 +608,18 @@ export function Browse() {
 
 /* ------------------------------------------------------------------ pieces */
 
+/** The next `n` calendar days on this device: value "2026-10-03", label "Sat 3 Oct". */
+function nextDays(n: number): { value: string; label: string }[] {
+  const out: { value: string; label: string }[] = []
+  const d = new Date()
+  for (let i = 0; i < n; i++) {
+    const at = new Date(d.getFullYear(), d.getMonth(), d.getDate() + i, 12)
+    const value = `${at.getFullYear()}-${String(at.getMonth() + 1).padStart(2, '0')}-${String(at.getDate()).padStart(2, '0')}`
+    out.push({ value, label: i === 0 ? t('Today') : dayShort(at.toISOString()) })
+  }
+  return out
+}
+
 /**
  * The search lives in the URL (`?q=…&cat=…&h=…&km=…&days=…&n=…`), so a search
  * can be shared or bookmarked and the back button undoes a category. A URL we
@@ -607,6 +643,8 @@ function useSearchInUrl() {
       else next.set('n', String(s.quantity))
       next.set('km', String(s.maxDistanceKm))
       next.set('days', String(s.withinDays))
+      if (s.day) next.set('on', s.day)
+      if (s.day && s.from !== null) next.set('at', String(s.from))
     }
     return next
   }
@@ -625,6 +663,8 @@ function useSearchInUrl() {
         ...(num('h') ? { hours: num('h')! } : {}),
         ...(num('n') ? { quantity: num('n')! } : {}),
         ...(num('km') ? { maxDistanceKm: num('km')! } : {}),
+        day: /^\d{4}-\d{2}-\d{2}$/.test(params.get('on') ?? '') ? params.get('on') : null,
+        from: params.get('on') && num('at') !== undefined && num('at')! >= 0 && num('at')! < 24 ? num('at')! : null,
         // Snapped to an option the filter sheet offers, so they always agree.
         ...(num('days')
           ? { withinDays: HORIZONS.reduce((a, d) => (Math.abs(d - num('days')!) < Math.abs(a - num('days')!) ? d : a)) }
