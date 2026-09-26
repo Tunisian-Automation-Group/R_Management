@@ -17,7 +17,7 @@ import {
   useDistricts,
   useListing,
   useOffers,
-  useFlag,
+  useGlobalFlag,
   usePaymentsConfig,
   useQuote,
   useReviews,
@@ -67,7 +67,7 @@ export function Listing() {
   const districts = useDistricts()
   const reviews = useReviews(id)
   const payments = usePaymentsConfig()
-  const paidPolicies = useFlag('paidCancellationPolicies')
+  const paidPolicies = useGlobalFlag('paidCancellationPolicies')
 
   const listing = detail.data?.listing
   const cur = listing?.currency

@@ -53,7 +53,8 @@ export const locale = (): string => {
   const region = (device.split('-')[1] ?? '').toUpperCase()
   const own = device.toLowerCase().startsWith(current + '-') ? device : ''
   if (current === 'fr') return region === 'CA' ? 'fr-CA' : own || 'fr-FR'
-  if (current === 'en') return region === 'US' || region === 'CA' ? `en-${region}` : own || 'en-GB'
+  // Without an English region of its own, Europe's English: km, 24 h, € (en-IE), never miles.
+  if (current === 'en') return region === 'US' || region === 'CA' ? `en-${region}` : own || 'en-IE'
   return own || 'de-DE'
 }
 

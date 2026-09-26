@@ -49,8 +49,16 @@ jobs:
       - uses: actions/checkout@v5
       - uses: actions/setup-node@v5
         with: { node-version: 22, cache: npm, cache-dependency-path: web/package-lock.json }
-      - run: npm ci
+      - run: npm ci --ignore-scripts
+      - run: npx tsc --noEmit -p .
       - run: npm run build
+      # The budgets and invariants the app keeps (size, translations, flags,
+      # retry keys, targets): each fails the build when broken.
+      - run: npm run check:size
+      - run: npm run check:i18n
+      - run: npm run check:flags
+      - run: npm run check:attempt
+      - run: npm run check:a11y
 
   images:
     runs-on: ubuntu-latest

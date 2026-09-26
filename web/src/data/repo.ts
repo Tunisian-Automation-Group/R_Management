@@ -411,6 +411,12 @@ export function useFlag(name: string): boolean {
   return flagOn(name, config.data, session?.sub)
 }
 
+/** A switch the server also reads as on-or-off for everyone (it has no
+ *  per-person rollout): only a flag at 100% counts, never a partial rollout. */
+export function useGlobalFlag(name: string): boolean {
+  return useAppConfig().data?.flags?.[name] === true
+}
+
 /** a < b for dotted versions ("1.2.10" > "1.2.9"). */
 export function versionBelow(a: string, b: string): boolean {
   const pa = a.split('.').map(Number)

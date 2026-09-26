@@ -44,19 +44,21 @@ variable "alarm_email" {
   type = string
 }
 
-# Kill switches: terraform apply -var 'switches={bookings=false,payouts=true,listings=true}'
+# Kill switches. Set by the GitHub environment variable SWITCHES (deploy.yml
+# passes it as TF_VAR_switches), e.g. {"bookings":false,"payouts":true,"listings":true}
 variable "switches" {
   type    = object({ bookings = bool, payouts = bool, listings = bool })
   default = { bookings = true, payouts = true, listings = true }
 }
 
-# The operator on fee invoices (§ 14 UStG), in the untracked tfvars:
-# legal = { company = "...", address = "..., ...", vat_id = "DE...", tax_number = "" }
+# The operator on fee invoices (§ 14 UStG). Set by the GitHub environment
+# variable LEGAL (TF_VAR_legal): {"company":"…","address":"…","vat_id":"…","tax_number":""}
 variable "legal" {
   type = object({ company = string, address = string, vat_id = string, tax_number = string })
 }
 
-# Feature flags (S-26): terraform apply -var 'feature_flags=newcheckout:25,chat:100'
+# Feature flags (S-26). Set by the GitHub environment variable FEATURE_FLAGS
+# (TF_VAR_feature_flags), e.g. newcheckout:25,chat:100
 variable "feature_flags" {
   type    = string
   default = ""
