@@ -22,6 +22,8 @@ Everything here runs on one computer. **Nothing is ever run against real AWS
 or any real cloud account** (GOAL 12). No staging or production environment
 exists yet: the Terraform for them is only validated, never applied.
 
+Last synced with the code as of `2257182` (`42c777c` and `2257182`).
+
 ## Contents
 
 - [Quick start for testers (5 minutes)](#quick-start-for-testers-5-minutes)
@@ -103,8 +105,8 @@ change anything. Then read [B9](#b9-adding-a-feature).
 
 | Role | Email | Password | What it is for |
 |---|---|---|---|
-| Host (owner) | `host@demo.cappy.local` | `Demo-pass-123!` | The seeded owner "Nadia Brandt" (Kreuzberg). Owns **one** demo listing: *Festool TS 55 plunge saw + 1.4 m rail* (Tempelhof, €4 an hour, 2 to 8 hours), with its seeded reviews and record. Use it to accept or decline requests, hand over, get paid and see invoices. |
-| Second host (new owner) | `host2@demo.cappy.local` | `Demo-pass-123!` | "Demo Host Two" (Neukölln, Germany), with no completed jobs, so it behaves like a brand-new owner. Owns the three listings below. Use it for instant book, weekly opening hours, a batch (van) listing and the staff approval of a held listing (since `61b15b8`, GD-5). |
+| Host (owner) | `host@demo.cappy.local` | `Demo-pass-123!` | The seeded owner "Nadia Brandt" (Kreuzberg). Owns **one** demo listing: *Festool TS 55 plunge saw + 1.4 m rail* (Tempelhof, €4 an hour, 2 to 8 hours, hand-over address "Tempelhofer Damm 22, 12099 Berlin" since `42c777c`), with its seeded reviews and record. Use it to accept or decline requests, hand over, get paid and see invoices. |
+| Second host (new owner) | `host2@demo.cappy.local` | `Demo-pass-123!` | "Demo Host Two" (Neukölln, Germany, euros), with no completed jobs, so it behaves like a brand-new owner. Owns the three listings below. Use it for instant book, weekly opening hours, a batch (van) listing and the staff approval of a held listing (since `61b15b8`, GD-5). |
 | Renter (buyer) | `buyer@demo.cappy.local` | `Demo-pass-123!` | "Demo Buyer", home district Kreuzberg. Use it to browse, book, pay, message, cancel, dispute and review. |
 | Staff (moderator) | `staff@demo.cappy.local` | `Demo-pass-123!` | "Cappy Staff", in the `admin` group. Opens the staff console at `/admin`: reports, held listings, direct actions, the audit log. |
 
@@ -120,8 +122,19 @@ Neukölln, hand-over address "Weserstraße 1, 12047 Berlin"):
 
 Their free windows come from the weekly schedule: the server keeps eight
 weeks of windows open and rolls them on hourly, so these listings never run
-out of time to book. The web's listing form does not offer weekly opening
-hours yet; only the API does (FLOWS.md §23).
+out of time to book. Since `2257182` the listing form edits weekly hours too
+(script 15).
+
+**The studio starts held after every clean rebuild** (`make clean`, then
+`make up`): `local/demo_profiles.py` creates it through the API as a new
+owner would, and the server holds it (above €100 an hour, no completed
+jobs). Its weekly schedule is saved and its windows are made at once, but
+nobody except host2 can see or book it. It goes live, with its weekly hours
+bookable, **only once a tester approves it** as staff (script 19). After
+that it stays approved until the next clean rebuild: `make up` on an
+existing stack never makes host2's listings again (they are made only while
+host2 owns nothing). So on a stack someone has already used, the studio may
+already be live; check the console's **Waiting for a check** first.
 
 The buyer, second host and staff profiles are made by
 `local/demo_profiles.py`, so they skip onboarding. The demo world also has
@@ -141,8 +154,18 @@ Be aware:
   **Continue as demo buyer**, **Continue as demo host2**, **Continue as demo
   staff**) appear under the
   sign-in form only when the build has `VITE_DEMO_ACCOUNTS`. Only the local
-  bootstrap writes that setting (into `web/.env.development.local`, via
-  `make up`), so a deployed build never has them.
+  bootstrap writes that setting (into `.local/web.env`, which `make up` copies
+  to `web/.env.development.local`), so a deployed build never has them.
+- **After a bootstrap re-run.** `make up` does the copy for you (`Makefile`,
+  the `up` target). If the stack was started any other way (a plain `docker
+  compose up`), copy it by hand and restart the web app:
+  ```sh
+  cp .local/web.env web/.env.development.local
+  ```
+  Without it, after a fresh sign-in pool the app signs in against the old
+  pool and the demo buttons fail.
+- `make up` ends by printing all four demo accounts and the password (since
+  `42c777c`).
 - The store-review accounts in `docs/app-review.md` are something else. They
   are made by hand in the production user pool before a store submission, and
   their passwords never go in the repository.
@@ -166,8 +189,10 @@ you reset (see [A6](#a6-resetting-the-local-data)).
    bottom, one per line: the email address it went to, then the code (since
    `61b15b8`, GD-2).
 4. Type the six digits. The form submits by itself and signs you in.
-5. Onboarding asks for your name, person or business, district, what brings
-   you to Cappy, and the 18+ tick.
+5. Onboarding asks for your name, person or business, **country** (the open
+   ones: Germany, Austria, Switzerland; since `2257182`), district (only that
+   country's), what brings you to Cappy, and the age tick ("I am 18 or
+   older"; the age comes from the country).
 
 **Emails to fresh accounts.** The local sign-in service does not mark an
 address as verified when you confirm it, and Cappy only emails verified
@@ -291,10 +316,15 @@ The ID check opens Stripe Identity's own window in test mode.
   time, and **a booking can start 5 minutes from now** (deployed: 2 hours).
   So every flow, no-shows, disputes and reviews included, can be walked in
   minutes (see [A5](#a5-shortcutting-time-based-steps)).
-- **Where Cappy is open.** A profile or listing in a country that is not
-  open yet (anything but Germany, Austria and Switzerland) is refused with
-  "Cappy is not open in … yet" (`market_not_live`). A listing is priced in
-  its owner's country's currency; another currency is refused.
+- **Where Cappy is open.** The app offers only Germany, Austria and
+  Switzerland in its country pickers (since `2257182`). A profile or listing
+  in a country that is not open yet is refused with "Cappy is not open in
+  that country yet." (`market_not_live`, in your language). A listing is
+  priced in its owner's country's currency (a Swiss owner's in francs); the
+  form shows it and never sends another.
+- **Errors look like errors** (since `2257182`): a failure toast has a red
+  mark instead of a tick and stays about 6 seconds; a success toast about 3.
+  A form the server refuses shows each problem under its own field.
 
 ## A4. Test scripts, feature by feature
 
@@ -312,8 +342,10 @@ Use a fresh Incognito window (so the app thinks this is a first visit).
 - [ ] Open http://localhost:5173/listing/l9 signed out. **Expect:** the
       sign-in screen (not the welcome), and after signing in you land on that
       listing.
-- [ ] Tap **Create an account**. Enter an invalid email. **Expect:** "Enter
-      your email address, like name@example.com."
+- [ ] Tap **Create an account**. Enter an invalid email and leave the field.
+      **Expect:** "That does not look like an email address." under it
+      (since `2257182`); submitting says "Enter your email address, like
+      name@example.com."
 - [ ] Enter a password of 11 characters. **Expect:** "Use at least 12
       characters…". Twelve characters of anything, spaces too, work.
 - [ ] Submit. **Expect:** **Check your email**, and **Send a new code** is
@@ -321,9 +353,23 @@ Use a fresh Incognito window (so the app thinks this is a first visit).
 - [ ] Type a wrong code. **Expect:** a clear "That code is not right" error.
 - [ ] Type the right code from `make codes`. **Expect:** signed in, then the
       onboarding screen.
-- [ ] Onboarding: leave the 18+ box unticked. **Expect:** you cannot
-      continue. Tick it, fill your name and district, and continue.
-      **Expect:** the Explore screen.
+- [ ] Onboarding: leave the name empty and the 18+ box unticked, choose
+      **A business** with no details, and continue. **Expect:** every
+      problem at once (since `2257182`): the name, "Complete the business
+      details above." with each missing business field marked, and the age.
+- [ ] **The country picker** (since `2257182`). **Expect:** **Country**
+      offers only Germany, Austria and Switzerland, named in the app's
+      language, and starts at your device's country if it is one of them
+      (else the first). Pick Switzerland. **Expect:** **Where are you?** lists
+      only that country's districts. The demo world has districts in Germany
+      only (and in Dutch, French, Italian and Portuguese cities, which are not
+      open), so for Austria or Switzerland the list is empty and continuing is
+      refused ("unknown district"): known, not a new bug (FLOWS.md §23). Pick
+      Germany again. **Expect:** Berlin's districts and "I am 18 or older".
+      Tick, fill your name and district, and continue. **Expect:** the
+      Explore screen.
+- [ ] As a business, enter the VAT ID `DE12345`. **Expect:** "A German VAT
+      ID is DE and 9 digits." under the field before anything is sent.
 - [ ] Sign up again with the same email. **Expect:** "There is already an
       account with that email. Sign in instead."
 - [ ] On sign-in, **Forgot your password?** with any address. **Expect:** it
@@ -345,10 +391,18 @@ Use a fresh Incognito window (so the app thinks this is a first visit).
 - [ ] As the demo buyer, set German, then make a booking. **Expect:** the
       bell item and the email (at http://localhost:4566/_aws/ses) are in
       German.
-- [ ] Known gap to confirm, not report: a few system decline reasons
-      ("The listing was taken down by Cappy", "The listing was removed by its
-      owner", "The account was suspended") are shown in English in every
-      language (FLOWS.md §23).
+- [ ] The system decline reasons ("The listing was taken down by Cappy",
+      "The listing was removed by its owner", "The account was suspended")
+      are translated since `2257182`: take a listing down (script 19) with a
+      request waiting, and read the declined booking in German and French.
+- [ ] Open **Help** and the legal pages (privacy, terms, withdrawal,
+      ranking, reporting, accessibility, account deletion) in French.
+      **Expect:** French text since `2257182` (the Impressum stays German).
+      The help pages give the emergency number of your country (112 here).
+- [ ] As an English reader on a US device (Chrome: Settings → Languages,
+      put English (United States) first), look at times. **Expect:** "5:00
+      PM", no leading zero; in German and French, 24-hour times. Emails to
+      an `en-US` account read "Sat, Sep 26, 2:00 PM" (since `42c777c`).
 
 ### 3. Browse and search
 
@@ -369,7 +423,15 @@ As the demo buyer.
 - [ ] Ask for something nothing fits (a tiny radius, many hours). **Expect:**
       "No idle capacity fits that", with **Widen to 90 km** and **Allow 3
       weeks**.
-- [ ] Distances read in km in German, French and European English.
+- [ ] Distances read in km in German, French and European English, the
+      radius on the requirement chip too (since `2257182`).
+- [ ] **The ranking page** (since `2257182`). Beside the count of bookable
+      slots, and beside free-text results, tap **How results are ordered**.
+      **Expect:** `/legal/ranking` with four signals (price, trust, soonest,
+      distance) and their weights as percentages (30 %, 30 %, 20 %, 20 %),
+      read from the server (`GET /api/ranking`), in the app's language, and
+      the statement that nobody can pay for a better position. It opens
+      signed out too.
 - [ ] As the demo host, search. **Expect:** your own plunge saw is never
       offered to you.
 
@@ -383,11 +445,15 @@ As the demo buyer, open the plunge saw (`/listing/l9`).
       incl. … service fee".
 - [ ] Choose a duration, then a day, then a time. **Expect:** the price
       updates; only free starts are offered.
-- [ ] The host card's response time. **Expect** it only for an owner with at
-      least 3 answered or lapsed requests in 90 days (measured since
-      `61b15b8`, H-1). Known gap, not a new bug: for an owner not yet
-      measured (the demo owners), the web still prints "Replies in ~null
-      min" (FLOWS.md §23).
+- [ ] The host card's response time. The seeded owners start with the
+      response time in the demo data (the plunge saw's host: "Replies in ~12
+      min"). Once booking has measured an owner (after their first answer or
+      lapsed request), it is shown only with at least 3 answered or lapsed
+      requests in 90 days (H-1), with "Answers {n} % of requests". Under
+      that, and for the second host, **Expect** nothing about response
+      time, never "null" (fixed in `2257182`).
+- [ ] **Expect** "Approximate area. The exact address is shared once the
+      owner accepts." (on the district line, and in the confirm sheet).
 - [ ] Tap the heart. **Expect:** it fills at once; the listing appears under
       Saved on your profile. Tap again to remove it.
 - [ ] **Report** and **Block** are on the page (tested in scripts 18 and 13).
@@ -460,7 +526,13 @@ Use two windows: buyer and host.
       or the request lapses".
 - [ ] Host: **Accept**. **Expect:** "Accepted. … has been told". Buyer:
       "Confirmed" (bell and email). Both now see **Getting in**: the hand-over
-      address and instructions.
+      address (for the plunge saw "Tempelhofer Damm 22, 12099 Berlin") and
+      instructions, and for a listing with a postal code or a point, the
+      postal code after the address and **Open in a map** (since
+      `2257182`; the point is the district's centre for now).
+- [ ] Host: **Edit** the listing's hand-over address after accepting. Buyer:
+      reload the booking. **Expect:** the new address (since `42c777c`: it is
+      read live while the booking is accepted or in progress).
 - [ ] Make a second request. Host: **Decline**, pick a reason chip, **Send
       decline**. **Expect:** buyer sees "Declined" with the reason and "Nothing
       was charged"; buyer gets an email.
@@ -478,8 +550,11 @@ With an accepted booking of the plunge saw.
       photos together, keep messages and payments on Cappy).
 - [ ] Host: **I have handed it over** (or buyer: **I have collected it**).
       **Expect:** the booking is in progress, and check-in photos are offered.
-- [ ] Add 1 to 12 check-in photos with a note. **Expect:** "Uploading 1 of …"
-      progress, then the photos with their upload time, visible to both sides.
+- [ ] Add 1 to 12 check-in photos with a note. Pick one photo, then tap
+      **Add more photos** and pick another. **Expect:** both are kept (since
+      `2257182`), each preview has a remove button, then "Uploading 1 of …"
+      progress, then the photos with their upload time, visible to both
+      sides.
 - [ ] Buyer: **Mark as handed back**. **Expect:** "Handed back and all
       fine?" with **Yes, it is done**, **Add check-out photos first** and
       **Not yet**.
@@ -524,17 +599,28 @@ minutes of waiting.
       **Expect:** the buyer gets "Cancelled: …" and a full refund.
 - [ ] After the start: **Expect:** no cancel button; the buyer sees **Report a
       problem** instead.
+- [ ] Handed over before the start (tap **I have handed it over** early):
+      **Expect:** no cancel button either; the buyer sees **Report a
+      problem** (since `42c777c`).
+- [ ] The cancel sheet reads the server's answer (since `2257182`): on a
+      requested booking it says the hold is released and nothing is
+      charged; on an accepted one, what you get back.
 - [ ] In Stripe mode, check the refund in the Stripe test dashboard.
 
 ### 11. Disputes
 
-Needs an accepted or in-progress booking whose start has passed. Only the
-buyer can report a problem, from the booked start until the booking
-completes (the buyer confirming it, or the system 48 hours after the end).
-Locally, book a start about 5 minutes from now, accept, and wait for it
-([A5](#a5-shortcutting-time-based-steps)).
+Needs an accepted booking whose start has passed, or an in-progress one
+(handed over), at any time. Only the buyer can report a problem: on an
+accepted booking from the booked start, on an in-progress one at once (since
+`42c777c`, an early hand-over), until the booking completes (the buyer
+confirming it, or the system 48 hours after the end). Locally, book a start
+about 5 minutes from now, accept, and wait for it, or just mark the
+hand-over ([A5](#a5-shortcutting-time-based-steps)).
 
-- [ ] Buyer, before the start: **Expect:** no **Report a problem** button.
+- [ ] Buyer, on an accepted booking before the start: **Expect:** no
+      **Report a problem** button.
+- [ ] Buyer, on a booking handed over before its start: **Report a problem**.
+      **Expect:** the report goes through (since `42c777c`).
 - [ ] Buyer, after the start: **Report a problem**, write what went wrong,
       **Report the problem**. **Expect:** "Reported. The payment is on hold";
       buyer gets "We received your report: …"; host sees "… reported a
@@ -551,6 +637,8 @@ Locally, book a start about 5 minutes from now, accept, and wait for it
 - [ ] Known gap, not a new bug: there is no list of disputed bookings in the
       console yet.
 - [ ] A disputed booking never completes by itself.
+- [ ] If the server refuses a report, **Expect:** the sheet stays open with
+      what you typed and a red error toast (since `2257182`).
 
 ### 12. Two-way blind reviews
 
@@ -589,8 +677,10 @@ On a booking of the plunge saw, in **Messages with …**.
 - [ ] Type a draft, reload the page. **Expect:** the draft is still there.
 - [ ] Emails for messages: at most one per conversation every 15 minutes, and
       they carry the title and a link, never the text.
-- [ ] Known gap: on a completed booking older than 14 days the app still
-      shows the message box, but the server refuses the message (FLOWS.md §23).
+- [ ] On a completed booking more than 14 days after its end, **Expect:** no
+      message box, and "This booking is closed, so no new messages can be
+      sent." (since `2257182`). The same text appears if the server refuses
+      a message as closed.
 
 ### 14. The ID check
 
@@ -605,7 +695,9 @@ Switzerland. Every demo owner is German, so €300 here.
 - [ ] Try to start without ticking. **Expect:** you cannot.
 - [ ] Tick and start. **Fake provider:** it passes at once and the booking
       goes ahead with no second tap. **Stripe mode:** Stripe Identity's test
-      window opens; after it, the app waits up to a minute and books.
+      window opens; after it, the app waits up to a minute and books. (A
+      provider with a hosted page would open in a new window and wait up to
+      two minutes; none is configured locally.)
 - [ ] Book another listing above €300. **Expect:** no second ID check.
 - [ ] Nobody answers this request (its owner has no sign-in); it lapses.
 
@@ -613,17 +705,37 @@ Switzerland. Every demo owner is German, so €300 here.
 
 Use a **fresh** account (the demo host already has completed jobs, so its
 listings are never held). To see a held listing without making one, the
-second host's photo studio is already waiting. The threshold is the owner's
+second host's photo studio is waiting after a clean rebuild (unless a tester
+has approved it since; see [A1](#a1-test-accounts)). The threshold is the owner's
 market's (`markets.json` `held_listing_above`): €100 an hour in Germany and
 Austria, CHF 95 in Switzerland.
 
 - [ ] Go to **Earn** → **List your first thing** (or Profile → **List
       something you own**). Pick a category.
-- [ ] Fill in the title, blurb, district, the hand-over address, the rate,
-      hours, photos (at most 12; each tile shows its upload progress, and a
-      failed one offers **Retry**), rules, instructions
-      and free windows. Reload halfway. **Expect:** "Your unsaved changes are
-      back", with **Discard**.
+- [ ] Fill in the title, blurb, district, the hand-over address, the
+      optional **Postal code** (since `2257182`), the rate (the € sign comes
+      from your country), hours, photos (at most 12; each tile shows its
+      upload progress, and a failed one offers **Retry**), rules,
+      instructions and when it is free. Reload halfway. **Expect:** "Your
+      unsaved changes are back", with **Discard**.
+- [ ] **The weekly editor** (since `2257182`). Under when it is free, each
+      preset now reads "… · every week". Choose **Set my own weekly hours**.
+      **Expect:** a row of day chips (Mon to Sun, in your language) with
+      **Free from** and **Until**, Monday to Friday 09:00 to 18:00 to start,
+      and "Repeats every week in {your device's time zone, such as
+      Europe/Berlin}. Cappy keeps the next 8 weeks open and never overlaps a
+      booking." Untick every
+      day. **Expect:** "Pick at least one day for each time." Set **Until**
+      before **Free from**. **Expect:** "It has to stop being free after it
+      starts being free." Tap **Add other hours** (Saturday and Sunday 10:00
+      to 16:00 appear), fix the first row and publish. **Expect:** on the
+      listing, free windows on those days for the next eight weeks.
+- [ ] Edit that listing. **Expect:** a card "Repeats every week" with the
+      hours and "Cappy keeps the next 8 weeks open for you (Europe/Berlin)."
+      Tap **Stop repeating** (it reads "The weekly schedule stops when you
+      save" and offers **Keep the weekly schedule**) and save. **Expect:** the
+      windows the schedule made are gone; windows you added by date stay.
+      The second host's listings show the same card.
 - [ ] Publish with a rate of **€100 an hour or less**. **Expect:** "… is live",
       and the listing is found in search by other accounts.
 - [ ] Publish another with a rate **above €100 an hour**. **Expect:** "… is
@@ -651,7 +763,15 @@ Austria, CHF 95 in Switzerland.
 - [ ] Complete a booking of one of your listings (scripts 5, 7, 8). **Expect:**
       "You have been paid …" (bell, email), and Earn shows it under earned.
 - [ ] **Invoices** on Earn. **Expect:** one invoice for Cappy's fee per
-      completed booking. Tapping it opens the invoice in a new tab.
+      completed booking, listed as "Service fee · {title} · {dates}" in your
+      language's date format (since `2257182`). Tapping it opens the invoice
+      in a new tab. The recipient block names the host and an address (since
+      `42c777c`): a business's own address, or for a private host the address
+      the payout provider verified; with the fake provider that is
+      "Musterstraße 1, 10115 Berlin, DE (test)".
+- [ ] Stripe mode: **Set up payouts** creates the Stripe account in the
+      profile's country (since `2257182` the app sends it; every demo host is
+      German).
 
 ### 17. Notifications and their settings
 
@@ -668,8 +788,10 @@ Austria, CHF 95 in Switzerland.
       and disputes are always emailed, because they are records of a contract
       or money.
 - [ ] News and offers is off by default.
-- [ ] Known gap: the text "Everything also arrives by email." on Profile is out
-      of date (FLOWS.md §23).
+- [ ] Profile → **Notifications**: **Expect:** under the table, "Booking
+      confirmations and changes always arrive by email, whatever you choose
+      here." (the old "Everything also arrives by email." is gone since
+      `2257182`).
 
 ### 18. Reporting content, signed out and signed in
 
@@ -686,7 +808,8 @@ Austria, CHF 95 in Switzerland.
 - [ ] In an Incognito window, open http://localhost:5173/legal/report.
       **Expect:** the form, asking what you are reporting, its link or
       reference (paste `http://localhost:5173/listing/l9`, or just `l9`), your
-      email, and the good-faith statement.
+      email, and the good-faith statement. Under the form: "If someone is in
+      danger, call 112 first" (your country's number since `2257182`).
 - [ ] Send 4 reports with the same email in one day. **Expect:** the 4th is
       refused.
 - [ ] Staff then sees each report in the console queue (script 19).
@@ -700,6 +823,9 @@ console**, or **Staff** in the desktop header, or http://localhost:5173/admin.
 - [ ] **Reports**: the open queue, oldest first. Open one, **Decide on this
       report**. Try a statement shorter than 20 characters. **Expect:** you
       cannot decide.
+- [ ] Pick **Take down**, type a statement, close the sheet without deciding,
+      and open **Decide** on another report. **Expect:** it opens fresh, at
+      **Dismiss** with an empty statement (since `2257182`).
 - [ ] **Dismiss** with a statement. **Expect:** the reporter is told nothing
       was wrong.
 - [ ] On a listing report, **take down**. **Expect:** the listing disappears
@@ -712,12 +838,19 @@ console**, or **Staff** in the desktop header, or http://localhost:5173/admin.
 - [ ] **Suspend** (the owner, the author or the person). **Expect:** their
       listings come down; they cannot list or book; they can still sign in,
       message, and keep accepted bookings.
-- [ ] **Waiting for a check**: approve a held listing (script 15).
+- [ ] **Waiting for a check**: approve a held listing (script 15). On a
+      clean rebuild the second host's *Photo studio with daylight wall*
+      waits here. **Approve** it. **Expect:** "Approved: it is live now"; the
+      buyer finds it and can book it Monday to Friday, 09:00 to 18:00, for
+      the next eight weeks; as host2, **Edit** shows "Repeats every week". It
+      stays approved until the next `make clean`.
 - [ ] **Act directly**: **Take a listing down** (listing id), **Suspend an
       owner** / **Reinstate an owner** (owner id), and the two **Resolve
       dispute** actions (booking id). A reinstated owner can list and book
       again, but their old listings stay down.
-- [ ] **Audit log**: every action above, with who, what and why.
+- [ ] **Audit log**: every action above, with who, what and why, in words
+      ("Taken down · Listing", "by you", or "by staff" and the first 8
+      characters of their id; since `2257182`).
 
 ### 20. Data export and account deletion
 
@@ -728,7 +861,9 @@ Use a **fresh** account for deletion.
       payments, notifications and settings. No card numbers. Since
       `747ed6b` it also has the ID-check consent (when, which text), links
       to your hand-over photos that work for a day, and staff decisions about
-      your messages and reviews.
+      your messages and reviews (since `42c777c` also older decisions,
+      attributed by a migration and an hourly job). On a desktop browser the
+      file downloads (since `2257182`); on a phone the share sheet opens.
 - [ ] Download 6 times in a day. **Expect:** the 6th is refused: "try again
       tomorrow".
 - [ ] With an open booking (requested, accepted, in progress or disputed):
@@ -744,14 +879,17 @@ Use a **fresh** account for deletion.
 
 - [ ] Sign in as the same fresh account in two browsers.
 - [ ] In one: Profile → **Sign out everywhere** → confirm. **Expect:** that
-      browser is signed out with "Signed out on every device".
+      browser is signed out with "Signed out on every device", and its old
+      token is refused at once (since `42c777c` the check is exact to the
+      moment, not the second).
 - [ ] The other browser, on its next action. **Deployed**, it is signed out.
       **Locally this may not happen:** the local sign-in service cannot end
       other sessions, so Cappy skips that step and the other browser can
       refresh its sign-in and carry on. Its push devices are still removed.
       Note what you see, but do not report the other browser staying signed in
       as a bug: this is a stated limitation of the local stack (GD-4, not
-      fixable on cognito-local, which has no global sign-out).
+      fixable on cognito-local, which has no global sign-out; `docs/runbook.md`,
+      "Local stack only").
 - [ ] Try it 6 times in an hour. **Expect:** the 6th is refused.
 - [ ] Plain **Sign out**. **Expect:** back to sign-in; drafts are cleared.
 
@@ -816,7 +954,7 @@ setting):
 | Host must answer | 24 h, never past the start | `ANSWER_WITHIN_HOURS` (booking) |
 | Auto-complete | 48 h after the end | `AUTO_COMPLETE_AFTER_HOURS` (booking) |
 | No-show | from the start (the buyer reporting the host) or start + 30 min (the host reporting the buyer), until start + 2 h; only if nobody marked the hand-over | fixed in code (`booking/routes.py` `NO_SHOW_GRACE`, `NO_SHOW_REPORTABLE`) |
-| Dispute | the buyer, from the start until the booking completes | fixed in code (`booking/routes.py`) |
+| Dispute | the buyer, from the start (at once once handed over, since `42c777c`) until the booking completes | fixed in code (`booking/routes.py`) |
 | Review window | 14 days after the end | fixed in code |
 | Weekly schedule roll-on and the "no free time next week" notice | hourly | fixed in code (`catalog/jobs.py`) |
 
@@ -845,7 +983,8 @@ afterwards and do not commit it.
   make up
   ```
   Then restart the web app (`cd web && npm run dev`), because `make up` writes
-  a new sign-in setting for it. Clear the site's data in the browser too
+  a new sign-in setting for it. The second host's studio is held again
+  (script 19 approves it). Clear the site's data in the browser too
   (DevTools → **Application** → **Storage** → **Clear site data**), or you may
   see a stale session.
 
@@ -958,7 +1097,8 @@ cd web && npm install && cd ..
 make up                           # builds, migrates, seeds; writes web/.env.development.local
 ```
 
-`make up` prints the API and the demo accounts when it is done.
+`make up` prints the API, the four demo accounts with their password, and a
+pointer to this guide when it is done (since `42c777c`).
 
 ## B3. Architecture in brief
 
@@ -995,7 +1135,7 @@ browser ─► Vite dev server :5173 ─► /api, /media ─► gateway :8000 �
 
 | Target | What it does | Needs |
 |---|---|---|
-| `up` | Build and start the stack, wait for health, copy `.local/web.env` to `web/.env.development.local`, then `seed-demo` | `.env` |
+| `up` | Build and start the stack, wait for health, copy `.local/web.env` to `web/.env.development.local`, then `seed-demo`, then print the API and the four demo accounts | `.env` |
 | `down` | Stop the stack, keep data | |
 | `clean` | Stop it, delete volumes and `.local/*.env` | |
 | `logs` | Follow the six services' logs | stack |
@@ -1010,6 +1150,7 @@ browser ─► Vite dev server :5173 ─► /api, /media ─► gateway :8000 �
 | `infra-validate` | `terraform fmt -check` and `validate` in every root | Terraform |
 | `infra-local` | Apply `infra/localstack` (the event fabric) to LocalStack and prove its routing | `make up`, Terraform |
 | `openapi` | Regenerate `docs/api/*.json` from the services' code | |
+| `bench` | Since `42c777c`: candidate and free-text search at 100 000 synthetic listings in a throwaway database `scale` on the compose Postgres, dropped afterwards (`backend/services/catalog/bench/candidates.py`; results in `docs/bench.md`) | `make up` |
 | `load` | 50 users for 60 s: no 5xx, one winner per contested window | `make up` |
 | `load-spike` | 10× arrival rate for 60 s; shedding may answer 503 | `make up` |
 | `load-mixed` | Open model: 90 % browse, 8 % signed-in, contested bookings, 120 s | `make up` |
@@ -1042,7 +1183,7 @@ the compose network, as in AWS.
 | `.env.example` | yes | The template: `LOCALSTACK_AUTH_TOKEN`, and the optional Stripe test-mode lines |
 | `.env` | **no** | Your copy with the real values. Compose reads it. **Secrets live only here** |
 | `.local/local.env` | no | Written by `local/bootstrap.py`: pool id, client id, issuer, queue URLs, the demo owner map. Loaded by `local/run.sh` into each service |
-| `.local/web.env` → `web/.env.development.local` | no | The Cognito endpoint and client id, and `VITE_DEMO_ACCOUNTS`, for the Vite dev server |
+| `.local/web.env` → `web/.env.development.local` | no | The Cognito endpoint and client id, and `VITE_DEMO_ACCOUNTS`, for the Vite dev server. Written by bootstrap; only `make up` copies it, so after a bootstrap run any other way, `cp .local/web.env web/.env.development.local` and restart `npm run dev` |
 | `web/.env.example` | yes | `VITE_API_URL` (leave unset locally) |
 | `compose.yaml` | yes | Every non-secret local setting. `INTERNAL_TOKEN: local-only-internal-token-not-a-secret` and the LocalStack `test` credentials are deliberately fake |
 
@@ -1107,6 +1248,7 @@ server: the Cognito client id changes.
 | `make e2e` | Sign up, list with a photo, search, book, pay, accept, hand over, complete, pay out, rate, review, emails, plus the edge refusing what it must. In Stripe mode it needs `sk_test_` keys and confirms with Stripe's test card | `make up` |
 | `make load`, `load-spike`, `load-mixed`, `load-soak` | Concurrency: no errors, no double booking, latency percentiles. A laptop finds errors, not capacity numbers | `make up` |
 | `make infra-validate`, `make infra-local` | Terraform validates; the event fabric applied to LocalStack routes each event type correctly | Terraform (`infra-local` also `make up`) |
+| `make bench` | How fast the candidate search (25 km over 7 days, 500 km over 30 days) and two free-text searches are at 100 000 listings: the mean of 10 runs after a warm-up, printed per query. For another size: `cd backend && uv run python services/catalog/bench/candidates.py 20000`. It compares changes on one machine, it does not size production; add a row to `docs/bench.md` (date, commit, conditions) when search code changes | `make up` |
 
 Web checks (`cd web`; CI runs all five after `npm ci --ignore-scripts`,
 `npx tsc --noEmit -p .` and `npm run build`):
@@ -1143,7 +1285,9 @@ Checklist:
    Changing a decision needs a new ADR, not an edit.
 3. **Migrations.** Alembic per service, in
    `<service>/migrations/versions/`, numbered (`0015_currency_upper.py` is the
-   latest in booking, `0017_weekly_schedule.py` in catalog). Expand and contract: new code must work with the schema
+   latest in booking, `0018_decisions_on_reviews.py` in catalog,
+   `0009_currency_upper.py` in payments, `0007_revocations.py` in
+   notifications). Expand and contract: new code must work with the schema
    before and after the migration. `make test-pg` fails if migrations and
    models drift.
 4. **Events and subscriptions (D-13).** Event types are in
@@ -1161,7 +1305,12 @@ Checklist:
 6. **Three languages.** App texts: English is the key (`t('Book and pay')`),
    with entries in `web/src/i18n.de.ts` and `web/src/i18n.fr.ts`
    (`check:i18n` enforces it). Server error messages are English and are
-   translated in the app through the same catalogues, so add those too.
+   translated in the app through the same catalogues, so add those too; a
+   refusal code the reader must understand gets its own line in `CODE_TEXT`
+   (`web/src/data/repo.ts`). A validation error lists every field in
+   `error.fields` (`cappy_common/errors.py`, since `42c777c`): raise
+   `ValueError` in a pydantic validator, or pass `fields=` to an `ApiError`,
+   and show them under the form's fields (`ApiError.fields`).
    Emails and pushes: `notifications/texts.py` (EN, DE, FR). Never call `t()`
    at module level. Format money, dates and distances with the helpers in
    `web/src/domain/money.ts` and `web/src/app/format.ts`, never by hand.
@@ -1279,10 +1428,13 @@ first real apply is the owner's decision.
 | Tables, events, personal data | `docs/DATA.md` |
 | Deploying and operating | `docs/runbook.md`, `docs/slo.md`, `docs/resilience.md` |
 | Store review notes | `docs/app-review.md` |
+| The web app: run, checks, what is stored on the device, languages, store shells | `web/README.md` (rewritten in `2257182`, GD-1) |
 | The API | `docs/api/*.json` |
-| The demo world | `backend/libs/cappy_common/cappy_common/fixtures/seed.json` (generated; do not edit by hand); the demo accounts in `local/bootstrap.py` (`DEMO`), their profiles and the second host's listings in `local/demo_profiles.py` |
+| The demo world | `backend/libs/cappy_common/cappy_common/fixtures/seed.json`, the source since `42c777c` (edit it by hand; the old export script is gone): owners with invented trader details for the businesses, listings, slots, reviews, and `listingAddresses`, invented hand-over addresses per listing; the demo accounts in `local/bootstrap.py` (`DEMO`), their profiles and the second host's listings in `local/demo_profiles.py` |
 | Markets (which countries are open, currency, thresholds) | `backend/libs/cappy_common/cappy_common/markets.json` |
-| How results are ranked | `GET /api/ranking` (the ranker's own weights, `matching/domain/match.py` `W`, `SIGNALS`) |
+| How results are ranked | `GET /api/ranking` (the ranker's own weights, `matching/domain/match.py` `W`, `SIGNALS`), shown on `/legal/ranking` |
+| Search speed | `docs/bench.md` (`make bench`) |
+| What behaves differently on the local stack | `docs/runbook.md`, "Local stack only" |
 
 ---
 

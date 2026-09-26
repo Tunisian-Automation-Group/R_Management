@@ -16,9 +16,11 @@ committed. The reasons behind them are in the ADRs, mainly
 > when applied".
 
 References are `path:line` in the committed tree. Last synced with the code
-as of `61b15b8` (`747ed6b` and `61b15b8`: `listing.idle` in the consumers,
-the `/api/ranking` behaviour, the local shortcuts, `make confirm`, the second
-demo host). Neither commit adds an AWS resource or a cost.
+as of `2257182` (`42c777c` and `2257182`: `make bench`, `make up` listing
+every demo account, the runbook's "Local stack only" section, the second demo
+host's comment, `VITE_CAPPY_USER` gone from `web/.env.example`). Neither
+commit adds an AWS resource or a cost. The sync before covered `747ed6b` and
+`61b15b8`.
 
 Contents: [1 Overview](#1-overview) · [2 Terraform, file by file](#2-terraform-file-by-file) ·
 [3 Environments and cells](#3-environments-and-cells) · [4 Security](#4-security) ·
@@ -468,7 +470,12 @@ reviewed but has never run against an account.
 - `local/bootstrap.py` creates the resources idempotently with the names
   Terraform uses (`cappy-events`, `cappy-<svc>`, `cappy-<svc>-dlq`,
   `cappy-media`), and writes `.local/local.env` for the services and
-  `.local/web.env` for the Vite dev server (`local/bootstrap.py:197-220`). On
+  `.local/web.env` for the Vite dev server (`local/bootstrap.py:197-225`).
+  Only `make up` copies `.local/web.env` to `web/.env.development.local`
+  (`Makefile:12`). After bootstrap runs any other way (a plain `docker
+  compose up`), copy it by hand and restart `npm run dev`; it matters when the
+  pool was made afresh (a wiped `cognito` volume), because the pool and client
+  ids in it change. On
   a stack made earlier it also updates each subscription's filter policy, so a
   newly consumed event type reaches its queue (`:104-121`).
 - `local/run.sh` loads that env, picks the service's queue URL, runs its
@@ -898,25 +905,26 @@ and `LOCALSTACK_AUTH_TOKEN` in `.env` (compose refuses to start without it,
 | Target | What it does | Line |
 |---|---|---|
 | `help` | Lists the targets (the default) | 6 |
-| `up` | Builds and starts the stack, waits for health, copies `.local/web.env` to `web/.env.development.local`, then `seed-demo` | 9-14 |
-| `down` | Stops the stack, keeps data | 16 |
-| `clean` | Stops it and deletes volumes and `.local/*.env` | 19-21 |
-| `logs` | Follows the six services' logs | 23 |
-| `seed-demo` | Loads the demo world (additive; refuses outside local and staging), creates the demo buyer, second host and staff profiles and the second host's three listings through the API (`local/demo_profiles.py`), and with real Stripe gives demo owners verified test accounts | 26-33 |
-| `codes` | The last 20 sign-up and reset codes from cognito-local's log, each with the email it went to (since `61b15b8`) | 35-36 |
-| `confirm` | `make confirm EMAIL=… [ADMIN=1]`: marks a local account's email verified, confirms it if unconfirmed, and with `ADMIN=1` adds it to the `admin` group (`local/confirm.py`, cognito-local on :9229 only; since `61b15b8`) | 38-39 |
-| `test` | ruff check, ruff format check, pytest; no Docker | 41-42 |
-| `test-pg` | pytest including the Postgres tests, against the compose Postgres on 5433 | 44-45 |
-| `test-stripe` | Starts stripe-mock on 12111 and runs the Stripe contract tests | 47-49 |
-| `e2e` | The whole journey against the running stack (`local/e2e.py`) | 51-52 |
-| `web` | `npm ci && npm run build` in `web/` | 54-55 |
-| `infra-validate` | `terraform fmt -check` and `validate` in every root | 59-60 |
-| `infra-local` | Applies `infra/localstack` and runs `check.py` | 62-63 |
-| `openapi` | Regenerates `docs/api/*.json` | 67-68 |
-| `load` | 50 users for 60 s: no 5xx, one winner per contested window | 72-73 |
-| `load-spike` | 10× arrival rate for 60 s; shedding may answer 503 | 77-78 |
-| `load-mixed` | Open-model mix: 90 % browse, 8 % signed in, contested bookings | 80-81 |
-| `load-soak` | An hour at a steady rate; connections, memory and queue ages stay flat | 83-84 |
+| `up` | Builds and starts the stack, waits for health, copies `.local/web.env` to `web/.env.development.local`, then `seed-demo`; since `42c777c` it ends by printing all four demo accounts (`host@`, `host2@`, `buyer@`, `staff@demo.cappy.local`) with their password and a pointer to `docs/GUIDE.md` | 9-15 |
+| `down` | Stops the stack, keeps data | 17 |
+| `clean` | Stops it and deletes volumes and `.local/*.env` | 20-22 |
+| `logs` | Follows the six services' logs | 24 |
+| `seed-demo` | Loads the demo world (additive; refuses outside local and staging), creates the demo buyer, second host and staff profiles and the second host's three listings through the API (`local/demo_profiles.py`), and with real Stripe gives demo owners verified test accounts | 27-34 |
+| `codes` | The last 20 sign-up and reset codes from cognito-local's log, each with the email it went to (since `61b15b8`) | 36-37 |
+| `confirm` | `make confirm EMAIL=… [ADMIN=1]`: marks a local account's email verified, confirms it if unconfirmed, and with `ADMIN=1` adds it to the `admin` group (`local/confirm.py`, cognito-local on :9229 only; since `61b15b8`) | 39-40 |
+| `test` | ruff check, ruff format check, pytest; no Docker | 42-43 |
+| `test-pg` | pytest including the Postgres tests, against the compose Postgres on 5433 | 45-46 |
+| `test-stripe` | Starts stripe-mock on 12111 and runs the Stripe contract tests | 48-50 |
+| `e2e` | The whole journey against the running stack (`local/e2e.py`) | 52-53 |
+| `web` | `npm ci && npm run build` in `web/` | 55-56 |
+| `infra-validate` | `terraform fmt -check` and `validate` in every root | 60-61 |
+| `infra-local` | Applies `infra/localstack` and runs `check.py` | 63-64 |
+| `openapi` | Regenerates `docs/api/*.json` | 68-69 |
+| `bench` | Since `42c777c`: builds a throwaway database `scale` on the compose Postgres (5433) with 100 000 synthetic listings, times candidate and free-text search (mean of 10 runs after a warm-up), then drops it (`backend/services/catalog/bench/candidates.py`; results in `docs/bench.md`) | 73-74 |
+| `load` | 50 users for 60 s: no 5xx, one winner per contested window | 76-77 |
+| `load-spike` | 10× arrival rate for 60 s; shedding may answer 503 | 81-82 |
+| `load-mixed` | Open-model mix: 90 % browse, 8 % signed in, contested bookings | 84-85 |
+| `load-soak` | An hour at a steady rate; connections, memory and queue ages stay flat | 87-88 |
 
 The web dev server is `cd web && npm run dev` (Vite; it proxies `/api` to the
 gateway, `web/vite.config.ts:13`, `:89`).
@@ -942,18 +950,19 @@ inside the compose network, as in AWS.
 
 ### Demo accounts
 
-Created by `local/bootstrap.py:61-70` (`DEMO`), with verified emails; the
-password is printed by `make up` and is in that file.
+Created by `local/bootstrap.py:62-71` (`DEMO`), with verified emails; `make
+up` prints all four with the password (since `42c777c`), which is also in that
+file.
 
 | Role | Email |
 |---|---|
 | Host (the seeded owner `o1`, one listing) | `host@demo.cappy.local` |
-| Second host (since `61b15b8`, GD-5): a new owner in Neukölln, DE, whose three listings `local/demo_profiles.py` makes through the API: an instant-book workshop, a freight (batch) van run, and a studio above the market's review threshold that waits for staff approval; all on weekly schedules | `host2@demo.cappy.local` |
+| Second host (since `61b15b8`, GD-5): a new German owner (EUR; not Swiss, because the demo world has no Swiss places yet) in Neukölln, whose three listings `local/demo_profiles.py` makes through the API: an instant-book workshop, a freight (batch) van run, and a studio above the market's review threshold, which is held on a fresh stack until staff approve it; all on weekly schedules | `host2@demo.cappy.local` |
 | Buyer | `buyer@demo.cappy.local` |
 | Staff (in the `admin` group, for the admin console) | `staff@demo.cappy.local` |
 
 `VITE_DEMO_ACCOUNTS` offers one-tap sign-in to these in the local web build
-only; it is never set in a deploy (`local/bootstrap.py:218-219`). The
+only; it is never set in a deploy (`local/bootstrap.py:221-225`). The
 staff account works with its password alone locally: `ADMIN_MFA_REQUIRED` is
 off unless deployed (`cappy_common/settings.py:80-83`, `:125-127`), because
 cognito-local has no MFA.
@@ -976,7 +985,10 @@ cognito-local has no MFA.
   because cognito-local leaves `email_verified` false.
 - cognito-local cannot sign a person out on other devices (no global
   sign-out), so sign-out-everywhere does not end another browser's session
-  locally (GD-4, a stated limitation).
+  locally once it refreshes (GD-4, a stated limitation). Since `42c777c`
+  `docs/runbook.md` lists this with the other local-only differences (staff
+  MFA off, the short windows) under "Local stack only: what behaves
+  differently".
 - Booking's `START_EARLY_MINUTES` is huge locally so the e2e can hand over
   at once, and matching's `MIN_LEAD_MINUTES` is 5; deployed, the defaults
   hold and settings refuse the local values (`compose.yaml:92`, `:104`).

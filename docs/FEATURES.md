@@ -6,8 +6,8 @@ not the plan: planned work appears only as task ids from
 [`TASKS.md`](TASKS.md). Markets are all of Europe, the US and Canada
 ([GOAL 16](GOAL.md), [ADR 0013](adr/0013-markets.md)). Where the code
 assumes one market (German tax, Berlin time, EU-shaped rules), this file
-says so. Last synced with the code as of `61b15b8` (covering `747ed6b` and
-`61b15b8` since the previous sync at `c454c92`).
+says so. Last synced with the code as of `2257182` (covering `42c777c` and
+`2257182` since the previous sync at `61b15b8`).
 
 Paths are relative to the repository root. `path:line` points at the
 definition. "Seam" means the interface or module boundary a replacement
@@ -68,9 +68,9 @@ changes to several services.
 | Owner onboarding and payouts | Stripe Connect Express, transfers | Yes (same `Provider`) | L |
 | Webhooks, chargebacks | Stripe events | Partial (signature check behind `Provider`; event handling is Stripe-shaped) | M |
 | Reconciliation sweep | Stripe intent status | Partial (`Provider.intent_status` returns Stripe's words) | S |
-| Fee invoices | In-house HTML, German § 14 UStG template | Partial (`Issuer`: zone, rate, label) | M |
+| Fee invoices | In-house HTML, German § 14 UStG template; a private owner's address from the payout provider's KYC (`Provider.account_address`, since `42c777c`) | Partial (`Issuer`: zone, rate, label) | M |
 | VAT / sales tax, platform tax reporting | None (fixed rate from settings; DAC7 tags only) | No | L (M-11..M-14, M-24..M-27) |
-| Identity verification | Stripe Identity (document + selfie) | Backend: yes (`IdentityProvider`, `payments/identity.py`, its own webhook route, since `235eeaa`, F-1). Web: no (the Stripe.js modal, whatever `identityProvider` says) | M |
+| Identity verification | Stripe Identity (document + selfie) | Backend: yes (`IdentityProvider`, `payments/identity.py`, its own webhook route, since `235eeaa`, F-1). Web: yes since `2257182` (a session's hosted `url` opens; the Stripe.js modal only when `identityProvider` is `stripe`) | M |
 | Messaging, contact masking, pay-outside flag | In-house regex | Module boundary (`mask`, `flagged`) | S |
 | Blocks | In-house | n/a | n/a |
 | Hand-over evidence photos | In-house: catalog's private media store, booking's signed links | Yes (via `MediaStore`) | S |
@@ -119,6 +119,21 @@ These apply to several features below.
   Stripe CLI forwarding webhooks (`compose.yaml:108-132`). A new provider needs
   a local fake or emulator here (ADR 0009). Nothing is applied to real AWS
   (GOAL 12).
+- **Errors name every field** (since `42c777c`, V4-20). A 422 `invalid` from
+  request validation carries `error.fields`, `[{field, message}]` with the
+  path inside the body in the API's camelCase names (`business.vatId`), and
+  its `message` is the first of them (`_fields`, `cappy_common/errors.py`);
+  any `ApiError` may carry `fields` too (`put_me`'s unknown district does).
+  The web keeps them on `ApiError.fields` (`web/src/data/repo.ts`) and shows
+  each under its own field in the profile, onboarding and listing forms
+  (`serverBusinessErrors` in `BusinessFields.tsx`, `fieldErrors` in
+  `AddListing.tsx`). Refusal codes the reader should see in their own
+  language are mapped in `CODE_TEXT` (`repo.ts`: `market_not_live`,
+  `market_unknown`, `currency_not_in_market`, `location_outside_district`,
+  `country_unsupported`, `conversation_closed`, EN/DE/FR) before the
+  server's English message. Error toasts have their own tone (`useToast(message,
+  'error')`, `Toast` in `ui.tsx`: no tick, `role="alert"`, 6 s instead of
+  2.8 s, V4-4).
 - **Processors are legal work.** Every processor needs a DPA, an entry in the
   records of processing and a line in the privacy policy (G-B3, P-15, P-19,
   P-30). Swapping one is not done until that paperwork is.
@@ -156,8 +171,13 @@ sign-in.
   issuer, expiry, `token_use`, `client_id`), and it keeps a last-known-good JWKS
   (`auth_jwks_fallback`, fetched at deploy: `identity.tf:107`). Services with
   a database then refuse a token issued before the person's last
-  sign-out-everywhere or deletion (401 `token_expired`, `auth.py:168-174`,
-  `cappy_common/guard.py`, P-24). The gateway passes `Authorization` through
+  sign-out-everywhere or deletion (401 `token_expired`, `auth.py:168-178`,
+  `cappy_common/guard.py`, P-24). Since `42c777c` the comparison is exact:
+  the token's whole-second `iat` against the exact revocation time, so the
+  token that asked for the sign-out, and any issued in the same second, is
+  refused at once; a sign-in in that same second is refused too and has to
+  sign in again (V4-24; before, both were rounded down and such a token lived
+  on for up to 15 minutes). The gateway passes `Authorization` through
   and does not authenticate (`backend/services/gateway/gateway/main.py:34`).
 - **Signed-in only (GOAL 13):** the catalog, matching and booking routers
   require a principal (`catalog/routes.py:32`, `matching/routes.py:36`). What is
@@ -252,7 +272,10 @@ to all their devices.
 - **To swap it:** implement it on the new directory (1.1). IAM:
   `cognito-idp:AdminUserGlobalSignOut` in `ecs.tf:223`.
 - **Limits:** cognito-local does not support global sign-out, so locally only
-  the devices go and the tokens are refused (`mail.py:77`).
+  the devices go and the tokens are refused (`mail.py:77`): another device
+  that refreshes afterwards carries on locally (GD-4, documented as a
+  local-only limit in `docs/runbook.md`, "Local stack only", since
+  `42c777c`).
 
 ### 1.3 Staff role and staff MFA
 
@@ -295,7 +318,13 @@ Store builds older than the minimum are asked to update.
   `APP_LATEST_VERSION` (`gateway/settings.py:34-35`), and since `747ed6b`
   `markets`: per country its currency, languages, units, emergency number,
   status and minimum age (`public_markets`, `main.py:232`; nothing about
-  entities or tax). The web does not read `markets` yet. The app sends
+  entities or tax). Since `2257182` the web reads it: `useMarkets` (every
+  market and the live ones, for the country pickers) and `useMarket(country?)`
+  (the given country, else the profile's, else the device's region if served,
+  else DE; `web/src/data/repo.ts`) give the currency of a new listing, the
+  emergency number on the report sheet, the booking page and the help pages,
+  and the minimum age at onboarding. Until `app-config` answers, Germany's
+  values stand in (`HOME_MARKET`). The app sends
   `X-App-Version` (`web/src/data/repo.ts:82`) and compares versions with
   `versionBelow` (`repo.ts:421`). CloudFront caches the answer
   (`infra/platform/edge.tf:494`).
@@ -314,13 +343,21 @@ picks a home district and confirms they are 18 or older.
   The input is `ProfileIn` (`routes.py:127`); `adult` is required at creation
   and stored as `owners.adult_confirmed_at` (`catalog/tables.py:77`).
   `country` (ISO 3166-1 alpha-2, default `DE`, since `235eeaa`, M-9) is stored
-  on `owners.country`; the web does not send it yet. Since `747ed6b` (M-2) it
-  must be a live market (`live_market`, `routes.py:341`): an unknown country
+  on `owners.country`. Since `747ed6b` (M-2) it
+  must be a live market (`live_market`, `routes.py:357`): an unknown country
   is 422 `market_unknown`, a planned one 422 `market_not_live`. Only DE, AT
-  and CH are live (`cappy_common/markets.json`). The event
-  `profile.created` is emitted at `routes.py:340`. Public profile:
-  `GET /api/owners/{id}` (`routes.py:448`). Screens: `Onboarding.tsx` (the 18+
-  checkbox is at `:106`), `Profile.tsx`.
+  and CH are live (`cappy_common/markets.json`). Since `42c777c` a business
+  without its details and a malformed VAT ID are field errors checked with
+  the rest of the body (`ProfileIn._business_says_who_it_is`,
+  `BusinessIn._vat`), and an unknown district names the `district` field
+  (V4-20). The event `profile.created` is emitted in `put_me`. Public profile:
+  `GET /api/owners/{id}`. Screens: `Onboarding.tsx`, `Profile.tsx`. Since
+  `2257182` both have a **Country** picker of live markets
+  (`CountrySelect.tsx`, names from `Intl.DisplayNames`; onboarding starts at
+  the device's region when Cappy serves it) and show only that country's
+  districts; the profile keeps a country that stopped being live selectable
+  for the person already in it. Both send `country`, and list every missing
+  or malformed field at once.
 - **After a deletion:** the same sign-in (`sub`) signing up again gets a fresh
   profile: counters reset, `verified` and business cleared, 18+ asked again,
   and `profile.created` emitted; a suspension stays (FL-11,
@@ -331,8 +368,9 @@ picks a home district and confirms they are 18 or older.
     `country`, which only sets the payout account's country (7.2). There is no
     address or time zone on a person.
   - The minimum age comes from the market since `747ed6b` (`minimum_age`: 18
-    everywhere but 19 in CA), but it is only in the refusal's wording: the
-    check is still the one 18+ tick, not a date of birth. Age by category is
+    everywhere but 19 in CA). Since `2257182` the onboarding tick and its
+    error say the chosen market's age ("I am {age} or older"). The check is
+    still that one tick, not a date of birth. Age by category is
     M-38. The terms text and store questionnaires are still open (S-5).
   - The response time and rate shown on the profile are measured since
     `61b15b8` (H-1): booking takes, over 90 days, the requests an owner
@@ -341,8 +379,11 @@ picks a home district and confirms they are 18 or older.
     `booking.owner_reliability` (`booking/repository.py:214`); catalog stores
     them on `owners.response_mins` and `response_rate`. Both are null under 3
     such requests; the invented 60-minute default is gone (migration 0016).
-    The web still treats `responseMins` as a number (`format.ts:73`), so an
-    unmeasured owner reads "Replies in ~null min".
+    ~~The web prints "Replies in ~null min"~~: **fixed in `2257182`** (H-1):
+    `responseTime` and `responseRate` (`web/src/app/format.ts`) return null
+    while unmeasured and the listing and booking pages then say nothing
+    about it; measured, the listing's owner card reads "Replies in ~20 min ·
+    Answers 95 % of requests".
   - `Owner.verified` (`cappy_common/models.py:137`) is set by a passed ID
     check since `235eeaa` (F-10): catalog handles `payment.identity_verified`
     (`catalog/handlers.py:84-90`). New profiles get `False`, and deletion
@@ -353,15 +394,21 @@ picks a home district and confirms they are 18 or older.
 A business owner states its legal name, address, register number and VAT ID.
 Renters see it on the listing and at checkout ("your contract is with…").
 
-- **Where:** `BusinessIn` with VAT normalisation and a regex check
-  (`catalog/routes.py:102-124`), stored in `owners.business` (JSON,
+- **Where:** `BusinessIn` with VAT normalisation and a regex check, a field
+  validator since `42c777c` (`_vat`, `catalog/routes.py`: a bad VAT ID is the
+  field error `business.vatId`), stored in `owners.business` (JSON,
   `catalog/tables.py:73`). It is copied into the booking snapshot
-  (`booking/routes.py:190`) and onto fee invoices (`payments/invoices.py:95-112`).
-  Web: `web/src/app/components/BusinessFields.tsx` (also `TraderNote`).
+  (`booking/routes.py:190`) and onto fee invoices, where its address is the
+  recipient's (8.1). Web: `web/src/app/components/BusinessFields.tsx` (also
+  `TraderNote`); since `2257182` it checks the VAT shape as the server does
+  (`vatProblem`), sends it without spaces or dots, and shows each problem
+  under its field (`businessErrors`, `serverBusinessErrors`).
+  Every seeded business owner has invented trader details since `42c777c`
+  (legal name, address, register number, VAT ID, in `seed.json`, V4-16).
 - **Provider:** none. A German VAT ID must be `DE` and 9 digits; other EU
   prefixes are checked only by shape. There is no VIES lookup.
 - **To add a checker** (VIES, HMRC, Swiss UID, CRA BN): put it behind a
-  `validate_vat(country, id)` function called from `BusinessIn.normalised`. Make
+  `validate_vat(country, id)` function called from `BusinessIn._vat`. Make
   it tolerant of VIES downtime (accept and re-check later). Add per-country
   error texts. This is M-33.
 - **Limits:** EU only. GB, CH, CA and US identifiers are rejected or not
@@ -392,7 +439,14 @@ resume and remove a listing.
 - **Private address:** the address is stored on `listings.address`
   (`catalog/tables.py:93`). Booking fetches it from `/internal/listings/{id}/handover`
   (`routes.py:779`) and shows it only in accepted, active, completed or disputed
-  states (`booking/repository.py:70`).
+  states (`SHOWS_HANDOVER`, `booking/repository.py:75`). Since `42c777c`
+  (V4-9) `GET /api/bookings/{id}` reads it live while the booking is
+  `accepted` or `active` (`LIVE_HANDOVER`, `booking/routes.py`), so an
+  address the owner adds or corrects after accepting reaches the renter;
+  once it is over the last copy stands, and if catalog does not answer the
+  last copy is shown. Every seeded listing has an invented hand-over address
+  (`listingAddresses` in `seed.json`: real streets, made-up numbers, V4-10),
+  loaded by `load_seed`.
 - **Provider:** none (Postgres).
 - **Status and limits:**
   - Prices are integers in minor units of the listing's `currency`, one of
@@ -406,7 +460,9 @@ resume and remove a listing.
     price cap is the market's `max_rate_per_hour` (`_check_numbers`,
     `catalog/routes.py:299`). The web formats and inputs money per currency
     (`formatMoney`, `currencySymbol`: `web/src/domain/money.ts`, M-4) and
-    gets the currency from the API.
+    gets the currency from the API. Since `2257182` the listing form never
+    sends a currency: a new listing shows its owner's market's
+    (`useMarket().currency`), an edit the listing's own.
   - **A point per listing** (since `61b15b8`, M-5/M-6): `location` (lat/lng),
     `country` and `postalCode` in the listing's spec (`models.py:164`). A
     point more than 30 km from its district's centre is 422
@@ -417,8 +473,14 @@ resume and remove a listing.
     drop the postal code; the exact point and postal code go only to the two
     sides of an accepted booking, with the address (`/internal/listings/{id}/handover`,
     `routes.py:815`). Seeded listings stand at their district's centre. No
-    geocoder fills it (M-7); the web does not send it; no time zone on the
-    listing itself (M-15). The address is free text (M-8).
+    geocoder fills it (M-7). Since `2257182` the web's listing form sends
+    the district's centre as the point (kept on an edit that keeps the
+    district), the district's `country` and an optional **Postal code**
+    field; the listing page says "Approximate area" to everyone but the
+    owner, and an accepted booking's "Getting in" card shows the address
+    with its postal code and an **Open in a map** link to the exact point
+    on openstreetmap.org. No time zone on the listing itself (M-15). The
+    address is free text (M-8).
   - **Weekly opening hours** (since `61b15b8`, H-4): an optional
     `availability` (`weekly`: day 1 to 7 with `HH:MM` start and end, up to 21
     rows; `timeZone`, default `Europe/Berlin`) makes the server keep windows
@@ -431,11 +493,22 @@ resume and remove a listing.
     listing with no free window in the next seven days, emits `listing.idle`
     at most once a week (`keep_schedules_once`, `catalog/jobs.py:66`), which
     notifications sends as "No free time next week" (EN/DE/FR, `bookings`
-    category). The web's listing form does not offer weekly hours yet.
+    category). Since `2257182` the web's listing form offers weekly hours:
+    the presets (evenings, while I am at work, weekends, most of the time)
+    are now weekly schedules the server keeps, **Set my own weekly hours**
+    opens an editor of rows (days, from, until; 15-minute steps, "until"
+    may be midnight), sent with the device's time zone, and only **Pick the
+    dates myself** still makes windows in the browser. Editing a listing
+    that repeats shows "Repeats every week" with **Stop repeating**, which
+    sends `availability: null` (the windows it made go, windows added by
+    date stay); an edit that picks nothing new leaves the key out.
   - The kill switch `ACCEPTING_LISTINGS` is at `catalog/settings.py:41`.
   - Account deletion clears the listing's title, blurb, instructions, rules,
-    photos and address, and since `747ed6b` the free text in its spec
-    (`extraLabel`, `machine`: `_SPEC_WORDS`, `repository.py:163`); the row
+    photos and address, and the personal parts of its spec, listed since
+    `42c777c` in `privacy.LISTING_SPEC` (`cappy_common/privacy.py`):
+    `extraLabel` and `machine` are blanked, and the exact `location` and
+    `postalCode` are dropped (M-6; `forget`, `repository.py`). A test fails
+    for a new personal-looking spec field that is not in the list. The row
     and its numbers stay for bookings and reviews (D-2).
 
 ### 3.2 Saved listings
@@ -539,22 +612,37 @@ far). Matching returns ranked offers with a quote.
   public, cached like the vocabulary, its own CloudFront behaviour in
   `edge.tf`) serves the same `W` with a description of each signal
   (`SIGNALS`, `match.py:68`) and `textSearch: "newest first"`; a test fails
-  if the two drift. `Legal.tsx` still has its own wording and does not read
-  it.
+  if the two drift. Since `2257182` the ranking page (`/legal/ranking`,
+  `Ranking` in `Legal.tsx`) reads it (`useRanking`, `repo.ts`): each signal
+  with its weight as a percentage, its name and description translated by
+  key (`SIGNAL`, EN/DE/FR, the server's description where a key is unknown),
+  and a line when it cannot load. Browse links to it as **How results are
+  ordered** beside the match count and the free-text results (H-3, P2B
+  Art. 5).
 - **Distance** (since `61b15b8`): from the searched district's centre to the
   listing's own point when it has one, already snapped to about 500 m, else
   its district's centre (`point_of`, `match.py:44`), in matches, offers,
   spotlight and idle-nearby. Candidates are still gathered by district.
-- **Measured** (`61b15b8`, commit message; no number is kept in the repo):
-  the candidate search at 100 000 listings took 10.6 ms local and 9.8 ms
-  EU-wide.
+- **Measured:** `make bench` (since `42c777c`,
+  `backend/services/catalog/bench/candidates.py`) builds a throwaway
+  database `scale` on the local Postgres with N synthetic listings (100 000
+  by default, 3 windows each over the next month), times the candidate
+  search (25 km over 7 days, 500 km over 30 days) and two free-text
+  searches as the mean of 10 runs after a warm-up, and drops the database.
+  Results are kept in `docs/bench.md`, one row per date, commit and
+  conditions: at 100k, 14.7 ms and 20.2 ms for the two candidate searches,
+  6.1 ms and 1.8 ms for the text searches, with the full stack and a browser
+  test running on the same laptop. A laptop is not Aurora: the rows compare
+  changes, they do not size production (L-5).
 - **Provider:** none.
 - **Limits:** a listing without a point is placed at its district's centre,
   and no geocoder sets points (M-7). The
   API works in km; the web shows distances and radius presets in miles for
   US and GB locales and km elsewhere (`formatDistance`, `formatRadius`:
   `web/src/app/format.ts:77-97`), though the presets are still km values
-  converted, not round miles (M-18). The unit follows the formatting locale.
+  converted, not round miles (M-18). The unit follows the formatting locale;
+  since `2257182` the requirement chip on Browse uses `formatRadius` too
+  (it printed "km" for everyone).
   Since `44a5520` an English reader whose device has no English region of
   its own (not US, CA, GB and so on) is formatted as `en-IE`: km and 24 h
   (`web/src/i18n.ts:56-57`).
@@ -664,14 +752,20 @@ system completes it 48 hours after the end.
 
 Either side can cancel before the start, with a refund preview. Either side
 can report a no-show in the first two hours. The renter can dispute once the
-window has started. Staff resolve a dispute by paying the owner or refunding
-the renter.
+window has started, and since `42c777c` at any time once the booking is
+`active` (handed over early, V4-3). Cancel is never open from `active`: the
+renter has the item, so a refund must not happen without staff. Staff
+resolve a dispute by paying the owner or refunding the renter.
 
 - **Where:** `_transition` (`booking/routes.py:291`, no-show windows
   `:310-323`), refund preview `GET /api/bookings/{id}/cancellation` (`:442`,
   with `charged`: false before the accept, when cancelling only releases the
   hold; FL-8, `235eeaa`), admin resolution `POST /api/admin/bookings/{id}/resolve`
   (`:504`) and its internal twin (`:512`). Screens: `BookingDetail.tsx`, `Admin.tsx`.
+  Since `2257182` the cancel sheet fetches the preview for every status and
+  words itself by `charged` (a hold released versus money back), and a
+  refused dispute keeps the sheet open with what was typed and an error
+  toast (V4-4).
 - **Provider:** none. The refund is carried as `refundAmount` on
   `booking.status_changed` and executed by payments (7.1). Since `747ed6b` a
   staff **refund the buyer** records the full amount as `refund_amount`
@@ -704,7 +798,13 @@ private to the two sides and staff.
   read again every 10 minutes and after a lapsed link fails to load
   (`repo.ts` `useEvidence`, `Evidence.tsx` `renew`). Prompted at hand-over and
   hand-back (`BookingDetail.tsx` `evidencePrompt`), with the upload time and
-  the report window ("at the latest 48 hours after it ends") shown (U-33).
+  the report window ("at the latest 48 hours after it ends") shown (U-33);
+  on a completed booking that sentence gives way to "This booking is
+  complete. Something still wrong? Get help with this booking below." Since
+  `2257182` each pick adds to the photos chosen so far (a phone's camera
+  returns one photo per pick, V4-13), up to 12, and each preview has a
+  remove button; when a prompted sheet closes, focus goes to the photos
+  panel (V4-22).
 - **Seam:** storage goes through the catalog's private `MediaStore` (3.3).
 - **Limits:** evidence saved before `f303350` keeps its public URLs.
 
@@ -732,7 +832,10 @@ An owner lets bookings confirm as soon as the card is authorised.
   system action `authorised_instant` moves the booking straight to `accepted`
   (`booking/handlers.py:86-92`, `state.py:83`). The owner is told with the
   `instant_booked` notification (`notifications/handlers.py:71`). Form:
-  `AddListing.tsx:222`.
+  `AddListing.tsx`. The booking page's first step reads **Booked**, not
+  "Requested", for an instant booking (`2257182`, V4-23), and since
+  `2257182` the English and German terms say the card is charged at once
+  for an instant booking (legal copy for counsel).
 - **Provider:** none.
 
 ### 6.2 Cancellation policies
@@ -816,7 +919,9 @@ part) if it is cancelled after capture.
 - **Seam:** **yes,** `Provider` (`backend/services/payments/payments/provider.py:39`):
   `create_intent`, `client_secret`, `intent_status`, `capture`, `cancel`,
   `refund`, `transfer`, `card_fingerprint`, `create_account(owner_id,
-  country)`, `onboarding_link`, `account_status`, `parse_webhook`, `aclose`,
+  country)`, `onboarding_link`, `account_status`, `account_address` (since
+  `42c777c`, the address the provider verified, for invoices, 8.1),
+  `parse_webhook`, `aclose`,
   plus the `authorises_immediately` flag and `Declined`. ID checks left it for
   their own `IdentityProvider` in `235eeaa` (section 9). Implementations:
   `StripeProvider` (`:72`) and `FakeProvider` (`:194`). It is selected by
@@ -904,8 +1009,11 @@ cancellation.
     (default `DE`): the account is created in that country. Since `747ed6b`
     owners are paid only where Cappy is open: a country that is not a live
     market in `markets.json` (today anything but DE, AT, CH) gets 422
-    `country_unsupported` (`routes.py:236`; `PAYOUT_COUNTRIES` is gone). Stripe fixes an account's country at creation. The
-    web sends no country yet, so every account is German.
+    `country_unsupported` (`routes.py:236`; `PAYOUT_COUNTRIES` is gone). Stripe fixes an account's country at creation.
+    ~~The web sends no country, so every account is German~~: **fixed in
+    `2257182`** (M-9): `startPayouts(country)` sends the profile's country
+    (`Earn.tsx`), and `country_unsupported` reads in the app's language
+    (`CODE_TEXT`).
     `GET /api/payments/connect/status` (`:253`).
   - `account.updated` webhook (`:439`) → `payment.payouts_ready` →
     catalog `payable_owners` (`catalog/handlers.py:24`). Buyers only see
@@ -954,7 +1062,19 @@ fee. Numbers have no gaps per year, and an invoice never changes once issued.
   under a row lock on `invoice_counters`), `GET /api/payments/invoices` (`:165`,
   with a `description` line) and `GET /api/payments/invoices/{number}` (`:174`,
   printable HTML in German with § 14 (4) UStG fields). Tables `invoices` and
-  `invoice_counters` (`payments/tables.py:64-94`). Screen: `Earn.tsx:416`.
+  `invoice_counters` (`payments/tables.py:64-94`). Screen: `Earn.tsx`; since
+  `2257182` its list line is built in the app ("Service fee · title ·
+  dates", dates in the reader's locale) instead of the server's
+  `description`, which carries a German date (V4-8).
+- **Recipient address** (since `42c777c`, V4-7, § 14 (4) Nr. 1 UStG): a
+  trader's business address; otherwise the address the payout provider
+  verified for the owner, asked for when the invoice is issued
+  (`Provider.account_address`, `payments/handlers.py` `_address`, passed to
+  `issue` as `verified_address`). `StripeProvider` reads the connected
+  account's company or individual address into one line; `FakeProvider`
+  answers "Musterstraße 1, 10115 Berlin, DE (test)". Best effort: a slow or
+  failing provider leaves the address out rather than holding the invoice
+  (valid under § 33 UStDV up to €250 gross).
 - **Seam:** partial. `Issuer` (`invoices.py:34`) makes the time zone, tax rate,
   label and retention period data (`INVOICE_TIME_ZONE`, `INVOICE_TAX_RATE_BPS`,
   `INVOICE_TAX_LABEL`, `INVOICE_RETENTION_YEARS`, `payments/settings.py:37-40`).
@@ -973,7 +1093,10 @@ fee. Numbers have no gaps per year, and an invoice never changes once issued.
   - One issuing entity for everyone. The per-market entity, template and series
     are M-13.
   - Dates are in `Europe/Berlin` by default.
-  - A private owner's invoice carries only their name.
+  - ~~A private owner's invoice carries only their name~~: **fixed in
+    `42c777c`**, it carries the provider-verified address (above). The
+    address is copied onto the invoice, so a new provider must answer
+    `account_address` or private owners' invoices go without one.
   - No e-invoice format (2027 obligation in Germany).
 
 ### 8.2 VAT, sales tax and platform reporting
@@ -1029,12 +1152,14 @@ categories configured for it.
     `payment.identity_verified` → booking `verified_people`
     (`booking/handlers.py:147-150`) and, since `235eeaa`, catalog's
     `owners.verified`, the profile's badge (`catalog/handlers.py:84-90`, F-10).
-  - Web: the sheet needs the consent box ticked (`Listing.tsx:98`, `:714-729`);
-    `verify` (`Listing.tsx:222-244`) sends `{consent: true}`
-    (`startIdentity`, `web/src/data/repo.ts:543`), loads Stripe.js on demand,
-    calls `stripe.verifyIdentity(clientSecret)`, and polls for the webhook's
-    result for up to a minute before retrying the booking. It does not read
-    `identityProvider` from `/payments/config` or the session's `url`.
+  - Web: the sheet needs the consent box ticked; `verify` (`Listing.tsx`)
+    sends `{consent: true}` (`startIdentity`, `web/src/data/repo.ts`). Since
+    `2257182` (F-1) a session that answers a hosted `url` opens it in a new
+    window; otherwise, when `identityProvider` is `stripe` (or absent), it
+    loads Stripe.js on demand and calls `stripe.verifyIdentity(clientSecret)`.
+    It then polls for the webhook's result, up to a minute (two for a hosted
+    page), stops on `failed` with "The ID check did not go through", and
+    retries the booking with the same attempt once verified.
 - **Seam:** backend **yes** since `235eeaa` (F-1): `IdentityProvider`
   (`payments/identity.py:48-58`: `name`, `verifies_immediately`,
   `start_session`, `parse_webhook`, `redact`), with `StripeIdentity` (`:78`)
@@ -1043,7 +1168,8 @@ categories configured for it.
   `stripe` or `fake`; empty follows `PAYMENTS_PROVIDER`; `fake` refused
   deployed, `:50-51`). Routes and handlers see only `IdentitySession` and
   `IdentityResult`. `/payments/config` names the provider (`identityProvider`).
-  Web: **no**, the Stripe.js modal is the only UI.
+  Web: **yes** since `2257182`: the hosted `url` or the Stripe.js modal, as
+  above.
 - **Provider-specific data:** `identities.session_id` (`vs_…`; fake
   `vs_fake_…`), `status`, `verified_at`, and the consent columns
   (`payments/tables.py:47-61`). The document and selfie stay with the
@@ -1063,9 +1189,10 @@ categories configured for it.
      already exempts `/api/payments/webhooks/`; the gateway forwards a
      signature header only to the route named in `WEBHOOK_SIGNATURES`
      (`gateway/main.py:47`, `747ed6b`), so add the vendor's header there.
-  4. Web: choose the UI from `identityProvider` (Stripe.js with the client
-     secret, or open the hosted `url`); not built. The shells may need camera
-     permission strings (S-2). Update the CSP.
+  4. Web: a hosted flow needs nothing more, since the app opens the
+     session's `url` (`2257182`); an embedded SDK would be a branch in
+     `verify`. The shells may need camera permission strings (S-2). Update
+     the CSP.
   5. Data: existing `verified_people` rows and `owners.verified` stay valid.
      The `identities` rows point at Stripe sessions; keep them as history.
      `payment.identity_verified` keeps its name.
@@ -1101,8 +1228,11 @@ the app warns both sides.
   conversation per 15 minutes (`MESSAGE_EMAIL_EVERY`,
   `notifications/handlers.py:85-113`, `:174-186`; FL-3). Moderation
   can replace a reported message's words (`remove_content`, 13.2). Web:
-  `web/src/app/components/Conversation.tsx` (sender warning `:43`, receiver
-  banner `:116`).
+  `web/src/app/components/Conversation.tsx` (sender warning, receiver
+  banner). Since `2257182` the app closes the composer on a completed booking
+  past its 14-day review window too, and on a 409 `conversation_closed`
+  closes it with the reason; a closed conversation shows no "No messages
+  yet" invitation (FL-18, V4-18).
 - **Seam:** module boundary. `mask(text)` and `flagged(text)` are pure
   functions. A moderation API (for example Hive, or a text classifier) would sit
   behind them.
@@ -1159,7 +1289,12 @@ decisions, in the recipient's language.
   French since `235eeaa`: one neutral French for France and Québec,
   « courriel »), chosen by Cognito's `locale` (`language`, `texts.py:202-205`:
   `de…` and `fr…`, anything else English). Amounts are formatted per currency
-  and language (`money`, `:251-265`). Sender:
+  and language (`money`, `:251-265`). Times (`when`, `texts.py:255`) are
+  24-hour for German, French and European English, and since `42c777c`
+  12-hour ("Sat, Sep 26, 2:00 PM") for an `en-US` or `en-CA` locale; since
+  `2257182` the app sends the full locale (language plus the device's
+  region) as `Accept-Language` and as the Cognito `locale`, so this reaches
+  emails, pushes and the bell. Sender:
   `Mailer` (`mail.py:37`), `SesMailer` (`:106`, SES v1 `SendEmail`, plain text),
   `LogMailer` (`:124`). Selected in `notifications/main.py:26` by `MAILER`
   (`log` or `ses`; deployed must be `ses`, `settings.py:12,25`) and `MAIL_FROM`.
@@ -1287,9 +1422,11 @@ sent.
   `:164`), table `notification_prefs`. Screen: `Profile.tsx`.
 - **Provider:** none.
 - **Limits:** there is no consent record for marketing (M-30). The messages
-  email switch works since `235eeaa` (FL-3); the Profile text shown before
-  the settings load still says "Everything also arrives by email"
-  (`Profile.tsx:596`), which is not true of every message.
+  email switch works since `235eeaa` (FL-3). ~~The Profile text says
+  "Everything also arrives by email"~~: **fixed in `2257182`**: it says
+  booking changes always arrive by email and messages at most one every 15
+  minutes per conversation, and a line under the table says booking
+  confirmations and changes arrive by email whatever is chosen.
 
 ---
 
@@ -1310,7 +1447,9 @@ email. Every report is acknowledged by email.
   (`repo.ts:720`, with an `Idempotency-Key` per attempt). Signed out, the
   form is on `/legal/report`, where the reporter picks what they report and
   pastes its link or reference (`Legal.tsx`, `Report.tsx` `referenceId`,
-  FL-10, `f22f143`).
+  FL-10, `f22f143`). Since `2257182` the sheet's "If someone is in danger,
+  call {number} first" and the reporting page use the market's emergency
+  number (112, 911…), not a fixed 112.
 - **Provider:** none. No CAPTCHA.
 - **Limits:** anonymous addresses are still not confirmed; the receipt mail is
   kept on purpose (DSA Art. 16(4)) and bounded by the per-address cap.
@@ -1354,7 +1493,19 @@ reasons. Both sides are told, and every action is audited.
   message / review** and **Suspend the author** (`Admin.tsx:33-42`, `:334`),
   which the server accepts since `235eeaa` (they answered 422 before). It
   also lists held listings and approves them (`getHeldListings`,
-  `approveListing`, `repo.ts:748-749`; 13.3).
+  `approveListing`, `repo.ts`; 13.3). Since `2257182` the decision sheet
+  opens fresh for each report (at Dismiss, with an empty statement: it is
+  keyed by the report, V4-2), decisions and audit entries read in words
+  ("Taken down", "Refunded the buyer"; `DONE_LABEL`, V4-15), and the audit
+  log names the actor "you" or "staff" and the first 8 characters of their
+  id (a `ponytail:` until the log carries a name).
+- **Earlier decisions attributed** (since `42c777c`): migration catalog
+  `0018_decisions_on_reviews` sets `person_id` on review decisions recorded
+  before `747ed6b` from the review's author, and the hourly job
+  `attribute_decisions_once` (`catalog/jobs.py`, 100 rows a run) asks
+  booking who wrote each such message (`message_author`); a message booking
+  no longer knows stays unattributed. The job is marked to be dropped once
+  no such rows remain.
 
 ### 13.3 Held listings (fraud rule)
 
@@ -1443,8 +1594,13 @@ A member downloads one JSON file with everything held about them.
   day (`EXPORT_LINK_TTL`, `booking/routes.py:597-625`) instead of
   `evidence:<name>` references; payments adds the ID-check `consentAt` and
   `consentVersion`; catalog's moderation decisions include those about the
-  person's messages and reviews (`person_id`, `repository.py:278`; decisions
-  recorded before `747ed6b` on messages and reviews stay unattributed).
+  person's messages and reviews (`person_id`, `repository.py:278`). ~~Decisions
+  recorded before `747ed6b` on messages and reviews stay unattributed~~:
+  **fixed in `42c777c`** by migration 0018 (reviews) and the hourly
+  `attribute_decisions_once` (messages), 13.2.
+- **Web** (since `2257182`, V4-5): on a desktop browser the export
+  downloads as `cappy-my-data.json`; only a touch-first device
+  (`pointer: coarse`) hands it to the share sheet.
 - **Limits:** 5 a day per person (`rate_hits`, P-12). ~~Hand-over photos as
   references; consent and message or review decisions missing~~: fixed in
   `747ed6b`. No CCPA or Law 25 request workflow (P-29).
@@ -1459,7 +1615,8 @@ reason and a date.
   `/internal/people/{id}/open` (`booking/routes.py:556`) and payments
   `/internal/people/{id}/open` (`payments/routes.py:351`), then
   `repository.forget` (`catalog/repository.py:189`: listings down with their
-  words, spec free text (`747ed6b`) and photos cleared, every upload handed to the photo sweep, reports
+  words, spec free text blanked and exact point and postal code dropped
+  (`privacy.LISTING_SPEC`, `42c777c`) and photos cleared, every upload handed to the photo sweep, reports
   they filed without the reporter, stored answers deleted, the profile a
   "Former member", reviews anonymised), and ends the person's sessions in
   catalog at once (`routes.py:370-375`). `profile.deleted` goes to:
@@ -1517,7 +1674,16 @@ reason and a date.
   checks both catalogues have the same keys and placeholders, and that every
   literal `t('…')` and `plural(…)` in the source has an entry. Dev builds
   stretch every string with `?pseudo=1` (U-28). Emails, pushes and the bell
-  have French since `235eeaa`; the legal pages have none yet (M-17).
+  have French since `235eeaa`; since `2257182` so do the legal pages
+  (privacy, terms, withdrawal with the EU model form, ranking, reporting,
+  accessibility; the Impressum page is titled "Mentions légales"), the help
+  articles (`Help.tsx`) and the account deletion page (M-17 for FR). Since
+  `2257182` the full `locale()` goes to the server (`Accept-Language` on
+  every call and upload, the Cognito `locale` at sign-in, sign-up and on a
+  language switch), and times use the locale's own clock (`clock`,
+  `clockTime` in `format.ts`: "5:00 PM" without a leading zero for en-US,
+  V4-19). The English privacy policy lists messages, hand-over photos,
+  reports, ID checks and push like the German since `2257182`.
 - **Limits:** no Web Vitals (S-23). `npm run check:a11y` is a static check
   (image alt text, 24 px targets) and not a browser axe run (U-30 partly).
   Since `44a5520` CI runs `tsc --noEmit`, the build and every `check:*`
@@ -1687,10 +1853,10 @@ smallest refactor that would create one:
 |---|---|---|
 | Staff MFA (Cognito `AdminGetUser`) | `cappy_common/auth.py:186-219` | The MFA check behind a directory interface, or an `amr` claim check (the role claim is settings since `235eeaa`) |
 | Free-text search (Postgres LIKE/trigram) | `catalog/repository.py:721` | A `SearchIndex` protocol with the current SQL as the default, fed by `listing.changed` |
-| Places and geocoding (none exists) | `districts` table, `catalog/repository.py:339`; listing points are whatever the owner sends (`61b15b8`) | A `Geocoder` interface when addresses become structured, filling `location`, `country`, `postalCode` (M-7, M-8, F-6) |
+| Places and geocoding (none exists) | `districts` table, `catalog/repository.py:339`; listing points are whatever the owner sends (`61b15b8`), which the web sets to the district's centre (`AddListing.tsx`, `2257182`) | A `Geocoder` interface when addresses become structured, filling `location`, `country`, `postalCode` (M-7, M-8, F-6) |
 | Tax on the fee (fixed rate) | `payments/invoices.py:93` (`Issuer.tax_rate_bps`) | A `tax_for(owner, market, fee)` function per invoice line (M-12) |
 | Stripe webhook event handling | `payments/routes.py:419-460` | Have `Provider.parse_webhook` return neutral events (`authorised`, `account_changed`, `chargeback`) instead of Stripe's event dict, as `IdentityProvider.parse_webhook` already does for ID checks |
-| Identity verification UI (Stripe.js modal) | `web/src/app/screens/Listing.tsx:222-244` | Pick the flow from `/payments/config.identityProvider` and open the session's `url` for a hosted provider (the backend seam exists since `235eeaa`) |
+| ~~Identity verification UI (Stripe.js modal)~~ | Fixed in `2257182`: `verify` in `Listing.tsx` opens a hosted `url` or the Stripe.js modal by `identityProvider` (section 9) | Done |
 | Card form (Stripe Payment Element) | `web/src/app/components/PayStep.tsx` | Already one component. Pick it by `/payments/config.provider` |
 
 ## How to keep this file true
