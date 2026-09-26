@@ -228,7 +228,7 @@ export function Profile() {
             {t('Capacity is idle most of the time. Cappy sells those hours: a printer free overnight, a PA rig between gigs, a mill with a gap between contracts. You buy the outcome, not the machine, and one engine matches every job to whoever can actually run it.')}
           </p>
           <div className="mt-4 border-t border-[var(--line)] pt-4">
-            <Row label={t('Cappy fee')} value={t('{pct} of the booking', { pct: percent(PLATFORM_FEE_BPS / 10_000) })} />
+            <Row label={t('Service fee')} value={t('{pct} of the booking', { pct: percent(PLATFORM_FEE_BPS / 10_000) })} />
             <Row label={t('Paid by')} value={t('Taken from the total, not added on top')} />
             <Row label={t('Payment')} value={t('By card, held until the host accepts')} />
           </div>

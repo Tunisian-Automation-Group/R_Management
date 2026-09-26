@@ -141,6 +141,15 @@ export function policyText(p: string | undefined): string {
   return t('Full refund until the booked time starts.')
 }
 
+/** The policy as one dated line for a chosen time (UX-23): "Free cancellation
+ *  until Sat 3 Oct, 10:00", or plainly non-refundable once that has passed. */
+export function policyLine(p: string | undefined, startIso: string, now = Date.now()): string {
+  const before = p === 'strict' ? 7 * 24 : p === 'moderate' ? 24 : 0
+  const until = Date.parse(startIso) - before * 3_600_000
+  if (until <= now) return p === 'flexible' || !p ? t('Free cancellation until it starts') : t('No free cancellation for this time')
+  return t('Free cancellation until {when}', { when: when(new Date(until).toISOString()) })
+}
+
 /** Why a listing waits, when it is not a price check (V5-1). */
 export const holdText = (reason: 'market_not_live' | 'district_not_in_country'): string =>
   reason === 'market_not_live'

@@ -1375,4 +1375,13 @@ export const FR: Record<string, string> = {
   "Dark": "Sombre",
   "Appearance": "Apparence",
   "System follows your phone or computer. Saved on this device only.": "« Système » suit votre téléphone ou ordinateur. Enregistré sur cet appareil uniquement.",
+  "Renter pays": "La personne locataire paie",
+  "Includes the service fee of {fee}": "Frais de service de {fee} compris",
+  "Make the sheet smaller": "Réduire la fenêtre",
+  "Make the sheet bigger": "Agrandir la fenêtre",
+  "Free cancellation until it starts": "Annulation gratuite jusqu’au début",
+  "No free cancellation for this time": "Plus d’annulation gratuite pour ce créneau",
+  "Free cancellation until {when}": "Annulation gratuite jusqu’au {when}",
+  "Instant book: paid by card when you book, confirmed at once.": "Réservation instantanée : payée par carte à la réservation, confirmée aussitôt.",
+  "Paid by card when {name} accepts; if they decline, the hold is released.": "Payé par carte quand {name} accepte ; en cas de refus, le blocage est levé.",
 }

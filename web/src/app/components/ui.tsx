@@ -467,6 +467,19 @@ export function Segmented<T extends string>({
 
 /* ----------------------------------------------------------------- Sheet */
 
+const WIDE = '(min-width: 768px)'
+/** True from the tablet breakpoint up, following resizes. */
+function useWide(): boolean {
+  const [wide, setWide] = useState(() => typeof matchMedia !== 'undefined' && matchMedia(WIDE).matches)
+  useEffect(() => {
+    const m = matchMedia(WIDE)
+    const on = () => setWide(m.matches)
+    m.addEventListener('change', on)
+    return () => m.removeEventListener('change', on)
+  }, [])
+  return wide
+}
+
 export function Sheet({
   open,
   onClose,
@@ -524,30 +537,99 @@ export function Sheet({
     }
   }, [open])
 
-  if (!open) return null
+  // UX-9: the sheet stays mounted while it leaves, so it can slide away rather
+  // than vanish; on a phone it drags between a large and a medium height and
+  // down to close; from 768 px it is a centred dialog.
+  const [mounted, setMounted] = useState(open)
+  const [leaving, setLeaving] = useState(false)
+  const [detent, setDetent] = useState<'large' | 'medium'>('large')
+  const [drag, setDrag] = useState<number | null>(null)
+  const from = useRef<{ y: number; t: number } | null>(null)
+  const wide = useWide()
+  useEffect(() => {
+    if (open) {
+      setMounted(true)
+      setLeaving(false)
+      setDetent('large')
+    } else setLeaving(true)
+  }, [open])
+  useEffect(() => {
+    if (!leaving) return
+    // The exit animation normally ends it; this is the floor if it never fires.
+    const timer = setTimeout(() => setMounted(false), 400)
+    return () => clearTimeout(timer)
+  }, [leaving])
+
+  if (!mounted) return null
+
+  const onDown = (e: React.PointerEvent) => {
+    if (wide || (e.target as HTMLElement).closest('[data-no-drag]')) return
+    from.current = { y: e.clientY, t: performance.now() }
+    ;(e.currentTarget as HTMLElement).setPointerCapture(e.pointerId)
+  }
+  const onMove = (e: React.PointerEvent) => {
+    if (!from.current) return
+    const dy = e.clientY - from.current.y
+    // Up is resisted: a sheet can grow one detent, not float off the top.
+    setDrag(dy < 0 ? dy / 3 : dy)
+  }
+  const onUp = (e: React.PointerEvent) => {
+    if (!from.current) return
+    const dy = e.clientY - from.current.y
+    const speed = dy / Math.max(1, performance.now() - from.current.t)
+    const height = panel.current?.offsetHeight ?? 600
+    from.current = null
+    setDrag(null)
+    if (dy < -48 && detent === 'medium') setDetent('large')
+    else if (dy > height * 0.3 || speed > 0.6) {
+      if (detent === 'large' && dy < height * 0.5 && speed <= 0.6) setDetent('medium')
+      else onClose()
+    }
+  }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-end justify-center" style={{ paddingLeft: 'env(safe-area-inset-left, 0px)', paddingRight: 'env(safe-area-inset-right, 0px)' }}>
-      <div className="anim-fade absolute inset-0 bg-[var(--scrim)]" onClick={onClose} aria-hidden="true" />
+    <div className="fixed inset-0 z-50 flex items-end justify-center md:items-center md:p-6" style={{ paddingLeft: 'env(safe-area-inset-left, 0px)', paddingRight: 'env(safe-area-inset-right, 0px)' }}>
+      <div
+        className={`${leaving ? 'anim-scrim-out' : 'anim-fade'} absolute inset-0 bg-[var(--scrim)]`}
+        onClick={onClose}
+        aria-hidden="true"
+      />
       <div
         ref={panel}
         role="dialog"
         aria-modal="true"
         aria-labelledby={titleId}
-        className="anim-sheet glass relative flex max-h-[88dvh] w-full max-w-[540px] flex-col
-          rounded-t-[var(--radius-sheet)] shadow-[var(--shadow-sheet)]"
+        onAnimationEnd={(e) => {
+          if (leaving && e.target === e.currentTarget) setMounted(false)
+        }}
+        className={`${leaving ? (wide ? 'anim-dialog-out' : 'anim-sheet-out') : wide ? 'anim-dialog' : 'anim-sheet'}
+          glass relative flex w-full max-w-[540px] flex-col shadow-[var(--shadow-sheet)]
+          ${detent === 'medium' ? 'max-h-[55dvh]' : 'max-h-[88dvh]'}
+          rounded-t-[var(--sheet-radius)] md:max-h-[85dvh] md:rounded-[var(--sheet-radius)]`}
+        style={{
+          transform: drag ? `translateY(${drag}px)` : undefined,
+          transition: drag === null ? 'transform var(--dur-medium) var(--ease-spring-spatial)' : 'none',
+        }}
       >
-        {/* The grab handle the kit puts on every sheet. Decorative: the sheet is
-            dismissed by the close button and by the scrim, not by dragging. */}
-        <span
-          aria-hidden="true"
-          className="mx-auto mt-2.5 h-[5px] w-9 shrink-0 rounded-full bg-[var(--line-strong)] opacity-40"
-        />
-        <div className="flex items-center justify-between gap-3 border-b border-[var(--line)] px-5 pb-4 pt-3">
+        {/* The grabber: drag it (or the title bar) down to close or to the
+            medium height, up to grow; it is also a button, so the height can
+            be changed without a gesture. Not on a dialog. */}
+        <div onPointerDown={onDown} onPointerMove={onMove} onPointerUp={onUp} onPointerCancel={onUp} className="touch-none md:touch-auto">
+        <button
+          type="button"
+          data-no-drag
+          onClick={() => setDetent((d) => (d === 'large' ? 'medium' : 'large'))}
+          aria-label={detent === 'large' ? t('Make the sheet smaller') : t('Make the sheet bigger')}
+          className="tap mx-auto mt-1 flex h-6 w-16 items-center justify-center md:hidden"
+        >
+          <span aria-hidden="true" className="h-[5px] w-9 rounded-full bg-[var(--line-strong)] opacity-60" />
+        </button>
+        <div className="flex items-center justify-between gap-3 border-b border-[var(--line)] px-5 pb-4 pt-3 md:pt-5">
           <h2 id={titleId} className="t-title-m min-w-0">
             {title}
           </h2>
           <button
+            data-no-drag
             onClick={onClose}
             aria-label={t('Close')}
             className={`grid h-10 w-10 shrink-0 place-items-center rounded-[var(--radius-control)] text-[var(--ink-3)] ${TR} hover:bg-[var(--sunken)] hover:text-[var(--ink)]`}
@@ -555,7 +637,8 @@ export function Sheet({
             <Icon name="close" size={18} strokeWidth={2.2} />
           </button>
         </div>
-        <div className="min-h-0 flex-1 overflow-y-auto px-5 pb-2 pt-5">{children}</div>
+        </div>
+        <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-5 pb-2 pt-5">{children}</div>
         {footer && (
           <div
             className="border-t border-[var(--line)] px-5 pt-4"

@@ -228,6 +228,12 @@
   color-scheme: light;
 }
 
+/* On a detail screen the phone dock steps aside (UX-13). */
+@media (max-width: 767px) {
+  :root[data-dock='hidden'] {
+    --dock-h: env(safe-area-inset-bottom, 0px);
+  }
+}
 @media (min-width: 768px) {
   :root {
     --dock-h: 0px;

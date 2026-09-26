@@ -255,9 +255,13 @@ function Detail({
   )
   const startButton = (
     <div>
+      {/* The primary follows the clock (UX-25): before the hand-over window it
+          is a quiet, disabled line that says when it opens, not the loudest
+          button on the page. */}
       <Button
         block
         size="lg"
+        variant={canStart ? 'primary' : 'secondary'}
         disabled={!online || busy || !canStart}
         onClick={() =>
           void done(async () => {
@@ -741,12 +745,15 @@ function Detail({
           <>
             <Row label={t('Total')} value={formatMoney(money.charged, cur)} strong />
             {money.refunded > 0 && <Row label={t('Refunded')} value={`−${formatMoney(money.refunded, cur)}`} />}
-            <Row
-              label={`${t('Cappy fee')} · ${percent(PLATFORM_FEE_BPS / 10_000)}`}
-              value={formatMoney(money.fee, cur)}
-              tone="muted"
-            />
-            <Row label={asOwner ? t('You receive') : t('{name} receives', { name: first })} value={formatMoney(money.ownerNet, cur)} tone="accent" />
+            {/* One name for the fee; the renter never sees the owner's net (UX-23). */}
+            {asOwner ? (
+              <>
+                <Row label={`${t('Service fee')} · ${percent(PLATFORM_FEE_BPS / 10_000)}`} value={`−${formatMoney(money.fee, cur)}`} tone="muted" />
+                <Row label={t('You receive')} value={<span className="text-[var(--money)]">{formatMoney(money.ownerNet, cur)}</span>} strong />
+              </>
+            ) : (
+              <p className="t-sm tnum text-[var(--ink-4)]">{t('Includes the service fee of {fee}', { fee: formatMoney(money.fee, cur) })}</p>
+            )}
           </>
         )}
       </Card>

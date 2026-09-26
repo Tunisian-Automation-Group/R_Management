@@ -6,7 +6,6 @@ import type { Offer, Requirement, Review } from '../../domain/types.ts'
 import { isWindow, rating } from '../../domain/types.ts'
 import { category, durationLabel } from '../../domain/categories.ts'
 import { distanceKm, trackRecord } from '../../domain/match.ts'
-import { PLATFORM_FEE_BPS } from '../../domain/pricing.ts'
 import { formatMoney } from '../../domain/money.ts'
 import {
   useAttemptKey,
@@ -32,6 +31,7 @@ import { Photo, SaveButton } from '../components/Photo.tsx'
 import { Reviews } from '../components/Reviews.tsx'
 import { BlockButton, ReportButton } from '../components/Report.tsx'
 import { TraderNote } from '../components/BusinessFields.tsx'
+import { PriceSummary, type PriceLines } from '../components/PriceSummary.tsx'
 import { askForPush } from '../components/PushPrime.tsx'
 import { Icon } from '../components/Icon.tsx'
 import {
@@ -48,7 +48,7 @@ import {
   Stars,
   DetailSkeleton,
 } from '../components/ui.tsx'
-import { cancelRate, day, formatDistance, percent, policyInForce, policyName, policyText, range, relative, responseRate, responseTime, time } from '../format.ts'
+import { cancelRate, day, formatDistance, policyInForce, policyLine, policyName, policyText, range, relative, responseRate, responseTime, time } from '../format.ts'
 import { useOnline } from '../components/Offline.tsx'
 import { t } from '../../i18n.ts'
 
@@ -158,6 +158,20 @@ export function Listing({ preview }: { preview?: { detail: ListingDetail; banner
   // that fit that many hours around what is already booked.
   const quoted = useQuote(preview && !preview.bookable ? undefined : listing?.id, requirement, Boolean(preview))
   const quote = quoted.data?.quote ?? null
+  // One set of lines for the price card and the confirm sheet (UX-23).
+  const priceLines: PriceLines | null = quote && detail.data
+    ? {
+        base: {
+          label: `${formatMoney(detail.data.listing.ratePerHour, quote.currency ?? detail.data.listing.currency)}/h × ${durationLabel(quote.hours)}`,
+          amount: quote.base,
+        },
+        // The server's label (freight: "Loading"), in the reader's language (V5-18, V5-22).
+        extra: quote.extra > 0 ? { label: t(quote.extraLabel), amount: quote.extra } : undefined,
+        discount: (quote.discount ?? 0) > 0 ? { label: quote.discountLabel ?? t('Discount'), amount: quote.discount ?? 0 } : undefined,
+        fee: quote.platformFee,
+        total: quote.total,
+      }
+    : null
   const needed = quote?.hours ?? null
   const offersQ = useOffers(preview && !preview.bookable ? undefined : listing?.id, needed, Boolean(preview))
   const offers = needed === null ? [] : (offersQ.data ?? [])
@@ -622,35 +636,11 @@ export function Listing({ preview }: { preview?: { detail: ListingDetail; banner
         <>
           <SectionHead title={t('Price')} className="mt-7" />
           <Card className="p-5">
-            <Row
-              label={`${formatMoney(listing.ratePerHour, cur)}/h × ${durationLabel(quote.hours)}`}
-              value={formatMoney(quote.base, cur)}
-            />
-            {/* The server's label (the category's setupLabel: freight is "Loading"), in the reader's language (V5-18, V5-22). */}
-            {quote.extra > 0 && (
-              <Row label={t(quote.extraLabel)} value={formatMoney(quote.extra, cur)} />
-            )}
-            <div className="my-2 border-t border-[var(--line)]" />
-            {(quote.discount ?? 0) > 0 && (
-              <Row
-                label={quote.discountLabel ?? t('Discount')}
-                value={`−${formatMoney(quote.discount ?? 0, cur)}`}
-                tone="accent"
-              />
-            )}
-            <Row label={t('Total')} value={formatMoney(quote.total, cur)} strong />
-            <p className="t-sm mt-3 border-t border-[var(--line)] pt-3 text-[var(--ink-4)]">
-              {t(
-                listing.instantBook
-                  ? 'Includes the {pct} Cappy fee of {fee}. {name} receives {net}. Instant book: paid by card when you book, confirmed at once.'
-                  : 'Includes the {pct} Cappy fee of {fee}. {name} receives {net}. Paid by card when {name} accepts; if they decline, the hold is released.',
-                {
-                  pct: percent(PLATFORM_FEE_BPS / 10_000),
-                  fee: formatMoney(quote.platformFee, cur),
-                  net: formatMoney(quote.ownerNet, cur),
-                  name: first,
-                },
-              )}
+            <PriceSummary lines={priceLines!} currency={cur} perspective="renter" policy={policyLine(policy, selected.start)} />
+            <p className="t-sm mt-3 text-[var(--ink-4)]">
+              {listing.instantBook
+                ? t('Instant book: paid by card when you book, confirmed at once.')
+                : t('Paid by card when {name} accepts; if they decline, the hold is released.', { name: first })}
             </p>
           </Card>
         </>
@@ -715,7 +705,8 @@ export function Listing({ preview }: { preview?: { detail: ListingDetail; banner
             <div className="space-y-2">
               <Button block size="lg" disabled={sending || !online} onClick={() => void book()}>
                 {/* The final button must say it commits to paying (§312j BGB). */}
-                {sending ? t('Sending…') : t('Book and pay')}
+                {/* The amount on the button (UX-23), the legal wording kept verbatim. */}
+                {sending ? t('Sending…') : quote ? `${t('Book and pay')} · ${formatMoney(quote.total, cur)}` : t('Book and pay')}
               </Button>
               <Button block variant="quiet" onClick={() => setConfirming(false)}>
                 {t('Not yet')}
@@ -763,12 +754,8 @@ export function Listing({ preview }: { preview?: { detail: ListingDetail; banner
               <Row label={t('Where')} value={`${listing.district}${km !== null ? ` · ${formatDistance(km)}` : ''}`} />
               <p className="t-sm text-[var(--ink-4)]">{addressNote}</p>
               <div className="my-2 border-t border-[var(--line)]" />
-              <Row label={t('You pay')} value={formatMoney(quote.total, cur)} strong />
-              <Row
-                label={t('{name} receives', { name: first })}
-                value={formatMoney(quote.ownerNet, cur)}
-                tone="accent"
-              />
+              {/* What the renter pays, never what the owner nets (UX-23). */}
+              <PriceSummary lines={priceLines!} currency={cur} perspective="renter" policy={policyLine(policy, selected.start)} />
             </Card>
 
             {listing.instantBook ? (

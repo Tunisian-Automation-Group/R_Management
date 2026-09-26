@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react'
-import { NavLink } from 'react-router-dom'
+import { NavLink, useLocation } from 'react-router-dom'
 import { useSession } from '../../data/auth.ts'
 import { Icon, type IconName } from './Icon.tsx'
 import { useBack } from '../nav.ts'
@@ -31,8 +31,17 @@ type Tab = { to: string; label: string; icon: IconName; badge?: number }
  * 760px column with 500px of nothing beside it. Same tabs, same badges, read in
  * the place a browser has trained everyone to look.
  */
+// Detail screens own the bottom of a phone for their action bar (UX-13): the
+// dock steps aside there and comes back one level up.
+const DETAIL = /^\/(listing\/|bookings\/[^/]+|earn\/(new|edit)|inbox\/[^/]+|admin\/)/
+
 export function Dock({ badges }: { badges: Record<string, number> }) {
   const big = useLargeText()
+  const detail = DETAIL.test(useLocation().pathname)
+  useEffect(() => {
+    // The sticky bars, the offline bar and toasts measure from --dock-h.
+    document.documentElement.dataset.dock = detail ? 'hidden' : 'shown'
+  }, [detail])
   const tabs: Tab[] = [
     { to: '/', label: t('Explore'), icon: 'search' },
     { to: '/bookings', label: t('Bookings'), icon: 'ticket', badge: badges['/bookings'] },
@@ -43,10 +52,10 @@ export function Dock({ badges }: { badges: Record<string, number> }) {
   return (
     <nav
       aria-label={t('Main')}
-      className="glass fixed z-40 shadow-[var(--glass-shadow-raised)]
+      className={`glass fixed z-40 shadow-[var(--glass-shadow-raised)] ${detail ? 'max-md:hidden' : ''}
         max-md:bottom-0 max-md:left-1/2 max-md:w-[calc(100%-32px)] max-md:max-w-[420px]
         max-md:-translate-x-1/2 max-md:rounded-[var(--radius-l)]
-        md:inset-x-0 md:top-0 md:h-[var(--header-h)]"
+        md:inset-x-0 md:top-0 md:h-[var(--header-h)]`}
       style={{ viewTransitionName: 'dock' }}
     >
       <div

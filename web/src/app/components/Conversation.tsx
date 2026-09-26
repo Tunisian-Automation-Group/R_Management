@@ -98,11 +98,14 @@ export function Conversation({
   const [refusedHere, setRefusedHere] = useState(false)
   const iBlocked = Boolean(otherId && blocks.data?.includes(otherId))
   const blocked = iBlocked || refusedHere
-  const end = useRef<HTMLDivElement>(null)
+  const list = useRef<HTMLUListElement>(null)
   const items = messages.data?.items ?? []
 
+  // The newest message in view by scrolling the list itself, never the page:
+  // scrollIntoView scrolled the whole booking page 477 px down on open (UX-25).
   useEffect(() => {
-    end.current?.scrollIntoView({ block: 'nearest' })
+    const el = list.current
+    if (el) el.scrollTop = el.scrollHeight
   }, [items.length])
 
   const send = async () => {
@@ -147,11 +150,10 @@ export function Conversation({
           <p className="t-sm py-3 text-[var(--ink-3)]">{t('No messages yet. Ask about the hand-over, access or anything you need.')}</p>
         )
       ) : (
-        <ul className="max-h-[360px] space-y-3 overflow-y-auto py-2" aria-live="polite">
+        <ul ref={list} className="max-h-[360px] space-y-3 overflow-y-auto overscroll-contain py-2" aria-live="polite">
           {items.map((m) => (
             <Bubble key={m.id} m={m} otherName={otherName} closed={closed} />
           ))}
-          <div ref={end} />
         </ul>
       )}
       {closed ? (
