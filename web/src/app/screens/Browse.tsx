@@ -18,7 +18,7 @@ import { buildRequirement, useCappy, useMe } from '../store.tsx'
 import { Screen, SectionHead } from '../components/AppShell.tsx'
 import { Icon, categoryIcon } from '../components/Icon.tsx'
 import { ListingCard } from '../components/ListingCard.tsx'
-import { Photo, SaveButton, WhenChip } from '../components/Photo.tsx'
+import { Photo, PhotoGrid, SaveButton, WhenChip } from '../components/Photo.tsx'
 import { LocationPicker } from '../components/LocationPicker.tsx'
 import { distanceKm } from '../../domain/match.ts'
 import { CapacityMap, type MapLevel } from '../components/CapacityMap.tsx'
@@ -122,6 +122,7 @@ export function Browse() {
 
   return (
     <Screen wide>
+      <PhotoGrid>
       {/* ------------------------------------------------------------ masthead */}
       <header className="flex items-baseline justify-between gap-3 pb-2 pt-8 md:pt-10">
         <h1 className="min-w-0">
@@ -229,6 +230,8 @@ export function Browse() {
                           alt={l.title}
                           categoryId={l.category}
                           aspect={1}
+                          claim={l.id}
+                          width={52}
                           thumb
                           className="w-[52px] shrink-0 rounded-[var(--radius-plate)]"
                         />
@@ -574,6 +577,7 @@ export function Browse() {
           )}
         </div>
       </Sheet>
+      </PhotoGrid>
     </Screen>
   )
 }
@@ -669,6 +673,9 @@ function FeatureCard({ spot, onOpen }: { spot: Spotlight; onOpen: () => void }) 
         alt={spot.listing.title}
         categoryId={spot.listing.category}
         aspect={16 / 10}
+        claim={spot.listing.id}
+        width={1100}
+        sizes="(min-width: 768px) 700px, 100vw"
         priority
         className="w-full rounded-[var(--radius-plate)] shadow-[var(--shadow-plate)]"
       >
@@ -710,6 +717,9 @@ function SpotCard({ spot, onOpen }: { spot: Spotlight; onOpen: () => void }) {
         alt={spot.listing.title}
         categoryId={spot.listing.category}
         aspect={4 / 3}
+        claim={spot.listing.id}
+        width={376}
+        sizes="(min-width: 768px) 25vw, 188px"
         className="rounded-[var(--radius-plate)]"
       >
         <WhenChip start={spot.offer.start} />

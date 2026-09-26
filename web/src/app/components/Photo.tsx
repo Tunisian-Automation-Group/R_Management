@@ -1,4 +1,4 @@
-import { useState, type CSSProperties, type ReactNode } from 'react'
+import { createContext, useContext, useMemo, useState, type CSSProperties, type ReactNode } from 'react'
 import type { CategoryId, Iso, Slot } from '../../domain/types.ts'
 import { Plate } from './Cover.tsx'
 import { day, time } from '../format.ts'
@@ -8,6 +8,27 @@ import { mediaUrl, useSaveToggle, useSaved } from '../../data/repo.ts'
 import { messageOf, useToast } from '../store.tsx'
 import { Icon } from './Icon.tsx'
 import { t } from '../../i18n.ts'
+
+/** Widths for the browser to choose from (UX-3), where the host can make
+ *  them. ponytail: only resizing CDNs that take `w=`; our own media needs the
+ *  400/800/1600 renditions from the media service first (U-40). */
+function srcSetOf(src: string): string | undefined {
+  if (!/^https:\/\/images\.unsplash\.com\//.test(src)) return undefined
+  const at = (w: number) => `${src.replace(/([?&])w=\d+/, `$1w=${w}`)} ${w}w`
+  return [400, 800, 1600].map(at).join(', ')
+}
+
+/**
+ * One grid of listings (UX-1): the same photograph never shows twice in it.
+ * The first card to show a picture keeps it; any later card with the same
+ * picture shows its designed category plate instead, which says honestly that
+ * there is no photo of this thing, rather than a second copy of someone else's.
+ */
+const GridClaims = createContext<Map<string, string> | null>(null)
+export function PhotoGrid({ children }: { children: ReactNode }) {
+  const claims = useMemo(() => new Map<string, string>(), [])
+  return <GridClaims.Provider value={claims}>{children}</GridClaims.Provider>
+}
 
 /**
  * A listing's cover photograph.
@@ -32,9 +53,18 @@ export function Photo({
   priority = false,
   children,
   thumb = false,
+  claim,
+  width,
+  sizes,
 }: {
   /** A small square in a list: the fallback drawing drops its words. */
   thumb?: boolean
+  /** Inside a PhotoGrid: who is showing this picture (the listing id). */
+  claim?: string
+  /** The rendered width in CSS px, for the image's intrinsic size (CLS). */
+  width?: number
+  /** The `sizes` hint for the browser's pick among `srcset` widths. */
+  sizes?: string
   src?: string
   alt: string
   /** Drawn when there is no photograph yet. */
@@ -49,8 +79,15 @@ export function Photo({
 }) {
   const [failed, setFailed] = useState(false)
   const [loaded, setLoaded] = useState(false)
+  const claims = useContext(GridClaims)
+  let taken = false
+  if (claims && src && claim) {
+    const holder = claims.get(src)
+    if (holder === undefined) claims.set(src, claim)
+    else taken = holder !== claim
+  }
 
-  if (!src || failed) {
+  if (!src || failed || taken) {
     return (
       <span className={`relative block overflow-hidden ${className}`} style={style}>
         <Plate slots={slots} categoryId={categoryId} aspect={aspect} detail={thumb ? 'thumb' : 'hero'} />
@@ -66,6 +103,10 @@ export function Photo({
     >
       <img
         src={mediaUrl(src)}
+        srcSet={srcSetOf(src)}
+        sizes={sizes ?? (thumb ? '64px' : '(min-width: 768px) 50vw, 100vw')}
+        width={width ?? 800}
+        height={Math.round((width ?? 800) / aspect)}
         alt={alt}
         loading={priority ? 'eager' : 'lazy'}
         fetchPriority={priority ? 'high' : 'auto'}

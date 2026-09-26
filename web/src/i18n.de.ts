@@ -1380,4 +1380,9 @@ export const DE: Record<string, string> = {
   "Free cancellation until {when}": "Kostenlos stornierbar bis {when}",
   "Instant book: paid by card when you book, confirmed at once.": "Sofortbuchung: beim Buchen per Karte bezahlt, sofort bestätigt.",
   "Paid by card when {name} accepts; if they decline, the hold is released.": "Per Karte bezahlt, sobald {name} annimmt; bei einer Absage wird die Reservierung aufgehoben.",
+  "Next photo": "Nächstes Foto",
+  "Previous photo": "Vorheriges Foto",
+  "Open {what}": "{what} öffnen",
+  "Photo {n} of {total}, {title}": "Foto {n} von {total}, {title}",
+  "Show all {n} photos": "Alle {n} Fotos zeigen",
 }

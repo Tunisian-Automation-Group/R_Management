@@ -43,6 +43,9 @@ export function ListingCard({
         slots={slots}
         categoryId={listing.category}
         aspect={1}
+        claim={listing.id}
+        width={128}
+        sizes="(min-width: 768px) 128px, 96px"
         className="w-[96px] shrink-0 rounded-[var(--radius-plate)] md:w-[128px]"
       />
 

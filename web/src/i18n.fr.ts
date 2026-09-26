@@ -1384,4 +1384,9 @@ export const FR: Record<string, string> = {
   "Free cancellation until {when}": "Annulation gratuite jusqu’au {when}",
   "Instant book: paid by card when you book, confirmed at once.": "Réservation instantanée : payée par carte à la réservation, confirmée aussitôt.",
   "Paid by card when {name} accepts; if they decline, the hold is released.": "Payé par carte quand {name} accepte ; en cas de refus, le blocage est levé.",
+  "Next photo": "Photo suivante",
+  "Previous photo": "Photo précédente",
+  "Open {what}": "Ouvrir {what}",
+  "Photo {n} of {total}, {title}": "Photo {n} sur {total}, {title}",
+  "Show all {n} photos": "Voir les {n} photos",
 }

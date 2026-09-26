@@ -32,6 +32,7 @@ import { Reviews } from '../components/Reviews.tsx'
 import { BlockButton, ReportButton } from '../components/Report.tsx'
 import { TraderNote } from '../components/BusinessFields.tsx'
 import { PriceSummary, type PriceLines } from '../components/PriceSummary.tsx'
+import { Gallery } from '../components/Gallery.tsx'
 import { askForPush } from '../components/PushPrime.tsx'
 import { Icon } from '../components/Icon.tsx'
 import {
@@ -311,16 +312,13 @@ export function Listing({ preview }: { preview?: { detail: ListingDetail; banner
       back={preview ? '/admin' : '/'}
       docTitle={listing.title}
       hero={
-        <Photo
-          src={listing.photos?.[0]}
-          alt={listing.title}
+        <Gallery
+          photos={listing.photos ?? []}
+          title={listing.title}
           slots={slots}
           categoryId={listing.category}
-          aspect={16 / 10}
-          priority
-          className="w-full md:rounded-[var(--radius-sheet)]"
           style={{ viewTransitionName: 'hero' }}
-        >
+          overlay={
           <span
             // Wraps at large text instead of cutting the category to "At…" (V7-27).
             className="absolute left-20 right-5 flex flex-wrap items-center justify-end gap-2"
@@ -335,7 +333,8 @@ export function Listing({ preview }: { preview?: { detail: ListingDetail; banner
             />
             {!mine && <SaveButton id={listing.id} title={listing.title} className="" />}
           </span>
-        </Photo>
+          }
+        />
       }
       // One row in the phone's bottom bar, a stacked buy box in the page's side
       // panel. Same content, and the panel has the room to label it.
