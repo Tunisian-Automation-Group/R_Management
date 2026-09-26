@@ -121,3 +121,22 @@ What this adds:
       the EU), and which Stripe platform entity serves which market.
     - **Places:** time zones and addresses everywhere; no assumption that
       a city is Berlin or that a place is a Berlin district.
+
+## The brief, extended (2026-09-27, verbatim)
+
+> also keep looking and adding tasks to the plan like we said yesterday until you are confident that the version we have can be deployed to prod
+
+> Also fan out an agent that checks the UI UX, and since this will be a really big app with a lot of users, it needs to follow the best and provide the best UI UX experience and effects and so on, also that needs to reasearch and propose and so on until it is prod ready
+
+What this adds:
+
+17. **Ready means scored.** `docs/READINESS.md` is a go/no-go scoreboard,
+    re-scored every round. The loop goes on until every technical blocker
+    on it is met; what remains then is the owner's (accounts, counsel,
+    insurance, the first real apply).
+18. **A best-in-class experience.** A UI/UX agent reviews the web and app
+    versions each round against the best apps and the platform guidelines
+    (Apple HIG, Material 3, WCAG 2.2 AA), researches and proposes tasks
+    (UX-n), and its criteria are part of the readiness score: visual
+    design, motion and feedback, native feel, accessibility, perceived
+    speed.
