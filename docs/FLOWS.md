@@ -176,8 +176,9 @@ Cognito directly over its JSON API (`web/src/data/auth.ts`).
   so nobody can probe which emails are registered. `ConfirmForgotPassword`
   with the code and a new password of 12 or more characters signs the person
   in and shows "Password changed".
-- *Demo buttons.* Local and staging builds with `VITE_DEMO_ACCOUNTS` show
-  "Continue as …". Production builds never set that variable.
+- *Demo buttons.* Local builds only: `local/bootstrap.py` writes
+  `VITE_DEMO_ACCOUNTS` for the local stack, which is also the only place the
+  demo accounts exist. No deploy sets it (ADR 0010).
 
 ---
 
@@ -903,8 +904,8 @@ Locally MFA is not required (cognito-local has none).
    problem… Your payout is on hold" and gets "A problem was reported:
    {title}… Your payout waits while we look at it" (both emailed always,
    plus push and bell, since `235eeaa`).
-4. Staff open the console's **Actions** section, pick **Pay the owner** or
-   **Refund the buyer**, and enter the booking id. That calls
+4. Staff open the console's **Act directly** section, pick **Resolve dispute:
+   pay the owner** or **refund the buyer**, and enter the booking id. That calls
    `POST /admin/bookings/{id}/resolve {outcome}`; support tooling can also
    call `POST /internal/bookings/{id}/resolve` (runbook). There is no list of
    disputed bookings in the console yet.

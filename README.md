@@ -42,8 +42,8 @@ browser ──► CloudFront + WAF ──► S3            the web app (web/)
   - identity verification (Stripe Identity) for high-value bookings;
   - fraud limits and a review queue for suspicious new listings.
 - **Store-ready**: in-app account deletion and data export, a minimum app
-  version with a forced update, push notifications, and emails in English
-  and German.
+  version with a forced update, push notifications, and emails in English,
+  German and French.
 
 The reasoning behind each choice is in [`docs/adr/`](docs/adr). The review that
 started this work is in [`docs/review/`](docs/review), and the plan with its
@@ -60,8 +60,10 @@ cd web && npm install && npm run dev   # http://localhost:5173
 ```
 
 `make up` runs Postgres, LocalStack (S3, SNS, SQS, SES), cognito-local and every
-service. It then loads a demo world. Sign in as `host@demo.cappy.local` or
-`buyer@demo.cappy.local` with `Demo-pass-123!`. Sign-up codes are printed by
+service. It then loads a demo world. Sign in as `host@demo.cappy.local`,
+`buyer@demo.cappy.local` or `staff@demo.cappy.local` (the moderator) with
+`Demo-pass-123!` (local only), or tap "Continue as demo …". How to test every
+feature by hand: [`docs/GUIDE.md`](docs/GUIDE.md). Sign-up codes are printed by
 `make codes`. Payments use a fake provider unless Stripe test keys are in
 `.env`.
 
