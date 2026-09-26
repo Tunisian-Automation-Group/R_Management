@@ -22,7 +22,7 @@ from cappy_common.models import CamelModel, Iso, MatchView, Quote, Requirement, 
 from cappy_common.timeutil import HOUR_MS, iso_from_ms, ms_from_iso, now_iso
 
 from .clients import Bookings, Busy, Catalog
-from .domain.availability import Offer, offers_for
+from .domain.availability import Offer, merge_slots, offers_for
 from .domain.browse import Spotlight, available_soon
 from .domain.categories import CATEGORIES, GROUP_IDS, GROUPS, CategoryMeta, GroupMeta, categories_in
 from .domain.feasibility import Feasibility, assess_feasibility
@@ -297,14 +297,17 @@ async def match_for_offer_route(body: MatchForOfferIn, request: Request) -> Matc
 
     start, end = ms_from_iso(body.start), ms_from_iso(body.end)
     inside = lambda s: ms_from_iso(s.start) <= start < end <= ms_from_iso(s.end)  # noqa: E731
+    # Touching windows are one window (V9-5), the same as the offers were made.
+    windows = merge_slots(world.slots)
     if body.extension and not body.slot_id:
-        slot = next((s for s in world.slots if inside(s)), None)
+        slot = next((s for s in windows if inside(s)), None)
         if not slot:
             raise Conflict("the listing is not open straight after this booking", code="not_extendable")
     else:
-        slot = next((s for s in world.slots if s.id == body.slot_id), None)
-        if not slot:
+        raw = next((s for s in world.slots if s.id == body.slot_id), None)
+        if not raw:
             raise NotFound(f"slot {body.slot_id} not found on listing {listing.id}")
+        slot = next(s for s in windows if ms_from_iso(s.start) <= ms_from_iso(raw.start) < ms_from_iso(s.end))
         if not inside(slot):
             raise Invalid("the requested window does not sit inside that idle slot")
     if body.extension:

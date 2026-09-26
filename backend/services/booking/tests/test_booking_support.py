@@ -279,6 +279,13 @@ def test_the_renter_extends_a_booking_that_is_on(client, app, issuer):
             return (await s.get(BookingRow, new["id"])).extends_id
 
     assert call(app, extends_id) == bid
+
+    async def extends_start():
+        async with app.state.db.session() as s:
+            return (await s.get(BookingRow, new["id"])).listing_snapshot.get("extendsStart")
+
+    # Its notices name the booking it extends, from when that one starts (V9-19).
+    assert call(app, extends_start) == old["match"]["start"]
     again = client.post(
         f"/bookings/{bid}/extend", json={"hours": 1}, headers={**issuer.headers(BUYER), "Idempotency-Key": "ext-1"}
     )

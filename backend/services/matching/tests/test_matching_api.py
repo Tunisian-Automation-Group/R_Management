@@ -9,7 +9,7 @@ from fastapi.testclient import TestClient
 
 from cappy_common.errors import NotFound, Unavailable
 from cappy_common.fixtures import build_world
-from cappy_common.models import World
+from cappy_common.models import Slot, World
 from cappy_common.testing import TestIssuer
 from cappy_common.timeutil import DAY_MS, HOUR_MS, iso_from_ms, ms_from_iso, now_iso, now_ms
 from matching.clients import Bookings, Catalog
@@ -299,3 +299,35 @@ def test_catalog_down_is_an_outage_not_a_sign_out(client, revocations):
     # A 401 would make the app sign the person out over a blip.
     revocations.down = True
     assert client.post("/matches", json={"requirement": _saw_requirement()}).status_code == 503
+
+
+def test_a_start_across_touching_windows_is_offered_and_bookable(client, fakes):
+    # V9-5: weekly hours ending at 22:00 and a dated evening from 22:00. The
+    # 2-hour start at 21:00 spans the join: offered, and match-for-offer
+    # (what booking asks) accepts it with the offer's own slot id.
+    catalog, _ = fakes
+    day0 = (now_ms() // DAY_MS + 3) * DAY_MS
+    weekly = Slot(
+        id="weekly",
+        listing_id="l9",
+        start=iso_from_ms(day0 + 8 * HOUR_MS),
+        end=iso_from_ms(day0 + 22 * HOUR_MS),
+        hours_usable=14,
+    )
+    evening = Slot(
+        id="evening",
+        listing_id="l9",
+        start=iso_from_ms(day0 + 22 * HOUR_MS),
+        end=iso_from_ms(day0 + 26 * HOUR_MS),
+        hours_usable=4,
+    )
+    others = [s for s in catalog.world.slots if s.listing_id != "l9"]
+    catalog.world = catalog.world.model_copy(update={"slots": [*others, weekly, evening]})
+    offers = client.get("/listings/l9/offers", params={"hours": 2, "limit": 500}).json()
+    across = next(o for o in offers if o["start"] == iso_from_ms(day0 + 21 * HOUR_MS))
+    body = {"requirement": _saw_requirement(latest=iso_from_ms(day0 + 2 * DAY_MS)), "listingId": "l9", **across}
+    r = client.post("/internal/match-for-offer", json=body, headers=INTERNAL)
+    assert r.status_code == 200, r.text
+    # Naming the evening slot for the same start works too: it is one window.
+    r = client.post("/internal/match-for-offer", json={**body, "slotId": "evening"}, headers=INTERNAL)
+    assert r.status_code == 200, r.text

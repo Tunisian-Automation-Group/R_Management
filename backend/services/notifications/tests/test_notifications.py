@@ -222,6 +222,13 @@ def test_the_notification_centre_lists_marks_read_exports_and_forgets():
             and "Answer by the booked start" in box["items"][1]["body"]
         )
         assert c.get("/notifications", headers=buyer).json() == {"items": [], "unread": 0}, "only their own"
+        # A message belongs to the Inbox, not the bell: one message, one badge (V9-21).
+        from cappy_common.events import BOOKING_MESSAGE
+
+        chat = _event(BOOKING_MESSAGE, bookingId="bk_1", senderId="buyer", recipientId="host", title="Table saw")
+        c.portal.call(app.state.dispatcher.handle, chat)
+        again = c.get("/notifications", headers=host).json()
+        assert again["unread"] == 2 and "message" not in {i["kind"] for i in again["items"]}
 
         page = c.get("/notifications", params={"limit": 1}, headers=host).json()
         rest = c.get("/notifications", params={"limit": 1, "cursor": page["next"]}, headers=host).json()
@@ -237,7 +244,7 @@ def test_the_notification_centre_lists_marks_read_exports_and_forgets():
 
         assert c.get("/internal/people/host/export").status_code == 403
         export = c.get("/internal/people/host/export", headers={"X-Internal-Token": "i" * 40}).json()
-        assert len(export["items"]) == 2 and export["settings"]["categories"]["marketing"]["email"] is False
+        assert len(export["items"]) == 3 and export["settings"]["categories"]["marketing"]["email"] is False
         c.portal.call(app.state.dispatcher.handle, _event(PROFILE_DELETED, ownerId="host"))
         # The old token is revoked with the account (P-24) once the clock has
         # moved past its issue time, so look through the export, not the token.

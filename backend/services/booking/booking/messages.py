@@ -44,7 +44,11 @@ _EMAIL_SPELLED = re.compile(
     r"\b[\w.+-]+\s*(\(at\)|\[at\]|\s+at\s+)\s*[\w-]+\s*(\.|\(dot\)|\[dot\]|\s+dot\s+)\s*[a-z]{2,24}\b", re.I
 )
 # Links, and bare domains on any ending (example.berlin, shop.io/…).
-_URL = re.compile(r"(https?://|www\.)\S+|\b[a-z0-9-]{2,}\.(?!\d)[a-z]{2,24}(/\S*)?\b", re.I)
+# A link never ends on sentence punctuation: "see pay.me/x, then" keeps its comma (V9-19).
+_LINK_TAIL = r"(?:\S*[^\s.,;:!?)\]\'\"»])?"
+_URL = re.compile(
+    r"(https?://|www\.)" + _LINK_TAIL + r"|\b[a-z0-9-]{2,}\.(?!\d)[a-z]{2,24}(/" + _LINK_TAIL + r")?\b", re.I
+)
 # Dates and times are what booking conversations are about: never masked.
 _DATE = re.compile(r"\b\d{1,4}[./-]\d{1,2}[./-]\d{1,4}\b|\b\d{1,2}:\d{2}\b")
 # A phone number is written like one: +49…, 0049…, or 0… with 7+ digits in all.

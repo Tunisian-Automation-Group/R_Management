@@ -35,6 +35,26 @@ def _align_up(ms: int, step: int) -> int:
 Interval = tuple[int, int]  # [start_ms, end_ms)
 
 
+def merge_slots(slots: list[Slot]) -> list[Slot]:
+    """Idle windows that touch or overlap, as one window (V9-5): weekly hours
+    to 22:00 and a dated 22:00-02:00 evening are one evening to a renter, so a
+    start across the join (21:30 for an hour) is offered and bookable. The
+    merged window keeps its first member's id, so an offer's ``slotId`` is
+    always a real slot; usable hours add up, never beyond the clock."""
+    out: list[Slot] = []
+    for slot in sorted(slots, key=lambda s: ms_from_iso(s.start)):
+        last = out[-1] if out else None
+        if last is not None and ms_from_iso(slot.start) <= ms_from_iso(last.end):
+            end = max(ms_from_iso(last.end), ms_from_iso(slot.end))
+            wall = (end - ms_from_iso(last.start)) / HOUR_MS
+            out[-1] = last.model_copy(
+                update={"end": iso_from_ms(end), "hours_usable": min(wall, last.hours_usable + slot.hours_usable)}
+            )
+        else:
+            out.append(slot)
+    return out
+
+
 def offers_for(
     slots: list[Slot],
     hours: float,
@@ -70,7 +90,7 @@ def offers_for(
     taken = sorted(busy or [])
     out: list[Offer] = []
 
-    for slot in sorted(slots, key=lambda s: ms_from_iso(s.start)):
+    for slot in merge_slots(slots):
         slot_start = ms_from_iso(slot.start)
         slot_end = ms_from_iso(slot.end)
 

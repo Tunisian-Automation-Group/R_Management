@@ -1062,5 +1062,7 @@ async def extend(
     new = CreateBookingIn.model_validate(
         {"requirement": requirement, "listingId": row.listing_id, "slotId": "", "start": start_iso, "end": end_iso}
     )
-    out: BookingCreated = await create(request, p.sub, new, idempotency_key, extends=row.id)
+    out: BookingCreated = await create(
+        request, p.sub, new, idempotency_key, extends=row.id, extends_start=iso_from_datetime(row.window_start)
+    )
     return out

@@ -142,15 +142,17 @@ async def inbox(
     also remembered for their emails (V6-6)."""
     await seen_locale(session, p.sub, request.headers.get("accept-language"))
     n = clamp_limit(limit)
-    q = select(InboxRow).where(InboxRow.user_id == p.sub)
+    # Messages live in the Inbox (GET /api/inbox, its own unread count), not in
+    # the bell: one message is one badge, not two (V9-21), as top apps do. The
+    # rows are still kept: they pace the message emails (_recently_told).
+    bell = (InboxRow.user_id == p.sub, InboxRow.kind != "message")
+    q = select(InboxRow).where(*bell)
     if key := decode_cursor(cursor):
         at = dt_from_iso(key["at"])
         q = q.where(or_(InboxRow.at < at, and_(InboxRow.at == at, InboxRow.id < key["id"])))
     rows = list((await session.execute(q.order_by(InboxRow.at.desc(), InboxRow.id.desc()).limit(n + 1))).scalars())
     more, rows = len(rows) > n, rows[:n]
-    unread = (
-        await session.execute(select(func.count()).where(InboxRow.user_id == p.sub, InboxRow.read_at.is_(None)))
-    ).scalar_one()
+    unread = (await session.execute(select(func.count()).where(*bell, InboxRow.read_at.is_(None)))).scalar_one()
     return Inbox(
         items=[_item(r, request.headers.get("accept-language")) for r in rows],
         next=encode_cursor({"at": rows[-1].at.isoformat(), "id": rows[-1].id}) if more else None,

@@ -71,7 +71,7 @@ def test_only_bookings_that_never_happened_release_their_window():
 
 
 def test_masking_keeps_dates_and_catches_contact_details():
-    from booking.messages import mask
+    from booking.messages import HIDDEN, mask
 
     kept = [
         "from 12.10.2026 to 14.10.2026",
@@ -100,6 +100,11 @@ def test_masking_keeps_dates_and_catches_contact_details():
     ]
     assert [t for t in kept if mask(t) != t] == []
     assert [t for t in hidden if mask(t) == t] == []
+    # The punctuation after a link is the sentence's, not the link's (V9-19).
+    assert mask("see https://evil.example/pay, then call") == f"see {HIDDEN}, then call"
+    assert mask("visit www.cash.me. Thanks") == f"visit {HIDDEN}. Thanks"
+    assert mask("go to paypal.me/joe, ok") == f"go to {HIDDEN}, ok"
+    assert mask("(https://x.io/a?b=1)!") == f"({HIDDEN})!"
 
 
 def test_asking_to_pay_around_cappy_is_flagged_not_blocked():

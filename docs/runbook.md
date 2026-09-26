@@ -357,7 +357,13 @@ window can be restored.
 2. Compare what was lost and copy it back with SQL. Or, if the whole
    database is bad, point the services at the restored cluster: update the
    `database-url` secrets, then force a new deployment.
-3. Write down how long each step took. Those numbers are the real RTO.
+3. **Before anyone uses the restored data, re-apply the deletions made since
+   the restore point** (GDPR Art. 17; `docs/retention.md`, Backups): list the
+   `profile.deleted` events after that moment (the damaged cluster's outbox
+   tables, or the analytics lake's `profile.deleted` rows, which keep the
+   person's id) and publish each again to the event topic. Every service
+   forgets that person again, idempotently. Only then point traffic at it.
+4. Write down how long each step took. Those numbers are the real RTO.
 
 Last rehearsal: never. Do one before launch.
 

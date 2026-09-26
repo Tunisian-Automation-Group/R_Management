@@ -1430,7 +1430,9 @@ def test_a_reporter_is_forgotten_six_months_after_the_decision(client, app, issu
     from catalog.tables import ReportRow
 
     body = {"goodFaith": True, "targetType": "listing", "targetId": "l9", "reason": "spam", "details": "Spam again"}
-    rid = client.post("/reports", json={**body, "email": "r@example.com"}, headers=ANON).json()["id"]
+    rid = client.post(
+        "/reports", json={**body, "email": "r@example.com"}, headers={**ANON, "Accept-Language": "de-DE"}
+    ).json()["id"]
 
     async def decided(days):
         async with app.state.db.transaction() as s:
@@ -1440,13 +1442,13 @@ def test_a_reporter_is_forgotten_six_months_after_the_decision(client, app, issu
     async def reporter():
         async with app.state.db.transaction() as s:
             row = await s.get(ReportRow, rid)
-            return row.reporter_email, row.details
+            return row.reporter_email, row.details, row.reporter_locale
 
     _run(app, lambda: decided(100))
     assert _run(app, lambda: forget_reporters_once(app)) == 0
     _run(app, lambda: decided(200))
     assert _run(app, lambda: forget_reporters_once(app)) == 1
-    assert _run(app, reporter) == (None, "[removed after the case closed]")
+    assert _run(app, reporter) == (None, "[removed after the case closed]", None)
 
 
 def test_reported_messages_and_reviews_are_removed_and_their_authors_suspendable(client, app, issuer, bookings, broker):

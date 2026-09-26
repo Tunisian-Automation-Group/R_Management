@@ -239,7 +239,12 @@ class CatalogRepository:
         await self.s.execute(
             update(ReportRow)
             .where(ReportRow.reporter_id == owner_id)
-            .values(reporter_id=None, reporter_email=None, details="[removed: the account was deleted]")
+            .values(
+                reporter_id=None,
+                reporter_email=None,
+                reporter_locale=None,
+                details="[removed: the account was deleted]",
+            )
         )
         await idempotency.forget(self.s, IDEMPOTENCY, owner_id)
         await self.s.execute(delete(SavedRow).where(SavedRow.user_id == owner_id))

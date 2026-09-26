@@ -150,10 +150,17 @@ async def create_booking(
 
 
 async def create(
-    request: Request, sub: str, body: CreateBookingIn, idempotency_key: str | None, *, extends: str | None = None
+    request: Request,
+    sub: str,
+    body: CreateBookingIn,
+    idempotency_key: str | None,
+    *,
+    extends: str | None = None,
+    extends_start: str | None = None,
 ) -> BookingCreated:
     """A new booking, whichever way it is asked for. ``extends``: the booking
-    this one continues, for the same renter (S-12)."""
+    this one continues, for the same renter (S-12), which started at
+    ``extends_start`` (what its notices name, V9-19)."""
     p = Principal(sub=sub)
     app = request.app
     db, outbox = app.state.db, app.state.outbox
@@ -233,6 +240,7 @@ async def create(
             or market(view.owner.country).time_zone,
             "cancellationPolicy": view.listing.cancellation_policy,
             **({"photo": view.listing.photos[0]} if view.listing.photos else {}),
+            **({"extendsStart": extends_start} if extends_start else {}),
         },
         idempotency_key=idempotency_key,
         request_hash=fingerprint,

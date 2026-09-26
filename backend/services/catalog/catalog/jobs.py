@@ -59,9 +59,14 @@ async def forget_reporters_once(app: FastAPI, now: datetime | None = None) -> in
             update(ReportRow)
             .where(
                 ReportRow.decided_at < cutoff,
-                ReportRow.reporter_email.is_not(None) | ReportRow.reporter_id.is_not(None),
+                ReportRow.reporter_email.is_not(None)
+                | ReportRow.reporter_id.is_not(None)
+                | ReportRow.reporter_locale.is_not(None),
             )
-            .values(reporter_id=None, reporter_email=None, details="[removed after the case closed]")
+            # Their language goes too: it was only for answering them (FLOWS §23).
+            .values(
+                reporter_id=None, reporter_email=None, reporter_locale=None, details="[removed after the case closed]"
+            )
         )
     return r.rowcount or 0
 

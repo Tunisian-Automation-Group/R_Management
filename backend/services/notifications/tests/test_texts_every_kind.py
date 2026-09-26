@@ -235,6 +235,22 @@ def test_notices_pick_the_readers_words():
         BOOKING_STATUS_CHANGED, **base, to="accepted", by="payments", **{"from": "awaiting_payment"}, extendsId="bk0"
     )
     assert sorted(m[2] for m in messages(instant, "W")) == ["extension_confirmed", "instant_extended"]
+    # V9-19: an extension is named by the booking it extends, not the new hour.
+    timed = ev(
+        BOOKING_STATUS_CHANGED,
+        **{**base, "amount": 500, "currency": "EUR"},
+        to="accepted",
+        by="payments",
+        **{"from": "awaiting_payment"},
+        extendsId="bk0",
+        extendsStart="2026-10-03T13:00:00Z",
+        windowStart="2026-10-03T17:00:00Z",
+        timeZone="Europe/Berlin",
+    )
+    params = next(m[3] for m in messages(timed, "W") if m[2] == "instant_extended")
+    assert params["_start"] == "2026-10-03T13:00:00Z"
+    subject, _ = render("instant_extended", "de-DE", **params)
+    assert "15:00" in subject and "19:00" not in subject
     report = ev(REPORT_RECEIVED, reportId="rp1", reporterEmail="a@b.c", reporterLocale="de-DE")
     assert moderation_mail(report, "W")[0][3]["_locale"] == "de-DE"
     assert render("report_received", "de-DE", report="rp1")[0] != render("report_received", "en", report="rp1")[0]

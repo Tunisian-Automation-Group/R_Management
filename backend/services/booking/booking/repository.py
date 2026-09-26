@@ -142,6 +142,8 @@ def status_event(row: BookingRow, before: str | None, by: str) -> dict:
         "noShow": row.no_show,
         # An extension names the booking it extends (V7-12, V7-23).
         "extendsId": row.extends_id,
+        # ...and when that booking started: an extension's notices name it (V9-19).
+        "extendsStart": (row.listing_snapshot or {}).get("extendsStart"),
         # Why the owner said no: the renter hears it in the notice (V5-16).
         "declineReason": row.decline_reason if row.status == "declined" else None,
         "windowStart": iso_from_datetime(row.window_start),

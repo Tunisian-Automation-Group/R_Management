@@ -49,3 +49,22 @@ def test_nothing_booked_changes_nothing():
     a = offers_for([slot], 2, iso_from_ms(T0), iso_from_ms(_h(10)), limit=100)
     b = offers_for([slot], 2, iso_from_ms(T0), iso_from_ms(_h(10)), limit=100, busy=[])
     assert a == b and len(a) > 5
+
+
+def test_touching_windows_are_one_window():
+    # V9-5: weekly hours to 22:00 (T0 is 08:00 UTC, so +14 h) and a dated
+    # 22:00-02:00 evening. Starts across the join must be offered, and an
+    # offer names a real slot.
+    day = _slot(0, 14, 14).model_copy(update={"id": "weekly"})
+    evening = _slot(14, 18, 4).model_copy(update={"id": "evening"})
+    starts = {o.start: o for o in offers_for([evening, day], 1, iso_from_ms(T0), iso_from_ms(_h(18)), limit=500)}
+    across = starts[iso_from_ms(_h(13.5))]  # 21:30 for an hour
+    assert across.end == iso_from_ms(_h(14.5)) and across.slot_id == "weekly"
+    assert iso_from_ms(_h(13)) in {
+        o.start for o in offers_for([day, evening], 2, iso_from_ms(T0), iso_from_ms(_h(18)), limit=500)
+    }
+    # A gap between windows still splits them.
+    apart = _slot(14.5, 18, 3.5).model_copy(update={"id": "later"})
+    assert iso_from_ms(_h(13.5)) not in {
+        o.start for o in offers_for([day, apart], 1, iso_from_ms(T0), iso_from_ms(_h(18)), limit=500)
+    }

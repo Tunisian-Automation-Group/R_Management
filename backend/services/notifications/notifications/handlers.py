@@ -106,8 +106,10 @@ def messages(event: Event, web: str) -> list[Message]:
     if d["to"] in ("requested", "accepted") and d.get("amount") is not None:
         # What the mail must say (V7-23): the booked time and the money.
         params["_cents"] = (d["amount"], d.get("currency") or "EUR")
-        if d.get("windowStart"):
-            params["_start"] = d["windowStart"]
+        # An extension is told by the booking it extends: "Bandsaw, Sat 15:00
+        # was extended", not the new hour's start (V9-19).
+        if d.get("extendsStart") or d.get("windowStart"):
+            params["_start"] = d.get("extendsStart") or d["windowStart"]
     if d.get("renterName"):
         # The owner hears who asked (V7-23); whose name it is, so it can be
         # taken out of the owner's bell if they delete their account (D-27).
