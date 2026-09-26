@@ -35,6 +35,9 @@ class PaymentRow(Base):
     charge_id: Mapped[str | None] = mapped_column(String(80), nullable=True)
     transfer_id: Mapped[str | None] = mapped_column(String(80), nullable=True)
     refund_id: Mapped[str | None] = mapped_column(String(80), nullable=True)
+    # What actually moved, in minor units: back to the renter, and to the owner.
+    refunded_amount: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
+    paid_out_amount: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
     # The card holder disputed the charge with their bank (a chargeback).
     # While set, the owner is not paid out; support settles it.
     chargeback_at: Mapped[datetime | None] = mapped_column(UtcDateTime, nullable=True)

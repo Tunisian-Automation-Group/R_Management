@@ -106,11 +106,13 @@ def handlers(
                 row.refund_id = await provider.refund(
                     row.intent_id, row.booking_id, None if refund == row.amount else refund
                 )
+                row.refunded_amount = refund
                 await outbox.add(session, PAYMENT_REFUNDED, {**facts, "amount": refund, "currency": row.currency})
             kept = row.amount - refund
             owner_part = kept * row.owner_net // row.amount if row.amount else 0
-            # Part back and the rest paid out is its own state, not "refunded".
-            row.status = "refunded" if refund == row.amount else "partially_refunded"
+            # Part back and the rest paid out is its own state, not "refunded";
+            # nothing back (a renter no-show) is an ordinary payout.
+            row.status = "refunded" if refund == row.amount else "partially_refunded" if refund else "transferred"
             if owner_part > 0 and (not payouts_on or row.chargeback_at is not None):
                 # Refund done; the owner's share waits like any payout would.
                 raise NotReady(f"payout for {row.booking_id} held (payouts off or a chargeback)")
@@ -126,6 +128,7 @@ def handlers(
                     account_id=account.account_id,
                     charge_id=row.charge_id,
                 )
+                row.paid_out_amount = owner_part
                 await outbox.add(
                     session, PAYOUT_SENT, {**facts, **about, "amount": owner_part, "currency": row.currency}
                 )
@@ -156,6 +159,7 @@ def handlers(
                 charge_id=row.charge_id,
             )
             row.status = "transferred"
+            row.paid_out_amount = row.owner_net
             await outbox.add(
                 session, PAYOUT_SENT, {**facts, **about, "amount": row.owner_net, "currency": row.currency}
             )

@@ -1140,8 +1140,10 @@ windows.
       parties".
 - [ ] An offer of €0 (nothing back) or of the whole €15 also settles: paying
       the owner in full, or cancelling with a full refund.
-- [ ] **Escalation** cannot be walked in minutes: the 72 hours are fixed in
-      code (`booking/support.py` `OFFER_WINDOW`). After them, both sides get
+- [ ] **Escalation**: locally the window is 10 minutes (`DISPUTE_OFFER_MINUTES`
+      in `compose.yaml`; 72 hours deployed, and the texts always say 72
+      hours). Wait 10 minutes after the report or the last offer, then within a
+      sweep (seconds) both sides get
       "We are deciding now: …", the card reads "You did not agree within 72
       hours, so Cappy’s staff decide now. You can still agree on an offer
       until then.", and the console lists the case first with "Escalated to
@@ -1150,17 +1152,17 @@ windows.
 
 ### 26. Late return
 
-The owner reports it after the booked end, so the end must really pass (it is
-not shortened locally). Use the bandsaw (instant book, 1 hour, €15 an hour,
+Deployed, the owner reports it after the booked end. Locally
+`LATE_RETURN_EARLY_MINUTES` opens it as soon as the booking is handed over, so
+nobody waits for the end. Use the bandsaw (instant book, 1 hour, €15 an hour,
 open every day 08:00 to 22:00):
 
 1. As the buyer, book it for **1 hour** starting about 5 minutes from now.
    It is confirmed at once.
 2. Either side marks the hand-over.
-3. Wait until the booked end has passed (about an hour).
 
-- [ ] Host2, before the end. **Expect:** no **Late return** card.
-- [ ] Host2, after the end, on the booking page. **Expect:** **Late
+- [ ] Host2, before the hand-over. **Expect:** no **Late return** card.
+- [ ] Host2, after the hand-over, on the booking page. **Expect:** **Late
       return**: "Came back late? Report it within 24 hours after the end.
       The first 30 minutes are free." and **Report a late return**.
 - [ ] **Report a late return**: "How late did Demo bring it back?" Type
@@ -1303,8 +1305,8 @@ setting):
 | Auto-complete | 48 h after the end | `AUTO_COMPLETE_AFTER_HOURS` (booking) |
 | No-show | from the start (the buyer reporting the host) or start + 30 min (the host reporting the buyer), until start + 2 h; only if nobody marked the hand-over | fixed in code (`booking/routes.py` `NO_SHOW_GRACE`, `NO_SHOW_REPORTABLE`) |
 | Dispute | the buyer, from the start (at once once handed over, since `42c777c`) until the booking completes | fixed in code (`booking/routes.py`) |
-| Settling a dispute between the two sides | 72 h from the report and from each new offer, then it goes to staff | fixed in code (`booking/support.py` `OFFER_WINDOW`) |
-| Late return | reported from the booked end until 24 h after it; the first 30 min are free | fixed in code (`booking/support.py` `CLAIM_WITHIN`, `LATE_GRACE_MINUTES`) |
+| Settling a dispute between the two sides | 72 h from the report and from each new offer, then it goes to staff; **10 min locally** | `DISPUTE_OFFER_MINUTES` (booking) |
+| Late return | reported from the booked end until 24 h after it (**from the hand-over, locally**); the first 30 min are free | `LATE_RETURN_CLAIM_HOURS`, `LATE_RETURN_EARLY_MINUTES` (booking); grace fixed in code |
 | Booking requests per renter | 10 in 24 h | `MAX_REQUESTS_PER_DAY` (booking) |
 | Review window | 14 days after the end | fixed in code |
 | Weekly schedule roll-on and the "no free time next week" notice | hourly | fixed in code (`catalog/jobs.py`) |

@@ -249,12 +249,11 @@ adding a service starts there.
   passed to every task as `AUTH_JWKS_FALLBACK` so a task that starts while
   Cognito is unreachable still verifies tokens (resilience F5). This is also
   why a `terraform plan` needs network access to Cognito.
-- **Group** `admin` for staff (`:116-120`); membership is granted by hand.
-  There is **no** `admin-lead` group in Terraform: the services read a lead
-  as the staff claim also holding `admin-lead` (`STAFF_LEAD_VALUE`,
-  `cappy_common/settings.py`, since `7444e37`, H-6), and `docs/runbook.md`
-  says leads are that group, so a deployed pool needs it created by hand
-  (locally `make confirm … LEAD=1` creates it).
+- **Groups** `admin` for staff and `admin-lead` for leads (`identity.tf`,
+  `aws_cognito_user_group.admin` and `.admin_lead`); membership is granted by
+  hand. A lead is in both: the services read a lead as the staff claim also
+  holding `admin-lead` (`STAFF_LEAD_VALUE`, `cappy_common/settings.py`, H-6).
+  Locally `make confirm … LEAD=1` creates and fills it.
 - **Cognito WAF** (`:124-180`), see [§4](#waf).
 
 ### `infra/platform/ecs.tf`: compute
@@ -1072,10 +1071,14 @@ cognito-local has no MFA.
 - Booking's `START_EARLY_MINUTES` is huge locally so the e2e can hand over
   at once, and matching's `MIN_LEAD_MINUTES` is 5; deployed, the defaults
   hold and settings refuse the local values (`compose.yaml:92`, `:104`).
-- Only notifications (and the one-shot bootstrap) get `COGNITO_ENDPOINT_URL`
-  in `compose.yaml`; since `7444e37` booking also calls Cognito (`ListUsers`,
-  the staff case search by email), and without that setting its client goes
-  to LocalStack, which has no Cognito here, so that search fails locally.
+- `COGNITO_ENDPOINT_URL` is in the shared env block of `compose.yaml`, so
+  every service that asks Cognito (the staff MFA check, booking's case search
+  by email, sign-out) goes to cognito-local, never to LocalStack.
+- Local compose also sets `DISPUTE_OFFER_MINUTES=10` (a dispute goes to
+  staff after 10 minutes without agreement) and
+  `LATE_RETURN_EARLY_MINUTES=100000` (an owner may report a late return
+  before the booked end); deployed settings refuse both
+  (`booking/settings.py` `unsafe_reasons`).
 - `make test-pg` and `make e2e` need `make up` first. Since `32338dd` the
   e2e signs up a second buyer of its own (`rival-<run>@example.com`) and
   deletes it at the end, so it no longer changes the demo buyer's home or

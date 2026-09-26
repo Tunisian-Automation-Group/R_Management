@@ -1684,8 +1684,8 @@ AT, CHF 95 in CH) waits for a staff check.
 
 - **Where:** `create_listing` and `update_listing` (`catalog/routes.py:583`,
   `:623`), the owner's market's `held_listing_above` (`markets.json`, since
-  `747ed6b`; `REVIEW_ABOVE_CENTS` is gone), and admin `GET /api/admin/listings/held` and
-  `POST .../approve` (`moderation.py:568-605`). The owner can open their
+  `747ed6b`; `REVIEW_ABOVE_CENTS` is gone), and admin `GET /api/admin/listings/held` (each with its
+  `currency`) and `POST .../approve` (`moderation.py:568-605`). The owner can open their
   held listing (`catalog/routes.py:453-473`, FL-6). Since `22b5e0f` a
   listing is also held for where it is (`hold_reason`, 3.1), which staff
   cannot approve (409). Since `4e86866` the console's held card shows the
@@ -1752,15 +1752,17 @@ AT, CHF 95 in CH) waits for a staff check.
   waits for approval and the open claims. `GET /api/admin/bookings/{id}/case`
   (`:710`) answers everything on one page: the booking, the timeline of
   transitions, the whole conversation as written (what masking hid too),
-  the hand-over photos as short-lived links, the payment (7.1), the dispute,
-  the resolutions and the claims. Opening a case, and reading a booking's
+  the hand-over photos as short-lived links, the payment (7.1: `captured`,
+  `refunded` and `paidOut` as amounts in minor units, payments' own
+  statuses), the dispute, the resolutions and the claims. Opening a case, and reading a booking's
   evidence as staff, is logged (`read_case`, `read_evidence`).
 - **Resolutions (H-6):** `POST /api/admin/bookings/{id}/resolve`
   `{outcome: pay_owner | refund_buyer | partial, refundAmount?, reasonCode,
   note}` (`:471`, idempotent; the answer is `{resolution, booking}` since
   `7444e37`). A refund within the staff member's limit for the booking's
   market and role (`refund_limit_support` 25 000 or `refund_limit_lead`
-  250 000 cents in DE and AT) settles at once (5.2); above it the resolution
+  250 000 cents in DE and AT) settles at once (5.2), and the staff note goes
+  to both parties in the settled notice, as written; above it the resolution
   waits as `pending_approval` and nothing moves. `GET /api/admin/resolutions`
   lists them oldest first; `POST /api/admin/resolutions/{id}/approve` settles
   it (someone other than the proposer, 403 `four_eyes`; a non-lead only

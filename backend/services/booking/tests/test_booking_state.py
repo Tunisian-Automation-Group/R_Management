@@ -143,6 +143,12 @@ def test_the_local_time_shortcuts_never_reach_a_deployed_environment():
         BookingSettings(**prod("booking"), start_early_minutes=100000)
     with pytest.raises(UnsafeSettings, match="AUTO_COMPLETE_AFTER_HOURS"):
         BookingSettings(**prod("booking"), auto_complete_after_hours=1)
+    with pytest.raises(UnsafeSettings, match="DISPUTE_OFFER_MINUTES"):
+        BookingSettings(**prod("booking"), dispute_offer_minutes=10)
+    with pytest.raises(UnsafeSettings, match="LATE_RETURN_EARLY_MINUTES"):
+        BookingSettings(**prod("booking"), late_return_early_minutes=100000)
+    with pytest.raises(UnsafeSettings, match="LATE_RETURN_CLAIM_HOURS"):
+        BookingSettings(**prod("booking"), late_return_claim_hours=1)
     assert MatchingSettings(**prod("matching")).deployed
     with pytest.raises(UnsafeSettings, match="MIN_LEAD_MINUTES"):
         MatchingSettings(**prod("matching"), min_lead_minutes=5)

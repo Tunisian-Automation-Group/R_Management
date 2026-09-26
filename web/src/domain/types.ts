@@ -325,6 +325,8 @@ export type Booking = {
   expiresAt?: Iso
   /** When the hand-over can first be marked; the server decides. */
   canStartFrom?: Iso
+  /** From when the owner may report a late return (the end, earlier locally). */
+  lateReturnFrom?: Iso
   /** Where and how to collect it: only once the booking is accepted, for both parties. */
   handover?: { address: string; instructions: string; location?: LatLng; postalCode?: string }
   /** The owner's 1–5 stars for the renter (hidden from the renter until both reviews are out). */

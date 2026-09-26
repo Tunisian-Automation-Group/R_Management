@@ -561,6 +561,8 @@ class HeldListing(CamelModel):
     title: str
     category: str
     rate_per_hour: int
+    # The listing's own currency (a Zürich listing is in CHF), as its detail says.
+    currency: str = "EUR"
     held_at: Iso
     hold_reason: str | None = None
 
@@ -580,6 +582,7 @@ async def held(session: AsyncSession = Tx, _: Principal = Depends(require_admin)
             title=r.title,
             category=r.category,
             rate_per_hour=int(r.spec.get("ratePerHour", 0)),
+            currency=str(r.spec.get("currency") or "EUR").upper(),
             held_at=iso_from_datetime(r.held_at),
             hold_reason=r.hold_reason,
         )

@@ -83,6 +83,9 @@ def test_the_two_sides_settle_a_dispute_with_an_offer(client, app, issuer, broke
 def test_a_dispute_nobody_settles_in_72_hours_goes_to_staff(client, app, issuer, broker):
     bid = _disputed(client, app, issuer)
     staff = _staff(issuer)
+    d = client.get(f"/bookings/{bid}/dispute", headers=issuer.headers(BUYER)).json()
+    window = datetime.fromisoformat(d["respondBy"]) - datetime.fromisoformat(d["openedAt"])
+    assert window == timedelta(minutes=app.state.settings.dispute_offer_minutes) == timedelta(hours=72)
     assert call(app, sweep_once, app) == 0
     call(app, _set_dispute, app, bid, respond_by=datetime.now(UTC) - timedelta(minutes=1))
     assert call(app, sweep_once, app) == 1
@@ -114,6 +117,7 @@ def test_a_refund_above_the_staff_limit_needs_a_second_pair_of_eyes(client, app,
     done = approve(lead).json()
     assert done["resolution"]["status"] == "done" and done["resolution"]["approvedBy"] == "lead-1"
     assert done["booking"]["status"] == "completed" and done["booking"]["refundAmount"] == 30_000
+    assert _events(app, broker, BOOKING_NOTICE)[-1]["note"] == "Cracked guard, photos", "the proposer's note"
     assert approve(lead).status_code == 409
     actions = [(e["actorId"], e["action"]) for e in _events(app, broker, STAFF_ACTION)]
     assert ("staff-1", "propose_resolution") in actions and ("lead-1", "approve_resolution") in actions
@@ -149,10 +153,12 @@ def test_within_the_limit_staff_settle_alone_and_partials_are_checked(client, ap
         client.post(f"/admin/bookings/{bid}/resolve", json={**bad, "reasonCode": "vibes"}, headers=staff).status_code
         == 422
     )
-    ok = client.post(f"/admin/bookings/{bid}/resolve", json={**bad, "refundAmount": 1000}, headers=staff).json()
+    fair = {**bad, "refundAmount": 1000, "note": "The guard was cracked on the photos."}
+    ok = client.post(f"/admin/bookings/{bid}/resolve", json=fair, headers=staff).json()
     assert ok["resolution"]["status"] == "done" and ok["booking"]["refundAmount"] == 1000
     told = _events(app, broker, BOOKING_NOTICE)[-1]
     assert (told["kind"], told["how"], told["refundAmount"]) == ("dispute_partial", "staff", 1000)
+    assert told["note"] == "The guard was cracked on the photos.", "the note reaches both sides"
 
 
 def test_the_case_view_shows_everything_and_is_logged(client, app, issuer, broker):
@@ -230,6 +236,22 @@ def test_the_owner_claims_a_late_return_and_staff_decide(client, app, issuer, br
     call(app, _age, app, other, window_start=gone - timedelta(hours=2), window_end=gone, status="completed")
     r = client.post(f"/bookings/{other}/late-return", json={"minutesLate": 90}, headers=issuer.headers(HOST))
     assert r.json()["error"]["code"] == "claim_window", "within 24 hours of the end"
+
+    # Before the end: refused, unless the local testing shortcut opens it early.
+    soon = _requested(client, app, issuer, start_h=80)
+    _do(client, issuer, HOST, soon, "accept")
+    call(app, _age, app, soon, status="active")  # handed over, not yet at its end
+    report = lambda: client.post(  # noqa: E731
+        f"/bookings/{soon}/late-return", json={"minutesLate": 90}, headers=issuer.headers(HOST)
+    )
+    assert report().json()["error"]["code"] == "claim_window"
+    seen = client.get(f"/bookings/{soon}", headers=issuer.headers(HOST)).json()
+    assert seen["lateReturnFrom"] == seen["match"]["end"], "the app is told when it opens"
+    app.state.settings.late_return_early_minutes = 100_000
+    try:
+        assert report().status_code == 201, "locally a tester need not wait for the end"
+    finally:
+        app.state.settings.late_return_early_minutes = 0
 
 
 def test_the_renter_extends_a_booking_that_is_on(client, app, issuer):

@@ -422,6 +422,9 @@ class Booking(CamelModel):
     handover: Handover | None = None
     # When either side may first mark the hand-over (the server's rule).
     can_start_from: Iso | None = None
+    # From when the owner may report a late return (S-12): the booked end,
+    # earlier with the local testing shortcut. The app asks this, not a rule.
+    late_return_from: Iso | None = None
     # The owner's rating of the renter (1-5), once given.
     renter_rating: int | None = None
     # What a cancellation refunded (minor units of ``currency``), once cancelled.

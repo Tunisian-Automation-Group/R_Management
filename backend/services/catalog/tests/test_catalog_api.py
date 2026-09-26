@@ -1465,6 +1465,10 @@ def test_markets_decide_where_people_join_list_and_in_which_currency(client, iss
     assert created.status_code == 201 and created.json()["listing"]["currency"] == "CHF", "the market's currency"
     r = client.post("/listings", json={"listing": {**listing, "currency": "EUR"}}, headers=h)
     assert r.json()["error"]["code"] == "currency_not_in_market"
+    pricey = client.post("/listings", json={"listing": {**listing, "ratePerHour": 25_000}}, headers=h).json()
+    assert pricey["held"] is True
+    held = client.get("/admin/listings/held", headers=_staff(issuer)).json()
+    assert [(x["id"], x["currency"]) for x in held] == [(pricey["listing"]["id"], "CHF")], "staff see francs"
 
 
 # --- weekly schedules and listings that went dark (H-4) ---------------------------

@@ -348,9 +348,11 @@ class PaymentState(CamelModel):
     amount: int
     owner_net: int
     currency: str
-    captured: bool
-    refunded: bool
-    paid_out: bool
+    # Amounts in minor units of `currency`, not flags: what was charged, what
+    # went back to the renter, what reached the owner.
+    captured: int
+    refunded: int
+    paid_out: int
     chargeback_at: Iso | None = None
     updated_at: Iso
 
@@ -367,9 +369,9 @@ async def payment_state(booking_id: str, session: AsyncSession = Tx) -> PaymentS
         amount=row.amount,
         owner_net=row.owner_net,
         currency=row.currency,
-        captured=row.charge_id is not None,
-        refunded=row.refund_id is not None,
-        paid_out=row.transfer_id is not None,
+        captured=row.amount if row.charge_id else 0,
+        refunded=row.refunded_amount,
+        paid_out=row.paid_out_amount,
         chargeback_at=iso_from_datetime(row.chargeback_at) if row.chargeback_at else None,
         updated_at=iso_from_datetime(row.updated_at),
     )

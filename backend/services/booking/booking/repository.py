@@ -54,6 +54,9 @@ def to_booking(row: BookingRow, viewer: str) -> Booking:
         expires_at=iso_from_datetime(row.expires_at) if row.expires_at else None,
         handover=Handover.model_validate(row.handover) if row.handover and row.status in SHOWS_HANDOVER else None,
         can_start_from=iso_from_datetime(row.window_start - START_EARLY) if row.status == "accepted" else None,
+        late_return_from=iso_from_datetime(row.window_end - LATE_RETURN_EARLY)
+        if row.status in ("active", "completed", "disputed")
+        else None,
         renter_rating=renter_rating,
         refund_amount=row.refund_amount,
         currency=row.currency,
@@ -64,6 +67,8 @@ def to_booking(row: BookingRow, viewer: str) -> Booking:
 # How long before the window the hand-over may be marked; set from settings
 # when the app is built (booking.main).
 START_EARLY = timedelta(minutes=30)
+# From when the owner may report a late return: the end, or earlier locally.
+LATE_RETURN_EARLY = timedelta(0)
 REVIEW_WINDOW = timedelta(days=14)
 RELIABILITY_WINDOW = timedelta(days=365)
 RELIABILITY_MIN_BOOKINGS = 5

@@ -61,3 +61,25 @@ def test_server_words_reach_readers_in_their_language():
         _, body = render("declined", lang, title="your booking", link="L", _reason=reason)
         assert not any(english in body for english in PHRASES), body
         assert body.count("..") == 0 and body.split("\n\n")[1].endswith("."), "its own line, one full stop"
+
+
+def test_a_staff_note_reaches_both_sides_as_written():
+    # The resolve form says the note goes to both sides with the decision.
+    note = "Die Schutzhaube war gerissen; siehe Fotos."
+    for lang in LANGS:
+        _, body = render(
+            "dispute_partial",
+            lang,
+            title="Saw",
+            link="L",
+            how_en="",
+            how_de="",
+            how_fr="",
+            _cents=(1000, "EUR"),
+            _note=note,
+        )
+        assert note.split(";")[0] in body, lang
+    _, plain = render("dispute_partial", "en", title="Saw", link="L", how_en="", _cents=(1000, "EUR"), _note="")
+    assert "team" not in plain, "no empty note line"
+    # Items stored before notes existed still render.
+    render("dispute_refunded", "en", title="Saw", link="L", how_en="", _cents=(1000, "EUR"))

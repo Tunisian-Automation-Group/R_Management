@@ -26,6 +26,9 @@ x-env: &env
   INTERNAL_TOKEN: local-only-internal-token-not-a-secret
   AWS_REGION: eu-central-1
   AWS_ENDPOINT_URL: http://localstack:4566
+  # Cognito is cognito-local, not LocalStack: every service that asks Cognito
+  # (staff MFA check, case search by email, sign-out) goes there.
+  COGNITO_ENDPOINT_URL: http://cognito:9229
   AWS_ACCESS_KEY_ID: test
   AWS_SECRET_ACCESS_KEY: test
   CATALOG_URL: http://catalog:8000
@@ -102,6 +105,11 @@ services:
       # So `make e2e` can walk one booking from request to payout in a minute
       # rather than waiting for the booked time. Deployed, the default (30) holds.
       START_EARLY_MINUTES: "100000"
+      # Local testing (GUIDE §A5): a dispute goes to staff after 10 minutes
+      # without agreement, and an owner may report a late return before the
+      # booked end. Deployed settings refuse both.
+      DISPUTE_OFFER_MINUTES: "10"
+      LATE_RETURN_EARLY_MINUTES: "100000"
 
   payments:
     <<: *service
@@ -125,7 +133,6 @@ services:
       DATABASE_URL: postgresql+asyncpg://cappy:cappy@postgres:5432/notifications
       MAILER: ses
       MAIL_FROM: Cappy <no-reply@cappy.local>
-      COGNITO_ENDPOINT_URL: http://cognito:9229
 
   # Stripe test mode locally: forwards Stripe's webhooks to the gateway, the
   # way Stripe calls the public URL in AWS. On with COMPOSE_PROFILES=stripe.

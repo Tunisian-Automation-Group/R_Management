@@ -22,8 +22,16 @@ FIELDS = frozenset(
 )  # fmt: skip
 
 
+# Staff actions: analytics may count what kind of thing staff did and when;
+# who did it, about whom, and their notes stay in the audit log only.
+STAFF_ACTION_FIELDS = frozenset({"action", "targetType", "at"})
+
+
 def keep(event: dict) -> dict:
     data = event.get("data") or {}
+    if event.get("type") == "staff.action":
+        staff = {k: v for k, v in data.items() if k in STAFF_ACTION_FIELDS and isinstance(v, str)}
+        return {**{k: event[k] for k in TOP if k in event}, "data": staff}
     safe = {
         k: v
         for k, v in data.items()
@@ -76,4 +84,11 @@ if __name__ == "__main__":
     moved = keep({"type": "booking.status_changed", "data": {"by": "support:ana@cappy", "to": "cancelled"}})
     assert moved["data"] == {"by": "staff", "to": "cancelled"}, moved
     assert keep({"type": "x", "data": {"by": "system"}})["data"]["by"] == "system"
+    # A staff action keeps what and when, never who, about whom, or the note.
+    act = {"actorId": "staff-1", "personId": "u1", "targetId": "bk_1", "reason": "Ana lied",
+           "action": "resolve_dispute",
+           "targetType": "booking", "requestId": "r", "service": "booking", "at": "2026-09-27T10:00:00Z"}  # fmt: skip
+    assert keep({"type": "staff.action", "data": act})["data"] == {
+        "action": "resolve_dispute", "targetType": "booking", "at": "2026-09-27T10:00:00Z"
+    }, "staff identity and notes stay out of the lake"
     print("scrub ok")

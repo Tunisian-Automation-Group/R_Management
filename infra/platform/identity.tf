@@ -119,6 +119,14 @@ resource "aws_cognito_user_group" "admin" {
   description  = "Cappy staff: moderation, support, dispute resolution"
 }
 
+# Leads refund up to the lead limit in markets.json and approve other staff's
+# over-limit resolutions (H-6). A lead is also in "admin".
+resource "aws_cognito_user_group" "admin_lead" {
+  name         = "admin-lead"
+  user_pool_id = aws_cognito_user_pool.main.id
+  description  = "Cappy staff leads: higher refund limits, four-eyes approvals"
+}
+
 # Sign-in and sign-up go straight to Cognito, past CloudFront's WAF: a
 # regional web ACL of their own against credential stuffing (P-8).
 resource "aws_wafv2_web_acl" "cognito" {

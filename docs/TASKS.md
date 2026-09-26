@@ -709,3 +709,14 @@ Run by a separate verifier on the local stack, 2026-09-26 (10:34–12:35 CEST), 
 - [x] V5-31 [web] The in-app removal notice says only "A message or review of yours was removed. Your account is not otherwise restricted." — which message, why and how to contest are only in the email. Expected: the Art. 17 statement (content, reason, ground, redress) in the app too — backend: the bell shows the whole statement; web: render it (web)
 - [x] V5-32 [web] Small things below Airbnb/Vinted: the report sheet opens with "Betrug" (fraud) preselected instead of "Choose a reason"; after the host accepts, the past step still reads "Requested — Waiting for your answer"; the van's day chips drop the weekday after the first week ("Oct 3", "3 oct.") next to "Tue, Sep 29"; the bandsaw edit page lists all 40 generated windows with a "Remove" each, and after the first week without weekday ("5 oct."); the "Profitez-en" toast is drawn in the middle of the check-in sheet over the note field; a disputed booking's sticky CTA is "Browse capacity" and the hand-over address disappears while the renter still holds the item; a completed booking still offers "Add check-out photos" (web)
 - [ ] V5-33 [web] (unconfirmed) After a sign-out and sign-in in one tab, the new session's refresh token was gone from storage four times (a reload then signed out). It happened only while an old tab from before many Vite hot reloads was open on `/login`; after reloading that tab it stopped. Probably dev-only: each hot reload of `auth.ts` leaves another `storage` listener whose stale module state calls `refresh()` and `forget()`. Worth a check with two fresh tabs in a production build
+
+## Docs-sync contradictions (29b2323) — fixed in one batch
+
+- [x] D-16 [backend]+[web] Case page payment rows: payments stores and answers what moved (`refunded_amount`, `paid_out_amount`, migration 0010), in minor units; the web shows payments' own statuses (`transferred`); a renter no-show is `transferred`, not `refunded`/`partially_refunded`
+- [x] D-17 [backend] The staff note reaches both parties in the settled notice (EN/DE/FR framing, the note as written)
+- [x] D-18 [backend] `/admin/listings/held` carries the listing's `currency`
+- [x] D-19 [infra] `admin-lead` Cognito group in Terraform
+- [x] D-20 [local] `COGNITO_ENDPOINT_URL` for every service (case search by email works locally)
+- [x] D-21 [infra] Analytics lake keeps only `action`, `targetType`, `at` of `staff.action`
+- [x] D-22 [backend] `ResolutionRow` docstring true (`by` is the accepter, `role` "parties")
+- [x] D-23 [backend]+[web] Dispute offer window and late-return window as settings; locally 10-minute escalation and late returns from the hand-over; the booking answer carries `lateReturnFrom`; deployed settings refuse the short values

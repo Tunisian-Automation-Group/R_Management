@@ -32,6 +32,7 @@ def build_app(
 ) -> FastAPI:
     token = settings.internal_token.get_secret_value()
     repository.START_EARLY = timedelta(minutes=settings.start_early_minutes)
+    repository.LATE_RETURN_EARLY = timedelta(minutes=settings.late_return_early_minutes)
 
     async def close(app: FastAPI) -> None:
         await app.state.matching.aclose()

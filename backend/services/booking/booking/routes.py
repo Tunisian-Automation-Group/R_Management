@@ -359,11 +359,11 @@ async def _transition(
     await repo.move(row, to, user, now, **fields)
     if to == "disputed":
         # S-21: the two sides get 72 hours to settle it between them first.
-        from .support import OFFER_WINDOW
         from .tables import DisputeRow
 
         reason = str(fields.get("decline_reason") or "")
-        repo.s.add(DisputeRow(booking_id=row.id, by=user, reason=reason, opened_at=now, respond_by=now + OFFER_WINDOW))
+        window = request.app.state.settings.dispute_offer_window
+        repo.s.add(DisputeRow(booking_id=row.id, by=user, reason=reason, opened_at=now, respond_by=now + window))
     return to_booking(row, user)
 
 

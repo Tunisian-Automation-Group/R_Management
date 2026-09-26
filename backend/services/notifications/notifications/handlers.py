@@ -73,6 +73,7 @@ def messages(event: Event, web: str) -> list[Message]:
             **({"_cents": (amount, d["currency"])} if amount is not None else {}),
             **({"_tz": d["timeZone"]} if d.get("timeZone") else {}),
             **SETTLED_BY[d.get("how", "staff")],
+            "_note": d.get("note") or "",
         }
         return [(sub, None, d["kind"], params) for sub in d["to"]]
     if event.type == LISTING_IDLE:

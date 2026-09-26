@@ -77,9 +77,9 @@ The booking lifecycle diagram is in [section 7](#the-booking-lifecycle).
 | Booking requests per person per 24 h | 10 | `booking/settings.py` `max_requests_per_day` |
 | ID check needed | booking total above the listing owner's market's threshold: EUR 300 in DE and AT, CHF 280 in CH; no categories | `cappy_common/markets.json` `id_check_above`, `booking/settings.py` `verify_categories` |
 | Paid cancellation policies | **off**: every cancellation refunds in full, unless the feature flag `paidCancellationPolicies` is at 100 | `booking/settings.py` `paid_cancellation_policies`, `FEATURE_FLAGS` |
-| Settle a dispute between the two sides | 72 h from the dispute, and again from each new offer; then staff decide | `booking/support.py` `OFFER_WINDOW` |
+| Settle a dispute between the two sides | 72 h from the dispute, and again from each new offer; then staff decide (10 min locally) | `booking/settings.py` `dispute_offer_minutes` |
 | A staff member refunds alone, in a dispute | up to EUR 250 (support) or EUR 2 500 (lead) in DE and AT, CHF 233 / 2 333 in CH; above it a second staff member approves | `markets.json` `refund_limit_support`, `refund_limit_lead` |
-| Report a late return | within 24 h after the booked end; the first 30 min are free; the rest at the hourly rate (quarter hours), plus a fee of one hour's rate capped at EUR 50 (CHF 47) | `booking/support.py` `CLAIM_WITHIN`, `LATE_GRACE_MINUTES`; `markets.json` `late_fee_cap` |
+| Report a late return | within 24 h after the booked end; the first 30 min are free; the rest at the hourly rate (quarter hours), plus a fee of one hour's rate capped at EUR 50 (CHF 47) (locally from the hand-over; the app is told by the booking's `lateReturnFrom`) | `booking/settings.py` `late_return_claim_hours`, `late_return_early_minutes`; `booking/support.py` `LATE_GRACE_MINUTES`; `markets.json` `late_fee_cap` |
 | Extend a booking | the time straight after, while it is on; up to 24 h (the app offers 1, 2 or 4) | `booking/support.py` `ExtendIn`, `BookingExtras.tsx` |
 | Listings outside an open market or the owner's country | held by an hourly job | `catalog/jobs.py` `hold_out_of_market_once` |
 | Platform fee | 15 %, inside the total | `matching/domain/pricing.py`, `web/src/domain/pricing.ts` |
@@ -1955,33 +1955,24 @@ are struck through below.
   profiles and listings) and `4e86866` (the listing form offers only the
   owner's country's districts, V5-2, V5-3).
 
-Found in the `4e86866` pass (no task yet):
+Found in the `4e86866` pass, all fixed since (this batch, the D-16..D-21
+items in TASKS):
 
-- **The case page's payment rows.** Payments answers `captured`,
-  `refunded` and `paidOut` as booleans (`payments/routes.py` `PaymentState`),
-  but the case page types them as amounts and formats them as money
-  (`AdminCases.tsx`, `CaseView.payment` in `repo.ts`), so they read as
-  "€0.01" or "€0.00" rather than yes or no. Its status labels also expect
-  `paid_out` and `failed`, while payments says `transferred` (shown raw).
-- **"Sent to both sides with the decision."** The resolve form's hint on
-  **What you found** says the note goes to both sides, but the "Settled"
-  notice carries only the outcome, the amount and who decided
-  (`booking/support.py` `settle`, `notifications/texts.py`); the note is in
-  the case and the audit log only.
-- **Held listings in another currency.** The console's held card formats
-  the rate in the answer's `currency`, which `/admin/listings/held` does not
-  send, so a Swiss owner's held listing reads in euros.
-- **Case search by email, locally.** Booking looks an email up in Cognito
-  (`CognitoPeople`, `booking/clients.py`) at `COGNITO_ENDPOINT_URL`, but
-  `compose.yaml` sets that only for notifications, so on the local stack
-  booking's lookup goes to LocalStack, which has no Cognito in the licence in
-  use: searching cases by email is expected to fail locally (deployed it
-  uses the pool, with `cognito-idp:ListUsers`). Search by booking or member
-  id instead.
-- **Leads have no group in Terraform.** The console and runbook rely on the
-  Cognito group `admin-lead`, which `infra/platform/identity.tf` does not
-  create (only `admin`); locally `make confirm … LEAD=1` makes it.
-
+- ~~**The case page's payment rows** read as "€0.01".~~ Payments now stores
+  what moved (`refunded_amount`, `paid_out_amount`, migration 0010) and
+  answers `captured`, `refunded` and `paidOut` as amounts in minor units of
+  `currency`; the case page shows payments' own statuses (`transferred`
+  reads "Paid out"). A renter no-show (nothing back, the owner paid) is
+  `transferred`, not `refunded` or `partially_refunded`.
+- ~~**"Sent to both sides with the decision."**~~ The staff note now goes to
+  both parties in the settled notice, as written, under "From Cappy's
+  team" (`settle(note=…)`, `texts.render` `_note`).
+- ~~**Held listings in another currency.**~~ `/admin/listings/held` sends
+  the listing's `currency`.
+- ~~**Case search by email, locally.**~~ `COGNITO_ENDPOINT_URL` is in the
+  shared env block of `compose.yaml`, so every service asks cognito-local.
+- ~~**Leads have no group in Terraform.**~~ `aws_cognito_user_group.admin_lead`
+  in `infra/platform/identity.tf`.
 ---
 
 ## 24. How to keep this file true

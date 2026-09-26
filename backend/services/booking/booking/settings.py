@@ -22,6 +22,15 @@ class Settings(CommonSettings):
     sweep_seconds: float = 30.0
     # Either party can mark the hand-over from this long before the window.
     start_early_minutes: int = 30
+    # S-21: how long the other side has to answer an offer in a dispute
+    # before it goes to staff. Local compose shortens it so a tester sees an
+    # escalation in minutes (GUIDE §A5); deployed it is never under 72 hours.
+    dispute_offer_minutes: int = 72 * 60
+    # S-12: a late return is reported from the booked end until this long
+    # after. Locally the owner may report it this many minutes before the end,
+    # so testers need not wait for a booking to finish; deployed it is 0.
+    late_return_claim_hours: int = 24
+    late_return_early_minutes: int = 0
     # Bookings a person may have waiting for payment at once. A card-testing
     # bot makes many; a person makes one or two.
     max_unpaid: int = 3
@@ -60,6 +69,10 @@ class Settings(CommonSettings):
     def auto_complete_after(self) -> timedelta:
         return timedelta(hours=self.auto_complete_after_hours)
 
+    @property
+    def dispute_offer_window(self) -> timedelta:
+        return timedelta(minutes=self.dispute_offer_minutes)
+
     def unsafe_reasons(self) -> list[str]:
         problems = super().unsafe_reasons()
         if not self.database_url.startswith("postgresql"):
@@ -69,4 +82,10 @@ class Settings(CommonSettings):
             problems.append("START_EARLY_MINUTES above 60 is a local testing shortcut")
         if self.auto_complete_after_hours < 24:
             problems.append("AUTO_COMPLETE_AFTER_HOURS under 24 leaves no time to report a problem")
+        if self.dispute_offer_minutes < 72 * 60:
+            problems.append("DISPUTE_OFFER_MINUTES under 72 hours rushes people into a staff decision")
+        if self.late_return_early_minutes > 0:
+            problems.append("LATE_RETURN_EARLY_MINUTES is a local testing shortcut")
+        if self.late_return_claim_hours < 24:
+            problems.append("LATE_RETURN_CLAIM_HOURS under 24 leaves owners no time to report")
         return problems

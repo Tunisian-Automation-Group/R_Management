@@ -46,10 +46,9 @@ from cappy_common.timeutil import dt_from_iso, iso_from_datetime
 from .repository import BookingRepository, to_booking
 from .tables import IDEMPOTENCY, BookingRow, ClaimRow, DisputeRow, MessageRow, ResolutionRow, TransitionRow
 
-OFFER_WINDOW = timedelta(hours=72)
-# S-12: a late return is reported within a day of the end; the first half
-# hour is grace; the fee on top is one hour at the listing's rate, capped.
-CLAIM_WITHIN = timedelta(hours=24)
+# S-21 offer window and the S-12 claim window are settings (dispute_offer_minutes,
+# late_return_claim_hours). A late return's first half hour is grace; the fee
+# on top is one hour at the listing's rate, capped.
 LATE_GRACE_MINUTES = 30
 REASONS = "damage|no_show|not_as_described|late_return|cleanliness|safety|goodwill|agreement|other"
 
@@ -209,7 +208,7 @@ def _claim(c: ClaimRow) -> Claim:
     )
 
 
-async def _dispute_of(s: AsyncSession, row: BookingRow, *, lock: bool = False) -> DisputeRow:
+async def _dispute_of(s: AsyncSession, row: BookingRow, window: timedelta, *, lock: bool = False) -> DisputeRow:
     d = await s.get(DisputeRow, row.id, with_for_update=lock)
     if d is None:
         # ponytail: disputes opened before booking_disputes existed have their
@@ -220,7 +219,7 @@ async def _dispute_of(s: AsyncSession, row: BookingRow, *, lock: bool = False) -
             by=row.requester_id,
             reason=row.decline_reason or "",
             opened_at=now,
-            respond_by=now + OFFER_WINDOW,
+            respond_by=now + window,
         )
         s.add(d)
         await s.flush()
@@ -263,7 +262,7 @@ def outcome_of(refund: int, row: BookingRow) -> str:
     return "pay_owner" if refund == 0 else "refund_buyer" if refund == row.amount else "partial"
 
 
-async def settle(repo: BookingRepository, row: BookingRow, refund: int, by: str, now: datetime) -> None:
+async def settle(repo: BookingRepository, row: BookingRow, refund: int, by: str, now: datetime, note: str = "") -> None:
     """Refund all: cancelled (payments refunds in full). Otherwise completed,
     with the refunded part in ``refundAmount`` (payments refunds it and pays
     the owner their share of the rest)."""
@@ -283,6 +282,8 @@ async def settle(repo: BookingRepository, row: BookingRow, refund: int, by: str,
         [row.requester_id, row.owner_id],
         refundAmount=refund,
         how="staff" if by.startswith("support:") else "agreement",
+        # Staff's note to both sides, as written (the form says it goes to them).
+        note=note,
     )
 
 
@@ -320,9 +321,10 @@ async def make_offer(
         raise Conflict("offers are for a booking in dispute")
     if body.refund_amount > row.amount:
         raise Invalid(f"the refund cannot be more than the price ({row.amount})", code="invalid_refund")
-    d = await _dispute_of(repo.s, row, lock=True)
+    d = await _dispute_of(repo.s, row, request.app.state.settings.dispute_offer_window, lock=True)
     now = _now()
-    d.offer_amount, d.offer_by, d.offer_at, d.respond_by = body.refund_amount, p.sub, now, now + OFFER_WINDOW
+    window = request.app.state.settings.dispute_offer_window
+    d.offer_amount, d.offer_by, d.offer_at, d.respond_by = body.refund_amount, p.sub, now, now + window
     other = row.owner_id if p.sub == row.requester_id else row.requester_id
     await repo.outbox.add(
         repo.s,
@@ -357,7 +359,7 @@ async def accept_offer(
     if (done := await replayed(repo.s, IDEMPOTENCY, p.sub, key, fp)) is not None:
         return done
     row = await repo.visible(booking_id, p.sub, lock=True)
-    d = await _dispute_of(repo.s, row, lock=True)
+    d = await _dispute_of(repo.s, row, request.app.state.settings.dispute_offer_window, lock=True)
     if d.offer_amount is None:
         raise Conflict("there is no offer to accept")
     if d.offer_by == p.sub:
@@ -454,7 +456,7 @@ async def _resolve(
     )
     repo.s.add(res)
     if res.status == "done":
-        await settle(repo, row, refund, f"support:{actor}", now)
+        await settle(repo, row, refund, f"support:{actor}", now, res.note)
     await audit(
         repo.s,
         repo.outbox,
@@ -547,7 +549,7 @@ async def approve_resolution(
         raise Forbidden("this refund needs a lead to approve it", code="needs_lead")
     now = _now()
     res.status, res.approved_by, res.decided_at = "done", p.sub, now
-    await settle(repo, row, res.refund_amount, f"support:{p.sub}", now)
+    await settle(repo, row, res.refund_amount, f"support:{p.sub}", now, res.note)
     await audit(repo.s, repo.outbox, p.sub, "approve_resolution", "booking", row.id, body.note or f"approved {res.id}")
     request.app.state.relay.wake()
     answer = Settled(resolution=_resolution(res, row.currency), booking=to_booking(row, ""))
@@ -839,9 +841,13 @@ async def report_late_return(
         raise Forbidden("only the owner reports a late return")
     if row.status not in ("active", "completed", "disputed"):
         raise Conflict("a late return is reported after a hand-over")
-    now = _now()
-    if not row.window_end <= now <= row.window_end + CLAIM_WITHIN:
-        raise Conflict("a late return is reported within 24 hours after the booked end", code="claim_window")
+    now, cfg = _now(), request.app.state.settings
+    opens = row.window_end - timedelta(minutes=cfg.late_return_early_minutes)  # = the answer's lateReturnFrom
+    if not opens <= now <= row.window_end + timedelta(hours=cfg.late_return_claim_hours):
+        raise Conflict(
+            f"a late return is reported within {cfg.late_return_claim_hours} hours after the booked end",
+            code="claim_window",
+        )
     if await repo.s.scalar(select(ClaimRow.id).where(ClaimRow.booking_id == row.id, ClaimRow.kind == "late_return")):
         raise Conflict("a late return was already reported for this booking", code="claim_exists")
     amount = late_return_amount(row, body.minutes_late)

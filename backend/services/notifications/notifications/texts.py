@@ -75,15 +75,15 @@ TEXTS: dict[str, dict[str, tuple[str, str]]] = {
         ),
         "dispute_refunded": (
             "Settled: {title}",
-            "{how_en} the renter gets the full price back ({amount}). The owner is not paid for this booking.\n\n{link}",
+            "{how_en} the renter gets the full price back ({amount}). The owner is not paid for this booking.{note}\n\n{link}",
         ),
         "dispute_partial": (
             "Settled: {title}",
-            "{how_en} {amount} goes back to the renter, and the owner is paid for the rest.\n\n{link}",
+            "{how_en} {amount} goes back to the renter, and the owner is paid for the rest.{note}\n\n{link}",
         ),
         "dispute_owner_paid": (
             "Settled: {title}",
-            "{how_en} the owner is paid in full and nothing is refunded.\n\n{link}",
+            "{how_en} the owner is paid in full and nothing is refunded.{note}\n\n{link}",
         ),
         "dispute_escalated": (
             "We are deciding now: {title}",
@@ -176,15 +176,15 @@ TEXTS: dict[str, dict[str, tuple[str, str]]] = {
         ),
         "dispute_refunded": (
             "Geklärt: {title}",
-            "{how_de} Die mietende Person bekommt den vollen Preis zurück ({amount}). Für diese Buchung wird nichts ausgezahlt.\n\n{link}",
+            "{how_de} Die mietende Person bekommt den vollen Preis zurück ({amount}). Für diese Buchung wird nichts ausgezahlt.{note}\n\n{link}",
         ),
         "dispute_partial": (
             "Geklärt: {title}",
-            "{how_de} {amount} gehen an die mietende Person zurück, der Rest wird ausgezahlt.\n\n{link}",
+            "{how_de} {amount} gehen an die mietende Person zurück, der Rest wird ausgezahlt.{note}\n\n{link}",
         ),
         "dispute_owner_paid": (
             "Geklärt: {title}",
-            "{how_de} Der volle Betrag wird ausgezahlt, es wird nichts erstattet.\n\n{link}",
+            "{how_de} Der volle Betrag wird ausgezahlt, es wird nichts erstattet.{note}\n\n{link}",
         ),
         "dispute_escalated": (
             "Wir entscheiden jetzt: {title}",
@@ -277,15 +277,15 @@ TEXTS: dict[str, dict[str, tuple[str, str]]] = {
         ),
         "dispute_refunded": (
             "Réglé : {title}",
-            "{how_fr} la personne locataire récupère le prix complet ({amount}). Rien n’est versé pour cette réservation.\n\n{link}",
+            "{how_fr} la personne locataire récupère le prix complet ({amount}). Rien n’est versé pour cette réservation.{note}\n\n{link}",
         ),
         "dispute_partial": (
             "Réglé : {title}",
-            "{how_fr} {amount} sont remboursés à la personne locataire, et le reste est versé.\n\n{link}",
+            "{how_fr} {amount} sont remboursés à la personne locataire, et le reste est versé.{note}\n\n{link}",
         ),
         "dispute_owner_paid": (
             "Réglé : {title}",
-            "{how_fr} le montant complet est versé et rien n’est remboursé.\n\n{link}",
+            "{how_fr} le montant complet est versé et rien n’est remboursé.{note}\n\n{link}",
         ),
         "dispute_escalated": (
             "Nous décidons maintenant : {title}",
@@ -348,6 +348,7 @@ PHRASES: dict[str, dict[str, str]] = {
     },
 }
 _REASON = {"en": "Reason: ", "de": "Grund: ", "fr": "Motif\u00a0: "}
+_NOTE = {"en": "From Cappy's team: ", "de": "Vom Cappy-Team: ", "fr": "De l\u2019équipe Cappy\u00a0: "}
 
 
 def phrase(text: str, lang: str) -> str:
@@ -373,6 +374,11 @@ def render(key: str, locale: str | None, **params) -> tuple[str, str]:
         # Its own paragraph, one full stop whatever the reason ended with (V5-16).
         reason = phrase((params.pop("_reason") or "").strip().rstrip("."), lang)
         params["reason"] = f"\n\n{_REASON[lang]}{reason}." if reason else ""
+    if "_note" in params:
+        # Staff wrote it for both sides: their own paragraph, as written.
+        note = (params.pop("_note") or "").strip()
+        params["note"] = f"\n\n{_NOTE[lang]}{note}" if note else ""
+    params.setdefault("note", "")  # inbox items stored before notes existed
     if "_cents" in params:
         params["amount"] = money(*params.pop("_cents"), locale)
     zone = params.pop("_tz", None) or DEFAULT_TIME_ZONE

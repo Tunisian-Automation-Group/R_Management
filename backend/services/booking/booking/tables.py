@@ -177,9 +177,10 @@ class DisputeRow(Base):
 
 
 class ResolutionRow(Base):
-    """How a dispute was settled (H-6): by staff, or by the two sides agreeing
-    (``by`` "agreement:<who accepted>"). Above the staff member's limit it
-    waits for a second one (``pending_approval``)."""
+    """How a dispute was settled (H-6): by staff (``by`` the staff member's id,
+    ``role`` "support" or "lead"), or by the two sides agreeing (``by`` the id
+    of whoever accepted the offer, ``role`` "parties"). Above the staff
+    member's limit it waits for a second one (``pending_approval``)."""
 
     __tablename__ = "booking_resolutions"
     id: Mapped[str] = mapped_column(String(40), primary_key=True)

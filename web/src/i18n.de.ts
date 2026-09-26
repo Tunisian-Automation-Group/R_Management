@@ -1310,6 +1310,7 @@ export const DE: Record<string, string> = {
   "Card held": "Karte reserviert",
   "Partly refunded": "Teilweise erstattet",
   "Paid out": "Ausgezahlt",
+  "Hold released": "Reservierung aufgehoben",
   "Failed": "Fehlgeschlagen",
   "{n} job done": "{n} Auftrag erledigt",
   "proposed by you": "von dir vorgeschlagen",

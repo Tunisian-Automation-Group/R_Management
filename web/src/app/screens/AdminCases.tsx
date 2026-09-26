@@ -64,7 +64,9 @@ const PAYMENT_STATUS: Record<string, string> = {
   captured: 'Charged',
   refunded: 'Refunded',
   partially_refunded: 'Partly refunded',
-  paid_out: 'Paid out',
+  // payments' own vocabulary (payments/tables.py PaymentRow)
+  transferred: 'Paid out',
+  cancelled: 'Hold released',
   failed: 'Failed',
 }
 const reasonLabel = (c?: string) => t(REASON_CODES.find(([k]) => k === c)?.[1] ?? c ?? '')

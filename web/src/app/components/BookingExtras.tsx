@@ -235,7 +235,9 @@ export function LateReturn({ booking, renterName }: { booking: Booking; renterNa
   const toast = useToast()
   const online = useOnline()
   const end = Date.parse(booking.match.end)
-  const inWindow = ['active', 'completed', 'disputed'].includes(booking.status) && Date.now() >= end && Date.now() <= end + DAY
+  // The server says from when (lateReturnFrom: the end, earlier locally).
+  const from = booking.lateReturnFrom ? Date.parse(booking.lateReturnFrom) : end
+  const inWindow = ['active', 'completed', 'disputed'].includes(booking.status) && Date.now() >= from && Date.now() <= end + DAY
   const claims = useClaims(booking.id, ['active', 'completed', 'disputed'].includes(booking.status))
   const [open, setOpen] = useState(false)
   const [minutes, setMinutes] = useState('')

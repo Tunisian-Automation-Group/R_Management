@@ -1314,6 +1314,7 @@ export const FR: Record<string, string> = {
   "Card held": "Montant bloqué sur la carte",
   "Partly refunded": "Partiellement remboursé",
   "Paid out": "Versé",
+  "Hold released": "Blocage levé",
   "Failed": "Échoué",
   "{n} job done": "{n} mission réalisée",
   "proposed by you": "proposé par vous",
