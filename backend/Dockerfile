@@ -11,7 +11,7 @@ COPY libs ./libs
 COPY services ./services
 RUN uv sync --frozen --no-dev --no-editable --package cappy-${SERVICE}
 
-FROM python:3.12-slim-bookworm
+FROM python:3.14-slim-bookworm
 ARG SERVICE
 ENV PATH=/app/.venv/bin:$PATH PYTHONUNBUFFERED=1 SERVICE=${SERVICE} PORT=8000 APP_ENV=prod LOG_JSON=true \
     PGSSLROOTCERT=/etc/ssl/rds/global-bundle.pem
