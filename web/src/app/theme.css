@@ -78,8 +78,9 @@
   --sunken: #f2f0eb;
   --veil: rgba(255, 255, 255, 0.94);
   --veil-page: rgba(255, 255, 255, 0.94);
-  --line: rgba(24, 33, 26, 0.14);
-  --line-strong: rgba(24, 33, 26, 0.3);
+  /* 1.5:1 on page and surface; input borders (line-strong) are UI parts, 3:1. */
+  --line: rgba(24, 33, 26, 0.22);
+  --line-strong: rgba(24, 33, 26, 0.5);
 
   --ink: #18211a;
   --ink-2: #39423a;
@@ -91,6 +92,21 @@
   /* Sheets and popovers: white here, a lighter surface in dark mode (Apple's
      "elevated" background). */
   --elevated: #ffffff;
+  /* Menus over sheets and hovered rows; selected segments and the dock's
+     indicator in dark (UX-47). Light keeps paper and the crimson tint. */
+  --overlay: #ffffff;
+  --pill: #eceae4;
+  /* The selected segment: the green plate in light, a raised pill in dark,
+     where the plate would sink into the card (UX-47). */
+  --segment-on: var(--field);
+  --on-segment: var(--on-field);
+  /* Disabled controls: a quiet fill and ink-4, never opacity alone. */
+  --disabled-bg: var(--sunken);
+  /* The full-screen gallery is black in both themes, its controls white on a
+     40 % black chip (UX-49). */
+  --gallery-bg: #000000;
+  --on-gallery: #ffffff;
+  --gallery-chip: rgba(0, 0, 0, 0.4);
 
   /* The deep material. Listing plates, the hero, the dock's active state. */
   --field: #20311e;
@@ -185,7 +201,32 @@
 
   /* Component knobs. */
   --sheet-radius: var(--radius-l);
-  --dock-label-size: 0.6875rem;
+  /* The phone tab bar (cappy-ui §4): 56 plus the home indicator, opaque
+     elevated surface, hairline top, a 56×32 indicator pill behind the active
+     icon. */
+  /* 12/16 labels in fixed pixels, as a tab bar: at 200 % text it drops them. */
+  --dock-label-size: 12px;
+  --dock-label-line: 16px;
+  --dock-bar-h: 56px;
+  /* Items centred in a 480 px row with 20 px gutters: 5 × 64 at 360. */
+  --dock-row: 480px;
+  --dock-gutter: 20px;
+  --dock-bg: var(--elevated);
+  /* The bar at 92 % over a 20 px blur; opaque under Reduce Transparency. */
+  --dock-alpha: 92%;
+  --dock-ink: var(--ink-3);
+  /* The crimson tint deep enough to read against the bar (1.5:1). */
+  --dock-active: #ecc4c9;
+  --dock-active-ink: var(--accent-text);
+  /* Fixed pixels, as an iOS tab bar: the bar does not grow with text size; at
+     200 % it drops its labels instead (useLargeText), so 5 × 56 always fits. */
+  --dock-pill-w: 56px;
+  --dock-pill-h: 32px;
+  --dock-icon: 24px;
+  --dock-badge: 16px;
+  --dock-badge-off: -4px;
+  --dock-badge-pad: 4px;
+  --dock-badge-text: 11px;
 
   /* ------------------------------------------------------------ liquid glass
      Apple's iOS 27 kit models glass as seven numbers: frost, depth, opacity,
@@ -219,8 +260,8 @@
   --glass-shadow-raised: 0 18px 44px -16px rgba(24, 33, 26, 0.36);
 
   --safe-top: env(safe-area-inset-top, 0px);
-  /* Capsule height plus the gap it floats above the bottom edge. */
-  --dock-h: calc(56px + 10px + env(safe-area-inset-bottom, 0px));
+  /* The bar plus the home indicator: what every scroll view keeps clear of. */
+  --dock-h: calc(var(--dock-bar-h) + 1px + env(safe-area-inset-bottom, 0px));
   --safe-bottom-md: 0px;
   /* Zero on a phone: the nav is at the bottom there, not the top. */
   --header-h: 0px;
@@ -246,34 +287,45 @@
    Dark mode (UX-36). Only the semantic roles swap. The app resolves the
    Profile choice (System, Light, Dark) against prefers-color-scheme and sets
    data-theme on <html> before the first paint (index.html, theme.ts), so there
-   is one dark block. The page is green-black, never pure black; elevation reads
-   as lighter surfaces rather than shadows. Pairs measured (WCAG 2.2 AA): ink on
-   page 15.9:1, ink-3 on page 7.1:1, ink-4 on surface 5.1:1, on-accent on
-   accent 5.4:1, accent-text on page 5.6:1, danger on page 8.3:1. */
+   is one dark block. Light is the default; dark is opt-in (cappy-ui §3). The
+   pairs are measured by check:contrast, not listed here. */
 :root[data-theme='dark'] {
-  --page: #0f1410;
-  --surface: #171d18;
-  --elevated: #1f2620;
-  --sunken: #0b0f0c;
-  --veil: rgba(15, 20, 16, 0.94);
-  --veil-page: rgba(15, 20, 16, 0.94);
-  --line: rgba(238, 240, 234, 0.12);
-  --line-strong: rgba(238, 240, 234, 0.28);
+  /* The surface ladder (UX-47): each step about +4.5 L*, visibly its own
+     level, lightest last. Sunken sits above the page, never a hole in it. */
+  --page: #121813;
+  --sunken: #161c17;
+  --surface: #1a211b;
+  --elevated: #252d26;
+  --overlay: #2f3830;
+  --pill: #404c42;
+  --veil: rgba(18, 24, 19, 0.94);
+  --veil-page: rgba(18, 24, 19, 0.94);
+  --line: rgba(238, 240, 234, 0.18);
+  --line-strong: rgba(238, 240, 234, 0.36);
+  /* Never pure white on large areas. ink-3 and ink-4 keep 4.5:1 up to the
+     overlay step. */
   --ink: #eef0ea;
-  --ink-2: #c3c9bf;
-  --ink-3: #a3ab9f;
-  --ink-4: #8e9689;
+  --ink-2: #cfd5ca;
+  --ink-3: #a8b0a4;
+  --ink-4: #9ca496;
   --focus: #8cc3d6;
   /* The plate stays a plate: a touch lighter so it still reads as material. */
   --field: #1f3a24;
   --field-2: #274a2e;
+  --on-field-dim: #b3bdaf;
+  /* The crimson opened up for dark, carrying dark text (5.2:1): white on it
+     fails. One filled accent per view. */
   --accent: #e0525f;
   --accent-hover: #e66873;
   --accent-active: #c9434f;
   --accent-text: #f07782;
   --accent-subtle: #3a1a1d;
   --accent-muted: #6b2a30;
+  --accent-bright: #ec979e;
   --on-accent: #1a0507;
+  --disabled-bg: var(--pill);
+  --segment-on: var(--pill);
+  --on-segment: var(--ink);
   --sky-ink: #8cc3d6;
   --sky-subtle: #16272c;
   --success: #7cc4a0;
@@ -286,31 +338,122 @@
   --danger-subtle: #331716;
   --badge: #e0525f;
   --on-badge: #1a0507;
-  --on-status: #0f1410;
-  --track: #283029;
+  --on-status: #121813;
+  --track: #2b322c;
   --idle: #8cc3d6;
   --sold: #e0525f;
-  --map-ground: #171d18;
+  --map-ground: #1a211b;
   --map-water: #162226;
-  --map-line: #2c342d;
+  --map-line: #343b35;
   --inverse: #eef0ea;
-  --on-inverse: #0f1410;
-  --shadow-1: 0 0 0 1px rgba(238, 240, 234, 0.06);
+  --on-inverse: #121813;
+  /* The dock: a pill clearly lighter than the bar, the active icon in ink. */
+  --dock-alpha: 94%;
+  --dock-active: var(--pill);
+  --dock-active-ink: var(--ink);
+  --shadow-1: 0 0 0 1px rgba(238, 240, 234, 0.08);
   --shadow-float: 0 8px 24px -12px rgba(0, 0, 0, 0.6);
-  --shadow-dock: 0 -1px 0 rgba(238, 240, 234, 0.1);
+  --shadow-dock: 0 -1px 0 rgba(238, 240, 234, 0.12);
   --shadow-plate: 0 18px 40px -24px rgba(0, 0, 0, 0.7);
   --shadow-sheet: 0 -24px 60px rgba(0, 0, 0, 0.5);
   --scrim: rgba(0, 0, 0, 0.6);
-  --glass-tint: rgba(23, 29, 24, 0.55);
-  --glass-tint-thin: rgba(23, 29, 24, 0.42);
-  --glass-tint-strong: rgba(20, 26, 21, 0.74);
+  --glass-tint: rgba(35, 43, 36, 0.6);
+  --glass-tint-thin: rgba(35, 43, 36, 0.46);
+  --glass-tint-strong: rgba(35, 43, 36, 0.8);
   --glass-edge-lit: rgba(238, 240, 234, 0.22);
-  --glass-edge-shade: rgba(238, 240, 234, 0.04);
+  --glass-edge-shade: rgba(238, 240, 234, 0.05);
   --glass-specular: rgba(255, 255, 255, 0.08);
   --glass-shadow: 0 10px 30px -12px rgba(0, 0, 0, 0.6);
   --glass-shadow-raised: 0 18px 44px -16px rgba(0, 0, 0, 0.7);
   color-scheme: dark;
 }
+
+/* Photos are dimmed about 10 % in dark so they don't glare; the full-screen
+   gallery shows them as they are. */
+:root[data-theme='dark'] img:not(.gallery-full) {
+  filter: brightness(0.9);
+}
+
+/* In dark, Bodoni only from 34 px: its hairlines break up below ("yet" read
+   as "yct"). The 28 px titles take Archivo 600 there. */
+:root[data-theme='dark'] .t-h2 {
+  font-family: var(--font-sans);
+  font-variation-settings: 'wdth' 100;
+  font-weight: 600;
+  letter-spacing: -0.012em;
+}
+
+/* Glass only on the dock: content sheets are opaque in dark (Apple: no glass
+   in the content layer). */
+:root[data-theme='dark'] .sheet-pane {
+  background: var(--elevated);
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+}
+:root[data-theme='dark'] .sheet-pane::before,
+:root[data-theme='dark'] .sheet-pane::after {
+  display: none;
+}
+
+/* The phone tab bar (UX-46): full width on the bottom edge, 92–94 % over a
+   20 px blur, a hairline above, the home indicator inside. Unlayered, so it
+   wins over the glass pane it is on the desktop. */
+@media (max-width: 767px) {
+  .dock {
+    background: color-mix(in srgb, var(--dock-bg) var(--dock-alpha), transparent);
+    -webkit-backdrop-filter: blur(20px) saturate(180%);
+    backdrop-filter: blur(20px) saturate(180%);
+    border-top: 1px solid var(--line);
+    border-radius: 0;
+    box-shadow: none;
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+    transition: transform var(--dur-long) var(--ease-decelerate);
+  }
+  .dock::before,
+  .dock::after {
+    display: none;
+  }
+  /* Hide on scroll: the bar slides down by its content height, leaving the
+     safe area painted; it leaves faster than it returns. */
+  .dock[data-scrolled='away'] {
+    transform: translateY(var(--dock-bar-h));
+    transition-duration: var(--dur-medium);
+    transition-timing-function: var(--ease-accelerate);
+  }
+}
+@media (max-width: 767px) and (prefers-reduced-transparency: reduce) {
+  .dock {
+    background: var(--dock-bg);
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .dock[data-scrolled='away'] {
+    transform: none;
+  }
+  .dock-pill-in {
+    animation: none;
+  }
+}
+/* The indicator arrives: its width from 0 to 56 (scaleX, transform only). */
+@keyframes dock-pill {
+  from {
+    transform: scaleX(0);
+    opacity: 0;
+  }
+}
+.dock-pill-in {
+  animation: dock-pill var(--dur-short) var(--ease-standard);
+}
+
+.gallery-dialog::backdrop {
+  background: var(--gallery-bg);
+}
+
+
+
+
 
 /* --------------------------------------------------------------------- base */
 html {
@@ -1081,4 +1224,17 @@ input,
 textarea,
 select {
   scroll-margin-bottom: calc(var(--dock-h, 80px) + 24px);
+}
+
+/* Dock labels run slightly condensed (Archivo's width axis) so German and
+   French words fit the 64 px cell at 360 without truncating (UX-46). */
+.dock-label {
+  font-variation-settings: 'wdth' 88;
+  letter-spacing: -0.01em;
+}
+@media (min-width: 768px) {
+  .dock-label {
+    font-variation-settings: 'wdth' 100;
+    letter-spacing: normal;
+  }
 }

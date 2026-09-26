@@ -104,16 +104,21 @@ export function Gallery({
   )
 }
 
-/** Full screen, one photo at a time, pinch-zoomable; arrows, swipe or keys. */
+/** Full screen, one photo at a time, pinch-zoomable; arrows, swipe or keys.
+ *  A modal <dialog> on the top layer (UX-49): nothing on the page, not the
+ *  sticky price bar nor the back button, can paint over it, and the page
+ *  behind is inert. Black in both themes; APG carousel roles. */
 function Viewer({ photos, alt, start, onClose }: { photos: string[]; alt: (i: number) => string; start: number; onClose: () => void }) {
   const [i, setI] = useState(start)
+  const box = useRef<HTMLDialogElement>(null)
   const close = useRef(onClose)
   close.current = onClose
   const go = (d: number) => setI((n) => (n + d + photos.length) % photos.length)
   useEffect(() => {
+    const dialog = box.current
     const opener = document.activeElement instanceof HTMLElement ? document.activeElement : null
+    dialog?.showModal()
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') close.current()
       if (e.key === 'ArrowRight') go(1)
       if (e.key === 'ArrowLeft') go(-1)
     }
@@ -125,17 +130,24 @@ function Viewer({ photos, alt, start, onClose }: { photos: string[]; alt: (i: nu
       document.removeEventListener('keydown', onKey)
       unstack()
       document.body.style.overflow = prev
+      dialog?.close()
       opener?.focus()
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
   const touch = useRef<number | null>(null)
+  const chip = 'absolute grid h-11 w-11 place-items-center rounded-full bg-[var(--gallery-chip)] text-[var(--on-gallery)]'
   return (
-    <div
-      role="dialog"
-      aria-modal="true"
-      aria-label={alt(i)}
-      className="anim-fade fixed inset-0 z-[70] flex items-center justify-center bg-[var(--inverse)]"
+    <dialog
+      ref={box}
+      aria-roledescription={t('carousel')}
+      aria-label={t('Photos')}
+      // Escape closes it (the dialog's own cancel), as the close button does.
+      onCancel={(e) => {
+        e.preventDefault()
+        close.current()
+      }}
+      className="gallery-dialog anim-fade fixed inset-0 m-0 h-full max-h-none w-full max-w-none bg-[var(--gallery-bg)] p-0 text-[var(--on-gallery)]"
       onTouchStart={(e) => (touch.current = e.touches.length === 1 ? e.touches[0].clientX : null)}
       onTouchEnd={(e) => {
         if (touch.current === null) return
@@ -143,35 +155,34 @@ function Viewer({ photos, alt, start, onClose }: { photos: string[]; alt: (i: nu
         if (Math.abs(dx) > 50) go(dx < 0 ? 1 : -1)
       }}
     >
-      <img
-        src={mediaUrl(photos[i])}
-        alt={alt(i)}
-        className="max-h-full max-w-full object-contain"
-        style={{ touchAction: 'pinch-zoom' }}
-      />
-      <button
-        type="button"
-        autoFocus
-        onClick={onClose}
-        aria-label={t('Close')}
-        className="glass glass-dark absolute right-4 grid h-11 w-11 place-items-center rounded-full"
-        style={{ top: 'calc(var(--safe-top) + 12px)' }}
+      <div
+        role="group"
+        aria-roledescription={t('slide')}
+        aria-label={photos.length > 1 ? t('{n} of {total}', { n: i + 1, total: photos.length }) : alt(i)}
+        className="flex h-full w-full items-center justify-center"
       >
+        <img src={mediaUrl(photos[i])} alt={alt(i)} className="gallery-full max-h-full max-w-full object-contain" style={{ touchAction: 'pinch-zoom' }} />
+      </div>
+      <button type="button" autoFocus onClick={onClose} aria-label={t('Close')} className={`${chip} right-4`} style={{ top: 'calc(var(--safe-top) + 12px)' }}>
         <Icon name="close" size={18} strokeWidth={2.2} />
       </button>
       {photos.length > 1 && (
         <>
-          <button type="button" onClick={() => go(-1)} aria-label={t('Previous photo')} className="glass glass-dark absolute left-4 top-1/2 grid h-11 w-11 -translate-y-1/2 place-items-center rounded-full">
+          <button type="button" onClick={() => go(-1)} aria-label={t('Previous photo')} className={`${chip} left-4 top-1/2 -translate-y-1/2`}>
             <Icon name="chevron-left" size={18} strokeWidth={2.2} />
           </button>
-          <button type="button" onClick={() => go(1)} aria-label={t('Next photo')} className="glass glass-dark absolute right-4 top-1/2 grid h-11 w-11 -translate-y-1/2 place-items-center rounded-full">
+          <button type="button" onClick={() => go(1)} aria-label={t('Next photo')} className={`${chip} right-4 top-1/2 -translate-y-1/2`}>
             <Icon name="chevron-right" size={18} strokeWidth={2.2} />
           </button>
-          <span className="glass glass-dark tnum absolute bottom-6 left-1/2 -translate-x-1/2 rounded-full px-3 py-1 text-label font-semibold" aria-live="polite">
+          <span
+            className="tnum absolute left-1/2 -translate-x-1/2 rounded-full bg-[var(--gallery-chip)] px-3 py-1 text-label font-semibold text-[var(--on-gallery)]"
+            style={{ bottom: 'calc(env(safe-area-inset-bottom, 0px) + 24px)' }}
+            aria-live="polite"
+          >
             {i + 1} / {photos.length}
           </span>
         </>
       )}
-    </div>
+    </dialog>
   )
 }

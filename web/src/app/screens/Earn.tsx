@@ -248,7 +248,8 @@ export function Earn() {
 
                     {/* Sized to the label. A full-width Accept is a phone habit; on
                         a page it became a 1,500px red bar that read as an alarm. */}
-                    <div className="mt-4 flex gap-2">
+                    {/* Wraps at 200 % text rather than pushing Decline off screen. */}
+                    <div className="mt-4 flex flex-wrap gap-2">
                       <Button
                         className="flex-1 md:flex-none md:px-7"
                         disabled={busy}
@@ -281,8 +282,9 @@ export function Earn() {
     <Screen
       title={t('Earn')}
       action={
-        <Button size="sm" variant="secondary" icon="plus" to={'/earn/new'}>
-          {t('Add')}
+        // The one filled action on Earn: creation left the dock (UX-46).
+        <Button size="sm" icon="plus" to={'/earn/new'}>
+          {t('List something')}
         </Button>
       }
     >
