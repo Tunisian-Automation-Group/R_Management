@@ -32,7 +32,7 @@ import type { SortKey } from '../domain/match.ts'
 import { useMemo } from 'react'
 import { attemptKeys } from '../domain/attempt.ts'
 import { accessToken, endSession, refresh, useSession } from './auth.ts'
-import { lang, t } from '../i18n.ts'
+import { lang, locale, t } from '../i18n.ts'
 import { isNative, platform, shareFile } from '../native.ts'
 import { flagOn } from '../domain/flags.ts'
 
@@ -66,9 +66,22 @@ export class ApiError extends Error {
     public readonly retryAfter?: number,
     /** When a refusal stops applying, if the server said (409 open_obligations). */
     public readonly until?: string,
+    /** Every field that failed, when the server checked a form (`invalid`). */
+    public readonly fields?: { field: string; message: string }[],
   ) {
     super(message)
   }
+}
+
+/** Codes the server sends that the reader should see in their language, not
+ *  the server's English (M-2, M-5, M-9). */
+const CODE_TEXT: Record<string, () => string> = {
+  market_not_live: () => t('Cappy is not open in that country yet.'),
+  market_unknown: () => t('Cappy does not serve that country.'),
+  currency_not_in_market: () => t('Listings in your country are priced in its own currency.'),
+  location_outside_district: () => t('That place is too far from the district you picked. Pick the district it is in.'),
+  country_unsupported: () => t('Payouts are not available in that country yet.'),
+  conversation_closed: () => t('This booking is closed, so no new messages can be sent.'),
 }
 
 async function send(method: string, path: string, body?: unknown, headers?: Record<string, string>): Promise<Response> {
@@ -80,8 +93,9 @@ async function send(method: string, path: string, body?: unknown, headers?: Reco
       headers: {
         Accept: 'application/json',
         'X-App-Version': APP_VERSION,
-        // The server renders notifications (and its messages) in the app's language.
-        'Accept-Language': lang(),
+        // The server renders notifications (and its messages) in the app's
+        // language, and their times in its region's format: the full locale (en-US, fr-CA).
+        'Accept-Language': locale(),
         ...(token ? { Authorization: `Bearer ${token}` } : {}),
         ...(body !== undefined && !form ? { 'Content-Type': 'application/json' } : {}),
         ...headers,
@@ -122,7 +136,14 @@ async function read<T>(res: Response): Promise<T> {
     data = undefined // a proxy's HTML error page, say
   }
   if (!res.ok) {
-    type Body = { code?: string; message?: string; detail?: string; until?: string; details?: { until?: string | null } }
+    type Body = {
+      code?: string
+      message?: string
+      detail?: string
+      until?: string
+      details?: { until?: string | null }
+      fields?: { field: string; message: string }[]
+    }
     const top = data as (Body & { error?: Body }) | undefined
     const err = top?.error ?? (top?.code ? { ...top, message: top.message ?? top.detail } : undefined)
     const wait = Number(res.headers.get('Retry-After'))
@@ -138,14 +159,20 @@ async function read<T>(res: Response): Promise<T> {
           ? Number.isFinite(wait) && wait > 0
             ? t('Too many tries. Wait {n} seconds and try again.', { n: Math.ceil(wait) })
             : t('Too many tries. Wait a few minutes and try again.')
-          : // The server speaks English; the catalogue translates what it knows.
-          err?.message
-          ? t(err.message)
-          : t('Something went wrong ({status}). Try again.', { status: res.status }),
+          : err?.code && CODE_TEXT[err.code]
+            ? CODE_TEXT[err.code]()
+            : // Every field that failed at once, not one per try (V4-20).
+              err?.fields?.length
+              ? err.fields.map((f) => t(f.message)).join(' ')
+              : // The server speaks English; the catalogue translates what it knows.
+                err?.message
+                ? t(err.message)
+                : t('Something went wrong ({status}). Try again.', { status: res.status }),
       res.status,
       err?.code ?? 'error',
       Number.isFinite(wait) && wait > 0 ? wait : undefined,
       err?.details?.until ?? err?.until ?? top?.until ?? undefined,
+      err?.fields,
     )
   }
   return data as T
@@ -200,13 +227,20 @@ export type Spotlight = {
 export type QuoteOut = { quote?: Quote; feasibility: { feasible: boolean; blockers: string[]; reasons: string[] } }
 export type PaymentStart = { clientSecret: string; intentId: string }
 export type BookingCreated = { booking: Booking; payment?: PaymentStart }
-export type PaymentsConfig = { provider: 'fake' | 'stripe'; publishableKey?: string }
+export type PaymentsConfig = {
+  provider: 'fake' | 'stripe'
+  publishableKey?: string
+  /** Who runs the ID check (F-1): Stripe's modal, or a hosted page (`url`), or nothing to do (fake). */
+  identityProvider?: string
+}
 export type ConnectStatus = { connected: boolean; payoutsEnabled: boolean; detailsSubmitted: boolean }
 export type PaymentView = { bookingId: string; status: string; amount: number; currency: string }
 export type Profile = {
   name: string
   kind: 'person' | 'business'
   district: string
+  /** The market this person trades in (M-2): live markets only. */
+  country?: string
   /** Needed when the profile is first created (S-5). */
   adult?: boolean
   business?: Business
@@ -363,11 +397,21 @@ export const useConnectStatus = () => {
   })
 }
 
+/** One country Cappy serves (M-2, cappy_common/markets.json): the public part. */
+export type Market = {
+  currency: string
+  languages: string[]
+  units: 'metric' | 'imperial'
+  emergencyNumber: string
+  status: 'live' | 'planned'
+  minimumAge: number
+}
 export type AppConfig = {
   minVersion: string
   latestVersion?: string
   flags?: Record<string, boolean>
   rollouts?: Record<string, number>
+  markets?: Record<string, Market>
 }
 export const useAppConfig = () =>
   useQuery({
@@ -375,6 +419,35 @@ export const useAppConfig = () =>
     queryFn: () => get<AppConfig>('/app-config'),
     staleTime: 10 * 60_000,
     retry: false, // an older backend without it must not block the app
+  })
+
+/** Germany's, while app-config loads or on an older server: the first live market. */
+const HOME_MARKET: Market = { currency: 'EUR', languages: ['de', 'en'], units: 'metric', emergencyNumber: '112', status: 'live', minimumAge: 18 }
+const deviceRegion = () => ((typeof navigator === 'undefined' ? '' : navigator.language).split('-')[1] ?? '').toUpperCase()
+
+/** Every market, and the live ones for pickers. */
+export function useMarkets(): { all: Record<string, Market>; live: string[] } {
+  const markets = useAppConfig().data?.markets ?? { DE: HOME_MARKET }
+  return { all: markets, live: Object.keys(markets).filter((c) => markets[c].status === 'live').sort() }
+}
+
+/** The market someone is in: theirs when they have a profile, else the device's
+ *  region if Cappy serves it, else the first live one. For the emergency number,
+ *  the minimum age, the currency a new listing is priced in. */
+export function useMarket(country?: string): Market & { country: string } {
+  const { all } = useMarkets()
+  const me = useMeQuery().data?.owner?.country
+  const code = [country, me, deviceRegion(), 'DE'].find((c): c is string => Boolean(c && all[c])) ?? 'DE'
+  return { country: code, ...(all[code] ?? HOME_MARKET) }
+}
+
+export type RankingSignal = { key: string; weight: number; description: string }
+/** The ranker's own weights (H-2), so the ranking page never drifts from the code. */
+export const useRanking = () =>
+  useQuery({
+    queryKey: ['ranking'],
+    queryFn: () => get<{ signals: RankingSignal[]; textSearch: string }>('/ranking'),
+    staleTime: 5 * 60_000,
   })
 
 // --- crash reports (S-7) ------------------------------------------------------------------
@@ -440,9 +513,11 @@ export async function exportMyData(): Promise<void> {
   // A store shell has no downloads: the file goes to the share sheet.
   if (await shareFile('cappy-my-data.json', await blob.text())) return
   const file = new File([blob], 'cappy-my-data.json', { type: 'application/json' })
-  // Phones (and the store shells' web views) cannot save an <a download>; they
-  // can hand a file to the share sheet ("Save to Files", mail, AirDrop).
-  if (navigator.canShare?.({ files: [file] })) {
+  // Phones cannot save an <a download>; they can hand a file to the share
+  // sheet ("Save to Files", mail, AirDrop). Desktop browsers can share too, but
+  // there a download is what people expect (V4-5): only a touch-first device shares.
+  const phone = typeof matchMedia !== 'undefined' && matchMedia('(pointer: coarse)').matches
+  if (phone && navigator.canShare?.({ files: [file] })) {
     try {
       await navigator.share({ files: [file], title: t('My Cappy data') })
       return
@@ -486,7 +561,9 @@ export const rateRenter = (id: string, quality: number, key?: string) =>
 /** Either side says the other never came (S-11): allowed from the start (the owner: +30 min) to +2 h. */
 export const reportNoShow = (id: string) => post<Booking>(`/bookings/${id}/no-show`)
 
-export type CancellationQuote = { refundAmount: number; currency: string; policy: string }
+/** `charged`: whether any money was taken yet. When not, cancelling only
+ *  releases the card hold and `refundAmount` is 0. */
+export type CancellationQuote = { refundAmount: number; currency: string; policy: string; charged?: boolean }
 /** What cancelling now would refund, straight from the server's rule. */
 export const useCancellationQuote = (id: string, enabled: boolean) =>
   useQuery({
@@ -536,7 +613,12 @@ export async function openInvoice(number: string): Promise<void> {
   setTimeout(() => URL.revokeObjectURL(url), 60_000)
 }
 
-export type Identity = { status: 'none' | 'pending' | 'requires_input' | 'verified'; clientSecret?: string }
+export type Identity = {
+  status: 'none' | 'pending' | 'requires_input' | 'verified' | 'failed'
+  clientSecret?: string
+  /** A hosted check (providers other than Stripe's modal): open it. */
+  url?: string
+}
 /** Stripe Identity: a one-time document and selfie check (payments service). */
 /** Starts the ID check. `consent` is the person's tick in the sheet (P-18): the
  *  server records it with the session and refuses without it. */
@@ -569,7 +651,9 @@ export const pauseListing = (id: string) => post<Listing>(`/listings/${id}/pause
 export const resumeListing = (id: string) => post<Listing>(`/listings/${id}/resume`)
 export const removeListing = (id: string) => del<void>(`/listings/${id}`)
 
-export const startPayouts = () => post<{ url: string }>('/payments/connect/onboarding')
+/** Stripe fixes an account's country when it is made: the owner's market (M-9). */
+export const startPayouts = (country?: string) =>
+  post<{ url: string }>('/payments/connect/onboarding', country ? { country } : undefined)
 
 /** One photograph in, its URL out, to go in `Listing.photos`. `onProgress`
  *  gets 0–1 as it goes up (U-25): fetch cannot report that, XHR can. */
@@ -592,7 +676,7 @@ export async function uploadPhoto(
       xhr.open('POST', `${API}${path}`)
       xhr.setRequestHeader('Accept', 'application/json')
       xhr.setRequestHeader('X-App-Version', APP_VERSION)
-      xhr.setRequestHeader('Accept-Language', lang())
+      xhr.setRequestHeader('Accept-Language', locale())
       if (token) xhr.setRequestHeader('Authorization', `Bearer ${token}`)
       xhr.upload.onprogress = (e) => e.lengthComputable && onProgress(e.loaded / e.total)
       xhr.onload = () => {

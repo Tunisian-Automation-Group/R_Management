@@ -68,6 +68,9 @@ export function Login() {
 
   const [mode, setMode] = useState<Mode>(params.get('mode') === 'up' ? 'up' : 'in')
   const [email, setEmail] = useState('')
+  // Said under the field once they leave it (V4-20), not by a button that just stays grey.
+  const [emailTouched, setEmailTouched] = useState(false)
+  const emailBad = Boolean(email) && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())
   const [password, setPassword] = useState('')
   const [code, setCode] = useState('')
   const [busy, setBusy] = useState(false)
@@ -192,9 +195,11 @@ export function Login() {
 
       <form onSubmit={submit} className="space-y-5" noValidate>
         {mode !== 'mfa' && (
-          <Field label={t('Email')} htmlFor="f-email">
+          <Field label={t('Email')} htmlFor="f-email" error={emailTouched && emailBad ? t('That does not look like an email address.') : undefined}>
             <Input
               id="f-email"
+              invalid={emailTouched && emailBad}
+              onBlur={() => setEmailTouched(true)}
               type="email"
               inputMode="email"
               autoComplete="email"
@@ -268,8 +273,8 @@ export function Login() {
       </form>
 
       {mode === 'in' && DEMO.length > 0 && (
-        // Local and staging builds only (VITE_DEMO_ACCOUNTS is never set for
-        // production): one tap into a seeded account.
+        // Local builds only: local/bootstrap.py writes VITE_DEMO_ACCOUNTS for the
+        // local stack, where the demo accounts exist; no deploy sets it (ADR 0010).
         <div className="mt-6 space-y-2" data-testid="demo-accounts">
           {DEMO.map(({ label, email: demoEmail, password: demoPassword }) => (
             <Button

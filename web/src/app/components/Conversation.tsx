@@ -1,6 +1,6 @@
 import { useEffect, useId, useRef, useState, type ReactNode } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
-import { HIDDEN_CONTACT, sendMessage, useAttemptKey, useMessages, type Message } from '../../data/repo.ts'
+import { ApiError, HIDDEN_CONTACT, sendMessage, useAttemptKey, useMessages, type Message } from '../../data/repo.ts'
 import { messageOf, useToast } from '../store.tsx'
 import { ago } from '../format.ts'
 import { Button, Card, Textarea } from './ui.tsx'
@@ -82,6 +82,10 @@ export function Conversation({
   const attempt = useAttemptKey()
   const online = useOnline()
   const [busy, setBusy] = useState(false)
+  // The server closes a conversation too (a completed booking past its review
+  // window): its 409 closes the composer here, with the reason (FL, V4-18).
+  const [closedHere, setClosedHere] = useState(false)
+  closed = closed || closedHere
   const end = useRef<HTMLDivElement>(null)
   const items = messages.data?.items ?? []
 
@@ -104,7 +108,8 @@ export function Conversation({
       setDraft('')
       await qc.invalidateQueries({ queryKey: ['messages', bookingId] })
     } catch (err) {
-      toast(messageOf(err))
+      if (err instanceof ApiError && err.code === 'conversation_closed') setClosedHere(true)
+      else toast(messageOf(err), 'error')
     } finally {
       setBusy(false)
     }
@@ -124,7 +129,10 @@ export function Conversation({
         </p>
       )}
       {items.length === 0 ? (
-        <p className="t-sm py-3 text-[var(--ink-3)]">{t('No messages yet. Ask about the hand-over, access or anything you need.')}</p>
+        // No invitation to write on a booking nobody can write on (V4-18).
+        closed ? null : (
+          <p className="t-sm py-3 text-[var(--ink-3)]">{t('No messages yet. Ask about the hand-over, access or anything you need.')}</p>
+        )
       ) : (
         <ul className="max-h-[360px] space-y-3 overflow-y-auto py-2" aria-live="polite">
           {items.map((m) => (

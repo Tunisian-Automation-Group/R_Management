@@ -86,7 +86,7 @@ function Gate() {
 
 function Toasts() {
   const { state, send } = useCappy()
-  return state.toast ? <Toast message={state.toast} onDone={() => send({ type: 'TOAST_CLEARED' })} /> : null
+  return state.toast ? <Toast message={state.toast.message} tone={state.toast.tone} onDone={() => send({ type: 'TOAST_CLEARED' })} /> : null
 }
 
 function Shell() {

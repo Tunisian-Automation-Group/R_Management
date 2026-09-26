@@ -10,8 +10,21 @@ const TODAY = () => {
 const dayIndex = (iso: string) =>
   Math.round((new Date(iso).setHours(0, 0, 0, 0) - TODAY().getTime()) / 86_400_000)
 
-export const time = (iso: string) =>
-  new Date(iso).toLocaleTimeString(locale(), { hour: '2-digit', minute: '2-digit' })
+/** "17:00", "5:00 PM": the locale's own clock. `2-digit` hours gave en-US a
+ *  leading zero ("05:00 PM") it never writes (V4-19); 24-hour locales keep it. */
+const clock = (d: Date) =>
+  d.toLocaleTimeString(locale(), {
+    hour: new Intl.DateTimeFormat(locale(), { hour: 'numeric' }).resolvedOptions().hour12 ? 'numeric' : '2-digit',
+    minute: '2-digit',
+  })
+export const time = (iso: string) => clock(new Date(iso))
+
+/** A wall-clock "HH:MM" (a weekly rule, a pattern) in the reader's format. */
+export const clockTime = (hhmm: string) => {
+  if (hhmm === '24:00') return clock(new Date(2000, 0, 1, 0, 0)).replace(/^0?0/, '24') // midnight at the end of the day
+  const [h, m] = hhmm.split(':').map(Number)
+  return clock(new Date(2000, 0, 1, h, m))
+}
 
 /** "today", "tomorrow", then a weekday, nobody reads a date they can name. */
 export function day(iso: string): string {
@@ -70,8 +83,18 @@ export function ago(iso: string): string {
 /** "…, and it lapses." after a sentence that may already end in "Min." (V3-15). */
 export const sentence = (s: string) => (/[.!?]$/.test(s) ? `${s} ` : `${s}. `)
 
-export const responseTime = (mins: number) =>
-  mins < 60 ? t('Replies in ~{n} min', { n: mins }) : t('Replies in ~{n} h', { n: Math.round(mins / 60) })
+/** "Replies in ~20 min", measured (H-1); null until the owner has answered
+ *  enough requests to say, and then the app says nothing about it. */
+export const responseTime = (mins: number | null | undefined): string | null =>
+  mins == null
+    ? null
+    : mins < 60
+      ? t('Replies in ~{n} min', { n: Math.max(1, Math.round(mins)) })
+      : t('Replies in ~{n} h', { n: Math.round(mins / 60) })
+
+/** "Answers 95 % of requests", with the time when both are known. */
+export const responseRate = (rate: number | null | undefined): string | null =>
+  rate == null ? null : t('Answers {pct} % of requests', { pct: Math.round(rate * 100) })
 
 /** Where distance is read in miles: the US and the UK (GOAL 16). Everyone else, km. */
 const MILES = new Set(['US', 'GB', 'LR', 'MM'])

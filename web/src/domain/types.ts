@@ -98,8 +98,13 @@ export type Owner = {
   jobsDone: number
   onTimeJobs: number
   joinedYear: number
-  /** Median minutes to respond to a request. Buyers care about this more than stars. */
-  responseMins: number
+  /** Median minutes to accept or decline, over 90 days (H-1). Absent or null
+   *  under 3 requests: then nothing is said about it, never a made-up number. */
+  responseMins?: number | null
+  /** Share of requests answered before they lapsed, 0–1, same window (H-1). */
+  responseRate?: number | null
+  /** ISO 3166-1 alpha-2: the market this person trades in (M-2, markets.json). */
+  country?: string
   /** As a renter: stars owners gave after completed bookings (two-way reviews). */
   renterRatingSum?: number
   renterJobs?: number
@@ -145,7 +150,20 @@ type ListingBase = {
   /** Percent off the hourly base from 8 h (day) and 40 h (week), 0–50. */
   dayDiscountPct?: number
   weekDiscountPct?: number
+  /** A weekly pattern the server turns into windows 8 weeks ahead (H-4). */
+  availability?: Availability | null
+  /** Where it is (M-5). Public answers snap it to a ~500 m grid; the exact
+   *  point is the owner's, and the renter's in the hand-over. */
+  location?: LatLng
+  country?: string
+  /** Only in the owner's own views. */
+  postalCode?: string
 }
+
+export type LatLng = { lat: number; lng: number }
+/** ISO weekday, Monday = 1; "HH:MM", end may be "24:00". */
+export type WeeklyRule = { day: number; start: string; end: string }
+export type Availability = { weekly: WeeklyRule[]; timeZone: string }
 
 export type WindowListing = ListingBase & {
   mode: 'window'
@@ -306,7 +324,7 @@ export type Booking = {
   /** When the hand-over can first be marked; the server decides. */
   canStartFrom?: Iso
   /** Where and how to collect it: only once the booking is accepted, for both parties. */
-  handover?: { address: string; instructions: string }
+  handover?: { address: string; instructions: string; location?: LatLng; postalCode?: string }
   /** The owner's 1–5 stars for the renter (hidden from the renter until both reviews are out). */
   renterRating?: number
   /** Cents refunded when it was cancelled. */

@@ -6,6 +6,7 @@ import { Banner } from '../components/ui.tsx'
 import { ReportButton } from '../components/Report.tsx'
 import { NotFound } from './NotFound.tsx'
 import { lang, t } from '../../i18n.ts'
+import { useMarket, useRanking } from '../../data/repo.ts'
 
 /** The operator's details, from the build (never invented). */
 const env = (k: string) => (import.meta.env[k] as string | undefined)?.trim() || undefined
@@ -18,26 +19,32 @@ const OPERATOR = {
 }
 const complete = Boolean(OPERATOR.company && OPERATOR.address && OPERATOR.email)
 // Words, not constants: they follow the language.
-const operatorName = () => OPERATOR.company ?? (lang() === 'de' ? 'der im Impressum genannte Betreiber' : 'the operator named in the Impressum')
-const contactAddr = () => OPERATOR.email ?? (lang() === 'de' ? 'siehe Impressum' : 'the address in the Impressum')
+type L3 = 'en' | 'de' | 'fr'
+const l3 = (): L3 => (lang() === 'de' || lang() === 'fr' ? lang() : 'en') as L3
+/** One text per language: the reader's, English when there is none. */
+const by = <T,>(v: Record<L3, T>): T => v[l3()] ?? v.en
+const operatorName = () =>
+  OPERATOR.company ?? by({ en: 'the operator named in the Impressum', de: 'der im Impressum genannte Betreiber', fr: 'l’exploitant indiqué dans les mentions légales (Impressum)' })
+const contactAddr = () => OPERATOR.email ?? by({ en: 'the address in the Impressum', de: 'siehe Impressum', fr: 'l’adresse indiquée dans les mentions légales (Impressum)' })
 const FEE = `${PLATFORM_FEE_BPS / 100}%`
 const FEE_DE = `${PLATFORM_FEE_BPS / 100} %`
+const FEE_FR = `${PLATFORM_FEE_BPS / 100}\u00a0%`
 
-const PAGES: Record<string, { title: string; titleDe: string; body: () => ReactNode }> = {
-  impressum: { title: 'Impressum', titleDe: 'Impressum', body: () => <Impressum /> },
-  privacy: { title: 'Privacy Policy', titleDe: 'Datenschutz', body: () => (lang() === 'de' ? <PrivacyDe /> : <Privacy />) },
-  terms: { title: 'Terms of Use', titleDe: 'AGB', body: () => (lang() === 'de' ? <TermsDe /> : <Terms />) },
-  withdrawal: { title: 'Right of withdrawal', titleDe: 'Widerruf', body: () => (lang() === 'de' ? <WithdrawalDe /> : <Withdrawal />) },
-  ranking: { title: 'How ranking works', titleDe: 'Ranking', body: () => (lang() === 'de' ? <RankingDe /> : <Ranking />) },
-  report: { title: 'Reporting content', titleDe: 'Inhalte melden', body: () => (lang() === 'de' ? <ReportingDe /> : <Reporting />) },
+type Page = { title: Record<L3, string>; body: () => ReactNode }
+const PAGES: Record<string, Page> = {
+  impressum: { title: { en: 'Impressum', de: 'Impressum', fr: 'Mentions légales' }, body: () => <Impressum /> },
+  privacy: { title: { en: 'Privacy Policy', de: 'Datenschutz', fr: 'Confidentialité' }, body: () => by({ en: <Privacy />, de: <PrivacyDe />, fr: <PrivacyFr /> }) },
+  terms: { title: { en: 'Terms of Use', de: 'AGB', fr: 'Conditions d’utilisation' }, body: () => by({ en: <Terms />, de: <TermsDe />, fr: <TermsFr /> }) },
+  withdrawal: { title: { en: 'Right of withdrawal', de: 'Widerruf', fr: 'Droit de rétractation' }, body: () => by({ en: <Withdrawal />, de: <WithdrawalDe />, fr: <WithdrawalFr /> }) },
+  ranking: { title: { en: 'How ranking works', de: 'Ranking', fr: 'Classement des résultats' }, body: () => <Ranking /> },
+  report: { title: { en: 'Reporting content', de: 'Inhalte melden', fr: 'Signaler un contenu' }, body: () => <Reporting /> },
   accessibility: {
-    title: 'Accessibility',
-    titleDe: 'Barrierefreiheit',
-    body: () => (lang() === 'de' ? <AccessibilityDe /> : <Accessibility />),
+    title: { en: 'Accessibility', de: 'Barrierefreiheit', fr: 'Accessibilité' },
+    body: () => by({ en: <Accessibility />, de: <AccessibilityDe />, fr: <AccessibilityFr /> }),
   },
 }
 
-const titleOf = (p: { title: string; titleDe: string }) => (lang() === 'de' ? p.titleDe : p.title)
+const titleOf = (p: Page) => by(p.title)
 
 export function Legal() {
   const { page = '' } = useParams()
@@ -75,10 +82,31 @@ export function Legal() {
 /** Public, signed in or not: how to delete an account (Google Play asks for this URL). */
 export function AccountDeletion() {
   const de = lang() === 'de'
+  const fr = lang() === 'fr'
   return (
-    <Screen title={de ? 'Konto löschen' : 'Delete your Cappy account'} back="/profile">
+    <Screen title={by({ en: 'Delete your Cappy account', de: 'Konto löschen', fr: 'Supprimer votre compte Cappy' })} back="/profile">
       <article className="legal space-y-4 pb-8 text-[0.9375rem] leading-[1.5rem] text-[var(--ink-2)]">
-        {de ? (
+        {fr ? (
+          <>
+            <p>Pour supprimer votre compte, dans l’application ou sur cappy.app&nbsp;:</p>
+            <ol className="list-decimal space-y-2 pl-5">
+              <li>Connectez-vous.</li>
+              <li>Ouvrez <em>Vous</em> (votre profil).</li>
+              <li>Choisissez <em>Supprimer le compte</em> et confirmez.</li>
+            </ol>
+            <p>
+              Votre profil est anonymisé, vos annonces sont retirées immédiatement et votre identifiant de connexion est
+              supprimé. Si une réservation est encore en cours, terminez-la ou annulez-la d’abord. Les réservations et les
+              paiements sont conservés sans votre nom aussi longtemps que le droit fiscal et commercial l’exige (jusqu’à dix
+              ans en Allemagne). Avant la suppression, vous pouvez télécharger une copie de vos données sous{' '}
+              <em>Vous → Vos données</em>.
+            </p>
+            <p>
+              Vous ne pouvez plus vous connecter&nbsp;? Écrivez à {contactAddr()}&nbsp;; nous supprimerons le compte après avoir
+              vérifié qu’il est bien le vôtre.
+            </p>
+          </>
+        ) : de ? (
           <>
             <p>So löschst du dein Konto, in der App oder auf cappy.app:</p>
             <ol className="list-decimal space-y-2 pl-5">
@@ -178,7 +206,16 @@ function Privacy() {
           Art. 6(1)(b), and legal obligations for accounting records (Art. 6(1)(c)).
         </li>
         <li>
-          <strong>Emails</strong>: sign-up codes and booking updates. Art. 6(1)(b).
+          <strong>Messages, hand-over photos and reports</strong>: what you write about a booking, photos taken at hand-over
+          and return, and reports sent to us, to run bookings, settle disputes and deal with illegal content. Art. 6(1)(b)
+          and (c).
+        </li>
+        <li>
+          <strong>Identity check</strong> (only for higher-value bookings): Stripe checks an ID document and a selfie; we
+          receive only the result. Art. 6(1)(b) and (f).
+        </li>
+        <li>
+          <strong>Emails and push notifications</strong>: sign-up codes and booking updates. Art. 6(1)(b).
         </li>
         <li>
           <strong>Technical data</strong>: IP address, device and request logs, to keep the service
@@ -188,7 +225,8 @@ function Privacy() {
       <H>Who processes it for us</H>
       <ul className="list-disc space-y-2 pl-5">
         <li>Amazon Web Services EMEA (hosting, sign-in with Amazon Cognito, email with Amazon SES), in the EU (Frankfurt, eu-central-1).</li>
-        <li>Stripe Payments Europe (card payments and payouts to owners), which acts as an independent controller for payment data.</li>
+        <li>Stripe Payments Europe (card payments, payouts to owners, identity checks), which acts as an independent controller for payment data.</li>
+        <li>Apple and Google, if you allow push notifications in the app.</li>
       </ul>
       <p>We do not sell your data or use it for advertising.</p>
       <H>How long we keep it</H>
@@ -232,7 +270,7 @@ function Terms() {
       <H>Booking and payment</H>
       <ul className="list-disc space-y-2 pl-5">
         <li>When you request a booking, the price is held on your card, not charged.</li>
-        <li>The card is charged when the owner accepts. If they decline, or do not answer in time, the hold is released.</li>
+        <li>The card is charged when the owner accepts, or at once for an instant booking. If they decline, or do not answer in time, the hold is released.</li>
         <li>The owner is paid when the booking is complete. Cappy keeps a {FEE} fee, included in the price shown.</li>
       </ul>
       <H>Cancelling and problems</H>
@@ -277,30 +315,79 @@ function Terms() {
   )
 }
 
+/** The ranker's signals, named and explained in the reader's language. The
+ *  weights come from the server (GET /api/ranking), so this page cannot drift
+ *  from the code (H-2, P2B Art. 5). */
+const SIGNAL: Record<string, Record<L3, [string, string]>> = {
+  price: {
+    en: ['Price', 'The total for the job you described, fee included: cheaper ranks higher.'],
+    de: ['Preis', 'Der Gesamtpreis für deinen Auftrag, Gebühr inklusive: günstiger steht weiter oben.'],
+    fr: ['Prix', 'Le total pour la prestation décrite, frais compris\u00a0: moins cher, plus haut.'],
+  },
+  trust: {
+    en: ['Trust', 'The owner’s ratings and reliability. Owners who cancel confirmed bookings or do not show up rank lower.'],
+    de: ['Vertrauen', 'Bewertungen und Zuverlässigkeit des Anbieters. Wer bestätigte Buchungen storniert oder nicht erscheint, steht weiter unten.'],
+    fr: ['Confiance', 'Les évaluations et la fiabilité du propriétaire. Ceux qui annulent des réservations confirmées ou ne se présentent pas sont classés plus bas.'],
+  },
+  soon: {
+    en: ['How soon', 'How soon the first free window starts: sooner ranks higher.'],
+    de: ['Wie bald', 'Wie bald das erste freie Zeitfenster beginnt: früher steht weiter oben.'],
+    fr: ['Délai', 'Le moment où commence le premier créneau libre\u00a0: plus tôt, plus haut.'],
+  },
+  near: {
+    en: ['Distance', 'Distance from where you search: nearer ranks higher.'],
+    de: ['Entfernung', 'Entfernung vom Ort deiner Suche: näher steht weiter oben.'],
+    fr: ['Distance', 'La distance depuis l’endroit de votre recherche\u00a0: plus près, plus haut.'],
+  },
+}
+
 function Ranking() {
+  const ranking = useRanking()
+  const pct = (w: number) => new Intl.NumberFormat(lang(), { style: 'percent', maximumFractionDigits: 0 }).format(w)
+  const text = by({
+    en: {
+      intro: 'When you search a category, Cappy orders results by these signals, each with the weight shown:',
+      words: 'A search by words lists the matching listings newest first.',
+      trust: 'An owner’s trust is reduced by up to half, in proportion to the share of confirmed bookings they cancelled or missed in the last 12 months (counted from five bookings). That share is shown on their listings.',
+      rest: 'You can re-sort by price, distance or soonest. Nobody can pay for a better position: Cappy has no paid ranking and no advertising in results. Listings of owners who cannot receive payouts yet, and listings removed under our terms, do not appear.',
+    },
+    de: {
+      intro: 'Suchst du in einer Kategorie, sortiert Cappy die Ergebnisse nach diesen Kriterien, jeweils mit dem angegebenen Gewicht:',
+      words: 'Eine Suche nach Wörtern zeigt die passenden Inserate, die neuesten zuerst.',
+      trust: 'Der Vertrauenswert eines Anbieters sinkt um bis zur Hälfte, im Verhältnis zum Anteil der bestätigten Buchungen der letzten 12 Monate, die er storniert oder versäumt hat (gezählt ab fünf Buchungen). Dieser Anteil steht bei seinen Inseraten.',
+      rest: 'Du kannst nach Preis, Entfernung oder frühestem Termin umsortieren. Eine bessere Position kann niemand kaufen: Cappy hat kein bezahltes Ranking und keine Werbung in den Ergebnissen. Inserate von Anbietern, die noch keine Auszahlungen empfangen können, und nach unseren AGB entfernte Inserate erscheinen nicht.',
+    },
+    fr: {
+      intro: 'Lorsque vous cherchez dans une catégorie, Cappy classe les résultats selon ces critères, chacun avec le poids indiqué\u00a0:',
+      words: 'Une recherche par mots affiche les annonces correspondantes, les plus récentes en premier.',
+      trust: 'La confiance d’un propriétaire est réduite jusqu’à la moitié, en proportion de la part des réservations confirmées qu’il a annulées ou manquées au cours des 12 derniers mois (comptée à partir de cinq réservations). Cette part est affichée sur ses annonces.',
+      rest: 'Vous pouvez trier par prix, distance ou date la plus proche. Personne ne peut payer pour être mieux placé\u00a0: Cappy n’a ni classement payant ni publicité dans les résultats. Les annonces des propriétaires qui ne peuvent pas encore recevoir de versements, et celles retirées en vertu de nos conditions, n’apparaissent pas.',
+    },
+  })
   return (
     <>
-      <p>
-        When you search, Cappy orders results by how well each listing fits what you asked for. The main
-        parameters, in rough order of weight, are:
-      </p>
-      <ul className="list-disc space-y-2 pl-5">
-        <li><strong>Time fit</strong>: whether the listing is free when you need it, and how soon.</li>
-        <li><strong>Distance</strong> from where you search.</li>
-        <li><strong>Price</strong> for the job you described, fee included.</li>
-        <li><strong>Rating</strong> from completed bookings.</li>
-        <li>
-          <strong>Reliability</strong>: finishing on time and answering quickly. Owners who cancel confirmed bookings or
-          do not show up rank lower: their trust score is reduced by up to half, in proportion to the share of confirmed
-          bookings they cancelled or missed in the last 12 months (counted from five bookings). That share is shown on
-          their listings.
-        </li>
-      </ul>
-      <p>
-        You can re-sort by price, distance or soonest. Nobody can pay for a better position: Cappy has no
-        paid ranking and no advertising in results. Listings of owners who cannot receive payouts yet, and
-        listings removed under our terms, do not appear.
-      </p>
+      <p>{text.intro}</p>
+      {ranking.data ? (
+        <ul className="list-disc space-y-2 pl-5">
+          {ranking.data.signals.map((sig) => {
+            const local = SIGNAL[sig.key]?.[l3()]
+            return (
+              <li key={sig.key}>
+                <strong>
+                  {local?.[0] ?? sig.key} · {pct(sig.weight)}
+                </strong>
+                {l3() === 'fr' ? '\u00a0: ' : ': '}
+                {local?.[1] ?? sig.description}
+              </li>
+            )
+          })}
+        </ul>
+      ) : (
+        <p className="t-sm text-[var(--ink-4)]">{ranking.isError ? t('Could not load the ranking signals. Try again later.') : '…'}</p>
+      )}
+      <p>{text.trust}</p>
+      <p>{text.words}</p>
+      <p>{text.rest}</p>
     </>
   )
 }
@@ -377,20 +464,53 @@ function AccessibilityDe() {
 }
 
 function Reporting() {
-  return (
-    <>
-      <p>
-        See something illegal, unsafe or against our terms? Use “Report” on the listing, profile, message or
-        review. You do not need an account; without one, leave an email so we can reply. We acknowledge
-        every report, look at it, and tell you what we decided. When we remove content or restrict an account
-        we tell the person affected why, and how to disagree.
-      </p>
-      <p>
-        Authorities and anyone else can reach us at {contactAddr()}. If someone is in immediate danger, call 112
-        first.
-      </p>
-    </>
-  )
+  const emergency = useMarket().emergencyNumber
+  return by({
+    en: (
+      <>
+        <p>
+          See something illegal, unsafe or against our terms? Use “Report” on the listing, profile, message or
+          review, or the form below. You do not need an account; without one, leave an email so we can reply. We
+          acknowledge every report, look at it, and tell you what we decided. When we remove content or restrict an
+          account we tell the person affected why, and how to disagree.
+        </p>
+        <p>
+          Authorities and anyone else can reach us at {contactAddr()}. If someone is in immediate danger, call {emergency}{' '}
+          first.
+        </p>
+      </>
+    ),
+    de: (
+      <>
+        <p>
+          Siehst du etwas Rechtswidriges, Gefährliches oder etwas, das gegen unsere AGB verstößt? Nutze „Melden“ beim
+          Inserat, Profil, bei der Nachricht oder Bewertung, oder das Formular unten. Du brauchst dafür kein Konto; ohne
+          Konto hinterlässt du eine E-Mail-Adresse, damit wir antworten können. Wir bestätigen jede Meldung, prüfen sie
+          und teilen dir unsere Entscheidung mit. Entfernen wir Inhalte oder schränken wir ein Konto ein, sagen wir der
+          betroffenen Person, warum, und wie sie widersprechen kann.
+        </p>
+        <p>
+          Behörden und alle anderen erreichen uns ebenfalls (Kontakt: {contactAddr()}). Ist jemand in unmittelbarer
+          Gefahr, ruf zuerst die {emergency} an.
+        </p>
+      </>
+    ),
+    fr: (
+      <>
+        <p>
+          Vous voyez quelque chose d’illégal, de dangereux ou de contraire à nos conditions&nbsp;? Utilisez «&nbsp;Signaler&nbsp;»
+          sur l’annonce, le profil, le message ou l’évaluation, ou le formulaire ci-dessous. Vous n’avez pas besoin de
+          compte&nbsp;; sans compte, laissez une adresse courriel pour que nous puissions répondre. Nous accusons réception de
+          chaque signalement, l’examinons et vous communiquons notre décision. Lorsque nous retirons un contenu ou
+          restreignons un compte, nous en expliquons les raisons à la personne concernée, ainsi que la manière de contester.
+        </p>
+        <p>
+          Les autorités et toute autre personne peuvent nous joindre à {contactAddr()}. Si quelqu’un est en danger
+          immédiat, appelez d’abord le {emergency}.
+        </p>
+      </>
+    ),
+  })
 }
 
 function Withdrawal() {
@@ -568,7 +688,7 @@ function TermsDe() {
       <H>Buchen und Bezahlen</H>
       <ul className="list-disc space-y-2 pl-5">
         <li>Wenn du eine Buchung anfragst, wird der Preis auf deiner Karte reserviert, nicht belastet.</li>
-        <li>Belastet wird die Karte, wenn der Anbieter annimmt. Lehnt er ab oder antwortet nicht rechtzeitig, wird die Reservierung aufgehoben.</li>
+        <li>Belastet wird die Karte, wenn der Anbieter annimmt, bei einer Sofortbuchung sofort. Lehnt er ab oder antwortet nicht rechtzeitig, wird die Reservierung aufgehoben.</li>
         <li>Der Anbieter wird bezahlt, wenn die Buchung abgeschlossen ist. Cappy behält eine Gebühr von {FEE_DE}; sie ist im angezeigten Preis enthalten.</li>
       </ul>
       <H>Stornieren und Probleme</H>
@@ -606,48 +726,226 @@ function TermsDe() {
   )
 }
 
-function RankingDe() {
+
+function PrivacyFr() {
   return (
     <>
       <p>
-        Bei einer Suche sortiert Cappy die Ergebnisse danach, wie gut jedes Inserat zu deiner Anfrage passt. Die wichtigsten
-        Kriterien, ungefähr nach Gewicht:
+        Cette politique explique quelles données personnelles Cappy traite, pourquoi, et quels sont vos droits. Cappy est
+        une place de marché où des particuliers et des entreprises louent à l’heure une capacité inutilisée.
       </p>
+      <H>Responsable du traitement</H>
+      <p>
+        Le responsable du traitement est {operatorName()}. Contact&nbsp;: {contactAddr()}.
+      </p>
+      <H>Ce que nous traitons et pourquoi</H>
       <ul className="list-disc space-y-2 pl-5">
-        <li><strong>Zeitliche Passung</strong>: ob das Inserat frei ist, wenn du es brauchst, und wie bald.</li>
-        <li><strong>Entfernung</strong> vom Ort deiner Suche.</li>
-        <li><strong>Preis</strong> für den beschriebenen Auftrag, Gebühr inklusive.</li>
-        <li><strong>Bewertung</strong> aus abgeschlossenen Buchungen.</li>
         <li>
-          <strong>Zuverlässigkeit</strong>: pünktlich fertig und schnelle Antworten. Anbieter, die bestätigte Buchungen
-          stornieren oder nicht erscheinen, rutschen nach unten: Ihr Vertrauenswert sinkt um bis zur Hälfte, im Verhältnis
-          zum Anteil der bestätigten Buchungen der letzten 12 Monate, die sie storniert oder versäumt haben (gezählt ab fünf
-          Buchungen). Dieser Anteil steht bei ihren Inseraten.
+          <strong>Compte</strong>&nbsp;: votre adresse courriel et votre mot de passe (conservés par notre service de
+          connexion), pour créer et sécuriser votre compte. Base juridique&nbsp;: exécution du contrat (art. 6, par. 1, point b)
+          du RGPD).
+        </li>
+        <li>
+          <strong>Profil et annonces</strong>&nbsp;: votre nom, votre quartier, si vous êtes un particulier ou une
+          entreprise, ce que vous proposez (descriptions, photos, prix, disponibilités, adresse de remise) et vos
+          évaluations, pour faire fonctionner la place de marché. Art. 6, par. 1, point b) du RGPD.
+        </li>
+        <li>
+          <strong>Réservations et paiements</strong>&nbsp;: ce que vous avez réservé ou loué, quand, à quel prix, et l’état du
+          paiement. Vous saisissez vos données de carte et bancaires chez Stripe&nbsp;; elles ne nous parviennent jamais.
+          Art. 6, par. 1, point b) du RGPD, ainsi que les obligations légales de conservation (art. 6, par. 1, point c) du
+          RGPD).
+        </li>
+        <li>
+          <strong>Messages, photos de remise et signalements</strong>&nbsp;: ce que vous écrivez au sujet d’une
+          réservation, les photos prises à la remise et au retour, et les signalements qui nous sont adressés, pour gérer
+          les réservations, régler les litiges et traiter les contenus illicites. Art. 6, par. 1, points b) et c) du RGPD.
+        </li>
+        <li>
+          <strong>Vérification d’identité</strong> (uniquement pour les réservations de valeur plus élevée)&nbsp;: Stripe
+          vérifie une pièce d’identité et un selfie&nbsp;; nous ne recevons que le résultat. Art. 6, par. 1, points b) et f)
+          du RGPD.
+        </li>
+        <li>
+          <strong>Courriels et notifications push</strong>&nbsp;: codes de confirmation et nouvelles de vos réservations.
+          Art. 6, par. 1, point b) du RGPD.
+        </li>
+        <li>
+          <strong>Données techniques</strong>&nbsp;: adresse IP, appareil et journaux des requêtes, pour garder le service sûr
+          et opérationnel, pendant 90&nbsp;jours au plus. Intérêt légitime (art. 6, par. 1, point f) du RGPD).
         </li>
       </ul>
+      <H>Qui traite les données pour nous</H>
+      <ul className="list-disc space-y-2 pl-5">
+        <li>Amazon Web Services EMEA (hébergement, connexion avec Amazon Cognito, courriel avec Amazon SES), dans l’UE (Francfort, eu-central-1).</li>
+        <li>Stripe Payments Europe (paiements par carte, versements aux propriétaires, vérification d’identité), en tant que responsable indépendant pour les données de paiement.</li>
+        <li>Apple et Google, si vous autorisez les notifications push dans l’application.</li>
+      </ul>
+      <p>Nous ne vendons pas vos données et ne les utilisons pas à des fins publicitaires.</p>
+      <H>Durée de conservation</H>
       <p>
-        Du kannst nach Preis, Entfernung oder frühestem Termin umsortieren. Eine bessere Position kann niemand kaufen: Cappy
-        hat kein bezahltes Ranking und keine Werbung in den Ergebnissen. Inserate von Anbietern, die noch keine
-        Auszahlungen empfangen können, und nach unseren AGB entfernte Inserate erscheinen nicht.
+        Votre compte et votre profil, aussi longtemps que vous avez le compte. Si vous le supprimez, votre profil est
+        anonymisé et vos annonces sont retirées immédiatement. Les réservations et les paiements sont conservés sans votre
+        nom aussi longtemps que le droit fiscal et commercial l’exige (jusqu’à dix ans en Allemagne).
+      </p>
+      <H>Vos droits</H>
+      <p>
+        Vous pouvez accéder à vos données, les rectifier, les exporter et les faire supprimer. L’export et la suppression
+        se trouvent dans l’application sous <em>Vous → Vos données</em>. Vous pouvez aussi vous opposer à un traitement
+        fondé sur l’intérêt légitime, en demander la limitation et introduire une réclamation auprès d’une autorité de
+        protection des données. Pour tout le reste, écrivez-nous (contact&nbsp;: {contactAddr()}).
       </p>
     </>
   )
 }
 
-function ReportingDe() {
+function TermsFr() {
+  return (
+    <>
+      <H>Ce qu’est Cappy</H>
+      <p>
+        Cappy met en relation les propriétaires d’une capacité inutilisée (machines, ateliers, véhicules, espaces) avec des
+        personnes qui veulent l’utiliser pour un temps. Le contrat de location est conclu entre le propriétaire et la
+        personne qui réserve&nbsp;; Cappy exploite la plateforme et gère le paiement. Cappy est exploité par {operatorName()}.
+      </p>
+      <H>Comptes</H>
+      <p>
+        Vous fournissez des informations exactes et protégez vos identifiants. Vous pouvez supprimer votre compte à tout
+        moment dans l’application, dès qu’aucune réservation n’est plus en cours.
+      </p>
+      <H>Publier une annonce</H>
+      <p>
+        Les propriétaires décrivent leur offre de manière véridique, ne proposent que ce qu’ils ont le droit de louer, la
+        maintiennent sûre à l’usage et sont présents (ou la mettent à disposition) aux horaires indiqués. Le paiement passe
+        uniquement par Cappy&nbsp;; demander un paiement en dehors de la plateforme n’est pas autorisé.
+      </p>
+      <H>Réserver et payer</H>
+      <ul className="list-disc space-y-2 pl-5">
+        <li>Lorsque vous demandez une réservation, le prix est bloqué sur votre carte, pas débité.</li>
+        <li>La carte est débitée lorsque le propriétaire accepte, ou aussitôt pour une réservation instantanée. S’il refuse ou ne répond pas à temps, le blocage est levé.</li>
+        <li>Le propriétaire est payé lorsque la réservation est terminée. Cappy retient des frais de {FEE_FR}, inclus dans le prix affiché.</li>
+      </ul>
+      <H>Annulation et problèmes</H>
+      <p>
+        Chaque partie peut annuler avant le début du créneau réservé&nbsp;; la personne qui a réservé est alors remboursée
+        intégralement. Une fois le créneau commencé, elle peut signaler un problème&nbsp;: le versement au propriétaire est
+        retenu pendant que Cappy examine le cas et décide d’un remboursement ou d’un versement. Les droits légaux ne sont
+        pas affectés.
+      </p>
+      <H>Droit de rétractation</H>
+      <p>
+        Si vous réservez en tant que consommateur auprès d’un propriétaire qui est une entreprise, vous disposez d’un droit
+        légal de rétractation. Les détails et le modèle de formulaire se trouvent sous{' '}
+        <NavLink to="/legal/withdrawal" className="underline">Droit de rétractation</NavLink>. Les réservations auprès de
+        particuliers n’ouvrent pas de droit légal de rétractation&nbsp;; vous pouvez tout de même les annuler avant le début
+        selon les présentes conditions et être remboursé intégralement.
+      </p>
+      <H>Évaluations, classement et signalements</H>
+      <p>
+        Les évaluations proviennent uniquement de réservations terminées. La manière dont les résultats sont classés est
+        expliquée sous «&nbsp;Classement des résultats&nbsp;»&nbsp;; personne ne peut payer pour être mieux placé. Chacun peut
+        signaler une annonce, un profil, un message ou une évaluation avec «&nbsp;Signaler&nbsp;»&nbsp;; nous communiquons notre
+        décision à l’auteur du signalement et la motivons auprès de toute personne dont nous retirons un contenu ou
+        restreignons le compte.
+      </p>
+      <H>Responsabilité</H>
+      <p>
+        Les propriétaires répondent de ce qu’ils louent, les personnes qui réservent de l’usage qu’elles en font. Cappy est
+        responsable sans limite en cas de faute intentionnelle ou de négligence grave ainsi qu’en cas d’atteinte à la vie,
+        au corps ou à la santé&nbsp;; pour le reste, uniquement en cas de manquement à des obligations contractuelles
+        essentielles, dans la limite du dommage typique et prévisible pour ce type de contrat.
+      </p>
+      <H>Modifications et droit applicable</H>
+      <p>
+        Nous vous informons à l’avance par courriel de toute modification des présentes conditions. Le droit allemand
+        s’applique, sans vous priver de la protection que vous accorde, en tant que consommateur, le droit de votre pays
+        de résidence.
+      </p>
+    </>
+  )
+}
+
+/** The EU model instructions and form (Directive 2011/83/EU, Annex I), in their official French wording. */
+function WithdrawalFr() {
   return (
     <>
       <p>
-        Siehst du etwas Rechtswidriges, Gefährliches oder etwas, das gegen unsere AGB verstößt? Nutze „Melden“ beim
-        Inserat, Profil, bei der Nachricht oder Bewertung. Du brauchst dafür kein Konto; ohne Konto hinterlässt du eine
-        E-Mail-Adresse, damit wir antworten können. Wir bestätigen jede Meldung, prüfen sie und teilen dir unsere
-        Entscheidung mit. Entfernen wir Inhalte oder schränken wir ein Konto ein, sagen wir der betroffenen Person, warum,
-        und wie sie widersprechen kann.
+        Ceci s’applique lorsque vous réservez en tant que consommateur auprès d’un propriétaire qui est une entreprise
+        (indiqué «&nbsp;Entreprise&nbsp;» sur sa fiche). Les réservations auprès de particuliers n’ouvrent pas de droit légal de
+        rétractation&nbsp;; vous pouvez tout de même les annuler avant le début selon nos conditions et être remboursé
+        intégralement.
       </p>
+      <H>Droit de rétractation</H>
       <p>
-        Behörden und alle anderen erreichen uns ebenfalls (Kontakt: {contactAddr()}). Ist jemand in unmittelbarer Gefahr, ruf zuerst die
-        112 an.
+        Vous avez le droit de vous rétracter du présent contrat sans donner de motif dans un délai de quatorze jours. Le
+        délai de rétractation expire quatorze jours après le jour de la conclusion du contrat (lorsque le propriétaire
+        accepte votre réservation). Pour exercer le droit de rétractation, appuyez sur «&nbsp;Se rétracter de cette
+        réservation&nbsp;» dans la réservation, ou notifiez à {operatorName()} ({contactAddr()}) votre décision de rétractation
+        du présent contrat au moyen d’une déclaration dénuée d’ambiguïté, par exemple par courriel. Vous pouvez utiliser le
+        modèle de formulaire de rétractation ci-dessous, mais ce n’est pas obligatoire. Pour que le délai de rétractation
+        soit respecté, il suffit que vous transmettiez votre communication relative à l’exercice du droit de rétractation
+        avant l’expiration du délai de rétractation.
       </p>
+      <H>Effets de la rétractation</H>
+      <p>
+        En cas de rétractation de votre part du présent contrat, nous vous rembourserons tous les paiements reçus de vous,
+        sans retard excessif et, en tout état de cause, au plus tard quatorze jours à compter du jour où nous sommes
+        informés de votre décision de rétractation du présent contrat. Nous procéderons au remboursement en utilisant le
+        même moyen de paiement que celui que vous aurez utilisé pour la transaction initiale&nbsp;; en tout état de cause, ce
+        remboursement n’occasionnera pas de frais pour vous. Si vous avez demandé de commencer la prestation de services
+        pendant le délai de rétractation, vous devrez nous payer un montant proportionnel à ce qui a été fourni jusqu’au
+        moment où vous nous avez informés de votre rétractation du présent contrat, par rapport à l’ensemble des
+        prestations prévues par le contrat. Le droit de rétractation prend fin lorsque la prestation réservée a été
+        pleinement exécutée.
+      </p>
+      <H>Modèle de formulaire de rétractation</H>
+      <p className="whitespace-pre-line rounded-[var(--radius-card)] bg-[var(--sunken)] p-4">
+        {`À l’attention de ${OPERATOR.company ?? '[exploitant]'}, ${OPERATOR.address ?? '[adresse]'}, ${OPERATOR.email ?? '[courriel]'} :
+Je/Nous (*) vous notifie/notifions (*) par la présente ma/notre (*) rétractation du contrat portant sur la prestation de services (*) ci-dessous :
+Numéro de réservation :
+Commandé le (*)/reçu le (*) :
+Nom du (des) consommateur(s) :
+Adresse du (des) consommateur(s) :
+Signature du (des) consommateur(s) (uniquement en cas de notification du présent formulaire sur papier) :
+Date :
+(*) Rayez la mention inutile.`}
+      </p>
+    </>
+  )
+}
+
+function AccessibilityFr() {
+  return (
+    <>
+      <p>
+        Cappy vise à respecter les règles pour l’accessibilité des contenus Web (WCAG) 2.1 au niveau AA, comme l’exige la
+        norme EN 301 549, sur le Web et dans les applications iOS et Android.
+      </p>
+      <H>État de conformité</H>
+      <p>Partiellement conforme. Il s’agit de notre propre évaluation, pas encore d’un audit indépendant. Ce que nous savons manquer&nbsp;:</p>
+      <ul className="list-disc space-y-1 pl-5">
+        <li>Déplacer et zoomer la carte dans Explorer demande une souris ou le tactile&nbsp;; la liste montre les mêmes annonces.</li>
+        <li>Les photos téléversées par les propriétaires ont pour description le titre de l’annonce, pas une description de l’image.</li>
+        <li>Les très grandes tailles de texte ne sont pas encore vérifiées sur chaque écran des applications.</li>
+      </ul>
+      <H>Fonctionnement du service</H>
+      <p>
+        Avec Cappy, les membres réservent les heures d’ateliers, de véhicules, de machines et de locaux appartenant à
+        d’autres, et proposent les leurs. Tout est utilisable au clavier et avec un lecteur d’écran, le texte peut être
+        agrandi à 200&nbsp;% et les couleurs respectent le rapport de contraste AA. Les statuts sont toujours écrits, jamais
+        indiqués par la seule couleur.
+      </p>
+      <H>Nous signaler un problème</H>
+      <p>
+        Quelque chose vous est inutilisable&nbsp;? Écrivez à {contactAddr()} en précisant quoi et où. Nous répondons sous deux
+        semaines.
+      </p>
+      <H>Recours</H>
+      <p>
+        Si notre réponse ne vous aide pas, vous pouvez vous adresser à la Marktüberwachungsstelle der Länder für die
+        Barrierefreiheit von Produkten und Dienstleistungen (MLBF), à Magdebourg (Allemagne).
+      </p>
+      <p className="t-sm text-[var(--ink-4)]">Établi en septembre 2026.</p>
     </>
   )
 }

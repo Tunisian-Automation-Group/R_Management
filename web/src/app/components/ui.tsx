@@ -659,26 +659,33 @@ export function Row({
 
 /* ------------------------------------------------------------------ Toast */
 
-export function Toast({ message, onDone }: { message: string; onDone: () => void }) {
+export function Toast({ message, tone = 'ok', onDone }: { message: string; tone?: 'ok' | 'error'; onDone: () => void }) {
   // As in Sheet: a fresh onDone each render must not restart the timer.
   const done = useRef(onDone)
   done.current = onDone
   useEffect(() => {
-    const t = setTimeout(() => done.current(), 2800)
+    // An error stays long enough to be read and acted on.
+    const t = setTimeout(() => done.current(), tone === 'error' ? 6000 : 2800)
     return () => clearTimeout(t)
-  }, [message])
+  }, [message, tone])
   return (
     <div
-      role="status"
-      aria-live="polite"
+      role={tone === 'error' ? 'alert' : 'status'}
+      aria-live={tone === 'error' ? 'assertive' : 'polite'}
       className="anim-pop safe-x pointer-events-none fixed inset-x-0 z-[60] flex justify-center"
       style={{ bottom: 'calc(var(--dock-h) + var(--footer-h, 0px) + var(--safe-bottom-md) + 20px)' }}
     >
       <div className="flex items-center gap-2.5 rounded-[var(--radius-control)] bg-[var(--field)] py-3 pl-3.5 pr-5 text-[0.875rem] font-semibold text-[var(--on-field)]">
-        <span className="grid h-5 w-5 place-items-center rounded-[2px] bg-[var(--sky)] text-[var(--field)]">
-          {/* The tick draws itself once the toast appears. */}
-          <Icon name="check" size={14} strokeWidth={3} className="anim-draw" />
-        </span>
+        {tone === 'error' ? (
+          <span className="grid h-5 w-5 shrink-0 place-items-center rounded-[2px] bg-[var(--danger)] text-white">
+            <Icon name="info" size={14} strokeWidth={2.6} />
+          </span>
+        ) : (
+          <span className="grid h-5 w-5 shrink-0 place-items-center rounded-[2px] bg-[var(--sky)] text-[var(--field)]">
+            {/* The tick draws itself once the toast appears. */}
+            <Icon name="check" size={14} strokeWidth={3} className="anim-draw" />
+          </span>
+        )}
         {message}
       </div>
     </div>

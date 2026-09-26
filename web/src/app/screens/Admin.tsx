@@ -48,7 +48,21 @@ const REASON_LABEL: Record<string, string> = {
   reliability: 'Reliability: repeated cancellations or no-shows',
   linked_to_suspended: 'Paid with a card a suspended account used',
 }
-const TARGET_LABEL: Record<Report['targetType'], string> = { listing: 'Listing', owner: 'Person', message: 'Message', review: 'Review' }
+const TARGET_LABEL: Record<string, string> = { listing: 'Listing', owner: 'Person', message: 'Message', review: 'Review', booking: 'Booking' }
+/** Decisions and audit entries in words, not codes (V4-15). */
+const DONE_LABEL: Record<string, string> = {
+  dismiss: 'Dismissed',
+  take_down: 'Taken down',
+  suspend: 'Suspended',
+  reinstate: 'Reinstated',
+  remove_content: 'Removed',
+  approve: 'Approved',
+  pay_owner: 'Paid the owner',
+  refund_buyer: 'Refunded the buyer',
+  resolve: 'Resolved',
+}
+const doneLabel = (a?: string) => (a ? t(DONE_LABEL[a] ?? a) : '')
+const targetLabel = (k: string) => t(TARGET_LABEL[k] ?? k)
 
 /** The rule or law a decision rests on (DSA Art. 17(3)(d)); terms by default. */
 function GroundsFields({ value, onChange, id }: { value: Grounds; onChange: (g: Grounds) => void; id: string }) {
@@ -254,7 +268,7 @@ function Queue() {
               <li key={r.id}>
                 <Card className="p-4">
                   <p className="text-[0.9375rem] font-semibold">
-                    {t(REASON_LABEL[r.reason] ?? r.reason)} · {t(TARGET_LABEL[r.targetType] ?? r.targetType)}{' '}
+                    {t(REASON_LABEL[r.reason] ?? r.reason)} · {targetLabel(r.targetType)}{' '}
                     {link ? (
                       <Link className="underline" to={link}>
                         {r.targetId}
@@ -269,7 +283,7 @@ function Queue() {
                   <p className="t-body mt-2 whitespace-pre-wrap text-[var(--ink-2)]">{r.details}</p>
                   {r.statement && (
                     <p className="t-sm mt-2 text-[var(--ink-3)]">
-                      {t('Decided')}: {r.decision} — {r.statement}
+                      {t('Decided')}: {doneLabel(r.decision)} — {r.statement}
                     </p>
                   )}
                   {r.statementOfReasons && (
@@ -296,7 +310,9 @@ function Queue() {
           {t('Next page')}
         </Button>
       )}
-      <Decide report={deciding} onClose={() => setDeciding(null)} />
+      {/* Keyed by report: each one opens at Dismiss with an empty statement, never
+          with the last report's decision armed (V4-2). */}
+      <Decide key={deciding?.id ?? 'none'} report={deciding} onClose={() => setDeciding(null)} />
     </section>
   )
 }
@@ -320,7 +336,7 @@ function Decide({ report, onClose }: { report: Report | null; onClose: () => voi
       setGrounds(noGrounds)
       onClose()
     } catch (err) {
-      toast(messageOf(err))
+      toast(messageOf(err), 'error')
     } finally {
       setBusy(false)
       await qc.invalidateQueries({ queryKey: ['adminReports'] })
@@ -379,7 +395,7 @@ function Held() {
       await approveListing(id)
       toast(t('Approved: it is live now'))
     } catch (err) {
-      toast(messageOf(err))
+      toast(messageOf(err), 'error')
     } finally {
       setBusy(null)
       await qc.invalidateQueries({ queryKey: ['adminHeld'] })
@@ -456,7 +472,7 @@ function Actions() {
       setTarget('')
       setStatement('')
     } catch (err) {
-      toast(messageOf(err))
+      toast(messageOf(err), 'error')
     } finally {
       setBusy(false)
       await qc.invalidateQueries({ queryKey: ['audit'] })
@@ -492,6 +508,9 @@ function Actions() {
 
 function Audit() {
   const audit = useAudit()
+  const me = useSession()?.sub
+  // ponytail: staff are named by the start of their id until the audit log carries a name or email.
+  const who = (id: string) => (id === me ? t('you') : `${t('staff')} ${id.slice(0, 8)}`)
   return (
     <section>
       <SectionHead title={t('Audit log')} className="mt-7" />
@@ -503,10 +522,10 @@ function Audit() {
             {audit.data!.map((a) => (
               <li key={a.id} className="border-b border-[var(--line)] pb-3 last:border-0 last:pb-0">
                 <p className="text-[0.9062rem] font-semibold">
-                  {a.action} · {a.targetType} <span className="tnum text-[var(--ink-3)]">{a.targetId}</span>
+                  {doneLabel(a.action)} · {targetLabel(a.targetType)} <span className="tnum text-[var(--ink-3)]">{a.targetId}</span>
                 </p>
                 <p className="t-sm text-[var(--ink-4)]">
-                  {t('by {who}', { who: a.actorId })} · {ago(a.at)}
+                  {t('by {who}', { who: who(a.actorId) })} · {ago(a.at)}
                   {a.reportId ? ` · ${t('report {id}', { id: a.reportId })}` : ''}
                 </p>
                 <p className="t-sm mt-1 text-[var(--ink-2)]">{a.statement}</p>

@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
-import { useNavigate, useSearchParams } from 'react-router-dom'
+import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { rating } from '../../domain/types.ts'
 import { CATEGORIES, GROUPS, categoriesIn, category, durationLabel } from '../../domain/categories.ts'
 import type { SortKey } from '../../domain/match.ts'
@@ -9,6 +9,7 @@ import {
   useCities,
   useDistricts,
   useMatches,
+  useMeQuery,
   useSearch,
   useSpotlight,
   type Spotlight,
@@ -84,7 +85,11 @@ export function Browse() {
 
   // What is free within reach in the next day, the rail and the map share it.
   // Your own things are not capacity you can buy.
-  const spotQ = useSpotlight(home, search.maxDistanceKm)
+  // Wait for the profile's home district (Member moves the search there) unless
+  // a place was picked by hand: otherwise Explore asked twice (V4-23).
+  const me = useMeQuery()
+  const settled = search.districtChosen || (!me.isPending && (!me.data?.homeDistrict || me.data.homeDistrict === home))
+  const spotQ = useSpotlight(settled ? home : '', search.maxDistanceKm)
   const spotlight = (spotQ.data ?? []).filter((s) => s.owner.id !== ME)
 
   // Scoped to the city you are standing in: "prusa" in Paris should not find Berlin.
@@ -200,7 +205,15 @@ export function Browse() {
             <section aria-label={t('Search results')}>
               <SectionHead
                 title={t('Results')}
-                aside={plural(queryHits.length, '{n} match', '{n} matches')}
+                aside={
+                  <>
+                    {plural(queryHits.length, '{n} match', '{n} matches')}
+                    {' · '}
+                    <Link to="/legal/ranking" className="underline underline-offset-2">
+                      {t('How results are ordered')}
+                    </Link>
+                  </>
+                }
               />
               <ul className="ruled">
                 {queryHits.map(({ listing: l, owner: o }) => {
@@ -370,7 +383,7 @@ export function Browse() {
                   ? durationLabel(search.hours)
                   : `${search.quantity} ${meta.unitNoun}`}
                 {' · '}
-                {search.maxDistanceKm} km
+                {formatRadius(search.maxDistanceKm)}
               </Chip>
             </div>
 
@@ -379,6 +392,11 @@ export function Browse() {
                 <p className="t-sm text-[var(--ink-3)]">
                   <span className="tnum font-semibold text-[var(--ink)]">{matches.length}</span>{' '}
                   {matches.length === 1 ? t('bookable slot') : t('bookable slots')}
+                  {/* P2B Art. 5: how results are ordered, one tap from the results (H-3). */}
+                  {' · '}
+                  <Link to="/legal/ranking" className="underline underline-offset-2">
+                    {t('How results are ordered')}
+                  </Link>
                 </p>
                 <div className="flex items-center gap-2">
                   {/* A map answers "which of these is nearest", which is only a

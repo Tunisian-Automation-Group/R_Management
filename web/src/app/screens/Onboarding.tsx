@@ -2,13 +2,14 @@ import { useState, type FormEvent } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import { useNavigate } from 'react-router-dom'
 import { device, setDevice } from '../device.ts'
-import { saveProfile, useDistricts } from '../../data/repo.ts'
+import { ApiError, saveProfile, useDistricts, useMarket, useMarkets } from '../../data/repo.ts'
 import { signOut } from '../../data/auth.ts'
 import { messageOf, useCappy } from '../store.tsx'
 import { Screen } from '../components/AppShell.tsx'
 import { Button, Check, Field, Input, Segmented } from '../components/ui.tsx'
-import { BusinessFields, businessProblem, cleanBusiness, emptyBusiness } from '../components/BusinessFields.tsx'
+import { BusinessFields, businessErrors, cleanBusiness, emptyBusiness, serverBusinessErrors, type BusinessErrors } from '../components/BusinessFields.tsx'
 import { DistrictSelect } from '../components/DistrictSelect.tsx'
+import { CountrySelect } from '../components/CountrySelect.tsx'
 import { t } from '../../i18n.ts'
 
 /**
@@ -24,21 +25,35 @@ export function Onboarding() {
   const [district, setDistrict] = useState('')
   const [business, setBusiness] = useState(emptyBusiness)
   const [adult, setAdult] = useState(false)
+  const [bizErrors, setBizErrors] = useState<BusinessErrors>({})
+  // Where they trade (M-2): live markets only; the device's region when Cappy serves it.
+  const { live } = useMarkets()
+  const guess = useMarket()
+  const [country, setCountry] = useState('')
+  const where_country = country || (live.includes(guess.country) ? guess.country : live[0] ?? 'DE')
+  const market = useMarket(where_country)
   // U-19: optional; picks the tab to land on. Nothing is locked by it.
   const [intent, setIntent] = useState<'rent' | 'earn' | 'both'>(device().intent ?? 'both')
   const nav = useNavigate()
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
-  const names = Object.keys(districts.data ?? {}).sort()
-  const where = district || (names.includes(state.search.district) ? state.search.district : names[0]) || ''
+  // Only the districts of that country.
+  const inCountry = Object.fromEntries(Object.entries(districts.data ?? {}).filter(([, d]) => d.country === where_country))
+  const names = Object.keys(inCountry).sort()
+  const where = (names.includes(district) && district) || (names.includes(state.search.district) ? state.search.district : names[0]) || ''
 
   const submit = async (e: FormEvent) => {
     e.preventDefault()
-    if (name.trim().length < 2) return setError(t('Tell people what to call you.'))
-    const bad = kind === 'business' ? businessProblem(business) : null
-    if (bad) return setError(bad)
-    if (!adult) return setError(t('Cappy is for people aged 18 or over: confirm your age to continue.'))
+    // Every problem at once, each under its own field (V4-20).
+    const biz = kind === 'business' ? businessErrors(business) : {}
+    setBizErrors(biz)
+    const problems = [
+      name.trim().length < 2 ? t('Tell people what to call you.') : null,
+      Object.keys(biz).length ? t('Complete the business details above.') : null,
+      !adult ? t('Cappy is for people aged {age} or over: confirm your age to continue.', { age: market.minimumAge }) : null,
+    ].filter(Boolean)
+    if (problems.length) return setError(problems.join(' '))
     setBusy(true)
     setError(null)
     try {
@@ -46,6 +61,7 @@ export function Onboarding() {
         name: name.trim(),
         kind,
         district: where,
+        country: where_country,
         adult: true,
         ...(kind === 'business' ? { business: cleanBusiness(business) } : {}),
       })
@@ -53,6 +69,9 @@ export function Onboarding() {
       await qc.invalidateQueries({ queryKey: ['me'] })
       if (intent === 'earn') nav('/earn', { replace: true })
     } catch (err) {
+      // Each field the server refused goes under that field (V4-20).
+      const onForm = err instanceof ApiError ? serverBusinessErrors(err.fields) : {}
+      if (Object.keys(onForm).length) setBizErrors(onForm)
       setError(messageOf(err))
     } finally {
       setBusy(false)
@@ -82,11 +101,14 @@ export function Onboarding() {
             ]}
           />
         </Field>
-        {kind === 'business' && <BusinessFields id="o-biz" value={business} onChange={setBusiness} />}
+        {kind === 'business' && <BusinessFields id="o-biz" value={business} onChange={setBusiness} errors={bizErrors} />}
+        <Field label={t('Country')} hint={t('Where you rent and lend. Cappy opens country by country.')} htmlFor="o-country">
+          <CountrySelect id="o-country" countries={live} value={where_country} onChange={(e) => setCountry(e.target.value)} />
+        </Field>
         <Field label={t('Where are you?')} hint={t('Where your listings live and your searches start.')} htmlFor="o-where">
           <DistrictSelect
             id="o-where"
-            districts={districts.data ?? {}}
+            districts={inCountry}
             value={where}
             onChange={(e) => setDistrict(e.target.value)}
           />
@@ -103,7 +125,12 @@ export function Onboarding() {
             ]}
           />
         </Field>
-        <Check checked={adult} onChange={setAdult} label={t('I am 18 or older')} hint={t('Cappy is for adults: bookings are contracts.')} />
+        <Check
+          checked={adult}
+          onChange={setAdult}
+          label={t('I am {age} or older', { age: market.minimumAge })}
+          hint={t('Cappy is for adults: bookings are contracts.')}
+        />
         {error && (
           <p role="alert" className="text-[0.875rem] font-semibold text-[var(--danger)]">
             {error}

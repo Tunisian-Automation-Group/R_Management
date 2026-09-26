@@ -12,6 +12,7 @@ import {
   useBlocks,
   useBookings,
   useDistricts,
+  useMarkets,
   useNoticeSettings,
   saveNoticeSettings,
   type NoticeCategory,
@@ -22,7 +23,8 @@ import {
 } from '../../data/repo.ts'
 import type { Owner } from '../../domain/types.ts'
 import { messageOf, useToast } from '../store.tsx'
-import { BusinessFields, businessProblem, cleanBusiness, emptyBusiness } from '../components/BusinessFields.tsx'
+import { BusinessFields, businessErrors, cleanBusiness, emptyBusiness, serverBusinessErrors, type BusinessErrors } from '../components/BusinessFields.tsx'
+import { CountrySelect } from '../components/CountrySelect.tsx'
 import { DistrictSelect } from '../components/DistrictSelect.tsx'
 import { accessToken, deleteAccount, endSession, signOut, useAuthReady, useSession } from '../../data/auth.ts'
 import { SignedOut } from '../components/SignedOut.tsx'
@@ -206,7 +208,7 @@ export function Profile() {
               onClick={() => {
                 setBusy(true)
                 exportMyData()
-                  .catch((err) => toast(messageOf(err)))
+                  .catch((err) => toast(messageOf(err), 'error'))
                   .finally(() => setBusy(false))
               }}
             >
@@ -287,21 +289,32 @@ function EditProfile({ open, onClose, you }: { open: boolean; onClose: () => voi
   const [kind, setKind] = useState<'person' | 'business'>(you.kind)
   const [district, setDistrict] = useState(you.district)
   const [business, setBusiness] = useState(you.business ?? emptyBusiness)
+  const [bizErrors, setBizErrors] = useState<BusinessErrors>({})
+  const { live } = useMarkets()
+  const [country, setCountry] = useState(you.country ?? 'DE')
+  // A country's own districts only (M-2).
+  const inCountry = Object.fromEntries(Object.entries(districts.data ?? {}).filter(([, d]) => d.country === country))
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
   const save = async () => {
-    if (name.trim().length < 2) return setError(t('Tell people what to call you.'))
-    const bad = kind === 'business' ? businessProblem(business) : null
-    if (bad) return setError(bad)
+    // Every problem at once, each under its field (V4-20).
+    const biz = kind === 'business' ? businessErrors(business) : {}
+    setBizErrors(biz)
+    const nameBad = name.trim().length < 2
+    setError(nameBad ? t('Tell people what to call you.') : null)
+    if (nameBad || Object.keys(biz).length) return
+    const where = inCountry[district] ? district : Object.keys(inCountry).sort()[0] ?? district
     setBusy(true)
-    setError(null)
     try {
-      await saveProfile({ name: name.trim(), kind, district, ...(kind === 'business' ? { business: cleanBusiness(business) } : {}) })
+      await saveProfile({ name: name.trim(), kind, district: where, country, ...(kind === 'business' ? { business: cleanBusiness(business) } : {}) })
       await qc.invalidateQueries({ queryKey: ['me'] })
       toast(t('Profile saved'))
       onClose()
     } catch (err) {
+      // Each field the server refused goes under that field (V4-20).
+      const onForm = err instanceof ApiError ? serverBusinessErrors(err.fields) : {}
+      if (Object.keys(onForm).length) setBizErrors(onForm)
       setError(messageOf(err))
     } finally {
       setBusy(false)
@@ -334,11 +347,20 @@ function EditProfile({ open, onClose, you }: { open: boolean; onClose: () => voi
             ]}
           />
         </Field>
-        {kind === 'business' && <BusinessFields id="p-biz" value={business} onChange={setBusiness} />}
+        {kind === 'business' && <BusinessFields id="p-biz" value={business} onChange={setBusiness} errors={bizErrors} />}
+        <Field label={t('Country')} htmlFor="p-country" hint={t('Your listings are priced in its currency.')}>
+          <CountrySelect
+            id="p-country"
+            // A country no longer live stays selectable for the person already in it.
+            countries={live.includes(country) ? live : [...live, country]}
+            value={country}
+            onChange={(e) => setCountry(e.target.value)}
+          />
+        </Field>
         <Field label={t('Where are you?')} htmlFor="p-where">
           <DistrictSelect
             id="p-where"
-            districts={districts.data ?? {}}
+            districts={inCountry}
             value={district}
             onChange={(e) => setDistrict(e.target.value)}
           />
@@ -457,7 +479,7 @@ function Blocked() {
                   await unblockPerson(sub)
                   toast(t('Unblocked'))
                 } catch (err) {
-                  toast(messageOf(err))
+                  toast(messageOf(err), 'error')
                 } finally {
                   await qc.invalidateQueries({ queryKey: ['blocks'] })
                 }
@@ -509,7 +531,7 @@ function SignOutEverywhere() {
                     toast(t('Signed out on every device'))
                     nav('/login', { replace: true })
                   },
-                  (err: unknown) => toast(messageOf(err)),
+                  (err: unknown) => toast(messageOf(err), 'error'),
                 )
               }
             >
@@ -593,7 +615,7 @@ function Channels() {
   if (!q.data) {
     return (
       <p className="t-sm mt-4 text-[var(--ink-3)]">
-        {t('Only bookings and messages; never marketing. Everything also arrives by email.')}
+        {t('Only bookings and messages; never marketing. Booking changes always arrive by email; messages by email too, at most one every 15 minutes per conversation.')}
       </p>
     )
   }
@@ -604,10 +626,11 @@ function Channels() {
     qc.setQueryData(key, next)
     saveNoticeSettings(next).catch((err: unknown) => {
       qc.setQueryData(key, settings)
-      toast(messageOf(err))
+      toast(messageOf(err), 'error')
     })
   }
   return (
+    <>
     <table className="mt-4 w-full border-t border-[var(--line)] text-left">
       <thead>
         <tr className="t-sm text-[var(--ink-4)]">
@@ -635,5 +658,9 @@ function Channels() {
         ))}
       </tbody>
     </table>
+    <p className="t-sm mt-2 text-[var(--ink-3)]">
+      {t('Booking confirmations and changes always arrive by email, whatever you choose here.')}
+    </p>
+    </>
   )
 }

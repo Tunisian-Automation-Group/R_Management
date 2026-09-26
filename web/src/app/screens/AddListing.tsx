@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { drafts } from '../device.ts'
 import { Navigate, useNavigate, useParams } from 'react-router-dom'
-import type { CancellationPolicy, CategoryId, Material, Slot } from '../../domain/types.ts'
+import type { CancellationPolicy, CategoryId, Material, Slot, WeeklyRule } from '../../domain/types.ts'
 import { CATEGORIES, category } from '../../domain/categories.ts'
 import { formatMoney } from '../../domain/money.ts'
 import { messageOf, useCappy, useToast } from '../store.tsx'
@@ -25,7 +25,7 @@ import {
 } from '../components/ui.tsx'
 import { DistrictSelect } from '../components/DistrictSelect.tsx'
 import { NotFound } from './NotFound.tsx'
-import { POLICIES, policyName, policyText, range } from '../format.ts'
+import { POLICIES, clockTime, policyName, policyText, range } from '../format.ts'
 import { lang, locale, plural, t } from '../../i18n.ts'
 
 const MATERIALS: Material[] = [
@@ -65,14 +65,65 @@ const RULE_SUGGESTIONS = [
   'Not for commercial use',
 ]
 
-type Availability = 'evenings' | 'workday' | 'weekend' | 'always' | 'custom'
+type Availability = 'evenings' | 'workday' | 'weekend' | 'always' | 'weekly' | 'custom'
 
-const AVAILABILITY: { id: Availability; label: string; detail: string; from: number; to: number; days: number[] }[] = [
-  { id: 'evenings', label: 'Evenings', detail: '18:00 – 23:00, every day', from: 18, to: 23, days: [0, 1, 2, 3, 4, 5, 6] },
-  { id: 'workday', label: 'While I am at work', detail: '09:00 – 18:00, Mon to Fri', from: 9, to: 18, days: [0, 1, 2, 3, 4] },
-  { id: 'weekend', label: 'Weekends', detail: '09:00 – 20:00, Sat and Sun', from: 9, to: 20, days: [5, 6] },
-  { id: 'always', label: 'Most of the time', detail: '07:00 – 22:00, every day', from: 7, to: 22, days: [0, 1, 2, 3, 4, 5, 6] },
+/** A row of the weekly editor: these ISO weekdays (Mon = 1), these hours. */
+type WeekRow = { days: number[]; start: string; end: string }
+
+const EVERY_DAY = [1, 2, 3, 4, 5, 6, 7]
+// Habits, not dates: each is a weekly schedule the server keeps 8 weeks ahead
+// in the listing's time zone (H-4). Two weeks of windows made once in the
+// browser used to leave a listing with nothing free after a fortnight.
+const AVAILABILITY: { id: Availability; label: string; days: number[]; start: string; end: string }[] = [
+  { id: 'evenings', label: 'Evenings', days: EVERY_DAY, start: '18:00', end: '23:00' },
+  { id: 'workday', label: 'While I am at work', days: [1, 2, 3, 4, 5], start: '09:00', end: '18:00' },
+  { id: 'weekend', label: 'Weekends', days: [6, 7], start: '09:00', end: '20:00' },
+  { id: 'always', label: 'Most of the time', days: EVERY_DAY, start: '07:00', end: '22:00' },
 ]
+
+/** Monday first, in the reader's language: "Mon", "lun.", "Mo." (1 Jan 2024 was a Monday). */
+const isoWeekday = (d: number) => new Date(2024, 0, d).toLocaleDateString(locale(), { weekday: 'short' })
+
+/** "Mon–Fri", "every day", "Sat, Sun". */
+function daysLabel(days: number[]): string {
+  const ds = [...new Set(days)].sort()
+  if (ds.length === 7) return t('every day')
+  const run = ds.every((d, i) => i === 0 || d === ds[i - 1] + 1)
+  return run && ds.length > 2 ? `${isoWeekday(ds[0])}–${isoWeekday(ds[ds.length - 1])}` : ds.map(isoWeekday).join(', ')
+}
+
+/** "18:00 – 23:00, every day" in the reader's clock. */
+const rowLabel = (r: WeekRow) => `${clockTime(r.start)} – ${clockTime(r.end)}, ${daysLabel(r.days)}`
+
+const rowsToRules = (rows: WeekRow[]): WeeklyRule[] =>
+  rows.flatMap((r) => [...new Set(r.days)].sort().map((day) => ({ day, start: r.start, end: r.end })))
+
+/** The rules grouped back into rows by their hours, for the editor. */
+function rulesToRows(rules: WeeklyRule[]): WeekRow[] {
+  const byHours = new Map<string, WeekRow>()
+  for (const r of rules) {
+    const k = `${r.start}-${r.end}`
+    const row = byHours.get(k) ?? { days: [], start: r.start, end: r.end }
+    row.days.push(r.day)
+    byHours.set(k, row)
+  }
+  return [...byHours.values()]
+}
+
+/** Why a weekly schedule cannot be saved, or null. */
+function weeklyProblem(rows: WeekRow[]): string | null {
+  if (!rows.length || rows.some((r) => !r.days.length)) return t('Pick at least one day for each time.')
+  for (const r of rows) {
+    const s = parseClock(r.start)
+    const e = r.end === '24:00' ? 24 : parseClock(r.end)
+    if (s === null || e === null) return t('Pick the hours it is free on those days.')
+    if (e <= s) return t('It has to stop being free after it starts being free.')
+    if (e - s < 0.5) return t('Give people at least half an hour.')
+  }
+  return null
+}
+
+const deviceTimeZone = () => Intl.DateTimeFormat().resolvedOptions().timeZone || 'Europe/Berlin'
 
 /**
  * The presets cover most idle time, but a mill free from the 3rd to the 14th
@@ -145,17 +196,31 @@ function customSummary(c: CustomWindow): string {
   const from = parseDay(c.from)!
   const until = parseDay(c.until)!
   const days = from.getTime() === until.getTime() ? shortDate(from) : `${shortDate(from)} – ${shortDate(until)}`
-  return `${days}, ${c.start} – ${c.end}`
+  return `${days}, ${clockTime(c.start)} – ${clockTime(c.end)}`
 }
 
 type Errors = Partial<
-  Record<'title' | 'blurb' | 'rate' | 'instructions' | 'machine' | 'availability' | 'photos' | 'address', string>
+  Record<'title' | 'blurb' | 'rate' | 'instructions' | 'machine' | 'availability' | 'photos' | 'address' | 'postalCode', string>
 >
 
 /** A photograph on its way in: shown at once from the file, sent shrunk, and
  *  carrying the server's URL once it has one. The first in the list is the cover. */
 /** A picture in the form: `progress` 0–1 while it goes up, `file` kept so a failed one can be retried (U-25). */
 type PhotoDraft = { key: string; preview: string; url?: string; error?: string; progress?: number; file?: File }
+
+/** The server's field paths (`listing.ratePerHour`, `address`) as this form's fields. */
+const FIELD_OF: Record<string, keyof Errors> = {
+  title: 'title', blurb: 'blurb', ratePerHour: 'rate', instructions: 'instructions', machine: 'machine',
+  address: 'address', postalCode: 'postalCode', photos: 'photos', availability: 'availability', slots: 'availability',
+}
+function fieldErrors(fields?: { field: string; message: string }[]): Errors {
+  const e: Errors = {}
+  for (const f of fields ?? []) {
+    const key = FIELD_OF[f.field.split('.').pop() ?? f.field] ?? FIELD_OF[f.field.split('.')[0]]
+    if (key && !e[key]) e[key] = t(f.message)
+  }
+  return e
+}
 
 /** New listing at /earn/new; editing one of yours at /earn/edit/:id. */
 const clampPct = (v: string) => Math.max(0, Math.min(50, Math.round(Number(v) || 0)))
@@ -181,6 +246,10 @@ function ListingForm({ edit }: { edit?: repo.ListingView }) {
   const districts = repo.useDistricts()
   const [saving, setSaving] = useState(false)
   const was = edit?.listing
+  // Priced in the owner's market's currency (M-2): the server sets it; the form
+  // only shows the right symbol. Nothing sends a currency, so nothing sends EUR.
+  const market = repo.useMarket()
+  const cur = was?.currency ?? market.currency
   // The whole form survives a reload or a session expiring mid-form, for a new
   // listing and for an edit alike, one draft per listing (U-10, V3-10).
   const draftKey = `listing.${was?.id ?? 'new'}`
@@ -217,6 +286,12 @@ function ListingForm({ edit }: { edit?: repo.ListingView }) {
   // Editing: the windows already listed stay unless removed; new ones are optional.
   const [availability, setAvailability] = useState<Availability | 'none'>(init('availability', edit ? 'none' : 'evenings'))
   const [custom, setCustom] = useState<CustomWindow>(init('custom', defaultCustom))
+  const [weekRows, setWeekRows] = useState<WeekRow[]>(
+    init('weekRows', was?.availability?.weekly.length ? rulesToRows(was.availability.weekly) : [{ days: [1, 2, 3, 4, 5], start: '09:00', end: '18:00' }]),
+  )
+  // Editing a listing that repeats weekly: stop the schedule (and the windows it made).
+  const [stopSchedule, setStopSchedule] = useState<boolean>(init('stopSchedule', false))
+  const [postalCode, setPostalCode] = useState<string>(init('postalCode', was?.postalCode ?? ''))
   const [keptSlots, setKeptSlots] = useState<Slot[]>(init('keptSlots', edit?.slots ?? []))
   const [instructions, setInstructions] = useState(init('instructions', was?.instructions ?? ''))
   const [instantBook, setInstantBook] = useState(init('instantBook', was?.instantBook ?? false))
@@ -238,7 +313,7 @@ function ListingForm({ edit }: { edit?: repo.ListingView }) {
   const form = {
     categoryId, title, blurb, district, address, rate, extraFee, extraLabel, minHours, maxHours, machine, materials,
     unitsPerHour, setupFee, setupHours, dims, availability, custom, keptSlots, instructions, instantBook, policy,
-    dayPct, weekPct, rules, photos: photos.flatMap((p) => (p.url ? [p.url] : [])),
+    dayPct, weekPct, rules, photos: photos.flatMap((p) => (p.url ? [p.url] : [])), weekRows, stopSchedule, postalCode,
   }
   const formJson = JSON.stringify(form)
   // Written only once something changed, so an untouched edit never shadows the listing.
@@ -259,11 +334,16 @@ function ListingForm({ edit }: { edit?: repo.ListingView }) {
     if (instructions.trim().length < 10) {
       e.instructions = t('Say how someone actually gets hold of it.')
     }
-    if (address.trim().length < 5) e.address = t('The street address where it is collected or used.')
+    if (address.trim().length < 5) e.address = t('Add the hand-over address; renters see it only after you accept.')
+    if (postalCode.trim().length > 16) e.postalCode = t('That postal code is too long.')
     if (isBatch && machine.trim().length < 2) e.machine = t('Which machine is it?')
     if (photos.some((p) => !p.url && !p.error)) e.photos = t('Give the photos a moment to finish uploading.')
     if (availability === 'custom') {
       const problem = customProblem(custom)
+      if (problem) e.availability = problem
+    }
+    if (availability === 'weekly') {
+      const problem = weeklyProblem(weekRows)
       if (problem) e.availability = problem
     }
     return e
@@ -354,30 +434,20 @@ function ListingForm({ edit }: { edit?: repo.ListingView }) {
       return out
     }
 
-    const preset = AVAILABILITY.find((a) => a.id === availability)
-    if (!preset) return out // 'none': editing, and no new windows
-    const base = new Date()
-    base.setHours(0, 0, 0, 0)
-    // The next quarter hour: today's window starts from now, not from this morning.
-    const now = Math.ceil(Date.now() / (15 * 60_000)) * 15 * 60_000
-    const shortest = (isBatch ? 1 : minHours) * 3_600_000
-    // Two weeks out is enough to look real without pretending to know December.
-    for (let d = 0; d < 14; d++) {
-      // Weekday of that date (Mon = 0), not the offset from today.
-      const date = new Date(base.getFullYear(), base.getMonth(), base.getDate() + d)
-      if (!preset.days.includes((date.getDay() + 6) % 7)) continue
-      const opens = date.getTime() + preset.from * 3_600_000
-      const closes = date.getTime() + preset.to * 3_600_000
-      const first = Math.max(opens, now)
-      // What is left of today must still fit the shortest booking.
-      if (closes - first < shortest) continue
-      out.push({
-        start: new Date(first).toISOString(),
-        end: new Date(closes).toISOString(),
-        hoursUsable: Math.floor(((closes - first) / 3_600_000) * 4) / 4,
-      })
-    }
+    // Presets and the weekly editor are schedules the server rolls forward (H-4);
+    // 'none' adds nothing. Only exact dates are windows made here.
     return out
+  }
+
+  /** The weekly schedule to send: a preset or the editor's rows; `null` stops
+   *  one; `undefined` leaves it as it is (the key is left out). */
+  const availabilityOut = (): repo.ListingDraft['availability'] => {
+    const timeZone = was?.availability?.timeZone ?? deviceTimeZone()
+    const preset = AVAILABILITY.find((a) => a.id === availability)
+    if (preset) return { weekly: rowsToRules([preset]), timeZone }
+    if (availability === 'weekly') return { weekly: rowsToRules(weekRows), timeZone }
+    if (stopSchedule) return null
+    return undefined
   }
 
   const submit = async () => {
@@ -403,11 +473,21 @@ function ListingForm({ edit }: { edit?: repo.ListingView }) {
       return
     }
 
+    // ponytail: the point is the district's centre until addresses are geocoded
+    // (M-7); the server keeps it within 30 km of the district and shows others
+    // a ~500 m grid, the exact point only in an accepted booking's hand-over.
+    const d = districts.data?.[district]
+    const location = was?.location && was.district === district ? was.location : d ? { lat: d.lat, lng: d.lng } : undefined
+    const schedule = availabilityOut()
     const shared = {
       category: categoryId,
       title: title.trim(),
       blurb: blurb.trim(),
       district,
+      ...(location ? { location } : {}),
+      ...(d?.country ? { country: d.country } : {}),
+      ...(postalCode.trim() ? { postalCode: postalCode.trim() } : {}),
+      ...(schedule !== undefined ? { availability: schedule } : {}),
       instructions: instructions.trim(),
       // Only what the owner chose: nothing is saved on their behalf.
       rules,
@@ -484,7 +564,13 @@ function ListingForm({ edit }: { edit?: repo.ListingView }) {
       }
       nav('/earn', { replace: true })
     } catch (err) {
-      toast(messageOf(err))
+      // A server that checked the form says which fields: each error goes under its own (V4-20).
+      const onForm = err instanceof repo.ApiError ? fieldErrors(err.fields) : {}
+      if (Object.keys(onForm).length) {
+        setErrors((prev) => ({ ...prev, ...onForm }))
+        setTouched((prev) => ({ ...prev, ...Object.fromEntries(Object.keys(onForm).map((k) => [k, true])) }))
+      }
+      toast(messageOf(err), 'error')
     } finally {
       setSaving(false)
     }
@@ -812,17 +898,35 @@ function ListingForm({ edit }: { edit?: repo.ListingView }) {
             invalid={Boolean(errorFor('address'))}
             onChange={(e) => setAddress(e.target.value)}
             onBlur={blur('address')}
-            placeholder="Oranienstraße 12, 10999 Berlin"
+            placeholder={t('Street and number, city')}
+          />
+        </Field>
+
+        <Field
+          label={t('Postal code')}
+          hint={t('Optional. Only shared with the buyer once you accept, with the address.')}
+          error={errorFor('postalCode')}
+          htmlFor="f-postal"
+        >
+          <Input
+            id="f-postal"
+            autoComplete="postal-code"
+            maxLength={16}
+            className="tnum"
+            value={postalCode}
+            invalid={Boolean(errorFor('postalCode'))}
+            onChange={(e) => setPostalCode(e.target.value)}
+            onBlur={blur('postalCode')}
           />
         </Field>
 
         <Field label={t('Price')} error={errorFor('rate')} htmlFor="f-rate">
-          <MoneyInput id="f-rate" cents={rate} onCents={setRate} invalid={Boolean(errorFor('rate'))} currency={was?.currency} />
+          <MoneyInput id="f-rate" cents={rate} onCents={setRate} invalid={Boolean(errorFor('rate'))} currency={cur} />
         </Field>
 
         {isBatch ? (
           <Field label={t('Setup fee')} hint={t('Charged once per job, for programming and fixturing.')} htmlFor="f-setup">
-            <MoneyInput id="f-setup" cents={setupFee} onCents={setSetupFee} suffix={t('per job')} currency={was?.currency} />
+            <MoneyInput id="f-setup" cents={setupFee} onCents={setSetupFee} suffix={t('per job')} currency={cur} />
           </Field>
         ) : (
           <>
@@ -852,7 +956,7 @@ function ListingForm({ edit }: { edit?: repo.ListingView }) {
               hint={t('Detergent, fuel, gas, anything you top up between bookings. Leave at zero if there is none.')}
               htmlFor="f-extra"
             >
-              <MoneyInput id="f-extra" cents={extraFee} onCents={setExtraFee} suffix={t('per booking')} currency={was?.currency} />
+              <MoneyInput id="f-extra" cents={extraFee} onCents={setExtraFee} suffix={t('per booking')} currency={cur} />
               {extraFee > 0 && (
                 <div className="mt-2">
                   <Input
@@ -920,6 +1024,22 @@ function ListingForm({ edit }: { edit?: repo.ListingView }) {
           </span>
         </label>
 
+        {was?.availability?.weekly.length ? (
+          <Card className="p-4">
+            <p className="text-[0.9375rem] font-semibold">
+              {stopSchedule ? t('The weekly schedule stops when you save') : t('Repeats every week')}
+            </p>
+            <p className="t-sm tnum mt-1 text-[var(--ink-3)]">
+              {stopSchedule
+                ? t('The windows it made are removed. Windows you added by date stay.')
+                : `${rulesToRows(was.availability.weekly).map(rowLabel).join(' · ')}. ${t('Cappy keeps the next 8 weeks open for you ({tz}).', { tz: was.availability.timeZone })}`}
+            </p>
+            <Button size="sm" variant="secondary" className="mt-3" onClick={() => setStopSchedule((v) => !v)}>
+              {stopSchedule ? t('Keep the weekly schedule') : t('Stop repeating')}
+            </Button>
+          </Card>
+        ) : null}
+
         {was && (
           <Field label={t('Windows already listed')} hint={t('Remove any that are no longer free.')}>
             {keptSlots.length === 0 ? (
@@ -951,8 +1071,9 @@ function ListingForm({ edit }: { edit?: repo.ListingView }) {
         >
           <div className="space-y-2">
             {[
-              ...(was ? [{ id: 'none' as const, label: 'No new windows', detail: 'Keep what is listed' }] : []),
-              ...AVAILABILITY,
+              ...(was ? [{ id: 'none' as const, label: 'No new windows', detail: t('Keep what is listed') }] : []),
+              ...AVAILABILITY.map((a) => ({ id: a.id, label: a.label, detail: `${rowLabel(a)} · ${t('every week')}` })),
+              { id: 'weekly' as Availability, label: 'Set my own weekly hours', detail: weeklyProblem(weekRows) ?? weekRows.map(rowLabel).join(' · ') },
               { id: 'custom' as Availability, label: 'Pick the dates myself', detail: customSummary(custom) },
             ].map((a) => (
               <button
@@ -960,8 +1081,8 @@ function ListingForm({ edit }: { edit?: repo.ListingView }) {
                 type="button"
                 onClick={() => setAvailability(a.id)}
                 aria-pressed={availability === a.id}
-                aria-controls={a.id === 'custom' ? 'custom-window' : undefined}
-                aria-expanded={a.id === 'custom' ? availability === 'custom' : undefined}
+                aria-controls={a.id === 'custom' ? 'custom-window' : a.id === 'weekly' ? 'weekly-hours' : undefined}
+                aria-expanded={a.id === 'custom' || a.id === 'weekly' ? availability === a.id : undefined}
                 className={`flex min-h-[62px] w-full items-center gap-3.5 rounded-[var(--radius-field)] border px-4 text-left transition-colors duration-[160ms] ${
                   availability === a.id
                     ? 'border-[var(--ink)] bg-[var(--sunken)]'
@@ -979,10 +1100,86 @@ function ListingForm({ edit }: { edit?: repo.ListingView }) {
                 </span>
                 <span className="min-w-0">
                   <span className="block text-[0.9375rem] font-semibold">{t(a.label)}</span>
-                  <span className="tnum block text-[0.8125rem] text-[var(--ink-3)]">{t(a.detail)}</span>
+                  <span className="tnum block text-[0.8125rem] text-[var(--ink-3)]">{a.detail}</span>
                 </span>
               </button>
             ))}
+
+            {availability === 'weekly' && (
+              <div
+                id="weekly-hours"
+                className="space-y-4 rounded-[var(--radius-field)] border border-[var(--line-strong)] bg-[var(--surface)] p-4"
+              >
+                {weekRows.map((row, i) => (
+                  <fieldset key={i} className="space-y-2">
+                    <legend className="sr-only">{t('Weekly hours {n}', { n: i + 1 })}</legend>
+                    <div className="flex flex-wrap gap-1.5">
+                      {EVERY_DAY.map((d) => (
+                        <Chip
+                          key={d}
+                          selected={row.days.includes(d)}
+                          onClick={() =>
+                            setWeekRows((rows) =>
+                              rows.map((r, j) =>
+                                j === i ? { ...r, days: r.days.includes(d) ? r.days.filter((x) => x !== d) : [...r.days, d] } : r,
+                              ),
+                            )
+                          }
+                        >
+                          {isoWeekday(d)}
+                        </Chip>
+                      ))}
+                    </div>
+                    <div className="flex items-end gap-3">
+                      <label className="block flex-1">
+                        <span className="t-label mb-1.5 block text-[var(--ink-3)]">{t('Free from')}</span>
+                        <Input
+                          type="time"
+                          step={900}
+                          value={row.start}
+                          className="tnum"
+                          onChange={(e) => setWeekRows((rows) => rows.map((r, j) => (j === i ? { ...r, start: e.target.value } : r)))}
+                        />
+                      </label>
+                      <label className="block flex-1">
+                        <span className="t-label mb-1.5 block text-[var(--ink-3)]">{t('Until')}</span>
+                        <Input
+                          type="time"
+                          step={900}
+                          value={row.end === '24:00' ? '23:59' : row.end}
+                          className="tnum"
+                          onChange={(e) =>
+                            setWeekRows((rows) => rows.map((r, j) => (j === i ? { ...r, end: e.target.value === '23:59' ? '24:00' : e.target.value } : r)))
+                          }
+                        />
+                      </label>
+                      {weekRows.length > 1 && (
+                        <Button
+                          size="sm"
+                          variant="quiet"
+                          aria-label={t('Remove these hours')}
+                          onClick={() => setWeekRows((rows) => rows.filter((_, j) => j !== i))}
+                        >
+                          {t('Remove')}
+                        </Button>
+                      )}
+                    </div>
+                  </fieldset>
+                ))}
+                <Button
+                  size="sm"
+                  variant="secondary"
+                  onClick={() => setWeekRows((rows) => [...rows, { days: [6, 7], start: '10:00', end: '16:00' }])}
+                >
+                  {t('Add other hours')}
+                </Button>
+                <p className="t-sm text-[var(--ink-3)]">
+                  {t('Repeats every week in {tz}. Cappy keeps the next 8 weeks open and never overlaps a booking.', {
+                    tz: was?.availability?.timeZone ?? deviceTimeZone(),
+                  })}
+                </p>
+              </div>
+            )}
 
             {availability === 'custom' && (
               <div
@@ -1048,8 +1245,8 @@ function ListingForm({ edit }: { edit?: repo.ListingView }) {
                         days: plural(customDayCount(custom), '{n} day', '{n} days'),
                         first: `${weekday(parseDay(custom.from)!)} ${shortDate(parseDay(custom.from)!)}`,
                         last: `${weekday(parseDay(custom.until)!)} ${shortDate(parseDay(custom.until)!)}`,
-                        start: custom.start,
-                        end: custom.end,
+                        start: clockTime(custom.start),
+                        end: clockTime(custom.end),
                       })}
                 </p>
               </div>
@@ -1095,7 +1292,7 @@ function ListingForm({ edit }: { edit?: repo.ListingView }) {
           <p className="t-plate tnum text-[2.375rem] leading-[2.625rem] text-[var(--ink)]">
             {formatMoney(
               Math.round((rate * (isBatch ? 4 : minHours) + (isBatch ? setupFee : extraFee)) * 0.85),
-              was?.currency,
+              cur,
             )}
           </p>
           <p className="t-sm mt-1.5 text-[var(--ink-2)]">

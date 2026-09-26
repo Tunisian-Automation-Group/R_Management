@@ -1,4 +1,4 @@
-import { lazy, Suspense, useMemo, useState, useEffect } from 'react'
+import { lazy, Suspense, useMemo, useRef, useState, useEffect } from 'react'
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { NotFound } from './NotFound.tsx'
 import { useQueryClient } from '@tanstack/react-query'
@@ -46,7 +46,7 @@ import {
   oneDecimal,
   Stars,
 } from '../components/ui.tsx'
-import { cancelRate, day, formatDistance, policyInForce, policyName, policyText, range, relative, responseTime, time } from '../format.ts'
+import { cancelRate, day, formatDistance, policyInForce, policyName, policyText, range, relative, responseRate, responseTime, time } from '../format.ts'
 import { useOnline } from '../components/Offline.tsx'
 import { locale, t } from '../../i18n.ts'
 
@@ -100,6 +100,23 @@ export function Listing() {
   // To the minute, so the quote's query key does not change every render.
   const now = useMemo(() => new Date(Math.floor(Date.now() / 60_000) * 60_000), [])
   const slots = detail.data?.slots ?? []
+
+  // The largest batch the longest free window can hold (V4-14). A suggestion
+  // of a quarter of the batch ("Try 13 pallets") was often still too big.
+  // ponytail: from window lengths, not bookings inside them; the offers the
+  // server returns for the new quantity are the final word.
+  const maxFit = useMemo(() => {
+    if (!listing || isWindow(listing)) return null
+    const room = Math.max(0, ...slots.map((s) => s.hoursUsable)) - listing.setupHours
+    return room > 0 ? Math.floor(room * listing.unitsPerHour) : 0
+  }, [listing, slots])
+  // Open on a batch that fits, when the search asked for more than any window holds.
+  const fitted = useRef(false)
+  useEffect(() => {
+    if (fitted.current || maxFit === null || !detail.data) return
+    fitted.current = true
+    if (maxFit > 0 && quantity > maxFit && !params.get('quantity')) setQuantity(maxFit)
+  }, [maxFit, detail.data, quantity, params])
 
   // Distances are measured from wherever this person searches from.
   const origin = state.search.district
@@ -208,7 +225,7 @@ export function Listing() {
         setVerifying('ask')
         return
       }
-      toast(messageOf(err))
+      toast(messageOf(err), 'error')
       // Taken by someone else a moment ago: show what is still free.
       if (err instanceof ApiError && err.status === 409) void offersQ.refetch()
       attempt.settle(err)
@@ -217,28 +234,35 @@ export function Listing() {
     }
   }
 
-  // Stripe Identity's own modal when the provider is Stripe; the fake provider
-  // verifies at once. Either way, the same booking attempt (and key) is retried.
+  // Whoever runs the check (F-1, `identityProvider`): Stripe's own modal, a
+  // hosted page the session names (`url`), or nothing to do (the fake provider
+  // verifies at once). Either way, the same booking attempt (and key) is retried.
   const verify = async () => {
     setVerifying('busy')
     try {
       let id = await startIdentity()
-      if (id.status !== 'verified' && id.clientSecret && payments.data?.publishableKey) {
+      let started = false
+      if (id.status !== 'verified' && id.url) {
+        window.open(id.url, '_blank', 'noopener')
+        started = true
+      } else if (id.status !== 'verified' && id.clientSecret && payments.data?.publishableKey && (payments.data.identityProvider ?? 'stripe') === 'stripe') {
         const { loadStripe } = await import('@stripe/stripe-js/pure')
         const stripe = await loadStripe(payments.data.publishableKey)
         const res = await stripe?.verifyIdentity(id.clientSecret)
         if (res?.error) throw new Error(res.error.message)
-        // The result arrives by webhook: wait for it, for up to a minute.
-        for (let i = 0; i < 30 && id.status !== 'verified'; i++) {
-          await new Promise((ok) => setTimeout(ok, 2000))
-          id = await getIdentity()
-        }
+        started = true
       }
+      // The result arrives by webhook: wait for it, for up to a minute (two for a hosted page).
+      for (let i = 0; started && i < (id.url ? 60 : 30) && id.status !== 'verified' && id.status !== 'failed'; i++) {
+        await new Promise((ok) => setTimeout(ok, 2000))
+        id = await getIdentity()
+      }
+      if (id.status === 'failed') throw new Error(t('The ID check did not go through. Try again with a valid ID document.'))
       if (id.status !== 'verified') throw new Error(t('Your ID check is still being processed. Try booking again in a few minutes.'))
       setVerifying(null)
       await book()
     } catch (err) {
-      toast(messageOf(err))
+      toast(messageOf(err), 'error')
       setVerifying('ask')
     }
   }
@@ -290,7 +314,8 @@ export function Listing() {
                   {t('Total, incl. {fee} service fee', { fee: formatMoney(quote.platformFee, cur) })}
                 </p>
               )}
-              <p className="t-sm tnum truncate text-[var(--ink-3)] md:mt-1 md:whitespace-normal">
+              {/* Wraps rather than truncates: the end time is half the answer (V4-11). */}
+              <p className="t-sm tnum text-[var(--ink-3)] md:mt-1">
                 {selected ? range(selected.start, selected.end) : t('No free window')}
               </p>
               {/* What the price is for, so the button is not a leap. */}
@@ -318,8 +343,8 @@ export function Listing() {
                 t('Instant book: confirmed as soon as your card is held.')
               ) : (
                 <>
-                  {t('Your card is only held. Nothing is charged until {name} accepts', { name: first })} ·{' '}
-                  {responseTime(owner.responseMins).replace(/^./, (c) => c.toLowerCase())}
+                  {t('Your card is only held. Nothing is charged until {name} accepts', { name: first })}
+                  {responseTime(owner.responseMins) && ` · ${responseTime(owner.responseMins)!.replace(/^./, (c) => c.toLowerCase())}`}
                 </>
               )}
             </p>
@@ -332,9 +357,11 @@ export function Listing() {
         <h1 className="t-h1 text-balance">{listing.title}</h1>
         <p className="t-lede mt-2.5 text-[var(--ink-3)]">{listing.blurb}</p>
         <div className="mt-4 flex flex-wrap items-center gap-x-4 gap-y-2 text-[0.875rem] text-[var(--ink-3)]">
-          <span className="tnum inline-flex items-center gap-1.5">
+          {/* Approximate for everyone but the owner (M-6): the exact place comes with the booking. */}
+          <span className="tnum inline-flex items-center gap-1.5" title={mine ? undefined : t('Approximate area. The exact address is shared once the owner accepts.')}>
             <Icon name="pin" size={15} className="text-[var(--ink-4)]" />
             {listing.district}{km !== null ? ` · ${formatDistance(km)}` : ''}
+            {!mine && <span className="sr-only">{t('Approximate area. The exact address is shared once the owner accepts.')}</span>}
           </span>
           <span className="tnum">{formatMoney(listing.ratePerHour, cur)} / {t('hour')}</span>
           {/* This listing's reviews; the owner's overall record is on their card below. */}
@@ -379,7 +406,8 @@ export function Listing() {
           <Avatar initials={owner.initials} size={48} business={owner.kind === 'business'} />
           <div className="min-w-0 flex-1">
             <p className="flex items-center gap-1.5 text-[1rem] font-semibold">
-              <span className="truncate">{owner.name}</span>
+              {/* Wraps: a name is not cut to "Nadia Bra…" when the rating beside it is long (V4-11). */}
+              <span className="min-w-0 break-words">{owner.name}</span>
               {owner.verified && (
                 <Icon name="shield" size={15} className="shrink-0 text-[var(--success)]" />
               )}
@@ -397,10 +425,13 @@ export function Listing() {
             <span className="t-sm block text-[var(--ink-4)]">{t('all their jobs')}</span>
           </span>
         </div>
-        <p className="t-sm mt-4 flex items-center gap-1.5 border-t border-[var(--line)] pt-4 text-[var(--ink-3)]">
-          <Icon name="clock" size={14} className="text-[var(--ink-4)]" />
-          {responseTime(owner.responseMins)}
-        </p>
+        {/* Measured, never assumed (H-1): nothing is said before 3 requests. */}
+        {(responseTime(owner.responseMins) || responseRate(owner.responseRate)) && (
+          <p className="t-sm mt-4 flex items-center gap-1.5 border-t border-[var(--line)] pt-4 text-[var(--ink-3)]">
+            <Icon name="clock" size={14} className="text-[var(--ink-4)]" />
+            {[responseTime(owner.responseMins), responseRate(owner.responseRate)].filter(Boolean).join(' · ')}
+          </p>
+        )}
         {/* EU consumer law: say whether you are dealing with a business. */}
         <p className="t-sm mt-2 flex items-start gap-1.5 text-[var(--ink-3)]">
           <Icon name="info" size={14} className="mt-[3px] shrink-0 text-[var(--ink-4)]" />
@@ -479,18 +510,15 @@ export function Listing() {
                 : t('{n} {unit} needs {duration} and no gap that long is open. Try a smaller batch.', { n: quantity, unit: meta.unitNoun ?? '', duration: needed ? durationLabel(needed) : t('more time') })
             }
             action={
-              <Button
-                variant="secondary"
-                onClick={() =>
-                  isWindow(listing)
-                    ? setHours(listing.minHours)
-                    : setQuantity(Math.max(10, Math.round(quantity / 4)))
-                }
-              >
-                {isWindow(listing)
-                  ? t('Try {what}', { what: durationLabel(listing.minHours) })
-                  : t('Try {what}', { what: `${Math.max(10, Math.round(quantity / 4))} ${meta.unitNoun}` })}
-              </Button>
+              isWindow(listing) ? (
+                <Button variant="secondary" onClick={() => setHours(listing.minHours)}>
+                  {t('Try {what}', { what: durationLabel(listing.minHours) })}
+                </Button>
+              ) : maxFit && maxFit < quantity ? (
+                <Button variant="secondary" onClick={() => setQuantity(maxFit)}>
+                  {t('Try {what}', { what: `${maxFit} ${meta.unitNoun}` })}
+                </Button>
+              ) : undefined
             }
           />
         </Card>
@@ -516,7 +544,8 @@ export function Listing() {
                       setPicked(group[0])
                     }}
                   >
-                    <span className="capitalize">{label}</span>
+                    {/* First letter only: `capitalize` made every word a capital, "Mar. 29 Sept." (V4-21). */}
+                    <span className="inline-block first-letter:uppercase">{label}</span>
                   </Chip>
                 ))}
               </div>
@@ -675,6 +704,7 @@ export function Listing() {
                 }
               />
               <Row label={t('Where')} value={`${listing.district}${km !== null ? ` · ${formatDistance(km)}` : ''}`} />
+              <p className="t-sm text-[var(--ink-4)]">{t('Approximate area. The exact address is shared once the owner accepts.')}</p>
               <div className="my-2 border-t border-[var(--line)]" />
               <Row label={t('You pay')} value={formatMoney(quote.total, cur)} strong />
               <Row
@@ -694,7 +724,7 @@ export function Listing() {
               <Banner
                 tone="warn"
                 title={t('Nothing is charged yet')}
-                body={t('Your card is held for the total. {name} has to accept first, usually within {n} minutes; if they decline or do not answer, the hold is released.', { name: first, n: owner.responseMins })}
+                body={t('Your card is held for the total. {name} has to accept first; if they decline or do not answer, the hold is released.', { name: first })}
               />
             )}
             <p className="t-sm text-[var(--ink-3)]">

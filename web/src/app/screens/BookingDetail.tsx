@@ -1,4 +1,4 @@
-import { lazy, Suspense, useEffect, useState, type ReactNode } from 'react'
+import { lazy, Suspense, useEffect, useRef, useState, type ReactNode } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { useAuthReady, useSession } from '../../data/auth.ts'
 import { SignedOut } from '../components/SignedOut.tsx'
@@ -26,6 +26,7 @@ import {
   useListing,
   useOwner,
   usePaymentsConfig,
+  useMarket,
   type BookingAction,
 } from '../../data/repo.ts'
 import { TraderNote } from '../components/BusinessFields.tsx'
@@ -161,7 +162,12 @@ function Detail({
     booking.status === 'accepted' && sinceStart >= (asOwner ? 30 * 60_000 : 0) && sinceStart <= 2 * 3_600_000
 
   // What cancelling now would refund, fetched only while the sheet is open.
-  const refund = useCancellationQuote(booking.id, cancelling && booking.status === 'accepted')
+  // `charged` says whether any money was taken; when not, only the hold goes.
+  const refund = useCancellationQuote(booking.id, cancelling)
+  const charged = refund.data ? refund.data.charged ?? booking.status === 'accepted' : booking.status === 'accepted'
+  // Where the hand-over is: its market's emergency number (112, 911…).
+  const market = useMarket(listing?.country)
+  const evidenceRef = useRef<HTMLDivElement>(null)
   const payments = usePaymentsConfig()
   // Between Stripe saying yes and its webhook reaching Cappy the booking still
   // reads awaiting_payment: the card form must not come back meanwhile (FL-16).
@@ -191,7 +197,7 @@ function Detail({
       await write()
       if (message) toast(message)
     } catch (err) {
-      toast(messageOf(err))
+      toast(messageOf(err), 'error')
     } finally {
       setBusy(false)
       await Promise.all([
@@ -456,7 +462,7 @@ function Detail({
         <Banner
           tone="warn"
           title={t('Waiting for {name}', { name: first })}
-          body={`${owner ? sentence(responseTime(owner.responseMins)) : ''}${t('Your card is held, and charged only if they accept.')}`}
+          body={`${owner && responseTime(owner.responseMins) ? sentence(responseTime(owner.responseMins)!) : ''}${t('Your card is held, and charged only if they accept.')}`}
         />
       ) : booking.status === 'accepted' ? (
         <Banner
@@ -513,7 +519,8 @@ function Detail({
                   <p
                     className={`text-[0.9688rem] leading-7 ${current ? 'font-bold' : 'font-semibold'}`}
                   >
-                    {t(step.label)}
+                    {/* Nobody requested an instant booking: it was booked (V4-23). */}
+                    {step.id === 'requested' && booking.listing?.instantBook ? t('Booked') : t(step.label)}
                   </p>
                   <p className="t-sm text-[var(--ink-3)]">
                     {step.id === 'requested' && booking.listing?.instantBook
@@ -533,7 +540,21 @@ function Detail({
         <Card className="p-5">
           <h2 className="t-label mb-2.5">{t('Getting in')}</h2>
           {booking.handover?.address && (
-            <p className="text-[0.9688rem] font-semibold text-[var(--ink)]">{booking.handover.address}</p>
+            <p className="text-[0.9688rem] font-semibold text-[var(--ink)]">
+              {booking.handover.address}
+              {booking.handover.postalCode && `, ${booking.handover.postalCode}`}
+            </p>
+          )}
+          {/* The exact point, now the booking is accepted (M-6); others only ever see ~500 m. */}
+          {booking.handover?.location && (
+            <a
+              className="t-sm mt-1 inline-block font-semibold underline"
+              href={`https://www.openstreetmap.org/?mlat=${booking.handover.location.lat}&mlon=${booking.handover.location.lng}#map=17/${booking.handover.location.lat}/${booking.handover.location.lng}`}
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              {t('Open in a map')}
+            </a>
           )}
           <p className="t-body mt-1 text-[var(--ink-2)]">{booking.handover?.instructions}</p>
           <p className="t-sm tnum mt-4 flex items-center gap-1.5 border-t border-[var(--line)] pt-4 text-[var(--ink-3)]">
@@ -570,7 +591,8 @@ function Detail({
           bookingId={booking.id}
           otherName={asOwner ? buyer : first}
           accepted={['accepted', 'active', 'completed', 'disputed'].includes(booking.status)}
-          closed={dead}
+          // Also a completed booking once its 14-day review window has passed (booking/messages.py).
+          closed={dead || (booking.status === 'completed' && Date.now() > Date.parse(booking.match.end) + 14 * 86_400_000)}
         />
       )}
 
@@ -582,7 +604,7 @@ function Detail({
             <li>{t('Meet at the address in the booking, and check it is the thing in the listing.')}</li>
             <li>{t('Take check-in photos together: every side, any marks, the meter if it has one.')}</li>
             <li>{t('Keep messages and payments on Cappy. Nobody from Cappy asks for money or codes elsewhere.')}</li>
-            <li>{t('If you feel unsafe, leave and call the local emergency number first, then tell us.')}</li>
+            <li>{t('If you feel unsafe, leave and call {number} first, then tell us.', { number: market.emergencyNumber })}</li>
           </ul>
           <Link to="/help/safety" className="t-sm mt-3 inline-block font-semibold underline">
             {t('How we keep you safe')}
@@ -590,13 +612,20 @@ function Detail({
         </Card>
       )}
 
-      <EvidencePanel
-        bookingId={booking.id}
-        status={booking.status}
-        otherName={asOwner ? buyer : first}
-        prompt={evidencePrompt}
-        onPromptClosed={() => setEvidencePrompt(null)}
-      />
+      {/* A sheet that opened on its own has no button to go back to: focus lands
+          on the photos it was about (V4-22). */}
+      <div ref={evidenceRef} tabIndex={-1} className="outline-none">
+        <EvidencePanel
+          bookingId={booking.id}
+          status={booking.status}
+          otherName={asOwner ? buyer : first}
+          prompt={evidencePrompt}
+          onPromptClosed={() => {
+            setEvidencePrompt(null)
+            requestAnimationFrame(() => evidenceRef.current?.focus({ preventScroll: false }))
+          }}
+        />
+      </div>
 
       <Card className="mt-3 flex flex-wrap items-center justify-between gap-3 p-5">
         <p className="t-sm text-[var(--ink-3)]">{t('Something not right? Tell us, and we see this booking with it.')}</p>
@@ -649,6 +678,18 @@ function Detail({
           </>
         )}
       </Card>
+
+      {/* The owner sees the rating they gave, as the renter sees theirs (V4-23). */}
+      {asOwner && booking.renterRating ? (
+        <Card className="mt-3 p-5">
+          <h2 className="t-label mb-2.5">{t('Your rating of {name}', { name: buyer })}</h2>
+          <span className="flex" aria-label={t('{n} out of 5', { n: booking.renterRating })}>
+            {[1, 2, 3, 4, 5].map((n) => (
+              <Icon key={n} name="star" size={17} strokeWidth={0} className={n <= booking.renterRating! ? 'fill-[var(--ink)]' : 'fill-[var(--line)]'} />
+            ))}
+          </span>
+        </Card>
+      ) : null}
 
       {booking.outcome && (
         <Card className="anim-rise mt-3 p-5">
@@ -743,14 +784,16 @@ function Detail({
       >
         <p className="t-body pb-3 text-[var(--ink-2)]">
           {asOwner
-            ? t('{name} will be told, and gets back everything they paid.', { name: buyer })
-            : booking.status === 'accepted' && refund.data && refund.data.refundAmount < quote.total
-              ? t('This is your withdrawal from the booking. {name} will be told the window is free again. What you get back is below.', { name: first })
-              : booking.status === 'accepted'
-              ? t('This is your withdrawal from the booking. {name} will be told the window is free again, and you get back everything you paid, in full.', { name: first })
-              : t('This is your withdrawal from the booking. {name} will be told the window is free again. The hold on your card is released; nothing is charged.', { name: first })}
+            ? charged
+              ? t('{name} will be told, and gets back everything they paid.', { name: buyer })
+              : t('{name} will be told. The hold on their card is released; nothing was charged.', { name: buyer })
+            : !charged
+              ? t('This is your withdrawal from the booking. {name} will be told the window is free again. The hold on your card is released; nothing is charged.', { name: first })
+              : refund.data && refund.data.refundAmount < quote.total
+                ? t('This is your withdrawal from the booking. {name} will be told the window is free again. What you get back is below.', { name: first })
+                : t('This is your withdrawal from the booking. {name} will be told the window is free again, and you get back everything you paid, in full.', { name: first })}
         </p>
-        {booking.status === 'accepted' && (
+        {charged && (
           <Card className="mb-3 bg-[var(--sunken)] p-4 shadow-none">
             <Row
               label={asOwner ? t('{name} gets back', { name: buyer }) : t('You get back')}
@@ -827,10 +870,26 @@ function Detail({
             block
             size="lg"
             disabled={!online || busy || !problem.trim()}
-            onClick={() => {
-              void done(() => disputeBooking(booking.id, problem.trim()), t('Reported. The payment is on hold'))
-              setDisputing(false)
-            }}
+            onClick={() =>
+              void (async () => {
+                // On a refusal the sheet stays open with what was typed (V4-4).
+                setBusy(true)
+                try {
+                  await disputeBooking(booking.id, problem.trim())
+                  setDisputing(false)
+                  setProblem('')
+                  toast(t('Reported. The payment is on hold'))
+                } catch (err) {
+                  toast(messageOf(err), 'error')
+                } finally {
+                  setBusy(false)
+                  await Promise.all([
+                    qc.invalidateQueries({ queryKey: ['booking', booking.id] }),
+                    qc.invalidateQueries({ queryKey: ['bookings'] }),
+                  ])
+                }
+              })()
+            }
           >
             {t('Report the problem')}
           </Button>

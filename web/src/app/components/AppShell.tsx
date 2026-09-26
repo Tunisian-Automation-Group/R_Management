@@ -3,7 +3,7 @@ import { NavLink } from 'react-router-dom'
 import { useSession } from '../../data/auth.ts'
 import { Icon, type IconName } from './Icon.tsx'
 import { useBack } from '../nav.ts'
-import { LANGS, lang, setLang, t } from '../../i18n.ts'
+import { LANGS, lang, locale, setLang, t } from '../../i18n.ts'
 import { updateLocale } from '../../data/auth.ts'
 
 type Tab = { to: string; label: string; icon: IconName; badge?: number }
@@ -125,7 +125,9 @@ function TabItem({ tab }: { tab: Tab }) {
         to={tab.to}
         end={tab.to === '/'}
         className={({ isActive }) =>
-          `relative flex h-full min-h-[56px] flex-col items-center justify-center gap-[3px] text-[0.6562rem]
+          // The label is capped at 14 px and truncates: four labels in a 390 px dock
+          // overlapped at 200 % text (V4-12); the link's name stays whole for screen readers.
+          `relative flex h-full min-h-[56px] min-w-0 flex-col items-center justify-center gap-[3px] text-[min(0.6562rem,14px)]
            transition-colors duration-[160ms]
            md:min-h-0 md:flex-row md:gap-2 md:rounded-full md:px-3.5 md:py-2 md:text-[0.875rem]
            ${
@@ -157,7 +159,7 @@ function TabItem({ tab }: { tab: Tab }) {
                 </span>
               ) : null}
             </span>
-            {tab.label}
+            <span className="block max-w-full truncate px-0.5">{tab.label}</span>
             {tab.badge ? <span className="sr-only">, {t('{n} needing attention', { n: tab.badge })}</span> : null}
           </>
         )}
@@ -359,7 +361,7 @@ function SiteFooter() {
         <div className="max-w-[30ch]">
           <p className="t-h2">Cappy</p>
           <p className="t-sm mt-2 text-[var(--ink-3)]">
-            {t('Buy the hours, not the thing. One capacity network across Europe: making, moving and the kit to do it with.')}
+            {t('Buy the hours, not the thing. One capacity network: making, moving and the kit to do it with.')}
           </p>
           <div className="mt-5">
             <LanguageSwitch />
@@ -431,8 +433,8 @@ export function LanguageSwitch() {
           lang={o.value}
           aria-pressed={current === o.value}
           onClick={() => {
-            void setLang(o.value)
-            void updateLocale(o.value)
+            // The language, then the full locale it gives with the device's region (en-US, fr-CA).
+            void setLang(o.value).then(() => updateLocale(locale()))
           }}
           className={`rounded-full px-3 py-1.5 text-[0.8125rem] font-semibold transition-colors duration-[160ms] ${
             current === o.value ? 'bg-[var(--field)] text-[var(--on-field)]' : 'text-[var(--ink-3)] hover:text-[var(--ink)]'

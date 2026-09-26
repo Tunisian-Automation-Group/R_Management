@@ -8,7 +8,7 @@
 // installed app stays signed in; it is what a thief would want, which is why
 // it never goes anywhere but the identity service.
 import { useSyncExternalStore } from 'react'
-import { lang, t } from '../i18n.ts'
+import { locale, t } from '../i18n.ts'
 import { isNative, nativeStore, pushReset, pushSignedOut } from '../native.ts'
 import { clearDrafts, loadDevice, setDevice } from '../app/device.ts'
 import { AuthError, cognito, type AuthProvider, type Step, type TokenSet } from './cognito.ts'
@@ -238,7 +238,8 @@ function finish(out: Step, email: string): void {
   }
   pending = null
   adopt(out.tokens)
-  void updateLocale(lang())
+  // The full locale, so emails and pushes use the region's formats too (en-US, fr-CA).
+  void updateLocale(locale())
   // Push is asked for later, when it is worth something (push.ts, U-4).
 }
 
@@ -270,7 +271,7 @@ export async function updateLocale(value: string): Promise<void> {
   }
 }
 
-export const signUp = (email: string, password: string) => provider.signUp(email, password, lang())
+export const signUp = (email: string, password: string) => provider.signUp(email, password, locale())
 export const confirmSignUp = (email: string, code: string) => provider.confirmSignUp(email, code)
 export const resendCode = (email: string) => provider.resendCode(email)
 export const forgotPassword = (email: string) => provider.forgotPassword(email)

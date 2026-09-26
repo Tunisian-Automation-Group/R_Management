@@ -1,7 +1,7 @@
 import { useId, useState } from 'react'
 import { useSession } from '../../data/auth.ts'
 import { useQueryClient } from '@tanstack/react-query'
-import { REPORT_REASONS, blockPerson, sendReport, useAttemptKey, type ReportReason, type ReportTarget } from '../../data/repo.ts'
+import { REPORT_REASONS, blockPerson, sendReport, useAttemptKey, useMarket, type ReportReason, type ReportTarget } from '../../data/repo.ts'
 import { messageOf, useToast } from '../store.tsx'
 import { Button, Check, Field, Input, Select, Sheet, Textarea } from './ui.tsx'
 import { t } from '../../i18n.ts'
@@ -54,6 +54,7 @@ export function ReportButton({
 }) {
   const qc = useQueryClient()
   const session = useSession()
+  const emergency = useMarket().emergencyNumber
   const toast = useToast()
   const id = useId()
   const [open, setOpen] = useState(false)
@@ -90,7 +91,7 @@ export function ReportButton({
       setSent(r.id)
     } catch (err) {
       attempt.settle(err)
-      toast(messageOf(err))
+      toast(messageOf(err), 'error')
     } finally {
       setBusy(false)
     }
@@ -134,7 +135,7 @@ export function ReportButton({
                       toast(t('{name} is blocked', { name: offerBlock.name }))
                       close()
                     } catch (err) {
-                      toast(messageOf(err))
+                      toast(messageOf(err), 'error')
                     } finally {
                       setBusy(false)
                     }
@@ -221,7 +222,7 @@ export function ReportButton({
               label={t('I confirm this report is accurate and complete to the best of my knowledge.')}
             />
             <p className="t-sm text-[var(--ink-3)]">
-              {t('If someone is in danger, call 112 first. Reports are read by people at Cappy.')}
+              {t('If someone is in danger, call {number} first. Reports are read by people at Cappy.', { number: emergency })}
             </p>
           </div>
         )}
@@ -244,7 +245,7 @@ export function BlockButton({ sub, name }: { sub: string; name: string }) {
       toast(t('{name} is blocked', { name }))
       setOpen(false)
     } catch (err) {
-      toast(messageOf(err))
+      toast(messageOf(err), 'error')
     } finally {
       setBusy(false)
     }

@@ -32,22 +32,35 @@ listing's `machine`, which is where a buyer actually reads it, and splitting the
 browse grid by process only ever split the liquidity.
 
 A mobile-first installable PWA, one build for the website and the phone, talking
-to the [Cappy backend](../../backend) over `/api`. Browsing is open; booking,
-listing and hearting need an account (email and password, made in the app). No
-card details.
+to the [Cappy backend](../backend) over `/api`. **Members only** (GOAL 13):
+signed out, only the welcome screen, sign-in, `/help`, `/legal/*` (including the
+public report form) and `/account/delete` render, and the server refuses product
+calls without a token. Accounts are email and password (Cognito); card details
+go to Stripe, never to Cappy. Markets are Europe, the US and Canada (GOAL 16):
+currency, units and the emergency number come from app-config's `markets`.
 
 ## Run
 
 ```bash
-npm install
-npm run dev      # http://localhost:5173, /api proxied to the backend on :8000
-npm run check    # domain self-check, no test framework
-npm run build    # dist/, which the backend's gateway serves at /
+make up              # from the repo root: the whole stack on http://localhost:8000
+cd web && npm install
+npm run dev          # http://localhost:5173, /api proxied to the gateway on :8000
+npm run build        # tsc + vite: dist/, which the gateway serves at /
+npm run check:i18n   # German and French complete, placeholders match, no untranslated t('…')
+npm run check:size   # entry chunk under 170 kB gzipped
+npm run check:flags  # the rollout bucket matches the server's
+npm run check:attempt # Idempotency-Key reuse rules (FL-1)
+npm run check:a11y   # image alt text, targets of at least 24 px (static)
 ```
 
-The backend is the source of truth: `cd ../../backend && docker compose up --build`
-brings it up on http://localhost:8000, which also serves this app once it is
-built. Nothing is stored in the browser.
+CI runs `tsc`, the build and every `check:*`. How to test every feature by hand,
+with the local accounts: [`docs/GUIDE.md`](../docs/GUIDE.md).
+
+**What is stored on the device:** the session (refresh token; in the store apps in
+Capacitor Preferences), `cappy.session.v1` (id, email, staff flag, for an offline
+start), the language (`cappy.lang.v1`), device flags (welcome seen, push asked),
+form and message drafts, and in the shells an install id for push. Sign-out
+clears the session and drafts.
 
 ## On your phone
 
@@ -77,7 +90,8 @@ src/app/      theme tokens, components, screens, and a reducer over domain event
   `BOOKING_RATED`). The store applies each one optimistically, forwards it as one
   API call, then re-reads what the server holds so its answer is the one that
   sticks. See `backend/docs/frontend-integration.md`.
-- Money is integer cents everywhere. `formatEur` never rounds €3.50 up to €4.
+- Money is integer minor units everywhere, in the listing's currency (M-3).
+  `formatMoney(minor, currency)` formats it for the reader's locale and never converts.
 - `assessFeasibility()` is a named seam: rules today, a probabilistic judgment layer
   later, callers unchanged.
 
@@ -206,8 +220,7 @@ utility still wins over the `position: relative` a pane needs by default.
 
 ### The cover
 
-A listing has no photograph, and a stock photo of someone else's machine would
-be a lie. `Cover` prints a plate instead: the category's own
+When a listing has no photograph yet, `Cover` prints a plate: the category's own
 paper, one large glyph, and a seven-day strip showing which days have hours in
 them. Ice where there is time to sell, crimson where a window is
 taken. The plate carries the same lit rim as every glass surface, so a plate and
@@ -233,29 +246,34 @@ legend; the plate's timetable is the summary, not a replacement for it.
 ### Responsive
 
 Phone-first at 560px max. The dock is a floating glass capsule; from 768px it
-becomes a left rail and content widens to 760px. Safe-area insets are handled on the dock, sticky
+becomes a header bar across the top and content widens to 760px (1120px on wide screens). Safe-area insets are handled on the dock, sticky
 footers and sheets.
 
 ## Demo data
 
-`make seed-demo` (run by `make up`) loads a demo world of realistic, invented
-hosts and machines into local and staging only. Sign in as
-`host@demo.cappy.local` or `buyer@demo.cappy.local` (password `Demo-pass-123!`).
-With the fake payments provider no money moves and there is no card step; with
-Stripe test keys (see `.env.example`) the Payment Element appears.
+`make seed-demo` (run by `make up`) loads a demo world of invented hosts and
+machines. The demo accounts exist only in the local stack (ADR 0010), with one-tap
+"Continue as demo …" buttons in local builds (`VITE_DEMO_ACCOUNTS`, written by
+`local/bootstrap.py`, never set by a deploy): `buyer@`, `host@` (listing l9),
+`host2@` (instant book, a van, a listing held for review) and `staff@`
+(moderator) at `demo.cappy.local`. With the fake payments provider no money moves
+and there is no card step; with Stripe test keys the Payment Element appears.
+Details, and the Stripe test cards: [`docs/GUIDE.md`](../docs/GUIDE.md).
 
 ## Languages
 
-English and German. `src/i18n.ts` is the whole layer: the English text is the
-key (`t('Book and pay')`), `src/i18n.de.ts` is the German catalogue, and a
-missing entry falls back to English. The language is the saved choice, else the
-browser's (`de*` → German); it is switched in Profile and in the footer, sets
-`<html lang>`, and, when signed in, the Cognito `locale` attribute so emails
-follow it. Dates, numbers and money format with the chosen locale (1.234,56 €).
+English, German and French (France and Québec). `src/i18n.ts` is the whole
+layer: the English text is the key (`t('Book and pay')`), `src/i18n.de.ts` and
+`src/i18n.fr.ts` are the catalogues (loaded lazily), and a missing entry falls
+back to English. The language is the saved choice, else the browser's; it is
+switched on the welcome screen, sign-in, Profile and the footer, sets
+`<html lang>`, and `locale()` adds the device's region (en-US, fr-CA, de-AT…),
+which is sent as `Accept-Language` and as the Cognito `locale` so emails follow
+it. Dates, numbers, money and km or miles format with that locale.
 
 Never call `t()` at module level: it would freeze the language at import. Keep
-English constants and translate where they render. The legal pages have their
-own German texts in `screens/Legal.tsx`.
+English constants and translate where they render. The legal pages and help
+articles have their own EN/DE/FR texts in `screens/Legal.tsx` and `screens/Help.tsx`.
 
 ## Store apps (ADR 0012)
 
@@ -279,12 +297,12 @@ What the shells do differently, all in `src/native.ts`:
 
 - **Sign-in** keeps the refresh token in the platform's app storage
   (`@capacitor/preferences`), not the web view's.
-- **Push**: after sign-in the app asks to notify, registers, and sends
-  `POST /api/notifications/devices {platform, token}`; sign-out sends
-  `DELETE /api/notifications/devices/{token}`. Tapping a notification opens its
-  `link` inside the app.
-- **Deep links**: `/listing/*`, `/bookings/*` and `/earn*` on the site open in
-  the app. The build writes `dist/.well-known/apple-app-site-association` and
+- **Push**: the app asks for permission after the first booking request or
+  listing (U-4), registers, and sends `POST /api/notifications/devices
+  {platform, token, installId}`; sign-out unregisters. Tapping a notification
+  opens its `link` inside the app.
+- **Deep links**: `/listing/*`, `/bookings/*`, `/earn*` and `/pay/*` (the return
+  from a bank check) on the site open in the app. The build writes `dist/.well-known/apple-app-site-association` and
   `dist/.well-known/assetlinks.json` from `VITE_APPLE_TEAM_ID` and
   `VITE_ANDROID_SHA256` (the release certificate's SHA-256, colon-separated).
   Unset, they carry `TEAMID` and zeros and verify nothing. Serve both as
@@ -295,10 +313,10 @@ What the shells do differently, all in `src/native.ts`:
 
 Before the first release, per platform:
 
-- **iOS**: set the team under Signing & Capabilities; in `ios/App/App/App.entitlements`
-  replace `applinks:cappy.example` with `applinks:<domain>` and set
-  `aps-environment` to `production` for store builds. Upload the APNs key to
-  SNS Mobile Push.
+- **iOS**: set the team under Signing & Capabilities and the `CAPPY_DOMAIN`
+  build setting (both entitlement files use `applinks:$(CAPPY_DOMAIN)`; Release
+  signs with `App.release.entitlements`, `aps-environment` production; see
+  `docs/app-review.md` §6). Upload the APNs key to SNS Mobile Push.
 - **Android**: add `android/app/google-services.json` from the Firebase project
   (FCM v1) and pass `-PappLinkHost=<domain>`.
 - **API**: the gateway must allow the shells' origins (`capacitor://localhost`

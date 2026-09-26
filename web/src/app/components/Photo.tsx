@@ -165,7 +165,7 @@ export function SaveButton({
       { id, on: !on },
       {
         onSuccess: () => toast(on ? t('Removed from saved') : t('Saved. Find it under You')),
-        onError: (err) => toast(messageOf(err)),
+        onError: (err) => toast(messageOf(err), 'error'),
       },
     )
   }
@@ -179,7 +179,8 @@ export function SaveButton({
         e.stopPropagation()
         toggle()
       }}
-      className={`glass glass-dark z-10 grid h-9 w-9 cursor-pointer place-items-center rounded-full
+      // shrink-0 + square: a row that runs out of room at 200 % text must not squash it into a pill (V4-12).
+      className={`glass glass-dark z-10 grid h-9 w-9 shrink-0 aspect-square cursor-pointer place-items-center rounded-full
         transition-transform duration-[160ms] active:scale-90 ${className}`}
       style={{ ['--glass-tint-dark' as string]: 'rgba(20, 30, 19, 0.5)' }}
     >

@@ -110,7 +110,7 @@ export function EvidencePanel({
       toast(t(SAVED[open]))
       close()
     } catch (err) {
-      toast(messageOf(err))
+      toast(messageOf(err), 'error')
     } finally {
       setBusy(false)
       setSending(null)
@@ -123,10 +123,17 @@ export function EvidencePanel({
       <p className="t-sm mb-3 text-[var(--ink-3)]">
         {t('Photos you both take when it changes hands. Cappy looks at them first if anything goes wrong.')}
       </p>
-      {/* U-33: the window a problem can be raised in (booking's auto_complete_after_hours). */}
-      <p className="t-sm mb-3 text-[var(--ink-3)]">
-        {t('Found damage or a problem? Report it before the booking is marked complete, at the latest 48 hours after it ends.')}
-      </p>
+      {/* U-33: the window a problem can be raised in (booking's auto_complete_after_hours).
+          Once it is complete that sentence no longer applies (V4-18). */}
+      {status === 'completed' ? (
+        <p className="t-sm mb-3 text-[var(--ink-3)]">
+          {t('This booking is complete. Something still wrong? Get help with this booking below.')}
+        </p>
+      ) : (
+        <p className="t-sm mb-3 text-[var(--ink-3)]">
+          {t('Found damage or a problem? Report it before the booking is marked complete, at the latest 48 hours after it ends.')}
+        </p>
+      )}
       {items.length > 0 && (
         <ul className="mb-3 space-y-3">
           {items.map((e) => (
@@ -196,19 +203,34 @@ export function EvidencePanel({
               capture="environment"
               multiple
               className="sr-only"
-              onChange={(e) => setFiles(Array.from(e.target.files ?? []).slice(0, 12))}
+              // Each pick adds (V4-13): a phone's camera returns one photo per pick.
+              onChange={(e) => {
+                const picked = Array.from(e.target.files ?? [])
+                setFiles((prev) => [...prev, ...picked].slice(0, 12))
+                e.target.value = ''
+              }}
             />
             <label
               htmlFor={`${id}-files`}
               className="inline-flex min-h-[48px] cursor-pointer items-center gap-2 rounded-[var(--radius-control)] border border-[var(--line-strong)] px-4 text-[0.9062rem] font-semibold hover:border-[var(--ink-4)] focus-within:outline"
             >
               <Icon name="camera" size={18} />
-              {files.length ? t('Choose other photos') : t('Take or choose photos')}
+              {files.length ? t('Add more photos') : t('Take or choose photos')}
             </label>
             {previews.length > 0 && (
               <div className="mt-3 flex flex-wrap gap-2">
-                {previews.map((src) => (
-                  <img key={src} src={src} alt="" className="h-[64px] w-[64px] rounded-[10px] object-cover" />
+                {previews.map((src, i) => (
+                  <span key={src} className="relative">
+                    <img src={src} alt="" className="h-[64px] w-[64px] rounded-[10px] object-cover" />
+                    <button
+                      type="button"
+                      aria-label={t('Remove photo')}
+                      onClick={() => setFiles((prev) => prev.filter((_, j) => j !== i))}
+                      className="tap absolute -right-1.5 -top-1.5 grid h-6 w-6 place-items-center rounded-full bg-[var(--ink)] text-[var(--on-inverse)]"
+                    >
+                      <Icon name="close" size={12} strokeWidth={2.6} />
+                    </button>
+                  </span>
                 ))}
               </div>
             )}

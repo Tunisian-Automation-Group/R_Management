@@ -23,11 +23,12 @@ export type Search = {
   query: string
 }
 
-export type State = { search: Search; toast: string | null }
+export type Tone = 'ok' | 'error'
+export type State = { search: Search; toast: { message: string; tone: Tone } | null }
 
 export type Event =
   | { type: 'SEARCH_CHANGED'; patch: Partial<Search> }
-  | { type: 'TOAST'; message: string }
+  | { type: 'TOAST'; message: string; tone?: Tone }
   | { type: 'TOAST_CLEARED' }
 
 /**
@@ -61,7 +62,7 @@ export function reduce(state: State, e: Event): State {
       return { ...state, search }
     }
     case 'TOAST':
-      return { ...state, toast: e.message }
+      return { ...state, toast: { message: e.message, tone: e.tone ?? 'ok' } }
     case 'TOAST_CLEARED':
       return { ...state, toast: null }
     default:
@@ -118,10 +119,10 @@ export function useCappy() {
   return ctx
 }
 
-/** Show a message briefly. */
-export function useToast(): (message: string) => void {
+/** Show a message briefly. `error` says something failed: no tick (V4-4). */
+export function useToast(): (message: string, tone?: Tone) => void {
   const { send } = useCappy()
-  return useCallback((message: string) => send({ type: 'TOAST', message }), [send])
+  return useCallback((message: string, tone?: Tone) => send({ type: 'TOAST', message, tone }), [send])
 }
 
 /** The signed-in person's id (their Cognito sub), or '' when nobody is. */

@@ -30,6 +30,12 @@ const weekEnd = () => new Date().setHours(0, 0, 0, 0) + 7 * DAY
 const thisWeek = (slots: Slot[]) => slots.filter((s) => Date.parse(s.start) < weekEnd())
 const HELD = ['accepted', 'active']
 
+/** "26.9.2026" or "26.9.2026 – 27.9.2026", in the reader's locale (V4-8). */
+function serviceDates(start: string, end?: string): string {
+  const d = (iso: string) => new Date(iso).toLocaleDateString(locale())
+  return end && d(end) !== d(start) ? `${d(start)} – ${d(end)}` : d(start)
+}
+
 export function Earn() {
   const nav = useNavigate()
   const [params] = useSearchParams()
@@ -96,7 +102,7 @@ export function Earn() {
       await fn()
       toast(message)
     } catch (err) {
-      toast(messageOf(err))
+      toast(messageOf(err), 'error')
     } finally {
       setBusy(false)
       await Promise.all(
@@ -109,9 +115,10 @@ export function Earn() {
     setBusy(true)
     try {
       // Stripe's own onboarding page; it sends them back to /earn.
-      location.href = (await repo.startPayouts()).url
+      // The account is made in the owner's market's country (M-9); Stripe cannot change it later.
+      location.href = (await repo.startPayouts(me.data?.owner?.country)).url
     } catch (err) {
-      toast(messageOf(err))
+      toast(messageOf(err), 'error')
       setBusy(false)
     }
   }
@@ -413,11 +420,17 @@ export function Earn() {
             {invoices.data!.map((inv) => (
               <li key={inv.number}>
                 <button
-                  onClick={() => void repo.openInvoice(inv.number).catch((err) => toast(messageOf(err)))}
+                  onClick={() => void repo.openInvoice(inv.number).catch((err) => toast(messageOf(err), 'error'))}
                   className="flex w-full items-center gap-4 py-3.5 text-left transition-opacity duration-[160ms] hover:opacity-70"
                 >
                   <span className="min-w-0 flex-1">
-                    <span className="block truncate text-[0.9375rem] font-semibold">{inv.description ?? t('Cappy fee for booking {id}', { id: inv.bookingId.slice(-6).toUpperCase() })}</span>
+                    {/* Built here from the parts, so both dates follow the reader's
+                        locale; the server's description carries a German date (V4-8). */}
+                    <span className="block truncate text-[0.9375rem] font-semibold">
+                      {inv.title
+                        ? `${t('Service fee')} · ${inv.title}${inv.serviceStart ? ` · ${serviceDates(inv.serviceStart, inv.serviceEnd)}` : ''}`
+                        : (inv.description ?? t('Cappy fee for booking {id}', { id: inv.bookingId.slice(-6).toUpperCase() }))}
+                    </span>
                     <span className="t-sm tnum block text-[var(--ink-3)]">
                       {inv.number} · {new Date(inv.issuedAt).toLocaleDateString(locale())}
                     </span>
