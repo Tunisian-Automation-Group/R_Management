@@ -6,6 +6,25 @@ import { messageOf, useToast } from '../store.tsx'
 import { Button, Check, Field, Input, Select, Sheet, Textarea } from './ui.tsx'
 import { t } from '../../i18n.ts'
 
+const KIND: Record<ReportTarget, string> = {
+  listing: 'A listing',
+  owner: 'A profile',
+  message: 'A message',
+  review: 'A review',
+}
+
+/** The id in a pasted link (`…/listing/l9?x` → `l9`) or the reference itself. */
+export function referenceId(raw: string): string {
+  const s = raw.trim()
+  if (!s) return ''
+  try {
+    const path = new URL(s, 'https://x.invalid').pathname.replace(/\/+$/, '')
+    return decodeURIComponent(path.split('/').pop() ?? '').slice(0, 100)
+  } catch {
+    return s.slice(0, 100)
+  }
+}
+
 const TITLE: Record<ReportTarget, string> = {
   listing: 'Report this listing',
   owner: 'Report this person',
@@ -18,14 +37,16 @@ const TITLE: Record<ReportTarget, string> = {
  * one; without an account they leave an email so we can say what we decided.
  */
 export function ReportButton({
-  targetType,
-  targetId,
+  targetType: fixedType,
+  targetId: fixedId,
   className = '',
   compact = false,
   offerBlock,
 }: {
-  targetType: ReportTarget
-  targetId: string
+  /** Absent on the public reporting page (FL-10): the reporter says what and
+   *  pastes a link or reference instead. */
+  targetType?: ReportTarget
+  targetId?: string
   className?: string
   compact?: boolean
   /** Who sent it: after the report, blocking them is one tap (U-13). */
@@ -43,6 +64,12 @@ export function ReportButton({
   const [busy, setBusy] = useState(false)
   const [sent, setSent] = useState<string | null>(null)
   const attempt = useAttemptKey()
+  const [freeType, setFreeType] = useState<ReportTarget>('listing')
+  const [reference, setReference] = useState('')
+  const free = !fixedType || !fixedId
+  const targetType = fixedType ?? freeType
+  const targetId = fixedId ?? referenceId(reference)
+  const noTarget = free && !targetId
 
   const tooShort = details.trim().length < 10
   const needsEmail = !session && !/^\S+@\S+\.\S+$/.test(email.trim())
@@ -77,19 +104,19 @@ export function ReportButton({
   return (
     <>
       <Button
-        variant="quiet"
+        variant={free ? 'secondary' : 'quiet'}
         size={compact ? 'sm' : 'md'}
         icon="alert"
         className={className}
         onClick={() => setOpen(true)}
-        aria-label={t(TITLE[targetType])}
+        aria-label={free ? t('Report content') : t(TITLE[targetType])}
       >
-        {compact ? null : t('Report')}
+        {compact ? null : free ? t('Report content') : t('Report')}
       </Button>
       <Sheet
         open={open}
         onClose={close}
-        title={sent ? t('Thank you') : t(TITLE[targetType])}
+        title={sent ? t('Thank you') : free ? t('Report content') : t(TITLE[targetType])}
         footer={
           sent ? (
             <div className="space-y-2">
@@ -121,7 +148,7 @@ export function ReportButton({
               </Button>
             </div>
           ) : (
-            <Button block size="lg" disabled={busy || tooShort || needsEmail || !goodFaith} onClick={() => void submit()}>
+            <Button block size="lg" disabled={busy || tooShort || needsEmail || !goodFaith || noTarget} onClick={() => void submit()}>
               {t('Send report')}
             </Button>
           )
@@ -134,6 +161,26 @@ export function ReportButton({
           </p>
         ) : (
           <div className="space-y-4 pb-3">
+            {free && (
+              <>
+                <Field label={t('What are you reporting?')} htmlFor={`${id}-type`}>
+                  <Select id={`${id}-type`} value={freeType} onChange={(e) => setFreeType(e.target.value as ReportTarget)}>
+                    {(Object.keys(KIND) as ReportTarget[]).map((k) => (
+                      <option key={k} value={k}>
+                        {t(KIND[k])}
+                      </option>
+                    ))}
+                  </Select>
+                </Field>
+                <Field
+                  label={t('Link or reference')}
+                  htmlFor={`${id}-ref`}
+                  hint={t('Paste the link to it, or the reference shown on it.')}
+                >
+                  <Input id={`${id}-ref`} value={reference} onChange={(e) => setReference(e.target.value)} />
+                </Field>
+              </>
+            )}
             <Field label={t('What is wrong?')} htmlFor={`${id}-reason`}>
               <Select id={`${id}-reason`} value={reason} onChange={(e) => setReason(e.target.value as ReportReason)}>
                 {REPORT_REASONS.map(([value, label]) => (

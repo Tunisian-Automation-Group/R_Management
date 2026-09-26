@@ -1,4 +1,4 @@
-import { BrowserRouter, Navigate, Route, Routes, useLocation } from 'react-router-dom'
+import { BrowserRouter, Navigate, Route, Routes, useLocation, useSearchParams } from 'react-router-dom'
 import { lazy, Suspense, useEffect, type ComponentType } from 'react'
 import { QueryClientProvider } from '@tanstack/react-query'
 import { AppProvider, useCappy } from './store.tsx'
@@ -167,6 +167,7 @@ function Member() {
           <Route path="/legal/:page" element={<Legal />} />
           <Route path="/account/delete" element={<AccountDeletion />} />
           <Route path="/admin" element={<Admin />} />
+          <Route path="/pay/return" element={<PayReturn />} />
           <Route path="*" element={<NotFound />} />
         </Routes>
       )}
@@ -175,6 +176,20 @@ function Member() {
       <Toasts />
     </>
   )
+}
+
+/** Back from a bank's card check (U-7): Stripe adds `redirect_status`. The
+ *  booking page then waits for the payment to be confirmed. */
+function PayReturn() {
+  const [params] = useSearchParams()
+  const { send } = useCappy()
+  const booking = params.get('booking')
+  const failed = params.get('redirect_status') === 'failed'
+  useEffect(() => {
+    if (failed) send({ type: 'TOAST', message: t('The payment did not go through.') })
+    if (booking) void queryClient.invalidateQueries({ queryKey: ['booking', booking] })
+  }, [booking, failed, send])
+  return <Navigate to={booking ? `/bookings/${encodeURIComponent(booking)}` : '/bookings'} replace />
 }
 
 /** Inside the Capacitor shell (ADR 0012), not a browser. */

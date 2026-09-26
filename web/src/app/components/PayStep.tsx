@@ -6,6 +6,7 @@ import { Elements, PaymentElement, useElements, useStripe } from '@stripe/react-
 import { Banner, Button } from './ui.tsx'
 import { useOnline } from './Offline.tsx'
 import { lang, t } from '../../i18n.ts'
+import { payReturnUrl } from '../../data/repo.ts'
 
 /**
  * The card step, with Stripe's Payment Element. Stripe handles the card and
@@ -46,8 +47,10 @@ function Form({ bookingId, onPaid }: { bookingId: string; onPaid: () => void }) 
     setError(null)
     const { error: failed } = await stripe.confirmPayment({
       elements,
-      // Only methods that leave the page (a bank redirect) come back here.
-      confirmParams: { return_url: `${location.origin}/bookings/${bookingId}` },
+      // Only methods that leave the page (a bank check, a redirect) come back,
+      // to /pay/return on Cappy's own domain: in the store apps that is a
+      // universal / app link, so the bank hands back to the app (U-7, FL-19).
+      confirmParams: { return_url: payReturnUrl(bookingId) },
       redirect: 'if_required',
     })
     setBusy(false)

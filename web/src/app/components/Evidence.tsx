@@ -59,6 +59,15 @@ export function EvidencePanel({
   // U-25: which photo is going up, and how far.
   const [sending, setSending] = useState<{ n: number; share: number } | null>(null)
 
+  // Signed links last 15 minutes (P-27): one that has lapsed (403) reads the
+  // list again, at most every 30 s, so a broken photo cannot loop.
+  const [renewedAt, setRenewedAt] = useState(0)
+  const renew = () => {
+    if (Date.now() - renewedAt < 30_000) return
+    setRenewedAt(Date.now())
+    void evidence.refetch()
+  }
+
   const open = stage ?? prompt
   const stages = (Object.keys(CAN) as EvidenceStage[]).filter((s) => CAN[s].includes(status))
   const items = evidence.data ?? []
@@ -80,7 +89,12 @@ export function EvidencePanel({
         setSending({ n: i + 1, share: 0 })
         const url =
           uploaded[id] ??
-          (await uploadPhoto(await shrink(f), f.name.replace(/\.\w+$/, '.jpg'), (share) => setSending({ n: i + 1, share })))
+          (await uploadPhoto(
+            await shrink(f),
+            f.name.replace(/\.\w+$/, '.jpg'),
+            (share) => setSending({ n: i + 1, share }),
+            'evidence', // private (P-27): the answer is a reference, the preview stays local
+          ))
         setUploaded((u) => ({ ...u, [id]: url }))
         urls.push(url)
       }
@@ -131,6 +145,7 @@ export function EvidencePanel({
                       alt={t('{what} by {who}', { what: LABEL[e.stage], who: e.by === me ? t('you') : otherName })}
                       className="h-[72px] w-[72px] rounded-[10px] object-cover"
                       loading="lazy"
+                      onError={renew}
                     />
                   </a>
                 ))}

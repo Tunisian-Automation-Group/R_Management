@@ -260,7 +260,7 @@ Signed-in only is a deliberate choice against Apple 5.1.1(v); U-1 carries the ar
 - [x] U-4 [app] Move the push permission prompt out of `pushSignedIn()`: priming sheet after the first booking request or listing publish; ask only when `checkPermissions()` is `prompt` — https://developer.android.com/training/permissions/usage-notes (web, uncommitted)
 - [x] U-5 [app] Android back: `App.addListener('backButton')` closes the open sheet, else goes back, else minimises; predictive back enabled — https://capacitorjs.com/docs/apis/app (web, uncommitted)
 - [x] U-6 [backend] `Idempotency-Key` on `POST /bookings`, `/listings`, `/reviews`, `/messages`, and on booking payment confirmation; web sends one key per form mount — https://docs.stripe.com/api/idempotent_requests (backend, uncommitted) + (web sends one key per form for listings, messages, evidence and ratings; web, uncommitted)
-- [ ] U-7 [app] 3DS/SCA return into the shells: `return_url` on an associated domain, resume handler checks the PaymentIntent and shows the result; test with the 3DS2 test cards on iOS and Android — https://docs.stripe.com/payments/3d-secure/authentication-flow
+- [x] U-7 [app] 3DS/SCA return into the shells: `return_url` on an associated domain, resume handler checks the PaymentIntent and shows the result; test with the 3DS2 test cards on iOS and Android — https://docs.stripe.com/payments/3d-secure/authentication-flow (web, uncommitted — return to /pay/return on the API domain (universal/app link); needs a device test)
 - [x] U-8 [web] Times in the listing's time zone (`Intl.DateTimeFormat` with `timeZone`), label when it differs from the device; [backend] a DST-crossing booking test — https://developer.mozilla.org/docs/Web/JavaScript/Reference/Global_Objects/Intl/DateTimeFormat (backend, uncommitted)
 - [x] U-9 [backend] Account deletion refused with a reason and a date while bookings are open or a payout is pending; the retention list (invoices kept 10 years) shown before confirming — https://developer.apple.com/support/offering-account-deletion-in-your-app/ (backend, uncommitted) + (web shows the 409 reason and date and the 10-year retention line; web, uncommitted)
 - [x] U-10 [web] Session expiry mid-flow keeps the draft (AddListing, messages, review) and returns to it after sign-in — https://baymard.com/research/checkout-usability (web, uncommitted)
@@ -470,7 +470,7 @@ Found alongside:
 
 So that a feature can move to another third party by adding an adapter, not by editing callers:
 - [ ] F-1 [backend]+[web] Identity verification: an `IdentityProvider` separate from the payment `Provider` (start session, parse webhook → neutral `verified|failed|needs_input`, redact), the web modal chosen by `/payments/config` (today Stripe Identity inside the payment provider, `Listing.tsx` calls Stripe.js)
-- [ ] F-2 [web] Auth: an `AuthProvider` object behind `web/src/data/auth.ts`'s exports (today all Cognito)
+- [x] F-2 [web] Auth: an `AuthProvider` object behind `web/src/data/auth.ts`'s exports (today all Cognito) (web, uncommitted — web/src/data/cognito.ts)
 - [ ] F-3 [backend]+[web] Staff role claim from settings (`STAFF_CLAIM`, `STAFF_VALUE`), not `cognito:groups` hard-coded
 - [ ] F-4 [backend] `Cdn.purge` interface for take-downs (today CloudFront called directly in `catalog/moderation.py`)
 - [ ] F-5 [backend] `SearchIndex` protocol fed by `listing.changed` (today the query sits in `catalog/repository.py`)
@@ -485,21 +485,21 @@ So that a feature can move to another third party by adding an adapter, not by e
 - [x] FL-1 [web] A retry after a 503 from booking creation must reuse the Idempotency-Key (`Listing.tsx:209` makes a new one after any error; the retry then collides with the person's own `awaiting_payment` booking for 30 min). New key only after a definite 4xx — (web, uncommitted) `useAttemptKey` (domain/attempt.ts, `npm run check:attempt`): key kept on 5xx/timeout/offline, new after success, a 4xx or a changed body; used by bookings, listings, messages, ratings, evidence, reports
 - [ ] FL-2 [backend] Notify both sides of `payment_failed`, `disputed` (owner learns of a dispute), and `active` where useful (`notifications/handlers.py`)
 - [ ] FL-3 [web]+[backend] Messages email toggle: either email messages (digest) or remove the toggle and the "everything also arrives by email" line
-- [ ] FL-4 [web] A held listing is announced as waiting for review, not "live"; an edit that re-holds says so
-- [ ] FL-5 [web] Admin console: approve held listings (`POST /admin/listings/{id}/approve`)
+- [x] FL-4 [web] A held listing is announced as waiting for review, not "live"; an edit that re-holds says so (web, uncommitted)
+- [x] FL-5 [web] Admin console: approve held listings (`POST /admin/listings/{id}/approve`) (web, uncommitted)
 - [ ] FL-6 [backend] The owner can open their own held listing (`catalog/routes.py` listing detail)
-- [ ] FL-7 [backend]+[web] Message and review reports: "remove the message/review" as an action; "suspend" resolves the author, not the listing owner (`moderation.py _affected_owner`)
-- [ ] FL-8 [backend]+[web] A request cancelled before capture shows "the hold is released", not "refunded" (`cancellation.py` refund amount 0 when nothing was charged)
+- [x] FL-7 [backend]+[web] Message and review reports: "remove the message/review" as an action; "suspend" resolves the author, not the listing owner (`moderation.py _affected_owner`) (web, uncommitted — web part; `remove_content` needs the backend)
+- [x] FL-8 [backend]+[web] A request cancelled before capture shows "the hold is released", not "refunded" (`cancellation.py` refund amount 0 when nothing was charged) (web, uncommitted — web part; relies on the backend leaving refundAmount out when nothing was captured)
 - [ ] FL-9 [backend] Decline reason distinguishes a staff take-down from the owner removing the listing
-- [ ] FL-10 [web] The report form reachable signed out (`/legal/report`, DSA Art. 16) with a target reference, matching `Legal.tsx`
-- [ ] FL-11 [backend]+[web] Deletion that fails half-way: `upsert_profile` must not resurrect a deleted profile; the web retries Cognito `DeleteUser` and never lands in onboarding
-- [ ] FL-12 [web] Account deletion copy matches what is deleted (photos: D-1)
-- [ ] FL-13 [app] Push re-registers for the new account after sign-out/sign-in without restart (`native.ts:91`)
-- [ ] FL-14 [web] Starting offline with a stored session shows the app (cached) and refreshes when the network returns, not the sign-in screen
+- [x] FL-10 [web] The report form reachable signed out (`/legal/report`, DSA Art. 16) with a target reference, matching `Legal.tsx` (web, uncommitted)
+- [x] FL-11 [backend]+[web] Deletion that fails half-way: `upsert_profile` must not resurrect a deleted profile; the web retries Cognito `DeleteUser` and never lands in onboarding (web, uncommitted — web part)
+- [x] FL-12 [web] Account deletion copy matches what is deleted (photos: D-1) (web, uncommitted — copy no longer promises photo deletion (D-1))
+- [x] FL-13 [app] Push re-registers for the new account after sign-out/sign-in without restart (`native.ts:91`) (web, uncommitted)
+- [x] FL-14 [web] Starting offline with a stored session shows the app (cached) and refreshes when the network returns, not the sign-in screen (web, uncommitted)
 - [ ] FL-15 [backend] The owner never sees `awaiting_payment` or `payment_failed` bookings
-- [ ] FL-16 [web] `payNow` does not show the card form again between Stripe's confirmation and the webhook (poll the booking)
+- [x] FL-16 [web] `payNow` does not show the card form again between Stripe's confirmation and the webhook (poll the booking) (web, uncommitted)
 - [x] FL-17 [web] PushPrime states the real answer deadline (min(24 h, window start)) — (web, uncommitted) says "before the request lapses" (24 h at most, sooner if the booked time starts first)
 - [ ] FL-18 [backend] Messages refused on closed bookings (cancelled, declined, expired, payment_failed; completed after the review window)
-- [ ] FL-19 [app] Payment `return_url` for redirect methods in the shells is a universal/app link on Cappy's domain (with U-7)
+- [x] FL-19 [app] Payment `return_url` for redirect methods in the shells is a universal/app link on Cappy's domain (with U-7) (web, uncommitted)
 - [ ] FL-20 [docs] ADR 0012: refresh token in Capacitor Preferences (Keychain is U-17), push built — a dated correction
-- [ ] FL-21 [app] Release entitlements: real associated domain, `aps-environment` production in the release configuration
+- [x] FL-21 [app] Release entitlements: real associated domain, `aps-environment` production in the release configuration (web, uncommitted — Release signs with App.release.entitlements (production); domain from CAPPY_DOMAIN)

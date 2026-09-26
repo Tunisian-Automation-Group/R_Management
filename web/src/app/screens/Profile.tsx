@@ -24,7 +24,7 @@ import type { Owner } from '../../domain/types.ts'
 import { messageOf, useToast } from '../store.tsx'
 import { BusinessFields, businessProblem, cleanBusiness, emptyBusiness } from '../components/BusinessFields.tsx'
 import { DistrictSelect } from '../components/DistrictSelect.tsx'
-import { accessToken, deleteAccount, signOut, useAuthReady, useSession } from '../../data/auth.ts'
+import { accessToken, deleteAccount, endSession, signOut, useAuthReady, useSession } from '../../data/auth.ts'
 import { SignedOut } from '../components/SignedOut.tsx'
 import { LanguageSwitch, Screen, SectionHead } from '../components/AppShell.tsx'
 import { Icon } from '../components/Icon.tsx'
@@ -360,7 +360,18 @@ function DeleteAccount({ open, onClose }: { open: boolean; onClose: () => void }
     setError(null)
     try {
       await deleteMe() // 409 while a booking or payout is still open (U-9)
-      await deleteAccount()
+      // The platform has forgotten the person: from here they are signed out
+      // whatever happens (FL-11), never sent back to onboarding. The server
+      // deletes the sign-in too (P-23); this is the quick path, tried twice.
+      for (let i = 0; i < 2; i++) {
+        try {
+          await deleteAccount()
+          break
+        } catch {
+          // Already gone server-side, or offline: the server finishes it.
+        }
+      }
+      endSession()
       qc.clear()
       toast(t('Your account is deleted'))
       nav('/', { replace: true })
@@ -396,7 +407,7 @@ function DeleteAccount({ open, onClose }: { open: boolean; onClose: () => void }
       <div className="space-y-3 pb-3 text-[0.9375rem] leading-[1.4375rem] text-[var(--ink-2)]">
         <p>{t('This cannot be undone.')}</p>
         <ul className="list-disc space-y-1.5 pl-5">
-          <li>{t('Your sign-in, profile, saved listings and photos are deleted.')}</li>
+          <li>{t('Your sign-in, profile and saved listings are deleted.')}</li>
           <li>{t('Your listings are taken down, and your name is removed from reviews you wrote.')}</li>
           <li>{t('Past bookings, payments and invoices are kept without your name for up to ten years, because tax law requires records of them.')}</li>
         </ul>

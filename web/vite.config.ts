@@ -36,7 +36,7 @@ function appLinks(): Plugin {
           details: [
             {
               appIDs: [`${team}.app.cappy`],
-              components: [{ '/': '/listing/*' }, { '/': '/bookings/*' }, { '/': '/earn*' }],
+              components: [{ '/': '/listing/*' }, { '/': '/bookings/*' }, { '/': '/earn*' }, { '/': '/pay/*' }],
             },
           ],
         },

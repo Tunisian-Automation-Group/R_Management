@@ -4,7 +4,9 @@ import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { confirmTotp, startTotp, useAuthReady, useSession } from '../../data/auth.ts'
 import {
   ApiError,
+  approveListing,
   decideReport,
+  getHeldListings,
   getAdminReports,
   reinstateOwner,
   resolveDispute,
@@ -12,9 +14,11 @@ import {
   takeDownListing,
   useAudit,
   REPORT_REASONS,
+  type Decision,
   type Grounds,
   type Report,
 } from '../../data/repo.ts'
+import { formatMoney } from '../../domain/money.ts'
 import { messageOf, useToast } from '../store.tsx'
 import { Screen, SectionHead } from '../components/AppShell.tsx'
 import { SignedOut } from '../components/SignedOut.tsx'
@@ -23,8 +27,21 @@ import { ago } from '../format.ts'
 import { t } from '../../i18n.ts'
 
 type Status = Report['status']
-type Action = 'dismiss' | 'take_down' | 'suspend'
-const ACTION_LABEL: Record<Action, string> = { dismiss: 'Dismiss', take_down: 'Take the listing down', suspend: 'Suspend the owner' }
+type Action = Decision
+const ACTION_LABEL: Record<Action, string> = {
+  dismiss: 'Dismiss',
+  take_down: 'Take the listing down',
+  suspend: 'Suspend the owner',
+  remove_content: 'Remove it',
+}
+/** What each action is called for each kind of report (FL-7): a message or a
+ *  review is removed, and suspending hits its author, not a listing's owner. */
+function actionLabel(a: Action, target: Report['targetType'] | undefined): string {
+  if (a === 'remove_content') return target === 'review' ? 'Remove the review' : 'Remove the message'
+  if (a === 'suspend' && (target === 'message' || target === 'review')) return 'Suspend the author'
+  if (a === 'suspend' && target === 'owner') return 'Suspend this person'
+  return ACTION_LABEL[a]
+}
 
 const REASON_LABEL: Record<string, string> = {
   ...Object.fromEntries(REPORT_REASONS),
@@ -116,6 +133,7 @@ function Console() {
       ) : (
         <>
           <Queue />
+          <Held />
           <Actions />
           <Audit />
         </>
@@ -309,7 +327,12 @@ function Decide({ report, onClose }: { report: Report | null; onClose: () => voi
       await qc.invalidateQueries({ queryKey: ['audit'] })
     }
   }
-  const actions: Action[] = report?.targetType === 'listing' ? ['dismiss', 'take_down', 'suspend'] : ['dismiss', 'suspend']
+  const actions: Action[] =
+    report?.targetType === 'listing'
+      ? ['dismiss', 'take_down', 'suspend']
+      : report?.targetType === 'message' || report?.targetType === 'review'
+        ? ['dismiss', 'remove_content', 'suspend']
+        : ['dismiss', 'suspend']
   return (
     <Sheet
       open={Boolean(report)}
@@ -317,7 +340,7 @@ function Decide({ report, onClose }: { report: Report | null; onClose: () => voi
       title={t('Decide on this report')}
       footer={
         <Button block size="lg" disabled={busy || short} onClick={() => void submit()}>
-          {t(ACTION_LABEL[action])}
+          {t(actionLabel(action, report?.targetType))}
         </Button>
       }
     >
@@ -325,7 +348,7 @@ function Decide({ report, onClose }: { report: Report | null; onClose: () => voi
         <div className="flex flex-wrap gap-2" role="radiogroup" aria-label={t('Decision')}>
           {actions.map((a) => (
             <Button key={a} size="sm" variant={a === action ? 'ink' : 'secondary'} aria-pressed={a === action} onClick={() => setAction(a)}>
-              {t(ACTION_LABEL[a])}
+              {t(actionLabel(a, report?.targetType))}
             </Button>
           ))}
         </div>
@@ -339,6 +362,64 @@ function Decide({ report, onClose }: { report: Report | null; onClose: () => voi
         {action !== 'dismiss' && <GroundsFields id={id} value={grounds} onChange={setGrounds} />}
       </div>
     </Sheet>
+  )
+}
+
+/** Held listings (FL-5): new owners' expensive listings wait for a look before
+ *  anyone can book them. Approving puts them live; taking one down is below. */
+function Held() {
+  const qc = useQueryClient()
+  const toast = useToast()
+  const held = useQuery({ queryKey: ['adminHeld'], queryFn: getHeldListings })
+  const [busy, setBusy] = useState<string | null>(null)
+  const items = held.data ?? []
+  const approve = async (id: string) => {
+    setBusy(id)
+    try {
+      await approveListing(id)
+      toast(t('Approved: it is live now'))
+    } catch (err) {
+      toast(messageOf(err))
+    } finally {
+      setBusy(null)
+      await qc.invalidateQueries({ queryKey: ['adminHeld'] })
+      await qc.invalidateQueries({ queryKey: ['audit'] })
+    }
+  }
+  return (
+    <section>
+      <SectionHead title={t('Waiting for a check')} className="mt-7" />
+      {held.isError ? (
+        <p className="t-sm text-[var(--danger)]" role="alert">
+          {messageOf(held.error)}
+        </p>
+      ) : items.length === 0 ? (
+        <p className="t-sm text-[var(--ink-3)]">{t('No listings are waiting.')}</p>
+      ) : (
+        <ul className="space-y-3">
+          {items.map((h) => (
+            <li key={h.id}>
+              <Card className="flex flex-wrap items-center gap-3 p-4">
+                <div className="min-w-0 flex-1">
+                  <p className="text-[0.9375rem] font-semibold">
+                    <Link className="underline" to={`/listing/${h.id}`}>
+                      {h.title}
+                    </Link>
+                  </p>
+                  <p className="t-sm text-[var(--ink-4)]">
+                    {/* ponytail: the held list carries no currency yet; EUR until M-3. */}
+                    {t('{price} / hour', { price: formatMoney(h.ratePerHour, 'EUR') })} · {h.ownerId} · {ago(h.heldAt)}
+                  </p>
+                </div>
+                <Button size="sm" disabled={busy === h.id} onClick={() => void approve(h.id)}>
+                  {busy === h.id ? t('One moment…') : t('Approve')}
+                </Button>
+              </Card>
+            </li>
+          ))}
+        </ul>
+      )}
+    </section>
   )
 }
 

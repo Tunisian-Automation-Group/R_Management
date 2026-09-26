@@ -15,5 +15,28 @@ const onlyDe = Object.keys(DE).filter((k) => !(k in FR))
 const onlyFr = Object.keys(FR).filter((k) => !(k in DE))
 for (const k of onlyDe) console.error(`missing in fr: ${k}`)
 for (const k of onlyFr) console.error(`missing in de: ${k}`)
-if (failed || onlyDe.length || onlyFr.length) process.exit(1)
+// Every literal t('…') and plural(n, '…', '…') in the app has its German (and
+// so French) entry: a new string cannot ship in English only. Keys built at
+// runtime (t(LABELS[x])) are not seen here; keep their tables next to a literal.
+import { readdirSync, readFileSync, statSync } from 'node:fs'
+import { join } from 'node:path'
+const sources: string[] = []
+const walk = (dir: string) => {
+  for (const f of readdirSync(dir)) {
+    const p = join(dir, f)
+    if (statSync(p).isDirectory()) walk(p)
+    else if (/\.tsx?$/.test(f) && !/^i18n\./.test(f)) sources.push(p)
+  }
+}
+walk(new URL('../src', import.meta.url).pathname)
+const unq = (s: string) => s.replace(/\\'/g, "'")
+const untranslated = new Set<string>()
+for (const file of sources) {
+  const src = readFileSync(file, 'utf8')
+  for (const m of src.matchAll(/\bt\(\s*'((?:[^'\\]|\\.)*)'/g)) if (!(unq(m[1]) in DE)) untranslated.add(`${file}: ${unq(m[1])}`)
+  for (const m of src.matchAll(/\bplural\([^,]+,\s*'((?:[^'\\]|\\.)*)',\s*'((?:[^'\\]|\\.)*)'/g))
+    for (const k of [m[1], m[2]].map(unq)) if (!(k in DE)) untranslated.add(`${file}: ${k}`)
+}
+for (const u of untranslated) console.error(`no translation: ${u}`)
+if (failed || onlyDe.length || onlyFr.length || untranslated.size) process.exit(1)
 console.log(`i18n: ${Object.keys(DE).length} German and ${Object.keys(FR).length} French entries, same keys, placeholders match`)

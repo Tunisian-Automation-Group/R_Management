@@ -3,6 +3,7 @@ import { NavLink, useParams } from 'react-router-dom'
 import { PLATFORM_FEE_BPS } from '../../domain/pricing.ts'
 import { Screen } from '../components/AppShell.tsx'
 import { Banner } from '../components/ui.tsx'
+import { ReportButton } from '../components/Report.tsx'
 import { NotFound } from './NotFound.tsx'
 import { lang, t } from '../../i18n.ts'
 
@@ -65,6 +66,8 @@ export function Legal() {
         </div>
       )}
       <article className="legal space-y-4 pb-8 text-[0.9375rem] leading-[1.5rem] text-[var(--ink-2)]">{p.body()}</article>
+      {/* DSA Art. 16: anyone, signed in or not, can send a notice from here (FL-10). */}
+      {page === 'report' && <ReportButton className="mb-8" />}
     </Screen>
   )
 }

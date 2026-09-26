@@ -31,7 +31,7 @@ import type { ReviewSummary } from '../domain/reviews.ts'
 import type { SortKey } from '../domain/match.ts'
 import { useMemo } from 'react'
 import { attemptKeys } from '../domain/attempt.ts'
-import { accessToken, refresh, useSession } from './auth.ts'
+import { accessToken, endSession, refresh, useSession } from './auth.ts'
 import { lang, t } from '../i18n.ts'
 import { isNative, platform, shareFile } from '../native.ts'
 import { flagOn } from '../domain/flags.ts'
@@ -47,6 +47,12 @@ const API: string = (import.meta.env.VITE_API_URL as string | undefined)?.replac
  *  is hosted apart from it (a native shell), this origin otherwise. */
 const MEDIA_ORIGIN = /^https?:\/\//.test(API) ? new URL(API).origin : ''
 export const mediaUrl = (src: string) => (src.startsWith('/') ? `${MEDIA_ORIGIN}${src}` : src)
+
+/** Where a bank or card check sends the buyer back. A shell has no web origin
+ *  of its own (capacitor://localhost), so it is the API's domain, which the
+ *  apps claim as universal / app links for /pay/. */
+export const payReturnUrl = (bookingId: string) =>
+  `${MEDIA_ORIGIN || location.origin}/pay/return?booking=${encodeURIComponent(bookingId)}`
 
 /** This build's version, sent on every call so the server can tell old apps to update. */
 export const APP_VERSION: string = __APP_VERSION__
@@ -88,11 +94,18 @@ async function send(method: string, path: string, body?: unknown, headers?: Reco
     res = await attempt()
     // An access token revoked or expired early: refresh once and try again.
     if (res.status === 401 && (await refresh())) res = await attempt()
+    // Still refused with a fresh token: this session was ended elsewhere
+    // (sign out everywhere, a deleted account; P-24). Sign out once, cleanly,
+    // in every tab, instead of retrying.
+    if (res.status === 401 && (await tokenExpired(res.clone()))) endSession()
   } catch {
     throw new ApiError(t('Cannot reach Cappy. Check your connection and try again.'), 0, 'offline')
   }
   return res
 }
+
+const tokenExpired = async (res: Response) =>
+  (await res.json().catch(() => ({})))?.error?.code === 'token_expired'
 
 async function call<T>(method: string, path: string, body?: unknown, headers?: Record<string, string>): Promise<T> {
   return read<T>(await send(method, path, body, headers))
@@ -121,7 +134,11 @@ async function read<T>(res: Response): Promise<T> {
         ? ref
           ? t('Something went wrong on our side. Try again; if it keeps happening, tell us reference {ref}.', { ref })
           : t('Something went wrong on our side. Try again in a moment.')
-        : // The server speaks English; the catalogue translates what it knows.
+        : res.status === 429 && !err?.message
+          ? Number.isFinite(wait) && wait > 0
+            ? t('Too many tries. Wait {n} seconds and try again.', { n: Math.ceil(wait) })
+            : t('Too many tries. Wait a few minutes and try again.')
+          : // The server speaks English; the catalogue translates what it knows.
           err?.message
           ? t(err.message)
           : t('Something went wrong ({status}). Try again.', { status: res.status }),
@@ -515,7 +532,9 @@ export async function openInvoice(number: string): Promise<void> {
 
 export type Identity = { status: 'none' | 'pending' | 'requires_input' | 'verified'; clientSecret?: string }
 /** Stripe Identity: a one-time document and selfie check (payments service). */
-export const startIdentity = () => post<Identity>('/payments/identity/session')
+/** Starts the ID check. `consent` is the person's tick in the sheet (P-18): the
+ *  server records it with the session and refuses without it. */
+export const startIdentity = () => post<Identity>('/payments/identity/session', { consent: true })
 export const getIdentity = () => get<Identity>('/payments/identity')
 
 /** A listing as the owner writes it: ids and the owner come from the server. */
@@ -531,7 +550,11 @@ export function useAttemptKey() {
 }
 
 export const addListing = (listing: ListingDraft, slots: Omit<Slot, 'id' | 'listingId'>[], address: string, key?: string) =>
-  post<{ listing: Listing; slots: Slot[] }>('/listings', { listing, slots, address }, idem(key))
+  post<{ listing: Listing; slots: Slot[]; held?: boolean }>('/listings', { listing, slots, address }, idem(key))
+/** Whether one of my listings waits for a staff check (an edit can put it there).
+ *  ponytail: reads my first 100 listings; a per-listing field when owners have more. */
+export const listingHeld = async (id: string) =>
+  (await get<Page<ListingView>>(`/me/listings${qs({ limit: 100 })}`)).items.some((v) => v.listing.id === id && v.held)
 export const updateListing = (id: string, listing: ListingDraft, address: string) =>
   put<Listing>(`/listings/${id}`, { listing, address })
 export const addSlots = (id: string, slots: Omit<Slot, 'id' | 'listingId'>[]) => post<Slot[]>(`/listings/${id}/slots`, slots)
@@ -544,15 +567,23 @@ export const startPayouts = () => post<{ url: string }>('/payments/connect/onboa
 
 /** One photograph in, its URL out, to go in `Listing.photos`. `onProgress`
  *  gets 0–1 as it goes up (U-25): fetch cannot report that, XHR can. */
-export async function uploadPhoto(image: Blob, filename = 'photo.jpg', onProgress?: (share: number) => void): Promise<string> {
+export async function uploadPhoto(
+  image: Blob,
+  filename = 'photo.jpg',
+  onProgress?: (share: number) => void,
+  /** `evidence`: a hand-over photo, stored privately (P-27). The answer is an
+   *  `evidence:<name>` reference, not a picture: preview from the local file. */
+  purpose: 'listing' | 'evidence' = 'listing',
+): Promise<string> {
   const form = new FormData()
   form.append('file', image, filename)
-  if (!onProgress) return (await call<{ url: string }>('POST', '/uploads', form)).url
+  const path = purpose === 'evidence' ? '/uploads?purpose=evidence' : '/uploads'
+  if (!onProgress) return (await call<{ url: string }>('POST', path, form)).url
   const attempt = async () => {
     const token = await accessToken()
     return new Promise<Response>((resolve, reject) => {
       const xhr = new XMLHttpRequest()
-      xhr.open('POST', `${API}/uploads`)
+      xhr.open('POST', `${API}${path}`)
       xhr.setRequestHeader('Accept', 'application/json')
       xhr.setRequestHeader('X-App-Version', APP_VERSION)
       xhr.setRequestHeader('Accept-Language', lang())
@@ -631,8 +662,15 @@ export const sendMessage = (bookingId: string, body: string, key?: string) =>
 
 export type EvidenceStage = 'check_in' | 'check_out'
 export type Evidence = { id: string; by: string; stage: EvidenceStage; photos: string[]; note?: string; at: string }
+/** Hand-over photos come back as signed links that last 15 minutes (P-27):
+ *  the list is read again well before they lapse, and on a 403 (EvidencePanel). */
 export const useEvidence = (bookingId: string) =>
-  useQuery({ queryKey: ['evidence', bookingId], queryFn: () => get<Evidence[]>(`/bookings/${bookingId}/evidence`) })
+  useQuery({
+    queryKey: ['evidence', bookingId],
+    queryFn: () => get<Evidence[]>(`/bookings/${bookingId}/evidence`),
+    staleTime: 5 * 60_000,
+    refetchInterval: 10 * 60_000,
+  })
 export const addEvidence = (bookingId: string, stage: EvidenceStage, photos: string[], note?: string, key?: string) =>
   post<Evidence>(`/bookings/${bookingId}/evidence`, { stage, photos, note: note || undefined }, idem(key))
 
@@ -699,7 +737,12 @@ export type AuditEntry = {
 }
 export const getAdminReports = (status: Report['status'], cursor?: string) =>
   get<Page<Report>>(`/admin/reports${qs({ status, cursor })}`)
-export const decideReport = (id: string, action: 'dismiss' | 'take_down' | 'suspend', statement: string, g: Grounds) =>
+export type HeldListing = { id: string; ownerId: string; title: string; category: string; ratePerHour: number; heldAt: string }
+/** New owners' expensive listings waiting for a look, oldest first (FL-5). */
+export const getHeldListings = () => get<HeldListing[]>('/admin/listings/held')
+export const approveListing = (id: string) => post<void>(`/admin/listings/${id}/approve`)
+export type Decision = 'dismiss' | 'take_down' | 'suspend' | 'remove_content'
+export const decideReport = (id: string, action: Decision, statement: string, g: Grounds) =>
   post<Report>(`/admin/reports/${id}/decide`, { action, statement, ...g })
 export const takeDownListing = (id: string, statement: string, g: Grounds) =>
   post<void>(`/admin/listings/${id}/take-down`, { statement, ...g })

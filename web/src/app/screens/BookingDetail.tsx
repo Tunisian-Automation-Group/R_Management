@@ -1,4 +1,4 @@
-import { lazy, Suspense, useState, type ReactNode } from 'react'
+import { lazy, Suspense, useEffect, useState, type ReactNode } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { useAuthReady, useSession } from '../../data/auth.ts'
 import { SignedOut } from '../components/SignedOut.tsx'
@@ -163,8 +163,21 @@ function Detail({
   // What cancelling now would refund, fetched only while the sheet is open.
   const refund = useCancellationQuote(booking.id, cancelling && booking.status === 'accepted')
   const payments = usePaymentsConfig()
+  // Between Stripe saying yes and its webhook reaching Cappy the booking still
+  // reads awaiting_payment: the card form must not come back meanwhile (FL-16).
+  // The booking is re-read every 2 s for a minute instead.
+  const [confirming, setConfirming] = useState(false)
+  useEffect(() => {
+    if (!confirming || booking.status !== 'awaiting_payment') return
+    const tick = setInterval(() => void qc.invalidateQueries({ queryKey: ['booking', booking.id] }), 2000)
+    const stop = setTimeout(() => setConfirming(false), 60_000)
+    return () => {
+      clearInterval(tick)
+      clearTimeout(stop)
+    }
+  }, [confirming, booking.status, booking.id, qc])
   const payNow =
-    !asOwner && booking.status === 'awaiting_payment' && payments.data?.provider === 'stripe'
+    !asOwner && booking.status === 'awaiting_payment' && payments.data?.provider === 'stripe' && !confirming
   const payment = useQuery({
     queryKey: ['bookingPayment', booking.id],
     queryFn: () => getBookingPayment(booking.id),
@@ -405,9 +418,11 @@ function Detail({
           body={
             booking.refundAmount
               ? t('{amount} is refunded to the card.', { amount: formatMoney(booking.refundAmount, cur) })
-              : asOwner
-                ? t('The buyer gets back everything they paid, and the window is free again.')
-                : t('The hold on your card is released, and anything already charged is refunded in full.')
+              : // No refund means nothing was charged: it ended before the owner
+                // accepted, which is when the card is charged (FL-8).
+                asOwner
+                ? t('Nothing was charged, and the window is free again.')
+                : t('The hold on your card is released; nothing was charged.')
           }
         />
       ) : booking.status === 'expired' ? (
@@ -428,7 +443,7 @@ function Detail({
       ) : booking.status === 'awaiting_payment' ? (
         <Banner
           tone="warn"
-          title={payNow ? t('Finish paying to send your request') : t('Authorising your card')}
+          title={confirming ? t('Confirming your payment…') : payNow ? t('Finish paying to send your request') : t('Authorising your card')}
           body={`${t('{name} is asked as soon as the card is authorised.', { name: first })}${booking.expiresAt ? ` ${t('It lapses {when} if not.', { when: relative(booking.expiresAt) })}` : ''}`}
         />
       ) : booking.status === 'requested' && asOwner ? (
@@ -462,7 +477,10 @@ function Detail({
               publishableKey={payments.data.publishableKey}
               clientSecret={payment.data.clientSecret}
               bookingId={booking.id}
-              onPaid={() => void qc.invalidateQueries({ queryKey: ['booking', booking.id] })}
+              onPaid={() => {
+                setConfirming(true)
+                void qc.invalidateQueries({ queryKey: ['booking', booking.id] })
+              }}
             />
           </Suspense>
         </div>
@@ -615,7 +633,7 @@ function Detail({
           ) : (
             <Row
               label={t('Charged')}
-              value={booking.status === 'cancelled' ? t('Nothing: released or refunded') : t('Nothing: hold released')}
+              value={t('Nothing: hold released')}
               strong
             />
           )

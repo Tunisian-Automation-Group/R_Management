@@ -1,76 +1,22 @@
-// Signing in, with Amazon Cognito, over its JSON API. No SDK: six calls is all
-// the app makes, and each is one POST.
+// Signing in: the session, where its tokens live, and how tabs and devices
+// follow it. The identity service itself sits behind an `AuthProvider`
+// (./cognito.ts, F-2): Cognito today, anything that issues access tokens the
+// services can verify tomorrow.
 //
 // Tokens: the access token (sent to /api) and the id token (who this is, for
 // display) live in memory only. The refresh token is kept on the device so an
 // installed app stays signed in; it is what a thief would want, which is why
-// it never goes anywhere but Cognito.
+// it never goes anywhere but the identity service.
 import { useSyncExternalStore } from 'react'
 import { lang, t } from '../i18n.ts'
-import { isNative, nativeStore, pushSignedOut } from '../native.ts'
+import { isNative, nativeStore, pushReset, pushSignedOut } from '../native.ts'
 import { clearDrafts, loadDevice, setDevice } from '../app/device.ts'
+import { AuthError, cognito, type AuthProvider, type Step, type TokenSet } from './cognito.ts'
 
-const REGION = import.meta.env.VITE_COGNITO_REGION as string | undefined
-const ENDPOINT = (
-  (import.meta.env.VITE_COGNITO_ENDPOINT as string | undefined) ??
-  (REGION ? `https://cognito-idp.${REGION}.amazonaws.com/` : '')
-).replace(/\/?$/, '/')
-const CLIENT_ID = (import.meta.env.VITE_COGNITO_CLIENT_ID as string | undefined) ?? ''
+export { AuthError, type AuthProvider } from './cognito.ts'
+
+const provider: AuthProvider = cognito
 const REFRESH_KEY = 'cappy.refresh.v1'
-
-export class AuthError extends Error {
-  constructor(
-    message: string,
-    public readonly code: string,
-  ) {
-    super(message)
-  }
-}
-
-/** Plain words for what Cognito says, so a person knows what to do next. */
-const FRIENDLY: Record<string, string> = {
-  NotAuthorizedException: 'That email and password do not match.',
-  // Never say whether an address exists: that tells an attacker which emails
-  // have accounts. (The reset flow swallows it and carries on.)
-  UserNotFoundException: 'Check the email and the code and try again.',
-  UsernameExistsException: 'There is already an account with that email. Sign in instead.',
-  CodeMismatchException: 'That code is not right. Check the email and try again.',
-  EnableSoftwareTokenMFAException: 'That code is not right. Use the newest code your authenticator app shows.',
-  ExpiredCodeException: 'That code has expired. Ask for a new one.',
-  InvalidPasswordException: 'Use at least 12 characters. A few words you will remember work well.',
-  InvalidParameterException: 'Check the email address and try again.',
-  LimitExceededException: 'Too many attempts. Wait a few minutes and try again.',
-  TooManyRequestsException: 'Too many attempts. Wait a few minutes and try again.',
-}
-
-/** One Cognito call. Calls made with an access token (TOTP setup) carry no client id. */
-async function cognito<T>(action: string, body: Record<string, unknown>, withClient = true): Promise<T> {
-  if (!ENDPOINT || !CLIENT_ID) throw new AuthError(t('Sign-in is not configured for this build.'), 'config')
-  let res: Response
-  try {
-    res = await fetch(ENDPOINT, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/x-amz-json-1.1',
-        'X-Amz-Target': `AWSCognitoIdentityProviderService.${action}`,
-      },
-      body: JSON.stringify(withClient ? { ClientId: CLIENT_ID, ...body } : body),
-    })
-  } catch {
-    throw new AuthError(t('Cannot reach the sign-in service. Check your connection.'), 'offline')
-  }
-  const data = (await res.json().catch(() => ({}))) as Record<string, unknown>
-  if (!res.ok) {
-    const code = String(data.__type ?? 'Error')
-      .split('#')
-      .pop()!
-    throw new AuthError(
-      FRIENDLY[code] ? t(FRIENDLY[code]) : String(data.message ?? t('That did not work. Try again.')),
-      code,
-    )
-  }
-  return data as T
-}
 
 // --- session state ----------------------------------------------------------------
 
@@ -84,17 +30,6 @@ let session: Session | null = null
 let ready = false
 const listeners = new Set<() => void>()
 const emit = () => listeners.forEach((fn) => fn())
-
-function claims(jwt: string): Record<string, unknown> {
-  const part = jwt.split('.')[1] ?? ''
-  const json = atob(
-    part
-      .replace(/-/g, '+')
-      .replace(/_/g, '/')
-      .padEnd(Math.ceil(part.length / 4) * 4, '='),
-  )
-  return JSON.parse(json) as Record<string, unknown>
-}
 
 // On the web the refresh token is in localStorage (under the CSP). In a store
 // shell it is in the platform's app storage (Capacitor Preferences), mirrored
@@ -124,27 +59,11 @@ function writeRefresh(value: string | null): void {
   }
 }
 
-type AuthResult = {
-  AccessToken: string
-  IdToken: string
-  ExpiresIn: number
-  RefreshToken?: string
-}
-
-function adopt(r: AuthResult): void {
-  tokens = {
-    access: r.AccessToken,
-    id: r.IdToken,
-    expiresAt: Date.now() + r.ExpiresIn * 1000,
-  }
-  if (r.RefreshToken) writeRefresh(r.RefreshToken)
-  const c = claims(r.IdToken)
-  const groups = claims(r.AccessToken)['cognito:groups']
-  session = {
-    sub: String(c.sub),
-    email: String(c.email ?? ''),
-    staff: Array.isArray(groups) && groups.includes('admin'),
-  }
+function adopt(r: TokenSet): void {
+  tokens = { access: r.access, id: r.id, expiresAt: Date.now() + r.expiresIn * 1000 }
+  if (r.refresh) writeRefresh(r.refresh)
+  session = provider.identity(r)
+  writeKnown(session)
   announce(session.sub)
   // A returning device goes straight to sign-in, never the welcome again.
   setDevice({ signedInBefore: true, welcomeSeen: true })
@@ -152,12 +71,50 @@ function adopt(r: AuthResult): void {
 }
 
 function forget(): void {
+  pushReset()
   tokens = null
   session = null
   writeRefresh(null)
+  writeKnown(null)
   announce(null)
   emit()
 }
+
+/** The server ended this session (sign out everywhere, a deleted account;
+ *  P-24): signed out here and in every tab. Drafts stay, as after an expiry. */
+export function endSession(): void {
+  if (session || readRefresh()) forget()
+}
+
+// Who was signed in, kept beside the refresh token (not a secret: the id, email
+// and the staff flag), so a phone opened offline shows the app, not the
+// sign-in screen (FL-14). Tokens come back with the network.
+const KNOWN_KEY = 'cappy.session.v1'
+let knownMirror: string | null = null
+function writeKnown(s: Session | null): void {
+  const value = s ? JSON.stringify(s) : null
+  if (isNative) {
+    knownMirror = value
+    void (value ? nativeStore.set(KNOWN_KEY, value) : nativeStore.remove(KNOWN_KEY))
+    return
+  }
+  try {
+    if (value) localStorage.setItem(KNOWN_KEY, value)
+    else localStorage.removeItem(KNOWN_KEY)
+  } catch {
+    // Storage blocked: offline starts show sign-in.
+  }
+}
+function readKnown(): Session | null {
+  try {
+    const raw = isNative ? knownMirror : localStorage.getItem(KNOWN_KEY)
+    return raw ? (JSON.parse(raw) as Session) : null
+  } catch {
+    return null
+  }
+}
+/** The last refresh failed for want of a network, not because it was refused. */
+let offlineAtRefresh = false
 
 let refreshing: Promise<boolean> | null = null
 
@@ -168,15 +125,13 @@ export function refresh(): Promise<boolean> {
     const stored = readRefresh()
     if (!stored) return false
     try {
-      const out = await cognito<{ AuthenticationResult: AuthResult }>('InitiateAuth', {
-        AuthFlow: 'REFRESH_TOKEN_AUTH',
-        AuthParameters: { REFRESH_TOKEN: stored },
-      })
-      adopt(out.AuthenticationResult)
+      adopt(await provider.refresh(stored))
+      offlineAtRefresh = false
       return true
     } catch (err) {
       // Offline is not signed out: keep the refresh token for next time.
-      if (!(err instanceof AuthError && err.code === 'offline')) forget()
+      offlineAtRefresh = err instanceof AuthError && err.code === 'offline'
+      if (!offlineAtRefresh) forget()
       return false
     }
   })().finally(() => {
@@ -196,8 +151,15 @@ export async function accessToken(): Promise<string | null> {
 // Restore whatever this device had, once, at start.
 void (async () => {
   await loadDevice()
-  if (isNative) mirror = await nativeStore.get(REFRESH_KEY)
-  if (readRefresh()) await refresh()
+  if (isNative) {
+    mirror = await nativeStore.get(REFRESH_KEY)
+    knownMirror = await nativeStore.get(KNOWN_KEY)
+  }
+  if (readRefresh() && !(await refresh()) && offlineAtRefresh) {
+    // Opened offline: the app with its offline bar, signed in as before;
+    // tokens when the network is back.
+    session = readKnown()
+  }
 })().finally(() => {
   ready = true
   emit()
@@ -216,6 +178,11 @@ function announce(sub: string | null): void {
   } catch {
     // Storage blocked: this tab is on its own.
   }
+}
+if (typeof window !== 'undefined') {
+  addEventListener('online', () => {
+    if (session && !tokens) void refresh()
+  })
 }
 if (!isNative) {
   addEventListener('storage', (e) => {
@@ -250,48 +217,27 @@ export function useAuthReady(): boolean {
 
 // --- the flows ---------------------------------------------------------------------
 
-type Challenge = {
-  AuthenticationResult?: AuthResult
-  ChallengeName?: string
-  Session?: string
-}
-
 /** A sign-in waiting for the authenticator app's code (P-4). */
-let pending: { username: string; session: string } | null = null
+let pending: { email: string; mfa: string } | null = null
 
 /** Resolves once signed in. Throws `AuthError` with code `SOFTWARE_TOKEN_MFA`
  *  when the account has two-step sign-in: answer with `answerMfa(code)`. */
 export async function signIn(email: string, password: string): Promise<void> {
-  const out = await cognito<Challenge>('InitiateAuth', {
-    AuthFlow: 'USER_PASSWORD_AUTH',
-    AuthParameters: { USERNAME: email, PASSWORD: password },
-  })
-  finish(out, email)
+  finish(await provider.signIn(email, password), email)
 }
 
 export async function answerMfa(code: string): Promise<void> {
   if (!pending) throw new AuthError(t('Sign in again: the code step timed out.'), 'mfa-expired')
-  const out = await cognito<Challenge>('RespondToAuthChallenge', {
-    ChallengeName: 'SOFTWARE_TOKEN_MFA',
-    Session: pending.session,
-    ChallengeResponses: {
-      USERNAME: pending.username,
-      SOFTWARE_TOKEN_MFA_CODE: code,
-    },
-  })
-  finish(out, pending.username)
+  finish(await provider.answerMfa(pending.email, pending.mfa, code), pending.email)
 }
 
-function finish(out: Challenge, username: string): void {
-  if (out.ChallengeName === 'SOFTWARE_TOKEN_MFA' && out.Session) {
-    pending = { username, session: out.Session }
+function finish(out: Step, email: string): void {
+  if ('mfa' in out) {
+    pending = { email, mfa: out.mfa }
     throw new AuthError(t('Enter the code from your authenticator app.'), 'SOFTWARE_TOKEN_MFA')
   }
-  if (!out.AuthenticationResult) {
-    throw new AuthError(t('This account needs a step this app does not support yet.'), out.ChallengeName ?? 'challenge')
-  }
   pending = null
-  adopt(out.AuthenticationResult)
+  adopt(out.tokens)
   void updateLocale(lang())
   // Push is asked for later, when it is worth something (push.ts, U-4).
 }
@@ -301,105 +247,48 @@ function finish(out: Challenge, username: string): void {
 export async function startTotp(): Promise<{ secret: string; uri: string }> {
   const access = await accessToken()
   if (!access) throw new AuthError(t('Sign in again to set up two-step sign-in.'), 'signed-out')
-  const { SecretCode } = await cognito<{ SecretCode: string }>('AssociateSoftwareToken', { AccessToken: access }, false)
+  const secret = await provider.startTotp(access)
   const label = encodeURIComponent(`Cappy:${session?.email ?? ''}`)
-  return {
-    secret: SecretCode,
-    uri: `otpauth://totp/${label}?secret=${SecretCode}&issuer=Cappy`,
-  }
+  return { secret, uri: `otpauth://totp/${label}?secret=${secret}&issuer=Cappy` }
 }
 
 /** Step 2: the first code from the app proves it works; then it is required at every sign-in. */
 export async function confirmTotp(code: string): Promise<void> {
   const access = await accessToken()
   if (!access) throw new AuthError(t('Sign in again to set up two-step sign-in.'), 'signed-out')
-  const out = await cognito<{ Status: string }>(
-    'VerifySoftwareToken',
-    { AccessToken: access, UserCode: code, FriendlyDeviceName: 'Cappy' },
-    false,
-  )
-  if (out.Status !== 'SUCCESS')
-    throw new AuthError(t('That code is not right. Use the newest code your authenticator app shows.'), 'totp')
-  await cognito(
-    'SetUserMFAPreference',
-    {
-      AccessToken: access,
-      SoftwareTokenMfaSettings: { Enabled: true, PreferredMfa: true },
-    },
-    false,
-  )
+  await provider.confirmTotp(access, code)
 }
 
-/** The language emails and pushes come in: Cognito's standard `locale`. */
+/** The language emails and pushes come in (Cognito's standard `locale`). */
 export async function updateLocale(value: string): Promise<void> {
   const access = tokens?.access
-  if (!access || !ENDPOINT) return
+  if (!access) return
   try {
-    await fetch(ENDPOINT, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/x-amz-json-1.1',
-        'X-Amz-Target': 'AWSCognitoIdentityProviderService.UpdateUserAttributes',
-      },
-      body: JSON.stringify({
-        AccessToken: access,
-        UserAttributes: [{ Name: 'locale', Value: value }],
-      }),
-    })
+    await provider.updateLocale(access, value)
   } catch {
     // Best effort: the next sign-in sets it again.
   }
 }
 
-export const signUp = (email: string, password: string) =>
-  cognito('SignUp', {
-    Username: email,
-    Password: password,
-    UserAttributes: [
-      { Name: 'email', Value: email },
-      { Name: 'locale', Value: lang() },
-    ],
-  })
-
-export const confirmSignUp = (email: string, code: string) =>
-  cognito('ConfirmSignUp', { Username: email, ConfirmationCode: code })
-
-export const resendCode = (email: string) => cognito('ResendConfirmationCode', { Username: email })
-
-export const forgotPassword = (email: string) => cognito('ForgotPassword', { Username: email })
-
+export const signUp = (email: string, password: string) => provider.signUp(email, password, lang())
+export const confirmSignUp = (email: string, code: string) => provider.confirmSignUp(email, code)
+export const resendCode = (email: string) => provider.resendCode(email)
+export const forgotPassword = (email: string) => provider.forgotPassword(email)
 export const confirmForgotPassword = (email: string, code: string, password: string) =>
-  cognito('ConfirmForgotPassword', {
-    Username: email,
-    ConfirmationCode: code,
-    Password: password,
-  })
+  provider.confirmForgotPassword(email, code, password)
 
 /** Deletes the sign-in itself (App Store: accounts are deletable in the app).
  *  Call after the platform has forgotten the person (DELETE /me). */
 export async function deleteAccount(): Promise<void> {
   const access = await accessToken()
   if (!access) throw new AuthError(t('Sign in again to delete your account.'), 'signed-out')
-  let res: Response
-  try {
-    res = await fetch(ENDPOINT, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/x-amz-json-1.1',
-        'X-Amz-Target': 'AWSCognitoIdentityProviderService.DeleteUser',
-      },
-      body: JSON.stringify({ AccessToken: access }),
-    })
-  } catch {
-    throw new AuthError(t('Cannot reach the sign-in service. Check your connection.'), 'offline')
-  }
-  if (!res.ok) throw new AuthError(t('Your sign-in could not be deleted. Try again.'), 'delete')
+  await provider.deleteUser(access)
   forget()
 }
 
 /** Signs this device out: its refresh token is revoked, other devices stay
  *  signed in. `everywhere` ends every session of the account (U-35): the
- *  server forgets all push devices, Cognito revokes every token. */
+ *  server forgets all push devices and ends every session. */
 export async function signOut(opts: { everywhere?: boolean } = {}): Promise<void> {
   const access = tokens?.access
   const stored = readRefresh()
@@ -411,6 +300,11 @@ export async function signOut(opts: { everywhere?: boolean } = {}): Promise<void
       method: 'POST',
       headers: { Authorization: `Bearer ${access}` },
     }).catch(() => null)
+    if (res?.status === 429) {
+      // A few an hour (P-12): the server says when to try again.
+      const body = (await res.json().catch(() => ({}))) as { error?: { message?: string } }
+      throw new AuthError(t(body.error?.message ?? 'Too many tries. Wait a few minutes and try again.'), 'rate_limited')
+    }
     if (!res?.ok)
       throw new AuthError(
         t('Your other devices could not be signed out. Check your connection and try again.'),
@@ -421,25 +315,8 @@ export async function signOut(opts: { everywhere?: boolean } = {}): Promise<void
   clearDrafts()
   forget()
   try {
-    if (opts.everywhere && access) {
-      await fetch(ENDPOINT, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/x-amz-json-1.1',
-          'X-Amz-Target': 'AWSCognitoIdentityProviderService.GlobalSignOut',
-        },
-        body: JSON.stringify({ AccessToken: access }),
-      })
-    } else if (stored) {
-      await fetch(ENDPOINT, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/x-amz-json-1.1',
-          'X-Amz-Target': 'AWSCognitoIdentityProviderService.RevokeToken',
-        },
-        body: JSON.stringify({ Token: stored, ClientId: CLIENT_ID }),
-      })
-    }
+    if (opts.everywhere && access) await provider.signOutEverywhere(access)
+    else if (stored) await provider.revoke(stored)
   } catch {
     // Offline: the tokens are gone from this device, which is what matters here.
   }

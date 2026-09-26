@@ -102,3 +102,19 @@ tokens (`POST https://appleid.apple.com/auth/revoke`).
 - **User-generated content (Guideline 1.2):** every listing and profile can be
   reported (each message too, once U-13 ships), people can block each other, staff review reports,
   and the terms forbid objectionable content.
+
+## 6. Before archiving a release build (iOS)
+
+- **Associated domain:** both entitlement files read `applinks:$(CAPPY_DOMAIN)`.
+  `CAPPY_DOMAIN` is a build setting of the App target (`cappy.app` in Debug and
+  Release). Set it to the real domain before archiving. It must match the host
+  that serves `/.well-known/apple-app-site-association` (written by the web
+  build) and Android's `appLinkHost`.
+- **Push environment:** Debug signs with `App/App.entitlements`
+  (`aps-environment` development), Release with `App/App.release.entitlements`
+  (production). An archive therefore uses production APNs; nothing to switch
+  by hand.
+- **Payment return:** a bank's card check returns to
+  `https://$(CAPPY_DOMAIN)/pay/return?booking=…`, a universal link (`/pay/*`
+  is in the association file and Android's intent filter), so it lands back
+  in the app on the booking.

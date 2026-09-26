@@ -455,11 +455,19 @@ function ListingForm({ edit }: { edit?: repo.ListingView }) {
           [['myListings'], ['listing', was.id], ['offers', was.id]].map((queryKey) => qc.invalidateQueries({ queryKey })),
         )
         drafts.set(draftKey, '')
-        toast(t('{title} updated', { title: listing.title }))
+        // A new owner raising the price past the review line puts the listing
+        // back in the queue (FL-4): say so rather than "updated".
+        const held = await repo.listingHeld(was.id).catch(() => false)
+        toast(
+          held
+            ? t('{title} is saved and waiting for a quick check before people can book it', { title: listing.title })
+            : t('{title} updated', { title: listing.title }),
+        )
       } else {
         const slots = buildSlots()
+        let created: Awaited<ReturnType<typeof repo.addListing>>
         try {
-          await repo.addListing(listing, slots, address.trim(), attempt.keyFor({ listing, slots, address: address.trim() }))
+          created = await repo.addListing(listing, slots, address.trim(), attempt.keyFor({ listing, slots, address: address.trim() }))
         } catch (err) {
           attempt.settle(err)
           throw err
@@ -467,7 +475,11 @@ function ListingForm({ edit }: { edit?: repo.ListingView }) {
         attempt.settle()
         drafts.set(draftKey, '')
         await qc.invalidateQueries({ queryKey: ['myListings'] })
-        toast(t('{title} is live', { title: listing.title }))
+        toast(
+          created.held
+            ? t('{title} is saved and waiting for a quick check before people can book it', { title: listing.title })
+            : t('{title} is live', { title: listing.title }),
+        )
         askForPush('listing')
       }
       nav('/earn', { replace: true })

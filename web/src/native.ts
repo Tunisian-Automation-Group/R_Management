@@ -94,6 +94,20 @@ export async function pushPermission(): Promise<PushPermission> {
 }
 
 let registered = false
+let listening = false
+
+/** This install's id (P-33): made once, kept in app storage. A push token
+ *  moves to another person only from the same install, so a token taken from
+ *  someone else's phone cannot redirect their notifications. */
+const INSTALL_KEY = 'cappy.install.v1'
+async function installId(): Promise<string> {
+  let id = await nativeStore.get(INSTALL_KEY)
+  if (!id) {
+    id = crypto.randomUUID()
+    await nativeStore.set(INSTALL_KEY, id)
+  }
+  return id
+}
 
 /** Tell the server where to push. Asks the OS only when `ask` is set, which
  *  happens after a moment that makes the reason obvious (U-4), never at sign-in. */
@@ -108,16 +122,23 @@ export async function enablePush(accessToken: () => Promise<string | null>, ask 
     }
     if (perm !== 'granted' || registered) return perm
     registered = true
-    await PushNotifications.addListener('registration', async ({ value }) => {
-      const access = await accessToken()
-      if (!access) return
-      await fetch(`${API}/notifications/devices`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${access}` },
-        body: JSON.stringify({ platform, token: value }),
+    // One listener for the app's life; register() fires it again for each
+    // account that signs in (FL-13), so the token follows whoever is signed in.
+    if (!listening) {
+      listening = true
+      await PushNotifications.addListener('registration', async ({ value }) => {
+        const access = await accessToken()
+        if (!access) return
+        const res = await fetch(`${API}/notifications/devices`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${access}` },
+          body: JSON.stringify({ platform, token: value, installId: await installId() }),
+        })
+        // 409 device_taken: another install holds this token. Push stays off
+        // here rather than taking it; email and the bell still arrive.
+        if (res.ok) await nativeStore.set(DEVICE_KEY, value)
       })
-      await nativeStore.set(DEVICE_KEY, value)
-    })
+    }
     await PushNotifications.register()
     return perm
   } catch {
@@ -134,6 +155,12 @@ export function openAppSettings(): void {
   if (canOpenSettings) window.location.href = 'app-settings:'
 }
 
+/** Any end of a session (also one ended elsewhere): the next account to sign
+ *  in on this install registers for push afresh (FL-13). */
+export const pushReset = (): void => {
+  registered = false
+}
+
 /** Before sign-out: this device stops getting this person's notifications. */
 export async function pushSignedOut(access: string): Promise<void> {
   if (!isNative) return
@@ -147,6 +174,9 @@ export async function pushSignedOut(access: string): Promise<void> {
     await nativeStore.remove(DEVICE_KEY)
   } catch {
     // Offline: the server forgets the device when a push to it fails.
+  } finally {
+    // The next account to sign in on this install registers afresh (FL-13).
+    registered = false
   }
 }
 

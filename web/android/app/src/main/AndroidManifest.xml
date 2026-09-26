@@ -33,6 +33,8 @@
                 <data android:pathPrefix="/listing/" />
                 <data android:pathPrefix="/bookings/" />
                 <data android:pathPrefix="/earn" />
+                <!-- Back from a bank's card check (U-7). -->
+                <data android:pathPrefix="/pay/" />
             </intent-filter>
 
         </activity>
