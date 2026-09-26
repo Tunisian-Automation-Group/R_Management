@@ -29,12 +29,14 @@
 
   /* Softened back off the hard 3px edge, which read as austere rather than
      considered. Three steps, each used for one kind of thing. */
-  --radius-plate: 14px;
-  --radius-control: 8px;
-  --radius-field: 8px;
-  --radius-card: 14px;
-  --radius-cover: 14px;
-  --radius-sheet: 22px;
+  /* Concentric and rounder (VD-8, ADR 0014): controls are capsules, a card is
+     20 so an image inset 8 inside it is 12, sheets are iOS 26's 32. */
+  --radius-plate: 24px;
+  --radius-control: 999px;
+  --radius-field: 12px;
+  --radius-card: 20px;
+  --radius-cover: 20px;
+  --radius-sheet: 32px;
 
   --ease-out: cubic-bezier(0.2, 0, 0, 1);
   /* Retired overshoot (1.4): M3's spatial springs bounce only slightly. */
@@ -115,10 +117,11 @@
   --on-field-dim: #a9b3a5;
 
   /* Crimson. Actions, and time somebody has taken. */
-  --accent: #8b0d1a;
-  --accent-hover: #790b17;
-  --accent-active: #660913;
-  --accent-text: #8b0d1a;
+  /* The same crimson with more light in it (VD-7): white on it 6.96:1. */
+  --accent: #b0182e;
+  --accent-hover: #9c1428;
+  --accent-active: #86101f;
+  --accent-text: #b0182e;
   --accent-subtle: #f9eaeb;
   --accent-muted: #e2b6ba;
   /* Crimson at 1.7:1 on the dark plate is invisible. This is the same colour
@@ -143,7 +146,7 @@
   /* Errors: a red that is not the action crimson (UX-6). */
   --danger: #c4312b;
   --danger-subtle: #fbeceb;
-  --badge: #8b0d1a;
+  --badge: #b0182e;
   --on-badge: #ffffff;
   /* Text on a filled danger or success chip. */
   --on-status: #ffffff;
@@ -152,7 +155,7 @@
      blue is time going free, crimson is a window taken. */
   --track: #eceae4;
   --idle: #2d6479;
-  --sold: #8b0d1a;
+  --sold: #b0182e;
 
   --map-ground: #f2f0eb;
   --map-water: #e4ecee;
@@ -184,6 +187,7 @@
   --radius-s: 8px;
   --radius-m: 14px;
   --radius-l: 22px;
+  --radius-xl: 32px;
 
   /* Motion (§3.4). Only transform and opacity animate; exits take 2/3 of the
      entry; under reduced motion slides become short fades. */
@@ -198,6 +202,13 @@
   /* A spatial spring (damping ~0.9) sampled into linear(): lands with a hint of
      overshoot, the way a sheet settles. */
   --ease-spring-spatial: linear(0, 0.18, 0.5, 0.78, 0.95, 1.03, 1.045, 1.03, 1.012, 1.002, 0.998, 1);
+  /* Two more springs sampled from a damped oscillator (VD-17): snappy
+     (ζ 0.82) for droplets, chips and menus; bouncy (ζ 0.55) for the ticket,
+     the category objects and the heart. */
+  --dur-snappy: 320ms;
+  --dur-bouncy: 700ms;
+  --spring-snappy: linear(0, 0.102, 0.305, 0.515, 0.691, 0.821, 0.908, 0.962, 0.991, 1.005, 1.011, 1.011, 1.009, 1.007, 1.004, 1.003, 1);
+  --spring-bouncy: linear(0, 0.091, 0.297, 0.538, 0.76, 0.933, 1.047, 1.108, 1.126, 1.116, 1.091, 1.06, 1.032, 1.01, 0.995, 0.987, 0.984, 0.985, 0.988, 0.992, 0.996, 0.999, 1.001, 1.002, 1);
 
   /* Component knobs. */
   --sheet-radius: var(--radius-l);
@@ -207,13 +218,11 @@
   /* 12/16 labels in fixed pixels, as a tab bar: at 200 % text it drops them. */
   --dock-label-size: 12px;
   --dock-label-line: 16px;
-  --dock-bar-h: 56px;
-  /* Items centred in a 480 px row with 20 px gutters: 5 × 64 at 360. */
-  --dock-row: 480px;
-  --dock-gutter: 20px;
-  --dock-bg: var(--elevated);
-  /* The bar at 92 % over a 20 px blur; opaque under Reduce Transparency. */
-  --dock-alpha: 92%;
+  --dock-bar-h: 64px;
+  /* The floating capsule's bottom offset, above the home indicator. */
+  --dock-offset: max(8px, calc(env(safe-area-inset-bottom, 0px) - 12px));
+  --dock-droplet-w: 64px;
+  --dock-droplet-h: 52px;
   --dock-ink: var(--ink-3);
   /* The crimson tint deep enough to read against the bar (1.5:1). */
   --dock-active: #ecc4c9;
@@ -238,30 +247,47 @@
      hits and darkest on the far side, so the border is a gradient lit from the
      top-left (the kit's 135° light angle), not a flat 1px line. Everything else
      is a blur. */
-  --glass-frost: 24px;
-  --glass-frost-thin: 14px;
-  --glass-frost-strong: 34px;
+  /* Frost for small controls, bars and large panes; kept low for mid-range
+     Android (visual direction §3.5: blur ≤ 20 px on phones). */
+  --glass-frost: 20px;
+  --glass-frost-thin: 12px;
+  --glass-frost-strong: 28px;
   --glass-sat: 180%;
-  /* The tint under the blur. Without it, glass over white reads as nothing. */
-  --glass-tint: rgba(255, 255, 255, 0.5);
-  --glass-tint-thin: rgba(255, 255, 255, 0.38);
-  /* Frost-Large. A pane that carries its own small text needs to beat the small
-     text scrolling behind it, or the two read as one column of noise. */
-  --glass-tint-strong: rgba(255, 255, 255, 0.66);
-  /* Glass on the Aegean plate is the same material with the light behind it. */
-  --glass-tint-dark: rgba(32, 49, 30, 0.42);
+  --glass-bright: 1.04;
+  /* The tint under the blur. Its alpha is the floor that keeps ink at 7.9:1
+     even over a black backdrop (§3.4, check:contrast). */
+  --glass-tint: rgba(251, 250, 247, 0.72);
+  --glass-tint-thin: rgba(251, 250, 247, 0.62);
+  --glass-tint-strong: rgba(251, 250, 247, 0.84);
+  /* Clear glass over photographs, in both themes: a built-in dimming layer,
+     so a white icon keeps 3:1 and white text 4.5:1 over a white photo. */
+  --glass-tint-media: rgba(16, 20, 17, 0.5);
+  --glass-tint-media-text: rgba(16, 20, 17, 0.6);
+  /* Glass on the plate: light on the green, never darker. */
+  --glass-tint-dark: rgba(244, 243, 238, 0.1);
   --glass-edge-lit: rgba(255, 255, 255, 0.9);
-  --glass-edge-shade: rgba(24, 33, 26, 0.12);
+  --glass-edge-shade: rgba(24, 33, 26, 0.1);
   --glass-edge-lit-dark: rgba(255, 255, 255, 0.34);
   --glass-edge-shade-dark: rgba(255, 255, 255, 0.04);
-  /* The kit's specular sweep: a bright band raked across the top of the pane. */
-  --glass-specular: rgba(255, 255, 255, 0.55);
-  --glass-shadow: 0 10px 30px -12px rgba(24, 33, 26, 0.28);
-  --glass-shadow-raised: 0 18px 44px -16px rgba(24, 33, 26, 0.36);
+  /* The inner top highlight and the press illumination. */
+  --glass-specular: rgba(255, 255, 255, 0.6);
+  --glass-glow: rgba(255, 255, 255, 0.45);
+  --glass-shadow: 0 8px 24px -6px rgba(24, 33, 26, 0.16), 0 1px 3px rgba(24, 33, 26, 0.1);
+  --glass-shadow-raised: 0 18px 44px -12px rgba(24, 33, 26, 0.3), 0 2px 6px rgba(24, 33, 26, 0.12);
+  /* Heavier when content is under the glass (Apple's adaptive shadow). */
+  --glass-shadow-over: 0 10px 30px -6px rgba(24, 33, 26, 0.26), 0 1px 3px rgba(24, 33, 26, 0.14);
+
+  /* The lit plate (VD-11): the green lit from the top left (the glass rim's
+     135° light), a 1 px lit top edge, and a faint film grain over it. */
+  --plate: radial-gradient(120% 90% at 15% 0%, #2f4a2b 0%, var(--field) 55%, #182716 100%);
+  --plate-rim: inset 0 1px 0 rgba(255, 255, 255, 0.14);
+  --plate-grain: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='128' height='128'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 1 0 0 0 0 1 0 0 0 0 1 0 0 0 .6 0'/%3E%3C/filter%3E%3Crect width='128' height='128' filter='url(%23n)'/%3E%3C/svg%3E");
+  --ambient-night: none;
+  --accent-glow: none;
 
   --safe-top: env(safe-area-inset-top, 0px);
   /* The bar plus the home indicator: what every scroll view keeps clear of. */
-  --dock-h: calc(var(--dock-bar-h) + 1px + env(safe-area-inset-bottom, 0px));
+  --dock-h: calc(var(--dock-bar-h) + var(--dock-offset));
   --safe-bottom-md: 0px;
   /* Zero on a phone: the nav is at the bottom there, not the top. */
   --header-h: 0px;
@@ -315,10 +341,10 @@
   --on-field-dim: #b3bdaf;
   /* The crimson opened up for dark, carrying dark text (5.2:1): white on it
      fails. One filled accent per view. */
-  --accent: #e0525f;
-  --accent-hover: #e66873;
-  --accent-active: #c9434f;
-  --accent-text: #f07782;
+  --accent: #f2606d;
+  --accent-hover: #f47a85;
+  --accent-active: #d9505c;
+  --accent-text: #f47a85;
   --accent-subtle: #3a1a1d;
   --accent-muted: #6b2a30;
   --accent-bright: #ec979e;
@@ -336,19 +362,18 @@
   --warn-subtle: #2c2112;
   --danger: #ff8a80;
   --danger-subtle: #331716;
-  --badge: #e0525f;
+  --badge: #f2606d;
   --on-badge: #1a0507;
   --on-status: #121813;
   --track: #2b322c;
   --idle: #8cc3d6;
-  --sold: #e0525f;
+  --sold: #f2606d;
   --map-ground: #1a211b;
   --map-water: #162226;
   --map-line: #343b35;
   --inverse: #eef0ea;
   --on-inverse: #121813;
   /* The dock: a pill clearly lighter than the bar, the active icon in ink. */
-  --dock-alpha: 94%;
   --dock-active: var(--pill);
   --dock-active-ink: var(--ink);
   --shadow-1: 0 0 0 1px rgba(238, 240, 234, 0.08);
@@ -357,14 +382,25 @@
   --shadow-plate: 0 18px 40px -24px rgba(0, 0, 0, 0.7);
   --shadow-sheet: 0 -24px 60px rgba(0, 0, 0, 0.5);
   --scrim: rgba(0, 0, 0, 0.6);
-  --glass-tint: rgba(35, 43, 36, 0.6);
-  --glass-tint-thin: rgba(35, 43, 36, 0.46);
-  --glass-tint-strong: rgba(35, 43, 36, 0.8);
+  /* Smoked glass: the silhouette drawn by light, not by a border. */
+  --glass-sat: 140%;
+  --glass-bright: 0.92;
+  --glass-tint: rgba(31, 40, 33, 0.72);
+  --glass-tint-thin: rgba(31, 40, 33, 0.62);
+  --glass-tint-strong: rgba(47, 56, 48, 0.86);
   --glass-edge-lit: rgba(238, 240, 234, 0.22);
-  --glass-edge-shade: rgba(238, 240, 234, 0.05);
-  --glass-specular: rgba(255, 255, 255, 0.08);
-  --glass-shadow: 0 10px 30px -12px rgba(0, 0, 0, 0.6);
-  --glass-shadow-raised: 0 18px 44px -16px rgba(0, 0, 0, 0.7);
+  --glass-edge-shade: rgba(0, 0, 0, 0.35);
+  --glass-specular: rgba(255, 255, 255, 0.12);
+  --glass-glow: rgba(255, 255, 255, 0.14);
+  --glass-shadow: 0 10px 30px -8px rgba(0, 0, 0, 0.55), 0 0 0 0.5px rgba(238, 240, 234, 0.08);
+  --glass-shadow-raised: 0 20px 48px -12px rgba(0, 0, 0, 0.7), 0 0 0 0.5px rgba(238, 240, 234, 0.1);
+  --glass-shadow-over: 0 12px 34px -6px rgba(0, 0, 0, 0.7), 0 0 0 0.5px rgba(238, 240, 234, 0.1);
+  /* Night in the workshop (VD-22): one lamp's green glow at the top of the
+     tab screens, and the one primary glowing a little. */
+  --plate: radial-gradient(120% 90% at 15% 0%, #2c4e33 0%, var(--field) 55%, #142418 100%);
+  --plate-rim: inset 0 1px 0 rgba(255, 255, 255, 0.1);
+  --ambient-night: radial-gradient(90% 60% at 50% -10%, color-mix(in oklab, var(--field) 60%, transparent), transparent);
+  --accent-glow: 0 0 24px -8px rgba(242, 96, 109, 0.4);
   color-scheme: dark;
 }
 
@@ -396,56 +432,64 @@
   display: none;
 }
 
-/* The phone tab bar (UX-46): full width on the bottom edge, 92–94 % over a
-   20 px blur, a hairline above, the home indicator inside. Unlayered, so it
-   wins over the glass pane it is on the desktop. */
+/* The phone dock (VD-6, ADR 0014): a floating glass capsule, 64 tall, inset
+   16 from the sides and max(8, safe-bottom − 12) from the bottom. The active
+   tab sits on a droplet that slides between tabs on the snappy spring. On a
+   scroll down it contracts (labels fade, the capsule tucks in); any scroll up,
+   the top, a tap or focus brings it back. Transform and opacity only.
+   Unlayered, so it wins over the glass pane it is on the desktop. */
 @media (max-width: 767px) {
   .dock {
-    background: color-mix(in srgb, var(--dock-bg) var(--dock-alpha), transparent);
-    -webkit-backdrop-filter: blur(20px) saturate(180%);
-    backdrop-filter: blur(20px) saturate(180%);
-    border-top: 1px solid var(--line);
-    border-radius: 0;
-    box-shadow: none;
-    padding-bottom: env(safe-area-inset-bottom, 0px);
-    transition: transform var(--dur-long) var(--ease-decelerate);
+    left: max(16px, env(safe-area-inset-left, 0px));
+    right: max(16px, env(safe-area-inset-right, 0px));
+    bottom: var(--dock-offset);
+    border-radius: 999px;
+    transform-origin: 50% 100%;
+    transition: transform var(--dur-long) var(--spring-snappy);
   }
-  .dock::before,
-  .dock::after {
-    display: none;
+  .dock-label {
+    transition: opacity var(--dur-short) var(--ease-standard);
   }
-  /* Hide on scroll: the bar slides down by its content height, leaving the
-     safe area painted; it leaves faster than it returns. */
   .dock[data-scrolled='away'] {
-    transform: translateY(var(--dock-bar-h));
+    transform: translateY(10px) scale(0.84);
     transition-duration: var(--dur-medium);
-    transition-timing-function: var(--ease-accelerate);
   }
-}
-@media (max-width: 767px) and (prefers-reduced-transparency: reduce) {
-  .dock {
-    background: var(--dock-bg);
-    -webkit-backdrop-filter: none;
-    backdrop-filter: none;
+  .dock[data-scrolled='away'] .dock-label {
+    opacity: 0;
+  }
+  /* The droplet: one element for the whole bar, moved by transform to the
+     active slot, a little wider mid-flight (gel), a lit rim like all glass. */
+  .dock-droplet {
+    position: absolute;
+    top: 50%;
+    left: 0;
+    width: 20%;
+    height: var(--dock-droplet-h);
+    translate: calc(var(--i, 0) * 100%) -50%;
+    transition: translate var(--dur-snappy) var(--spring-snappy);
+    pointer-events: none;
+  }
+  .dock-droplet > span {
+    position: absolute;
+    inset: 0 max(0px, calc((100% - var(--dock-droplet-w)) / 2));
+    border-radius: 999px;
+    background: var(--dock-active);
+    box-shadow:
+      inset 0 1px 0 var(--glass-specular),
+      inset 0 0 0 0.5px var(--glass-edge-lit),
+      0 2px 8px -4px rgba(24, 33, 26, 0.3);
   }
 }
 @media (prefers-reduced-motion: reduce) {
   .dock[data-scrolled='away'] {
     transform: none;
   }
-  .dock-pill-in {
-    animation: none;
+  .dock[data-scrolled='away'] .dock-label {
+    opacity: 1;
   }
-}
-/* The indicator arrives: its width from 0 to 56 (scaleX, transform only). */
-@keyframes dock-pill {
-  from {
-    transform: scaleX(0);
-    opacity: 0;
+  .dock-droplet {
+    transition: none;
   }
-}
-.dock-pill-in {
-  animation: dock-pill var(--dur-short) var(--ease-standard);
 }
 
 .gallery-dialog::backdrop {
@@ -584,6 +628,50 @@ body {
   font-variant-numeric: lining-nums tabular-nums;
   font-feature-settings: 'tnum' 1, 'lnum' 1;
 }
+/* Screen titles (VD-7): the iOS 26 large title, bolder. Archivo 700 at width
+   112, 34/40. Bodoni is kept for moments, not for every screen's name. */
+.t-large-title {
+  font-family: var(--font-sans);
+  font-size: 2.125rem;
+  line-height: 2.5rem;
+  font-weight: 700;
+  font-stretch: 112%;
+  font-variation-settings: 'wdth' 112;
+  letter-spacing: -0.022em;
+  hyphens: auto;
+  overflow-wrap: anywhere;
+}
+/* The one hero number on a screen (VD-7): Archivo 800 at its widest, tabular;
+   the cents set smaller with .t-cents. */
+.t-figure-hero {
+  font-family: var(--font-sans);
+  font-size: 3.5rem;
+  line-height: 3.5rem;
+  font-weight: 800;
+  font-stretch: 125%;
+  font-variation-settings: 'wdth' 125;
+  letter-spacing: -0.035em;
+  font-variant-numeric: lining-nums tabular-nums;
+  font-feature-settings: 'tnum' 1, 'lnum' 1;
+}
+.t-cents {
+  font-size: 0.6em;
+  letter-spacing: -0.02em;
+}
+/* Bodoni for moments (VD-7): at least 34, 44 in dark. */
+.t-moment {
+  font-family: var(--font-display);
+  font-optical-sizing: auto;
+  font-variation-settings: 'opsz' 96;
+  font-size: 2.5rem;
+  line-height: 1;
+  letter-spacing: -0.03em;
+  font-weight: 500;
+}
+:root[data-theme='dark'] .t-moment {
+  font-size: 2.75rem;
+}
+
 /* Titles people wrote (a listing, a booking) are data, not display: Archivo
    at title-l, so an unusual name or a model number reads plainly. */
 .t-title-user {
@@ -639,18 +727,82 @@ body {
        backdrop-filter already establishes the stacking context the z-index: -1
        pseudo-elements below need, so isolation would buy nothing anyway. */
     background: var(--glass-tint);
-    -webkit-backdrop-filter: saturate(var(--glass-sat)) blur(var(--glass-frost));
-    backdrop-filter: saturate(var(--glass-sat)) blur(var(--glass-frost));
+    -webkit-backdrop-filter: blur(var(--glass-frost)) saturate(var(--glass-sat)) brightness(var(--glass-bright));
+    backdrop-filter: blur(var(--glass-frost)) saturate(var(--glass-sat)) brightness(var(--glass-bright));
+    box-shadow: inset 0 1px 0 var(--glass-specular), var(--glass-shadow);
   }
   .glass-thin {
     background: var(--glass-tint-thin);
-    -webkit-backdrop-filter: saturate(var(--glass-sat)) blur(var(--glass-frost-thin));
-    backdrop-filter: saturate(var(--glass-sat)) blur(var(--glass-frost-thin));
+    -webkit-backdrop-filter: blur(var(--glass-frost-thin)) saturate(var(--glass-sat)) brightness(var(--glass-bright));
+    backdrop-filter: blur(var(--glass-frost-thin)) saturate(var(--glass-sat)) brightness(var(--glass-bright));
   }
   .glass-strong {
     background: var(--glass-tint-strong);
-    -webkit-backdrop-filter: saturate(var(--glass-sat)) blur(var(--glass-frost-strong));
-    backdrop-filter: saturate(var(--glass-sat)) blur(var(--glass-frost-strong));
+    -webkit-backdrop-filter: blur(var(--glass-frost-strong)) saturate(var(--glass-sat)) brightness(var(--glass-bright));
+    backdrop-filter: blur(var(--glass-frost-strong)) saturate(var(--glass-sat)) brightness(var(--glass-bright));
+  }
+  /* Clear glass over a photograph (ADR 0014): the dimming is built in, so a
+     white icon or label keeps its contrast over any upload. */
+  .glass-media,
+  .glass-media-text {
+    position: relative;
+    background: var(--glass-tint-media);
+    color: #ffffff;
+    -webkit-backdrop-filter: blur(var(--glass-frost-thin)) saturate(150%);
+    backdrop-filter: blur(var(--glass-frost-thin)) saturate(150%);
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.28), 0 4px 14px -6px rgba(0, 0, 0, 0.35);
+  }
+  .glass-media-text {
+    background: var(--glass-tint-media-text);
+  }
+  /* The adaptive shadow: a bar that knows content is scrolling under it. */
+  .glass[data-over='content'] {
+    box-shadow: inset 0 1px 0 var(--glass-specular), var(--glass-shadow-over);
+  }
+  /* Press: the glass lights from within (Apple) and gives a little. */
+  :is(button, a).glass:active,
+  :is(button, a).glass-thin:active,
+  :is(button, a).glass-strong:active,
+  :is(button, a).glass-media:active {
+    transform: scale(0.96);
+    box-shadow: inset 0 0 22px var(--glass-glow), inset 0 1px 0 var(--glass-specular), var(--glass-shadow);
+  }
+  :is(button, a):is(.glass, .glass-thin, .glass-strong, .glass-media) {
+    transition: transform var(--dur-snappy) var(--spring-snappy), box-shadow var(--dur-short) var(--ease-standard);
+  }
+  /* The edge lens: a second, sharper backdrop in a 6 px ring, the cue of the
+     glass's thickness. Small areas only (the dock, droplets, round buttons). */
+  .glass-lens::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    pointer-events: none;
+    -webkit-backdrop-filter: blur(2px) saturate(200%) brightness(1.12);
+    backdrop-filter: blur(2px) saturate(200%) brightness(1.12);
+    -webkit-mask: radial-gradient(closest-side, transparent calc(100% - 6px), #000);
+    mask: radial-gradient(closest-side, transparent calc(100% - 6px), #000);
+    opacity: 1;
+  }
+
+  /* The lit plate (VD-11): the brand's material, lit from the top left, a lit
+     top edge and a film grain. */
+  .plate-lit {
+    position: relative;
+    background: var(--plate);
+    box-shadow: var(--plate-rim);
+    color: var(--on-field);
+  }
+  .plate-lit::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    background-image: var(--plate-grain);
+    background-size: 128px 128px;
+    opacity: 0.05;
+    mix-blend-mode: overlay;
+    pointer-events: none;
   }
 
   .glass::before,
@@ -848,6 +1000,65 @@ body {
     .glass-strong::after {
       display: none;
     }
+    .glass-media,
+    .glass-media-text {
+      background: rgba(16, 20, 17, 0.72);
+    }
+  }
+}
+
+/* One set of fallbacks for all glass (ADR 0014); components never branch.
+   Reduce Transparency (the shells set data-transparency, since WKWebView does
+   not expose the media query) and Increase Contrast: solid, with an edge.
+   Low power (data-glass='lite'): no blur, near-opaque, no lens. */
+@media (prefers-reduced-transparency: reduce) {
+  :root:not([data-transparency='full']) :is(.glass, .glass-thin, .glass-strong) {
+    background: var(--elevated);
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+    box-shadow: 0 0 0 1.5px var(--line-strong), var(--glass-shadow);
+  }
+}
+:root[data-transparency='reduce'] :is(.glass, .glass-thin, .glass-strong),
+:root[data-contrast='more'] :is(.glass, .glass-thin, .glass-strong) {
+  background: var(--elevated);
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+  box-shadow: 0 0 0 1.5px var(--line-strong), var(--glass-shadow);
+}
+@media (prefers-contrast: more) {
+  :is(.glass, .glass-thin, .glass-strong) {
+    background: var(--elevated);
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+    box-shadow: 0 0 0 1.5px var(--line-strong), var(--glass-shadow);
+  }
+  :is(.glass-media, .glass-media-text) {
+    background: rgba(16, 20, 17, 0.82);
+  }
+}
+:root[data-glass='lite'] {
+  --glass-frost-thin: 0px;
+  --glass-frost: 0px;
+  --glass-frost-strong: 0px;
+  --glass-tint: rgba(251, 250, 247, 0.96);
+  --glass-tint-thin: rgba(251, 250, 247, 0.94);
+  --glass-tint-strong: rgba(251, 250, 247, 0.98);
+  --glass-tint-media: rgba(16, 20, 17, 0.66);
+  --glass-tint-media-text: rgba(16, 20, 17, 0.72);
+}
+:root[data-glass='lite'][data-theme='dark'] {
+  --glass-tint: rgba(31, 40, 33, 0.96);
+  --glass-tint-thin: rgba(31, 40, 33, 0.94);
+  --glass-tint-strong: rgba(47, 56, 48, 0.98);
+}
+:root[data-glass='lite'] .glass-lens::after,
+:root[data-transparency='reduce'] .glass-lens::after {
+  display: none;
+}
+@media (prefers-reduced-transparency: reduce) {
+  .glass-lens::after {
+    display: none;
   }
 }
 

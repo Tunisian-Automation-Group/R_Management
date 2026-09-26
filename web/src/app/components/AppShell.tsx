@@ -37,7 +37,8 @@ const DETAIL = /^\/(listing\/|bookings\/[^/]+|earn\/(new|edit)|inbox\/[^/]+|admi
 
 export function Dock({ badges }: { badges: Record<string, number> }) {
   const big = useLargeText()
-  const detail = DETAIL.test(useLocation().pathname)
+  const path = useLocation().pathname
+  const detail = DETAIL.test(path)
   useEffect(() => {
     // The sticky bars, the offline bar and toasts measure from --dock-h.
     document.documentElement.dataset.dock = detail ? 'hidden' : 'shown'
@@ -54,17 +55,18 @@ export function Dock({ badges }: { badges: Record<string, number> }) {
     { to: '/profile', label: t('You'), icon: 'user' },
   ]
 
+  const active = tabs.findIndex((tab) => (tab.to === '/' ? path === '/' : path.startsWith(tab.to)))
+
   return (
     <nav
       ref={nav}
       aria-label={t('Main')}
       className={`glass dock fixed z-40 ${detail ? 'max-md:hidden' : ''}
-        max-md:inset-x-0 max-md:bottom-0
-        md:inset-x-0 md:top-0 md:h-[var(--header-h)] md:shadow-[var(--glass-shadow-raised)]`}
+        md:inset-x-0 md:top-0 md:h-[var(--header-h)] md:rounded-none md:shadow-[var(--glass-shadow-raised)]`}
       style={{ viewTransitionName: 'dock' }}
     >
       <div
-        className="mx-auto flex h-[var(--dock-bar-h)] max-w-[var(--dock-row)] items-stretch px-[var(--dock-gutter)]
+        className="mx-auto flex h-[var(--dock-bar-h)] items-stretch px-1.5
           md:h-full md:max-w-[1180px] md:items-center md:gap-8 md:px-8"
       >
         {/* The wordmark belongs in the header on a website, so Browse drops its
@@ -81,7 +83,14 @@ export function Dock({ badges }: { badges: Record<string, number> }) {
             and the large marketplace apps (Airbnb, Vinted, Instagram) do on a
             phone. Listing something lives on Earn, where the supply side is,
             not as a sixth, louder button in the bar. */}
-        <ul className="flex flex-1 items-stretch md:items-center md:gap-1">
+        <ul className="relative flex flex-1 items-stretch md:items-center md:gap-1">
+          {/* The droplet (VD-6): one lit capsule behind the active tab that
+              slides between them on the snappy spring. Phone only. */}
+          {active >= 0 && (
+            <li aria-hidden="true" className="dock-droplet md:hidden" style={{ ['--i' as string]: active }}>
+              <span />
+            </li>
+          )}
           {tabs.map((tab) => (
             <TabItem key={tab.to} tab={tab} big={big} />
           ))}
@@ -166,7 +175,7 @@ function useHideOnScroll(nav: RefObject<HTMLElement | null>, detail: boolean) {
         // Going down: hide once 48 px past where the downward run began, and
         // never within the first screen height.
         if (away) anchor = y
-        else if (y - anchor >= 48 && y > innerHeight) {
+        else if (y - anchor >= 48 && y > 64) {
           set(true)
           anchor = y
         }
@@ -246,7 +255,7 @@ function TabItem({ tab, big }: { tab: Tab; big: boolean }) {
             <span
               className={`relative grid h-[var(--dock-pill-h)] w-[var(--dock-pill-w)] shrink-0 place-items-center rounded-full transition-colors duration-[var(--dur-short)]
                 md:h-auto md:w-auto md:bg-transparent
-                ${isActive ? 'dock-pill-in bg-[var(--dock-active)] text-[var(--dock-active-ink)]' : 'group-hover:bg-[var(--sunken)]'}`}
+                ${isActive ? 'text-[var(--dock-active-ink)]' : 'md:group-hover:bg-[var(--sunken)]'}`}
             >
               <span className="relative grid h-[var(--dock-icon)] w-[var(--dock-icon)] place-items-center">
                 {/* The filled variant when active (HIG: "prefer filled"). */}
@@ -257,7 +266,7 @@ function TabItem({ tab, big }: { tab: Tab; big: boolean }) {
                     // The icon's top-right corner at (−4, −4), ringed in the bar's
                     // colour so it reads as sitting on top, never clipped (cappy-ui §4).
                     className="tnum absolute right-[var(--dock-badge-off)] top-[var(--dock-badge-off)] grid h-[var(--dock-badge)] min-w-[var(--dock-badge)] place-items-center rounded-full bg-[var(--badge)] px-[var(--dock-badge-pad)] text-[length:var(--dock-badge-text)] font-bold leading-none text-[var(--on-badge)]
-                      ring-2 ring-[var(--dock-bg)] md:ring-0"
+                      ring-2 ring-[var(--elevated)] md:ring-0"
                   >
                     {tab.badge > 9 ? '9+' : tab.badge}
                   </span>
@@ -380,7 +389,7 @@ export function Screen({
                 {eyebrow && <p className="t-label mb-2">{eyebrow}</p>}
                 <div className="flex flex-wrap items-start justify-between gap-x-4 gap-y-3">
                   <div className="min-w-0">
-                    {title && <h1 className="t-h1 text-balance">{title}</h1>}
+                    {title && <h1 className="t-large-title text-balance">{title}</h1>}
                     {sub && <p className="t-body mt-2 max-w-[46ch] text-[var(--ink-3)]">{sub}</p>}
                   </div>
                   {action && <div className="max-w-full shrink-0 pt-1">{action}</div>}
