@@ -63,3 +63,7 @@ class PrefsRow(Base):
     user_id: Mapped[str] = mapped_column(String(64), primary_key=True)
     prefs: Mapped[dict] = mapped_column(JsonType)
     updated_at: Mapped[datetime] = mapped_column(UtcDateTime)
+    # The app's full BCP 47 locale as last seen (en-US, fr-CA): every email to
+    # them is written in it, whoever triggered it (V6-6). Cognito's attribute
+    # is the fallback for someone who never opened the app.
+    locale: Mapped[str | None] = mapped_column(String(35), nullable=True)

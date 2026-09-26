@@ -335,7 +335,8 @@ class CatalogRepository:
     # --- districts and places ---------------------------------------------------
 
     async def districts(self) -> dict[str, District]:
-        rows = (await self.s.execute(select(DistrictRow).order_by(DistrictRow.name))).scalars()
+        # By city, then district: "Flon (Lausanne)" sits with Lausanne (V6-16).
+        rows = (await self.s.execute(select(DistrictRow).order_by(DistrictRow.city, DistrictRow.name))).scalars()
         return {r.name: to_district(r) for r in rows}
 
     async def district(self, name: str) -> District:
@@ -830,10 +831,12 @@ class CatalogRepository:
             reviews=[],
         )
 
-    async def listing_context(self, listing_id: str, *, after: datetime, origin: str | None = None) -> World:
+    async def listing_context(
+        self, listing_id: str, *, after: datetime, origin: str | None = None, include_held: bool = False
+    ) -> World:
         """One listing and everything needed to price and schedule it. A
         paused listing has nothing to offer anyone."""
-        listing = await self.listing(listing_id)
+        listing = to_listing(await self.listing_row(listing_id, include_held=include_held))
         if not listing.active:
             raise NotFound(f"listing {listing_id} is not taking bookings")
         owner = await self.owner(listing.owner_id)

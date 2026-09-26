@@ -633,3 +633,81 @@ def test_the_bell_shows_a_decisions_whole_statement():
     assert "Why: Spam" in summary("content_removed", text) and "contest" in summary("content_removed", text)
     _, text = render("requested", "en", title="t", link="l", _deadline=None)
     assert "\n\n" not in summary("requested", text)
+
+
+def test_a_no_show_tells_both_sides_who_was_reported_and_the_money(app):
+    # V6-11: the renter reports the owner: both hear it, the renter the refund.
+    owner_missing = _change(
+        "cancelled", by="buyer", frm="accepted", noShow="owner", refundAmount=4000, amount=4000, currency="EUR"
+    )
+    renter_missing = _change(
+        "cancelled", by="host", frm="accepted", noShow="renter", refundAmount=0, amount=4000, currency="EUR"
+    )
+    assert _sent(app, owner_missing, renter_missing) == [
+        ("buyer@example.com", "Refunded: Table saw"),
+        ("host@example.com", "Reported as a no-show: Table saw"),
+        ("host@example.com", "No-show recorded: Table saw"),
+        ("buyer@example.com", "Reported as a no-show: Table saw"),
+    ]
+    bodies = [m.text for m in app.state.mailer.sent]
+    assert "€40.00" in bodies[0] and "counts against your reliability" in bodies[1]
+
+
+def test_an_owner_cancelling_a_confirmed_booking_says_so_and_the_refund(app):
+    e = _change("cancelled", by="host", frm="accepted", refundAmount=4000, amount=4000, currency="EUR")
+    assert _sent(app, e) == [("buyer@example.com", "Cancelled by the owner: Table saw")]
+    assert "€40.00" in app.state.mailer.sent[0].text
+
+
+class Localised(People):
+    """Two people reading different Englishes (V6-6)."""
+
+    locales = {"buyer": "en-GB", "host": "en-US"}
+
+    async def person_of(self, sub):
+        return self.book.get(sub), self.locales.get(sub)
+
+
+def test_times_follow_each_recipients_locale_not_the_triggering_person():
+    mailer = LogMailer()
+    settings = Settings(app_env="test", database_url="sqlite+aiosqlite://", internal_token="i" * 40)
+    app = build_app(settings, directory=Localised(), mailer=mailer)
+    start = "2026-10-03T13:00:00Z"
+    # The renter (en-GB) causes the request mail to the owner (en-US) and the
+    # owner causes the offer mail to the renter: each reads their own format.
+    sent = _sent(
+        app,
+        _change("requested", by="buyer", frm="awaiting_payment", expiresAt=start),
+        _event(
+            "booking.dispute_offer",
+            bookingId="bk_1",
+            to="buyer",
+            by="host",
+            title="Table saw",
+            refundAmount=500,
+            currency="EUR",
+            respondBy=start,
+        ),
+    )
+    assert [to for to, _ in sent] == ["host@example.com", "buyer@example.com"]
+    host_text, buyer_text = (m.text for m in mailer.sent)
+    assert "3:00 PM" in host_text and "Sat, Oct 3" in host_text
+    assert "Sat 3 Oct, 15:00" in buyer_text
+
+
+def test_the_apps_locale_is_remembered_for_emails():
+    # Someone with no Cognito locale reads the bell in en-US: their next email
+    # is in en-US, whoever triggers it (V6-6).
+    from cappy_common.testing import TestIssuer
+
+    issuer = TestIssuer()
+    settings = Settings(app_env="test", database_url="sqlite+aiosqlite://", internal_token="i" * 40)
+    app = build_app(settings, directory=People(), mailer=LogMailer(), verifier=issuer.verifier())
+    with TestClient(app) as c:
+        h = {**issuer.headers("host"), "Accept-Language": "en-US"}
+        assert c.get("/notifications", headers=h).status_code == 200
+        c.portal.call(
+            app.state.dispatcher.handle,
+            _change("requested", by="buyer", frm="awaiting_payment", expiresAt="2026-10-03T13:00:00Z"),
+        )
+    assert "3:00 PM" in app.state.mailer.sent[-1].text

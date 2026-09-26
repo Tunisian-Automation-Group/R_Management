@@ -29,7 +29,7 @@ from cappy_common.events import (
 )
 
 from .mail import Directory, Email, Mailer
-from .prefs import prefs_of, wanted
+from .prefs import locale_of, prefs_of, wanted
 from .push import Pusher, drop_devices
 from .tables import DeviceRow, InboxRow, PrefsRow
 from .texts import phrase, render, summary
@@ -110,6 +110,21 @@ def messages(event: Event, web: str) -> list[Message]:
         "expired": requester if d.get("from") == "requested" else None,
         "completed": requester,
     }.get(to)
+    if to == "cancelled" and d.get("noShow") in ("owner", "renter"):
+        # A no-show: both sides hear who was reported, the money, and how to
+        # contest it (V6-11); the owner not turning up refunds everything.
+        refunded = {"_cents": (d.get("refundAmount") or d.get("amount") or 0, d.get("currency") or "EUR")}
+        if d["noShow"] == "owner":
+            return [
+                (requester, None, "no_show_owner_renter", {**params, **refunded}),
+                (owner, None, "no_show_owner_owner", {**params, **refunded}),
+            ]
+        return [(owner, None, "no_show_renter_owner", params), (requester, None, "no_show_renter_renter", params)]
+    if to == "cancelled" and by == owner and d.get("from") in ("accepted", "active"):
+        # The owner cancelled a confirmed booking: the renter hears it was them,
+        # and how much comes back (V6-11).
+        back = d["refundAmount"] if d.get("refundAmount") is not None else d.get("amount") or 0
+        return [(requester, None, "owner_cancelled", {**params, "_cents": (back, d.get("currency") or "EUR")})]
     out: list[Message] = [(who, None, to, params)] if who else []
     if to == "accepted" and d.get("from") == "awaiting_payment":
         # Instant book: the owner never saw a request, so they hear of the booking.
@@ -220,6 +235,9 @@ def handlers(directory: Directory, mailer: Mailer, web: str, pusher: Pusher | No
     ) -> None:
         sub, explicit, key, params = msg
         address, locale = (explicit, None) if explicit else await directory.person_of(sub) if sub else (None, None)
+        # The reader's own locale, as their app last said it; never the
+        # triggering person's (V6-6).
+        locale = (await locale_of(session, sub) if sub else None) or locale
         subject, text = render(key, locale, **params)
         if sub:
             await _keep(session, event, sub, key, params, subject, text, _app_path(params, web))

@@ -30,6 +30,27 @@ TEXTS: dict[str, dict[str, tuple[str, str]]] = {
             "Your request for {title} was declined. Nothing was charged.{reason}\n\n{link}",
         ),
         "cancelled": ("Cancelled: {title}", "The booking of {title} was cancelled.\n\n{link}"),
+        # Who did what, the money and the next step (V6-11).
+        "owner_cancelled": (
+            "Cancelled by the owner: {title}",
+            "The owner cancelled your booking of {title}. You get {amount} back to your card.\n\n{link}",
+        ),
+        "no_show_owner_renter": (
+            "Refunded: {title}",
+            "You reported that the owner did not turn up for {title}. The booking is cancelled and you get the full price back ({amount}).\n\n{link}",
+        ),
+        "no_show_owner_owner": (
+            "Reported as a no-show: {title}",
+            "The renter reported that you did not turn up for {title}. The booking is cancelled, the renter gets the full price back ({amount}), and it counts against your reliability. If this is wrong, tell us through Get help on the booking.\n\n{link}",
+        ),
+        "no_show_renter_owner": (
+            "No-show recorded: {title}",
+            "You reported that the renter did not turn up for {title}. The booking is cancelled and you are paid as for a late cancellation: nothing is refunded.\n\n{link}",
+        ),
+        "no_show_renter_renter": (
+            "Reported as a no-show: {title}",
+            "The owner reported that you did not turn up for {title}. The booking is cancelled and nothing is refunded. If this is wrong, tell us through Get help on the booking.\n\n{link}",
+        ),
         "expired": ("Expired: {title}", "Your request for {title} lapsed. Nothing was charged.\n\n{link}"),
         "completed": ("How was {title}?", "Your booking is complete. Rate it to help the next buyer.\n\n{link}"),
         "listing_idle": (
@@ -87,7 +108,7 @@ TEXTS: dict[str, dict[str, tuple[str, str]]] = {
         ),
         "dispute_escalated": (
             "We are deciding now: {title}",
-            "There was no agreement within 72 hours, so Cappy now looks at what happened with {title} and decides. You will hear from us.\n\n{link}",
+            "There was no agreement in time, so Cappy now looks at what happened with {title} and decides. You will hear from us.\n\n{link}",
         ),
         "claim_filed": (
             "A late return was reported: {title}",
@@ -125,6 +146,26 @@ TEXTS: dict[str, dict[str, tuple[str, str]]] = {
             "Deine Anfrage für {title} wurde abgelehnt. Es wurde nichts berechnet.{reason}\n\n{link}",
         ),
         "cancelled": ("Storniert: {title}", "Die Buchung von {title} wurde storniert.\n\n{link}"),
+        "owner_cancelled": (
+            "Von der vermietenden Person storniert: {title}",
+            "Die vermietende Person hat deine Buchung von {title} storniert. Du bekommst {amount} auf deine Karte zurück.\n\n{link}",
+        ),
+        "no_show_owner_renter": (
+            "Erstattet: {title}",
+            "Du hast gemeldet, dass die vermietende Person zu {title} nicht erschienen ist. Die Buchung ist storniert, und du bekommst den vollen Preis zurück ({amount}).\n\n{link}",
+        ),
+        "no_show_owner_owner": (
+            "Als nicht erschienen gemeldet: {title}",
+            "Die mietende Person hat gemeldet, dass du zu {title} nicht erschienen bist. Die Buchung ist storniert, die mietende Person bekommt den vollen Preis zurück ({amount}), und es zählt gegen deine Zuverlässigkeit. Wenn das nicht stimmt, sag es uns über die Hilfe in der Buchung.\n\n{link}",
+        ),
+        "no_show_renter_owner": (
+            "Nichterscheinen erfasst: {title}",
+            "Du hast gemeldet, dass die mietende Person zu {title} nicht erschienen ist. Die Buchung ist storniert, und du wirst wie bei einer späten Stornierung bezahlt: Es wird nichts erstattet.\n\n{link}",
+        ),
+        "no_show_renter_renter": (
+            "Als nicht erschienen gemeldet: {title}",
+            "Die vermietende Person hat gemeldet, dass du zu {title} nicht erschienen bist. Die Buchung ist storniert, und es wird nichts erstattet. Wenn das nicht stimmt, sag es uns über die Hilfe in der Buchung.\n\n{link}",
+        ),
         "expired": (
             "Abgelaufen: {title}",
             "Deine Anfrage für {title} ist abgelaufen. Es wurde nichts berechnet.\n\n{link}",
@@ -160,15 +201,15 @@ TEXTS: dict[str, dict[str, tuple[str, str]]] = {
         ),
         "taken_down": (
             "Wir haben dein Inserat entfernt",
-            "Dein Inserat ist nicht mehr sichtbar und kann nicht mehr gebucht werden.\n\nGrund: {statement}\nRechtsgrundlage: {ground_de}\nAutomatisiert entschieden: {automated_de}\n\nWas du tun kannst: Widersprich dieser Entscheidung, indem du innerhalb von 6 Monaten auf diese E-Mail antwortest; jemand, der nicht beteiligt war, prüft sie erneut. Du kannst dich auch an eine zertifizierte außergerichtliche Streitbeilegungsstelle (DSA Art. 21) oder an die Gerichte wenden. Kontakt: {web}/legal/impressum",
+            "Dein Inserat ist nicht mehr sichtbar und kann nicht mehr gebucht werden.\n\nGrund: {statement}\nRechtsgrundlage: {ground_de}\nAutomatisiert entschieden: {automated_de}\n\nWas du tun kannst: Widersprich dieser Entscheidung, indem du innerhalb von 6 Monaten auf diese E-Mail antwortest; eine unbeteiligte Person prüft sie erneut. Du kannst dich auch an eine zertifizierte außergerichtliche Streitbeilegungsstelle (DSA Art. 21) oder an die Gerichte wenden. Kontakt: {web}/legal/impressum",
         ),
         "suspended": (
             "Wir haben dein Konto gesperrt",
-            "Deine Inserate wurden entfernt, und du kannst nichts mehr inserieren oder buchen.\n\nGrund: {statement}\nRechtsgrundlage: {ground_de}\nAutomatisiert entschieden: {automated_de}\n\nWas du tun kannst: Widersprich dieser Entscheidung, indem du innerhalb von 6 Monaten auf diese E-Mail antwortest; jemand, der nicht beteiligt war, prüft sie erneut. Du kannst dich auch an eine zertifizierte außergerichtliche Streitbeilegungsstelle (DSA Art. 21) oder an die Gerichte wenden. Kontakt: {web}/legal/impressum",
+            "Deine Inserate wurden entfernt, und du kannst nichts mehr inserieren oder buchen.\n\nGrund: {statement}\nRechtsgrundlage: {ground_de}\nAutomatisiert entschieden: {automated_de}\n\nWas du tun kannst: Widersprich dieser Entscheidung, indem du innerhalb von 6 Monaten auf diese E-Mail antwortest; eine unbeteiligte Person prüft sie erneut. Du kannst dich auch an eine zertifizierte außergerichtliche Streitbeilegungsstelle (DSA Art. 21) oder an die Gerichte wenden. Kontakt: {web}/legal/impressum",
         ),
         "content_removed": (
             "Wir haben einen Beitrag von dir entfernt",
-            "Eine Nachricht oder Bewertung von dir wurde entfernt. Dein Konto ist sonst nicht eingeschränkt.\n\nGrund: {statement}\nRechtsgrundlage: {ground_de}\nAutomatisiert entschieden: {automated_de}\n\nWas du tun kannst: Widersprich dieser Entscheidung, indem du innerhalb von 6 Monaten auf diese E-Mail antwortest; jemand, der nicht beteiligt war, prüft sie erneut. Du kannst dich auch an eine zertifizierte außergerichtliche Streitbeilegungsstelle (DSA Art. 21) oder an die Gerichte wenden. Kontakt: {web}/legal/impressum",
+            "Eine Nachricht oder Bewertung von dir wurde entfernt. Dein Konto ist sonst nicht eingeschränkt.\n\nGrund: {statement}\nRechtsgrundlage: {ground_de}\nAutomatisiert entschieden: {automated_de}\n\nWas du tun kannst: Widersprich dieser Entscheidung, indem du innerhalb von 6 Monaten auf diese E-Mail antwortest; eine unbeteiligte Person prüft sie erneut. Du kannst dich auch an eine zertifizierte außergerichtliche Streitbeilegungsstelle (DSA Art. 21) oder an die Gerichte wenden. Kontakt: {web}/legal/impressum",
         ),
         "report_outcome_action": (
             "Deine Meldung: unsere Entscheidung",
@@ -188,7 +229,7 @@ TEXTS: dict[str, dict[str, tuple[str, str]]] = {
         ),
         "dispute_escalated": (
             "Wir entscheiden jetzt: {title}",
-            "Innerhalb von 72 Stunden gab es keine Einigung. Deshalb prüft Cappy jetzt, was bei {title} passiert ist, und entscheidet. Wir melden uns.\n\n{link}",
+            "Es gab keine rechtzeitige Einigung. Deshalb prüft Cappy jetzt, was bei {title} passiert ist, und entscheidet. Wir melden uns.\n\n{link}",
         ),
         "claim_filed": (
             "Eine verspätete Rückgabe wurde gemeldet: {title}",
@@ -226,6 +267,26 @@ TEXTS: dict[str, dict[str, tuple[str, str]]] = {
             "Votre demande pour {title} a été refusée. Rien n’a été facturé.{reason}\n\n{link}",
         ),
         "cancelled": ("Annulée : {title}", "La réservation de {title} a été annulée.\n\n{link}"),
+        "owner_cancelled": (
+            "Annulée par la personne propriétaire : {title}",
+            "La personne propriétaire a annulé votre réservation de {title}. Vous récupérez {amount} sur votre carte.\n\n{link}",
+        ),
+        "no_show_owner_renter": (
+            "Remboursée : {title}",
+            "Vous avez signalé l’absence de la personne propriétaire pour {title}. La réservation est annulée et vous récupérez le prix complet ({amount}).\n\n{link}",
+        ),
+        "no_show_owner_owner": (
+            "Absence signalée : {title}",
+            "La personne locataire a signalé votre absence pour {title}. La réservation est annulée, la personne locataire récupère le prix complet ({amount}), et cela compte dans votre fiabilité. En cas d’erreur, dites-le-nous via l’aide de la réservation.\n\n{link}",
+        ),
+        "no_show_renter_owner": (
+            "Absence enregistrée : {title}",
+            "Vous avez signalé l’absence de la personne locataire pour {title}. La réservation est annulée et le montant vous est versé comme pour une annulation tardive : rien n’est remboursé.\n\n{link}",
+        ),
+        "no_show_renter_renter": (
+            "Absence signalée par la personne propriétaire : {title}",
+            "La personne propriétaire a signalé votre absence pour {title}. La réservation est annulée et rien n’est remboursé. En cas d’erreur, dites-le-nous via l’aide de la réservation.\n\n{link}",
+        ),
         "expired": (
             "Expirée : {title}",
             "Votre demande pour {title} a expiré. Rien n’a été facturé.\n\n{link}",
@@ -241,7 +302,7 @@ TEXTS: dict[str, dict[str, tuple[str, str]]] = {
         "message": ("Nouveau message : {title}", "Ouvrir la conversation\n\n{link}"),
         "dispute_offer": (
             "Une offre de règlement : {title}",
-            "L’autre partie propose de régler le problème concernant {title} : {amount} remboursés au locataire. Acceptez-la ou faites une autre offre avant {deadline} ; ensuite, c’est nous qui décidons.\n\n{link}",
+            "L’autre partie propose de régler le problème concernant {title} : {amount} remboursés à la personne locataire. Acceptez-la ou faites une autre offre avant {deadline} ; ensuite, c’est nous qui décidons.\n\n{link}",
         ),
         "payment_failed": (
             "Paiement refusé : {title}",
@@ -289,7 +350,7 @@ TEXTS: dict[str, dict[str, tuple[str, str]]] = {
         ),
         "dispute_escalated": (
             "Nous décidons maintenant : {title}",
-            "Aucun accord n’a été trouvé en 72 heures : Cappy examine maintenant ce qui s’est passé avec {title} et décide. Nous vous recontacterons.\n\n{link}",
+            "Aucun accord n’a été trouvé à temps : Cappy examine maintenant ce qui s’est passé avec {title} et décide. Nous vous recontacterons.\n\n{link}",
         ),
         "claim_filed": (
             "Un retour tardif a été signalé : {title}",
@@ -318,8 +379,13 @@ STATEMENTS = frozenset({"taken_down", "suspended", "content_removed"})
 
 def summary(key: str, text: str) -> str:
     """What the bell shows of a notice: its first paragraph, or for a
-    decision the whole statement (why, ground, how to contest)."""
-    return text if key in STATEMENTS else text.partition("\n\n")[0]
+    decision the whole statement (why, ground, how to contest). Staff's note
+    on a settlement is shown with it, as in the email (V6-1)."""
+    if key in STATEMENTS:
+        return text
+    first, *rest = text.split("\n\n")
+    notes = [p for p in rest if p.startswith(tuple(_NOTE.values()))]
+    return "\n\n".join([first, *notes])
 
 
 def language(locale: str | None) -> str:
@@ -338,10 +404,14 @@ PHRASES: dict[str, dict[str, str]] = {
         "fr": "L’annonce a été retirée par Cappy",
     },
     "The listing was removed by its owner": {
-        "de": "Das Inserat wurde vom Anbieter entfernt",
+        "de": "Die inserierende Person hat das Inserat entfernt",
         "fr": "L’annonce a été retirée par son propriétaire",
     },
     "The account was suspended": {"de": "Das Konto wurde gesperrt", "fr": "Le compte a été suspendu"},
+    "The booking it extends was cancelled": {
+        "de": "Die Buchung, die verlängert werden sollte, wurde storniert",
+        "fr": "La réservation à prolonger a été annulée",
+    },
     "Terms of use: rules for listings and conduct": {
         "de": "Nutzungsbedingungen: Regeln für Inserate und Verhalten",
         "fr": "Conditions d’utilisation : règles relatives aux annonces et au comportement",
@@ -356,10 +426,12 @@ def phrase(text: str, lang: str) -> str:
 
 
 def french(text: str) -> str:
-    """French typography: a no-break space before : ; ? ! (not inside a URL or a
-    time), and never two full stops where a reason ended in one (V5-19)."""
-    text = re.sub(r"(?<![\s\u00a0\u202f/\d])([:;?!])(?=[\s\n]|$)", "\u00a0\\1", text)
-    text = re.sub(r"[ \t]+([:;?!])", "\u00a0\\1", text)
+    """French typography: a no-break space (U+00A0) before ':' and a narrow one
+    (U+202F) before ; ? ! (not inside a URL or a time), and never two full
+    stops where a reason ended in one (V5-19, V6-17)."""
+    text = re.sub(r"(?<![\s\u00a0\u202f/\d])([:;?!])(?=[\s\n]|$)", " \\1", text)
+    text = re.sub(r"[ \t\u00a0\u202f]+([;?!])", "\u202f\\1", text)
+    text = re.sub(r"[ \t\u00a0\u202f]+(:)", "\u00a0\\1", text)
     return re.sub(r"(?<!\.)\.\.(?!\.)", ".", text)
 
 

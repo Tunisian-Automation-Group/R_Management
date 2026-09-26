@@ -357,6 +357,8 @@ async def _transition(
         # Nothing charged yet (a request, awaiting payment): no refund to show.
         fields["refund_amount"] = _refund(request, row, user, now)
     await repo.move(row, to, user, now, **fields)
+    if to == "cancelled":
+        await _end_extensions(repo, row, now)
     if to == "disputed":
         # S-21: the two sides get 72 hours to settle it between them first.
         from .tables import DisputeRow
@@ -365,6 +367,25 @@ async def _transition(
         window = request.app.state.settings.dispute_offer_window
         repo.s.add(DisputeRow(booking_id=row.id, by=user, reason=reason, opened_at=now, respond_by=now + window))
     return to_booking(row, user)
+
+
+async def _end_extensions(repo: BookingRepository, parent: BookingRow, now: datetime) -> None:
+    """An extension only makes sense after the booking it extends (V6-22): a
+    cancelled or no-show parent ends it too. A request not yet answered is
+    declined (nothing was charged), a confirmed one cancelled with a full
+    refund; both sides hear it through the usual notices."""
+    from sqlalchemy import select
+
+    q = select(BookingRow).where(
+        BookingRow.extends_id == parent.id,
+        BookingRow.status.in_(("awaiting_payment", "requested", "accepted")),
+    )
+    for ext in list((await repo.s.execute(q.with_for_update())).scalars()):
+        if ext.status == "accepted":
+            await repo.move(ext, "cancelled", "system", now, refund_amount=ext.amount, expires_at=None)
+        else:
+            reason = "The booking it extends was cancelled"
+            await repo.move(ext, "declined", "system", now, decline_reason=reason, expires_at=None)
 
 
 class DisputeIn(CamelModel):

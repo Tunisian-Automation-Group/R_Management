@@ -61,6 +61,7 @@ def to_booking(row: BookingRow, viewer: str) -> Booking:
         refund_amount=row.refund_amount,
         currency=row.currency,
         no_show=row.no_show,
+        extends_id=row.extends_id,
     )
 
 

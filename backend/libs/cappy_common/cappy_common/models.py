@@ -434,6 +434,8 @@ class Booking(CamelModel):
     currency: str = "EUR"
     # Who did not turn up, when a no-show ended the booking.
     no_show: Literal["owner", "renter"] | None = None
+    # An extension names the booking it extends (S-12, V6-22).
+    extends_id: str | None = None
 
 
 class World(CamelModel):

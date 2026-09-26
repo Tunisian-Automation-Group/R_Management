@@ -34,8 +34,8 @@ class FakeCatalog(Catalog):
         ]
         return self.world.model_copy(update={"listings": listings})
 
-    async def listing_context(self, listing_id, *, after, origin=None) -> World:  # noqa: ANN001
-        self.calls.append("context")
+    async def listing_context(self, listing_id, *, after, origin=None, staff=False) -> World:  # noqa: ANN001
+        self.calls.append("staff-context" if staff else "context")
         listing = next((l for l in self.world.listings if l.id == listing_id), None)
         if listing is None:
             raise NotFound(f"listing {listing_id} not found")
@@ -243,3 +243,22 @@ def test_every_category_is_tagged_for_dac7(client):
     tags = {c["id"]: c["dac7"] for c in client.get("/categories").json()}
     assert set(tags.values()) <= {"personal_service", "immovable_property", "transport", "out_of_scope"}
     assert tags["warehousing"] == "immovable_property" and tags["events"] == "out_of_scope"
+
+
+def test_offers_can_be_spread_over_days(client):
+    # V6-23: a long window's starts used up the limit on the first days.
+    few = client.get("/listings/l9/offers", params={"hours": 2, "limit": 500, "perDay": 2}).json()
+    days = {o["start"][:10] for o in few}
+    assert all(sum(o["start"][:10] == d for o in few) <= 2 for d in days)
+    assert len(days) > 1
+
+
+def test_staff_see_a_held_listings_offers_and_quote(client, fakes, issuer):
+    # V6-2: only staff, and the context is asked for with held listings in.
+    catalog, _ = fakes
+    staff = {"Authorization": f"Bearer {issuer.token('staff-1', **{'cognito:groups': ['admin']})}"}
+    assert client.get("/admin/listings/l9/offers", params={"hours": 2}).status_code == 403
+    r = client.get("/admin/listings/l9/offers", params={"hours": 2}, headers=staff)
+    assert r.status_code == 200 and r.json() and catalog.calls[-1] == "staff-context"
+    q = client.post("/admin/quote", json={"listingId": "l9", "requirement": _saw_requirement()}, headers=staff)
+    assert q.status_code == 200 and q.json()["quote"]["total"] > 0

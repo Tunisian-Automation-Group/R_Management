@@ -15,7 +15,7 @@ from fastapi import Depends, Query, Request, Response
 from pydantic import Field
 
 from cappy_common.app import ApiRouter
-from cappy_common.auth import Principal, optional_principal, require_internal, require_principal
+from cappy_common.auth import Principal, optional_principal, require_admin, require_internal, require_principal
 from cappy_common.errors import Conflict, Invalid, NotFound
 from cappy_common.models import CamelModel, Iso, MatchView, Quote, Requirement, World
 from cappy_common.timeutil import HOUR_MS, iso_from_ms, ms_from_iso, now_iso
@@ -46,6 +46,8 @@ router = ApiRouter(dependencies=[Depends(require_principal)])
 # The same for everyone and rarely changing: CloudFront answers these for five minutes.
 PUBLIC_CACHE = "public, max-age=300"
 internal = ApiRouter(prefix="/internal", dependencies=[Depends(require_internal)])
+# Staff only (MFA where deployed): a held listing's times and price (V6-2).
+admin = ApiRouter(prefix="/admin")
 
 MAX_RESULTS = 100
 
@@ -92,7 +94,7 @@ async def _busy_or_nothing(request: Request, listing_ids: list[str], start: Iso,
 
 
 async def _context(
-    request: Request, listing_id: str, origin: str | None = None, *, strict: bool = False
+    request: Request, listing_id: str, origin: str | None = None, *, strict: bool = False, staff: bool = False
 ) -> tuple[World, Busy]:
     """One listing's world and bookings, fetched in parallel. ``strict`` when
     the answer is about to be sold (match-for-offer): then booking must answer."""
@@ -103,7 +105,10 @@ async def _context(
         if strict
         else _busy_or_nothing(request, [listing_id], start, until)
     )
-    world, busy = await asyncio.gather(_catalog(request).listing_context(listing_id, after=start, origin=origin), busy)
+    ctx = _catalog(request).listing_context(
+        listing_id, after=start, origin=origin, **({"staff": True} if staff else {})
+    )
+    world, busy = await asyncio.gather(ctx, busy)
     return world, busy
 
 
@@ -238,12 +243,14 @@ async def offers(
     from_: str | None = Query(default=None, alias="from"),
     until: str | None = None,
     limit: int = Query(default=60, ge=1, le=500),
+    per_day: int | None = Query(default=None, alias="perDay", ge=1, le=100),
 ) -> list[Offer]:
-    """Every start that fits ``hours`` of work, excluding what is already booked."""
+    """Every start that fits ``hours`` of work, excluding what is already
+    booked. ``perDay`` caps each day's starts so every day in range shows."""
     world, busy = await _context(request, listing_id)
     start = max(from_ or now_iso(), _earliest_start(request))
     end = until or iso_from_ms(ms_from_iso(start) + 28 * 24 * HOUR_MS)
-    return offers_for(world.slots, hours, start, end, limit, busy.get(listing_id))
+    return offers_for(world.slots, hours, start, end, limit, busy.get(listing_id), per_day)
 
 
 @router.post("/quote", response_model=QuoteOut)
@@ -306,3 +313,31 @@ async def match_for_offer_route(body: MatchForOfferIn, request: Request) -> Matc
     if not match:
         raise Invalid("not feasible: " + "; ".join(assess_feasibility(req, listing).blockers))
     return MatchView(match=match, listing=listing, owner=owner)
+
+
+# --- the staff preview of a listing nobody can see yet (V6-2) ----------------------------
+
+
+@admin.get("/listings/{listing_id}/offers", response_model=list[Offer])
+async def staff_offers(
+    listing_id: str,
+    request: Request,
+    hours: float = Query(gt=0, le=24 * 90),
+    limit: int = Query(default=120, ge=1, le=500),
+    per_day: int | None = Query(default=None, alias="perDay", ge=1, le=100),
+    _: Principal = Depends(require_admin),
+) -> list[Offer]:
+    """A held or hidden listing's free starts, for staff deciding on it."""
+    world, busy = await _context(request, listing_id, staff=True)
+    start = _earliest_start(request)
+    end = iso_from_ms(ms_from_iso(start) + 28 * 24 * HOUR_MS)
+    return offers_for(world.slots, hours, start, end, limit, busy.get(listing_id), per_day)
+
+
+@admin.post("/quote", response_model=QuoteOut)
+async def staff_quote(body: QuoteIn, request: Request, _: Principal = Depends(require_admin)) -> QuoteOut:
+    world, _busy = await _context(request, body.listing_id, staff=True)
+    listing = world.listings[0]
+    return QuoteOut(
+        quote=quote_for(body.requirement, listing), feasibility=assess_feasibility(body.requirement, listing)
+    )

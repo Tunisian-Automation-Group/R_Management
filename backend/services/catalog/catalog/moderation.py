@@ -9,6 +9,7 @@ hears the outcome.
 
 from __future__ import annotations
 
+import hashlib
 import logging
 from datetime import UTC, datetime, timedelta
 
@@ -23,7 +24,7 @@ from cappy_common.errors import ApiError, Conflict, Invalid, NotFound, RateLimit
 from cappy_common.events import MODERATION_DECISION, OWNER_SUSPENDED, REPORT_RECEIVED, Event
 from cappy_common.idempotency import IdempotencyKey, fingerprint, remember, replayed
 from cappy_common.ids import new_id
-from cappy_common.models import CamelModel, Iso
+from cappy_common.models import CamelModel, Handover, Iso, Review
 from cappy_common.observability import request_id
 from cappy_common.pagination import Page, clamp_limit, decode_cursor, encode_cursor
 from cappy_common.runtime import Tx
@@ -421,6 +422,8 @@ class AuditEntry(CamelModel):
     at: Iso
     person_id: str | None = None
     request_id: str | None = None
+    # amount, currency, reasonCode, outcome, bookingId, listingTitle… (V6-9)
+    details: dict = Field(default_factory=dict)
 
 
 @admin.post("/listings/{listing_id}/take-down", status_code=status.HTTP_204_NO_CONTENT)
@@ -528,6 +531,7 @@ async def audit(
                 at=iso_from_datetime(r.at),
                 person_id=r.person_id,
                 request_id=r.request_id,
+                details=r.details or {},
             )
             for r in rows
         ],
@@ -540,18 +544,23 @@ async def on_staff_action(session: AsyncSession, event: Event) -> None:
     from cappy_common.db import insert_or_ignore
 
     d = event.data
+    # A read repeated within the minute (the web may ask twice) is one line:
+    # the sender names it with ``dedupe`` (V6-9).
+    key = d.get("dedupe")
+    line_id = "sa_" + (hashlib.sha256(key.encode()).hexdigest()[:36] if key else event.id.split("_", 1)[-1][:36])
     await insert_or_ignore(
         session,
         ModerationActionRow,
-        id="sa_" + event.id.split("_", 1)[-1][:36],
+        id=line_id,
         actor_id=d["actorId"],
         action=d["action"][:20],
         target_type=d["targetType"][:10],
         target_id=d["targetId"][:64],
-        statement=(d.get("reason") or d["action"])[:2000],
+        statement=(d.get("reason") or "")[:2000],
         at=dt_from_iso(d["at"]) if d.get("at") else datetime.now(UTC),
         person_id=d.get("personId"),
         request_id=(d.get("requestId") or None) and d["requestId"][:64],
+        details=d.get("details") or None,
     )
 
 
@@ -597,6 +606,10 @@ class StaffListing(CamelModel):
     state: str  # live, held, paused, taken_down, deleted
     hold_reason: str | None = None
     held_at: Iso | None = None
+    # For staff only (V6-2): where it is and what renters said, which the
+    # public calls refuse for a listing nobody can see.
+    handover: Handover
+    reviews: list[Review] = Field(default_factory=list)
 
 
 @admin.get("/listings/{listing_id}", response_model=StaffListing)
@@ -622,11 +635,20 @@ async def staff_listing(
         else "paused"
     )
     detail = await detail_of(repo, row)
+    spec = row.spec or {}
+    reviews, _ = await repo.reviews(row.id, cursor=None, limit=20)
     return StaffListing(
         detail=detail.model_dump(mode="json", by_alias=True),
         state=state,
         hold_reason=row.hold_reason,
         held_at=iso_from_datetime(row.held_at) if row.held_at else None,
+        handover=Handover(
+            address=row.address,
+            instructions=row.instructions,
+            location=spec.get("location"),
+            postal_code=spec.get("postalCode"),
+        ),
+        reviews=reviews,
     )
 
 

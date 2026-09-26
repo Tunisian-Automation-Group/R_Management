@@ -312,7 +312,14 @@ async def evidence(
         from .support import audit
 
         await audit(
-            session, request.app.state.outbox, p.sub, "read_evidence", "booking", booking_id, "hand-over photos"
+            session,
+            request.app.state.outbox,
+            p.sub,
+            "read_evidence",
+            "booking",
+            booking_id,
+            "",
+            details={"bookingId": booking_id},
         )
         request.app.state.relay.wake()
     return await evidence_views(request, session, booking_id)

@@ -290,3 +290,54 @@ def test_what_people_are_told_reads_in_the_listings_time_zone(client, app, issue
     assert other["listing"]["timeZone"] == "Europe/Zurich" and other["currency"] == "CHF"
     assert _events(app, broker, BOOKING_STATUS_CHANGED)[-1]["timeZone"] == "Europe/Zurich"
     assert bid != other["id"]
+
+
+def test_a_settled_dispute_says_how_it_ended_and_staff_note(client, app, issuer, broker):
+    # V6-1: the booking's "decided" banner reads the outcome and the note.
+    bid = _disputed(client, app, issuer)
+    staff = _staff(issuer)
+    fair = {"outcome": "partial", "refundAmount": 500, "reasonCode": "damage", "note": "The fence was bent."}
+    client.post(f"/admin/bookings/{bid}/resolve", json=fair, headers=staff)
+    d = client.get(f"/bookings/{bid}/dispute", headers=issuer.headers(BUYER)).json()
+    assert (d["outcome"], d["refunded"], d["settledBy"], d["staffNote"]) == (
+        "partial",
+        500,
+        "staff",
+        "The fence was bent.",
+    )
+    # The audit line carries the facts, and what staff wrote as its text (V6-9).
+    line = _events(app, broker, STAFF_ACTION)[-1]
+    assert line["reason"] == "The fence was bent." and line["details"]["amount"] == 500
+    assert line["details"]["reasonCode"] == "damage" and line["details"]["outcome"] == "partial"
+    assert (
+        line["details"]["bookingId"] == bid and line["details"]["listingTitle"] and line["details"]["currency"] == "EUR"
+    )
+
+
+def test_opening_a_case_twice_in_a_minute_is_one_audit_line(client, app, issuer, broker):
+    bid = _disputed(client, app, issuer)
+    staff = _staff(issuer)
+    client.get(f"/admin/bookings/{bid}/case", headers=staff)
+    client.get(f"/admin/bookings/{bid}/case", headers=staff)
+    reads = [e for e in _events(app, broker, STAFF_ACTION) if e["action"] == "read_case"]
+    assert len(reads) == 2 and reads[0]["dedupe"] == reads[1]["dedupe"], "catalog keeps one (V6-9)"
+
+
+def test_the_approvals_list_names_the_booking_and_parties(client, app, issuer):
+    bid = _disputed(client, app, issuer, amount=40_000)
+    body = {"outcome": "refund_buyer", "reasonCode": "damage", "note": "Broken"}
+    client.post(f"/admin/bookings/{bid}/resolve", json=body, headers=_staff(issuer))
+    [pending] = client.get("/admin/resolutions", headers=_staff(issuer, "staff-2")).json()
+    assert pending["bookingId"] == bid and pending["title"] and pending["ownerId"] == HOST
+    assert pending["requesterId"] == BUYER and "ownerName" in pending
+
+
+def test_an_extension_ends_with_the_booking_it_extends(client, app, issuer):
+    # V6-22: cancelling the booking declines its pending extension.
+    bid = _requested(client, app, issuer, start_h=24)
+    _do(client, issuer, HOST, bid, "accept")
+    ext = client.post(f"/bookings/{bid}/extend", json={"hours": 1}, headers=issuer.headers(BUYER)).json()["booking"]
+    assert ext["extendsId"] == bid
+    assert _do(client, issuer, HOST, bid, "cancel").json()["status"] == "cancelled"
+    after = client.get(f"/bookings/{ext['id']}", headers=issuer.headers(BUYER)).json()
+    assert after["status"] == "declined" and after["declineReason"] == "The booking it extends was cancelled"

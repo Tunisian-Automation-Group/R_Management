@@ -52,7 +52,9 @@ def test_no_english_is_left_and_french_is_typeset(kind):
     fr = " ".join(render(kind, "fr", **params))
     bare = re.sub(r"\S*://\S*|\d:\d", "", fr)  # a URL or a time is not punctuation
     for m in re.finditer(r"[:;?!]", bare):
-        assert m.start() > 0 and bare[m.start() - 1] in "\u00a0\u202f", f"{kind}/fr: no space before {m.group()!r}"
+        # A no-break space before ':', a narrow one before ; ? ! (V6-17).
+        want = "\u00a0" if m.group() == ":" else "\u202f"
+        assert m.start() > 0 and bare[m.start() - 1] == want, f"{kind}/fr: wrong space before {m.group()!r}"
 
 
 def test_server_words_reach_readers_in_their_language():
@@ -83,3 +85,23 @@ def test_a_staff_note_reaches_both_sides_as_written():
     assert "team" not in plain, "no empty note line"
     # Items stored before notes existed still render.
     render("dispute_refunded", "en", title="Saw", link="L", how_en="", _cents=(1000, "EUR"))
+
+
+def test_the_bell_shows_the_staff_note_with_the_outcome():
+    # V6-1: the email carried it; the bell (first paragraph only) did not.
+    from notifications.texts import summary
+
+    for lang in LANGS:
+        _, text = render(
+            "dispute_partial",
+            lang,
+            title="Saw",
+            link="L",
+            how_en="",
+            how_de="",
+            how_fr="",
+            _cents=(500, "EUR"),
+            _note="The fence was bent.",
+        )
+        bell = summary("dispute_partial", text)
+        assert "The fence was bent." in bell and "\n\nL" not in bell, bell

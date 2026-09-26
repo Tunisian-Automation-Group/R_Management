@@ -18,7 +18,9 @@ class Catalog:
     ) -> World:
         raise NotImplementedError
 
-    async def listing_context(self, listing_id: str, *, after: Iso, origin: str | None = None) -> World:
+    async def listing_context(
+        self, listing_id: str, *, after: Iso, origin: str | None = None, staff: bool = False
+    ) -> World:
         raise NotImplementedError
 
     async def aclose(self) -> None:
@@ -45,8 +47,10 @@ class HttpCatalog(Catalog):
             body["excludeOwner"] = exclude_owner
         return World.model_validate(await self._c.post("/internal/candidates", json=body))
 
-    async def listing_context(self, listing_id: str, *, after: Iso, origin: str | None = None) -> World:
-        params = {"after": after, **({"origin": origin} if origin else {})}
+    async def listing_context(
+        self, listing_id: str, *, after: Iso, origin: str | None = None, staff: bool = False
+    ) -> World:
+        params = {"after": after, **({"origin": origin} if origin else {}), **({"staff": "true"} if staff else {})}
         # Encoded: an id is data, never a path (``../owners/x`` must stay one segment).
         path = f"/internal/listings/{quote(listing_id, safe='')}/context"
         return World.model_validate(await self._c.get(path, params=params))

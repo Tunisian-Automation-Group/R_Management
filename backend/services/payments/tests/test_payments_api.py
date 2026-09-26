@@ -761,3 +761,18 @@ def test_invoices_are_deleted_once_their_retention_ends(client, app):
     assert call(app, purge_invoices_once, app, datetime(2036, 12, 31, tzinfo=UTC)) == 0  # still within 10 years
     assert call(app, purge_invoices_once, app, datetime(2037, 1, 1, tzinfo=UTC)) == 1
     assert call(app, numbers) == ["CAP-2027-1"]
+
+
+def test_the_fee_invoice_reads_in_the_owners_language(client, app, issuer):
+    # V6-21: an English or French owner gets their invoice in their words,
+    # named by the listing, the booking id only as the reference.
+    _intent(client)
+    _status(app, "bk_1", "accepted")
+    _status(app, "bk_1", "completed")
+    [inv] = client.get("/payments/invoices", headers=issuer.headers("host")).json()
+    url = f"/payments/invoices/{inv['number']}"
+    en = client.get(url, headers={**issuer.headers("host"), "Accept-Language": "en-US"}).text
+    assert "Invoice" in en and "Rechnung" not in en and "€6.00" in en and "Booking reference: bk_1" in en
+    assert "Tax number (Steuernummer)" in en, "a German issuer's fields stay"
+    fr = client.get(url, headers={**issuer.headers("host"), "Accept-Language": "fr-CA"}).text
+    assert "Facture" in fr and "6,00 €" in fr and "Référence de réservation" in fr

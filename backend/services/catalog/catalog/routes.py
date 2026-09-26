@@ -822,9 +822,17 @@ async def candidates(body: CandidatesIn, request: Request, repo=Depends(get_read
 
 @internal.get("/listings/{listing_id}/context", response_model=World)
 async def listing_context(
-    listing_id: str, after: str | None = None, origin: str | None = None, repo=Depends(get_read_repo)
+    listing_id: str,
+    after: str | None = None,
+    origin: str | None = None,
+    staff: bool = False,
+    repo=Depends(get_read_repo),
 ) -> World:
-    return await repo.listing_context(listing_id, after=dt_from_iso(after or now_iso()), origin=origin)
+    """``staff``: a held listing too, for the staff preview's free times and
+    quote (V6-2); matching asks it only on its admin routes."""
+    return await repo.listing_context(
+        listing_id, after=dt_from_iso(after or now_iso()), origin=origin, include_held=staff
+    )
 
 
 class EvidenceIn(CamelModel):

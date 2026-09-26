@@ -74,8 +74,14 @@ async def audit(
     target_id: str,
     reason: str,
     person: str | None = None,
+    details: dict | None = None,
 ) -> None:
-    """One line of the staff audit log (catalog stores it, H-7)."""
+    """One line of the staff audit log (catalog stores it, H-7). ``reason`` is
+    what staff wrote (their note), never machine text; ``details`` the facts
+    the console renders in words: amount, currency, reason code, outcome, the
+    booking and its listing (V6-9). Opening the same case again within the
+    minute is the same line (the web may ask twice)."""
+    now = _now()
     await outbox.add(
         session,
         STAFF_ACTION,
@@ -85,12 +91,28 @@ async def audit(
             "targetType": target_type,
             "targetId": target_id,
             "personId": person,
-            "reason": (reason or action)[:2000],
+            "reason": (reason or "")[:2000],
+            "details": details or {},
             "requestId": request_id.get(),
             "service": "booking",
-            "at": iso_from_datetime(_now()),
+            "at": iso_from_datetime(now),
+            **(
+                {"dedupe": f"{actor}:{action}:{target_id}:{now:%Y%m%d%H%M}"}
+                if action in ("read_case", "read_evidence")
+                else {}
+            ),
         },
     )
+
+
+def _facts(row: BookingRow, **more: object) -> dict:
+    """What an audit line about a booking says besides the note (V6-9)."""
+    return {
+        "bookingId": row.id,
+        "listingTitle": (row.listing_snapshot or {}).get("title", ""),
+        "currency": row.currency,
+        **{k: v for k, v in more.items() if v is not None},
+    }
 
 
 # --- shapes -----------------------------------------------------------------------------
@@ -114,6 +136,12 @@ class Dispute(CamelModel):
     offer: Offer | None = None
     currency: str
     amount: int
+    # Once settled (V6-1): the outcome, the amount back to the renter, who
+    # settled it, and staff's note to both sides, for the booking's banner.
+    outcome: str | None = None
+    refunded: int | None = None
+    settled_by: Literal["staff", "agreement"] | None = None
+    staff_note: str | None = None
 
 
 class Resolution(CamelModel):
@@ -130,6 +158,11 @@ class Resolution(CamelModel):
     approved_by: str | None = None
     created_at: Iso
     decided_at: Iso | None = None
+    # In the approvals list (V6-10): which booking, which listing, who.
+    title: str | None = None
+    requester_id: str | None = None
+    owner_id: str | None = None
+    owner_name: str | None = None
 
 
 class Settled(CamelModel):
@@ -153,7 +186,7 @@ class Claim(CamelModel):
     decision_note: str | None = None
 
 
-def _dispute(d: DisputeRow, row: BookingRow) -> Dispute:
+def _dispute(d: DisputeRow, row: BookingRow, done: ResolutionRow | None = None) -> Dispute:
     offer = (
         Offer(refund_amount=d.offer_amount, by=d.offer_by or "", at=iso_from_datetime(d.offer_at))
         if d.offer_amount is not None and d.offer_at
@@ -169,7 +202,27 @@ def _dispute(d: DisputeRow, row: BookingRow) -> Dispute:
         offer=offer,
         currency=row.currency,
         amount=row.amount,
+        **(
+            {
+                "outcome": done.outcome,
+                "refunded": done.refund_amount,
+                "settled_by": "agreement" if done.role == "parties" else "staff",
+                "staff_note": (done.note or None) if done.role != "parties" else None,
+            }
+            if done
+            else {}
+        ),
     )
+
+
+async def _settled(s: AsyncSession, booking_id: str) -> ResolutionRow | None:
+    q = (
+        select(ResolutionRow)
+        .where(ResolutionRow.booking_id == booking_id, ResolutionRow.status == "done")
+        .order_by(ResolutionRow.decided_at.desc())
+        .limit(1)
+    )
+    return (await s.execute(q)).scalar_one_or_none()
 
 
 def _resolution(r: ResolutionRow, currency: str) -> Resolution:
@@ -302,7 +355,7 @@ async def get_dispute(
     d = await repo.s.get(DisputeRow, row.id)
     if d is None:
         raise NotFound("this booking has no dispute")
-    return _dispute(d, row)
+    return _dispute(d, row, await _settled(repo.s, row.id))
 
 
 @router.post("/bookings/{booking_id}/dispute/offer", response_model=Dispute)
@@ -464,7 +517,8 @@ async def _resolve(
         "resolve_dispute" if res.status == "done" else "propose_resolution",
         "booking",
         row.id,
-        f"{body.outcome} {refund} {row.currency} ({body.reason_code}) {res.note}".strip(),
+        res.note,
+        details=_facts(row, outcome=body.outcome, amount=refund, reasonCode=body.reason_code, resolutionId=res.id),
     )
     request.app.state.relay.wake()
     return Settled(resolution=_resolution(res, row.currency), booking=to_booking(row, ""))
@@ -509,13 +563,23 @@ async def resolutions(
 ) -> list[Resolution]:
     """Oldest first: what waits for a second pair of eyes."""
     q = (
-        select(ResolutionRow, BookingRow.currency)
+        select(ResolutionRow, BookingRow)
         .join(BookingRow, BookingRow.id == ResolutionRow.booking_id)
         .where(ResolutionRow.status == status)
         .order_by(ResolutionRow.created_at)
         .limit(200)
     )
-    return [_resolution(r, cur) for r, cur in (await repo.s.execute(q)).all()]
+    return [
+        _resolution(r, b.currency).model_copy(
+            update={
+                "title": (b.listing_snapshot or {}).get("title"),
+                "requester_id": b.requester_id,
+                "owner_id": b.owner_id,
+                "owner_name": (b.listing_snapshot or {}).get("ownerName"),
+            }
+        )
+        for r, b in (await repo.s.execute(q)).all()
+    ]
 
 
 async def _pending(repo: BookingRepository, resolution_id: str) -> tuple[ResolutionRow, BookingRow]:
@@ -550,7 +614,18 @@ async def approve_resolution(
     now = _now()
     res.status, res.approved_by, res.decided_at = "done", p.sub, now
     await settle(repo, row, res.refund_amount, f"support:{p.sub}", now, res.note)
-    await audit(repo.s, repo.outbox, p.sub, "approve_resolution", "booking", row.id, body.note or f"approved {res.id}")
+    await audit(
+        repo.s,
+        repo.outbox,
+        p.sub,
+        "approve_resolution",
+        "booking",
+        row.id,
+        body.note,
+        details=_facts(
+            row, outcome=res.outcome, amount=res.refund_amount, reasonCode=res.reason_code, resolutionId=res.id
+        ),
+    )
     request.app.state.relay.wake()
     answer = Settled(resolution=_resolution(res, row.currency), booking=to_booking(row, ""))
     await remember(repo.s, IDEMPOTENCY, p.sub, key, fp, answer)
@@ -570,7 +645,18 @@ async def reject_resolution(
     if res.by == p.sub:
         raise Forbidden("someone else decides on your resolution", code="four_eyes")
     res.status, res.approved_by, res.decided_at = "rejected", p.sub, _now()
-    await audit(repo.s, repo.outbox, p.sub, "reject_resolution", "booking", row.id, body.note or f"rejected {res.id}")
+    await audit(
+        repo.s,
+        repo.outbox,
+        p.sub,
+        "reject_resolution",
+        "booking",
+        row.id,
+        body.note,
+        details=_facts(
+            row, outcome=res.outcome, amount=res.refund_amount, reasonCode=res.reason_code, resolutionId=res.id
+        ),
+    )
     request.app.state.relay.wake()
     return _resolution(res, row.currency)
 
@@ -589,7 +675,18 @@ async def withdraw_resolution(
     if res.by != p.sub:
         raise Forbidden("only whoever proposed a resolution can withdraw it", code="not_yours")
     res.status, res.decided_at = "withdrawn", _now()
-    await audit(repo.s, repo.outbox, p.sub, "withdraw_resolution", "booking", row.id, body.note or f"withdrew {res.id}")
+    await audit(
+        repo.s,
+        repo.outbox,
+        p.sub,
+        "withdraw_resolution",
+        "booking",
+        row.id,
+        body.note,
+        details=_facts(
+            row, outcome=res.outcome, amount=res.refund_amount, reasonCode=res.reason_code, resolutionId=res.id
+        ),
+    )
     request.app.state.relay.wake()
     return _resolution(res, row.currency)
 
@@ -769,7 +866,7 @@ async def case(
         await s.execute(select(ClaimRow).where(ClaimRow.booking_id == row.id).order_by(ClaimRow.created_at))
     ).scalars()
     d = await s.get(DisputeRow, row.id)
-    await audit(s, repo.outbox, p.sub, "read_case", "booking", row.id, "opened the case view")
+    await audit(s, repo.outbox, p.sub, "read_case", "booking", row.id, "", details=_facts(row))
     request.app.state.relay.wake()
     return Case(
         booking=to_booking(row, ""),
@@ -793,7 +890,7 @@ async def case(
         ],
         evidence=[e.model_dump(mode="json", by_alias=True) for e in await evidence_views(request, s, row.id)],
         payment=await request.app.state.payments.state(row.id),
-        dispute=_dispute(d, row) if d else None,
+        dispute=_dispute(d, row, await _settled(s, row.id)) if d else None,
         resolutions=[_resolution(r, row.currency) for r in res],
         claims=[_claim(c) for c in cl],
     )
@@ -911,7 +1008,16 @@ async def decide_claim(
         [row.requester_id, row.owner_id],
         claimAmount=c.amount,
     )
-    await audit(repo.s, repo.outbox, p.sub, f"{body.decision}_claim", "booking", c.booking_id, body.note or c.kind)
+    await audit(
+        repo.s,
+        repo.outbox,
+        p.sub,
+        f"{body.decision}_claim",
+        "booking",
+        c.booking_id,
+        body.note,
+        details=_facts(await repo.get(c.booking_id), amount=c.amount, claimKind=c.kind, claimId=c.id),
+    )
     request.app.state.relay.wake()
     return _claim(c)
 

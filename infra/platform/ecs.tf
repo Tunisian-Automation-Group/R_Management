@@ -229,8 +229,9 @@ locals {
   # Services with staff routes ask Cognito whether the moderator has MFA (P-3).
   staff_mfa_check = { Effect = "Allow", Action = "cognito-idp:AdminGetUser", Resource = aws_cognito_user_pool.main.arn }
   task_statements = {
-    gateway  = []
-    matching = []
+    gateway = []
+    # The staff preview's offers and quote are staff routes (V6-2).
+    matching = [local.staff_mfa_check]
     catalog = [
       { Effect = "Allow", Action = ["s3:PutObject", "s3:GetObject", "s3:DeleteObject"], Resource = ["${aws_s3_bucket.media.arn}/media/*", "${aws_s3_bucket.media.arn}/private/*"] },
       { Effect = "Allow", Action = "cloudfront:CreateInvalidation", Resource = aws_cloudfront_distribution.main.arn },

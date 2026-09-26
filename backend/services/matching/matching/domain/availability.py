@@ -40,6 +40,7 @@ def offers_for(
     until: Iso,
     limit: int = 60,
     busy: Sequence[Interval] | None = None,
+    per_day: int | None = None,
 ) -> list[Offer]:
     """Every start time at which ``hours`` of work fits inside one of these idle
     windows, between ``from_`` and ``until``, without touching anything already
@@ -49,6 +50,11 @@ def offers_for(
     offer never overlaps one, and a window's usable hours shrink by what has
     already been sold inside it: a factory gap with 30 usable machine-hours
     and 20 of them booked has 10 left, however long the gap is on the clock.
+
+    ``per_day`` caps the starts on any one day, so a busy near day cannot use
+    up ``limit`` and hide the days after it (V6-23: an every-day schedule ran
+    out after four days). ponytail: days are UTC days; the listing's own zone
+    when a market's evening starts cross midnight UTC.
     """
     from_ms = ms_from_iso(from_)
     until_ms = ms_from_iso(until)
@@ -56,6 +62,7 @@ def offers_for(
     step = _step_ms(hours)
     taken = sorted(busy or [])
     out: list[Offer] = []
+    per: dict[int, int] = {}
 
     for slot in sorted(slots, key=lambda s: ms_from_iso(s.start)):
         slot_start = ms_from_iso(slot.start)
@@ -76,6 +83,11 @@ def offers_for(
                 # Jump past the booking to the next aligned start.
                 t = _align_up(clash[1], step)
                 continue
+            day = t // (24 * HOUR_MS)
+            if per_day is not None and per.get(day, 0) >= per_day:
+                t += step
+                continue
+            per[day] = per.get(day, 0) + 1
             out.append(Offer(slot_id=slot.id, start=iso_from_ms(t), end=iso_from_ms(t + duration_ms)))
             if len(out) >= limit:
                 return out

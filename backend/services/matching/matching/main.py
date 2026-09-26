@@ -7,7 +7,7 @@ from cappy_common.auth import TokenVerifier
 from cappy_common.runtime import Runtime
 
 from .clients import Bookings, Catalog, HttpBookings, HttpCatalog
-from .routes import internal, router, vocab
+from .routes import admin, internal, router, vocab
 from .settings import Settings
 
 
@@ -33,6 +33,7 @@ def build_app(
     app.include_router(vocab)
     app.include_router(router)
     app.include_router(internal)
+    app.include_router(admin)
     return app
 
 

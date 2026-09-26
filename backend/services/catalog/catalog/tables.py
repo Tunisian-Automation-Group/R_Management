@@ -252,6 +252,10 @@ class ModerationActionRow(Base):
     person_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
     # The request it was done in, to find it in the logs.
     request_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    # The facts the console renders in words (V6-9): amount, currency, reason
+    # code, outcome, the booking and its listing's title. ``statement`` is
+    # what staff wrote, never machine text.
+    details: Mapped[dict | None] = mapped_column(JsonType, nullable=True)
 
 
 Index("ix_moderation_actions_at", ModerationActionRow.at)

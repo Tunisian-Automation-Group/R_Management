@@ -9,6 +9,7 @@ moderation email (DSA Art. 16/17).
 
 from __future__ import annotations
 
+import re
 from datetime import UTC, datetime
 
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -50,6 +51,11 @@ CATEGORY = {
     "instant_booked": "bookings",
     "declined": "bookings",
     "cancelled": "bookings",
+    "owner_cancelled": "bookings",
+    "no_show_owner_renter": "bookings",
+    "no_show_owner_owner": "bookings",
+    "no_show_renter_owner": "bookings",
+    "no_show_renter_renter": "bookings",
     "expired": "bookings",
     "completed": "bookings",
     "payment_failed": "bookings",
@@ -73,6 +79,12 @@ ALWAYS_EMAILED = frozenset(
         "instant_booked",
         "declined",
         "cancelled",
+        # A cancellation or a no-show says what happens to the money (V6-11).
+        "owner_cancelled",
+        "no_show_owner_renter",
+        "no_show_owner_owner",
+        "no_show_renter_owner",
+        "no_show_renter_renter",
         "expired",
         "payment_failed",
         "disputed_owner",
@@ -111,3 +123,31 @@ def wanted(prefs: Prefs, key: str) -> tuple[bool, bool]:
         return False, True
     ch: Channels = getattr(prefs.categories, category)
     return ch.push, ch.email or key in ALWAYS_EMAILED
+
+
+_LOCALE = re.compile(r"^[A-Za-z]{2,3}(-[A-Za-z0-9]{2,8}){0,3}$")
+
+
+async def seen_locale(session: AsyncSession, user_id: str, header: str | None) -> None:
+    """Remember the app's locale (its ``Accept-Language``), so emails follow the
+    reader, not whoever caused them (V6-6). Written only when it changes."""
+    tag = (header or "").split(",")[0].split(";")[0].strip()
+    if not _LOCALE.match(tag):
+        return
+    row = await session.get(PrefsRow, user_id)
+    if row is None:
+        session.add(
+            PrefsRow(
+                user_id=user_id,
+                prefs=DEFAULTS.model_dump(mode="json", by_alias=True),
+                updated_at=datetime.now(UTC),
+                locale=tag,
+            )
+        )
+    elif row.locale != tag:
+        row.locale = tag
+
+
+async def locale_of(session: AsyncSession, user_id: str) -> str | None:
+    row = await session.get(PrefsRow, user_id)
+    return row.locale if row else None

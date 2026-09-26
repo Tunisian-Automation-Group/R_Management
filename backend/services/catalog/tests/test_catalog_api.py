@@ -955,6 +955,10 @@ def test_staff_preview_any_listing_with_why_it_is_hidden(client, app, issuer):
     seen = client.get(f"/admin/listings/{lid}", headers=_staff(issuer)).json()
     assert seen["state"] == "held" and seen["heldAt"] and seen["detail"]["listing"]["id"] == lid
     assert seen["detail"]["owner"]["id"] == "user-a"
+    # V6-2: staff also see where it is and what renters said.
+    assert seen["handover"]["instructions"] == "Ring the bell", "the hand-over, for staff only"
+    assert seen["reviews"] == []
+    assert client.get("/admin/listings/l9", headers=_staff(issuer)).json()["reviews"], "l9 has reviews"
     why = {"statement": "Counterfeit machinery (terms 4)."}
     client.post("/admin/listings/l9/take-down", json=why, headers=_staff(issuer))
     assert client.get("/admin/listings/l9", headers=_staff(issuer)).json()["state"] == "taken_down"
@@ -1200,6 +1204,52 @@ def test_other_services_staff_actions_join_the_one_audit_log(client, app, issuer
     rest = client.get("/admin/audit", params={"target": "bk_1", "cursor": first["nextCursor"]}, headers=staff).json()
     assert [a["action"] for a in first["items"] + rest["items"]] == ["read_case", "resolve_dispute"]
     assert client.get("/admin/audit", headers=issuer.headers("o1")).status_code == 403
+
+
+def test_audit_lines_carry_their_facts_and_a_repeated_read_is_one(client, app, issuer):
+    # V6-9: the console renders amount, reason and listing in words; a case
+    # opened twice within the minute is one line.
+    from cappy_common.events import STAFF_ACTION, Event
+    from cappy_common.ids import new_id
+    from cappy_common.timeutil import now_iso
+
+    def line(action: str, **extra) -> Event:
+        data = {
+            "actorId": "staff-1",
+            "action": action,
+            "targetType": "booking",
+            "targetId": "bk_9",
+            "reason": "",
+            "at": "2026-09-27T10:00:00Z",
+            **extra,
+        }
+        return Event(id=new_id("ev"), type=STAFF_ACTION, source="booking", occurred_at=now_iso(), data=data)
+
+    facts = {
+        "amount": 1500,
+        "currency": "EUR",
+        "reasonCode": "not_as_described",
+        "outcome": "refund_buyer",
+        "bookingId": "bk_9",
+        "listingTitle": "Table saw",
+    }
+    events = [
+        line("resolve_dispute", reason="The motor fault is on video.", details=facts),
+        line("read_case", dedupe="staff-1:read_case:bk_9:202609271000"),
+        line("read_case", dedupe="staff-1:read_case:bk_9:202609271000"),
+    ]
+    for e in events:
+        app.state._portal.call(app.state.dispatcher.handle, e)
+    items = client.get("/admin/audit", params={"target": "bk_9"}, headers=_staff(issuer)).json()["items"]
+    assert sorted(a["action"] for a in items) == ["read_case", "resolve_dispute"]
+    [resolved] = [a for a in items if a["action"] == "resolve_dispute"]
+    assert resolved["statement"] == "The motor fault is on video." and resolved["details"] == facts
+
+
+def test_districts_come_by_city(client):
+    # V6-16: "Flon (Lausanne)" next to Lausanne, not scattered by name.
+    ds = list(client.get("/districts").json().values())
+    assert [(d["city"], d["name"]) for d in ds] == sorted((d["city"], d["name"]) for d in ds)
 
 
 def test_dsa_numbers_for_a_month(client, issuer):

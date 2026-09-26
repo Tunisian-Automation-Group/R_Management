@@ -18,7 +18,7 @@ from cappy_common.pagination import clamp_limit, decode_cursor, encode_cursor
 from cappy_common.runtime import Tx
 from cappy_common.timeutil import dt_from_iso, iso_from_datetime
 
-from .prefs import Prefs, prefs_of, save
+from .prefs import Prefs, locale_of, prefs_of, save, seen_locale
 from .push import drop_devices
 from .tables import DeviceRow, InboxRow
 from .texts import render, summary
@@ -138,7 +138,9 @@ async def inbox(
     p: Principal = Depends(require_principal),
 ) -> Inbox:
     """Newest first; ``next`` continues towards older ones. In the language the
-    app asks for (``Accept-Language``: de… → German, else English)."""
+    app asks for (``Accept-Language``: de… → German, else English), which is
+    also remembered for their emails (V6-6)."""
+    await seen_locale(session, p.sub, request.headers.get("accept-language"))
     n = clamp_limit(limit)
     q = select(InboxRow).where(InboxRow.user_id == p.sub)
     if key := decode_cursor(cursor):
@@ -196,6 +198,7 @@ async def export_person(person: str, request: Request, session: AsyncSession = T
         "items": [_item(r, None).model_dump(mode="json", by_alias=True) for r in rows],
         "settings": (await prefs_of(session, person)).model_dump(mode="json", by_alias=True),
         "signIn": {"email": email, "locale": locale},
+        "appLocale": await locale_of(session, person),
         "devices": [{"platform": d.platform, "registeredAt": d.created_at.isoformat()} for d in devices],
     }
 

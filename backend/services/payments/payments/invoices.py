@@ -179,27 +179,97 @@ async def my_invoices(
     return [_view(r, tz) for r in (await session.execute(q)).scalars()]
 
 
+# The invoice's words in the owner's language (V6-21). The § 14 (4) UStG
+# fields are there in every language: an invoice may be in any language, and
+# a German issuer's tax number and VAT ID are always on it.
+LABELS: dict[str, dict[str, str]] = {
+    "de": {
+        "invoice": "Rechnung",
+        "to": "An",
+        "date": "Rechnungsdatum",
+        "service_date": "Leistungsdatum",
+        "service": "Leistung",
+        "fee": "Vermittlungsgebühr für {title}",
+        "fee_untitled": "Vermittlungsgebühr",
+        "booking": "Buchungsreferenz",
+        "net": "Netto",
+        "total": "Gesamt",
+        "vat_id": "USt-IdNr.",
+        "tax_number": "Steuernummer",
+        "withheld": "Der Betrag wurde bei der Auszahlung einbehalten.",
+    },
+    "en": {
+        "invoice": "Invoice",
+        "to": "To",
+        "date": "Invoice date",
+        "service_date": "Date of service",
+        "service": "Service",
+        "fee": "Platform fee for {title}",
+        "fee_untitled": "Platform fee",
+        "booking": "Booking reference",
+        "net": "Net",
+        "total": "Total",
+        "vat_id": "VAT ID (USt-IdNr.)",
+        "tax_number": "Tax number (Steuernummer)",
+        "withheld": "The amount was withheld from the payout.",
+    },
+    "fr": {
+        "invoice": "Facture",
+        "to": "À",
+        "date": "Date de facture",
+        "service_date": "Date de la prestation",
+        "service": "Prestation",
+        "fee": "Frais de service pour {title}",
+        "fee_untitled": "Frais de service",
+        "booking": "Référence de réservation",
+        "net": "Montant HT",
+        "total": "Total TTC",
+        "vat_id": "N° de TVA (USt-IdNr.)",
+        "tax_number": "Numéro fiscal (Steuernummer)",
+        "withheld": "Le montant a été retenu sur le versement.",
+    },
+}
+
+
+def _lang(accept_language: str | None) -> str:
+    code = (accept_language or "").strip().lower()[:2]
+    return code if code in LABELS else "de" if not code else "en"
+
+
+def _money(cents: int, currency: str, lang: str) -> str:
+    symbol = {"EUR": "€", "GBP": "£", "USD": "$", "CAD": "$"}.get(currency.upper(), currency.upper())
+    amount = f"{cents / 100:,.2f}"
+    if lang == "en":
+        return f"{symbol}{amount}" if len(symbol) == 1 else f"{amount} {symbol}"
+    thin, nbsp = "\u202f", "\u00a0"
+    if lang == "fr":
+        return amount.replace(",", thin).replace(".", ",") + nbsp + symbol
+    return amount.replace(",", "X").replace(".", ",").replace("X", ".") + " " + symbol
+
+
 @router.get("/invoices/{number}", response_class=HTMLResponse)
 async def invoice_page(
     number: str, request: Request, session: AsyncSession = Tx, p: Principal = Depends(require_principal)
 ) -> HTMLResponse:
     """A printable invoice (the browser saves it as PDF) with the § 14 (4) UStG
     fields: issuer and recipient with addresses, the issuer's tax number or VAT
-    ID, date, number, the service and its date, net, rate, tax and total."""
+    ID, date, number, the service and its date, net, rate, tax and total. In
+    the reader's language (the app's ``Accept-Language``); German without one."""
     r = await session.get(InvoiceRow, number)
     if r is None or r.owner_id != p.sub:
         raise NotFound("no such invoice")
     st = request.app.state.settings
     tz, label = st.invoice_time_zone, st.invoice_tax_label
+    lang = _lang(request.headers.get("accept-language"))
+    w = LABELS[lang]
     e = lambda v: html.escape(v or "")  # noqa: E731
     lines = lambda v: "<br>".join(html.escape(x.strip()) for x in (v or "").split(",") if x.strip())  # noqa: E731
-    symbol = {"EUR": "€"}.get(r.currency.upper(), r.currency.upper())
-    eur = lambda c: f"{c / 100:,.2f} {symbol}".replace(",", "X").replace(".", ",").replace("X", ".")  # noqa: E731
+    cash = lambda c: _money(c, r.currency, lang)  # noqa: E731
     tax_ids = "<br>".join(
         x
         for x in (
-            f"USt-IdNr.: {e(st.legal_vat_id)}" if st.legal_vat_id else "",
-            f"Steuernummer: {e(st.legal_tax_number)}" if st.legal_tax_number else "",
+            f"{w['vat_id']}: {e(st.legal_vat_id)}" if st.legal_vat_id else "",
+            f"{w['tax_number']}: {e(st.legal_tax_number)}" if st.legal_tax_number else "",
         )
         if x
     )
@@ -207,17 +277,19 @@ async def invoice_page(
     # verified (V4-7); see ``issue``.
     recipient = e(r.recipient_name) + (f"<br>{lines(r.recipient_address)}" if r.recipient_address else "")
     if r.recipient_vat_id:
-        recipient += f"<br>USt-IdNr.: {e(r.recipient_vat_id)}"
-    what = f"Vermittlungsgebühr für Buchung {e(r.booking_id)}" + (f" ({e(r.title)})" if r.title else "")
-    body = f"""<!doctype html><html lang="de"><meta charset="utf-8"><title>Rechnung {e(r.number)}</title>
+        recipient += f"<br>{w['vat_id']}: {e(r.recipient_vat_id)}"
+    # Named by the listing; the booking id is the reference, not the service (V6-21).
+    what = w["fee"].format(title=e(r.title)) if r.title else w["fee_untitled"]
+    body = f"""<!doctype html><html lang="{lang}"><meta charset="utf-8"><title>{w["invoice"]} {e(r.number)}</title>
 <style>body{{font:14px system-ui;max-width:640px;margin:40px auto}}td{{padding:4px 12px}}
 .cols{{display:flex;justify-content:space-between;gap:24px}}</style>
 <div class="cols"><p><b>{e(st.legal_company)}</b><br>{lines(st.legal_address)}<br>{tax_ids}</p>
-<p>An:<br>{recipient}</p></div>
-<h1>Rechnung {e(r.number)}</h1>
-<p>Rechnungsdatum: {_day(r.issued_at, tz)}<br>Leistungsdatum: {_period(r, tz)}<br>Leistung: {what}</p>
-<table><tr><td>Netto</td><td>{eur(r.net)}</td></tr>
-<tr><td>{e(label)} {r.vat_rate_bps / 100:g} %</td><td>{eur(r.vat)}</td></tr>
-<tr><td><b>Gesamt</b></td><td><b>{eur(r.gross)}</b></td></tr></table>
-<p>Der Betrag wurde bei der Auszahlung einbehalten.</p></html>"""
+<p>{w["to"]}:<br>{recipient}</p></div>
+<h1>{w["invoice"]} {e(r.number)}</h1>
+<p>{w["date"]}: {_day(r.issued_at, tz)}<br>{w["service_date"]}: {_period(r, tz)}
+<br>{w["service"]}: {what}<br>{w["booking"]}: {e(r.booking_id)}</p>
+<table><tr><td>{w["net"]}</td><td>{cash(r.net)}</td></tr>
+<tr><td>{e(label)} {r.vat_rate_bps / 100:g} %</td><td>{cash(r.vat)}</td></tr>
+<tr><td><b>{w["total"]}</b></td><td><b>{cash(r.gross)}</b></td></tr></table>
+<p>{w["withheld"]}</p></html>"""
     return HTMLResponse(body)
