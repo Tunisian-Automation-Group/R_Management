@@ -28,3 +28,6 @@ __pycache__/
 # Operator settings (legal identity etc.): never in git
 *.tfvars
 !*.example.tfvars
+
+# Agent worktrees (local only)
+.claude/worktrees/
