@@ -218,6 +218,8 @@ class ReportRow(Base):
     details: Mapped[str] = mapped_column(String(2000))
     reporter_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
     reporter_email: Mapped[str | None] = mapped_column(String(254), nullable=True)
+    # A signed-out reporter's language (their mails; a member has their own).
+    reporter_locale: Mapped[str | None] = mapped_column(String(16), nullable=True)
     status: Mapped[str] = mapped_column(String(10), default="open")
     created_at: Mapped[datetime] = mapped_column(UtcDateTime)
     decided_at: Mapped[datetime | None] = mapped_column(UtcDateTime, nullable=True)
@@ -277,5 +279,8 @@ class MediaRow(Base):
     width: Mapped[int] = mapped_column(Integer)
     height: Mapped[int] = mapped_column(Integer)
     created_at: Mapped[datetime] = mapped_column(UtcDateTime)
+    # The dominant colour ("#rrggbb"), set with its renditions (U-40); None
+    # until the backfill job has made them for an older upload.
+    color: Mapped[str | None] = mapped_column(String(7), nullable=True)
     # Set once a listing shows it. Uploads never used are swept after a day.
     used: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")

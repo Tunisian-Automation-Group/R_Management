@@ -78,6 +78,9 @@ REGISTER: dict[str, Entry] = {
     "booking.booking_messages": Entry("MessageRow", "redact", True),
     "booking.booking_evidence": Entry("EvidenceRow", "redact", True),
     "booking.blocks": Entry("BlockRow", "delete", True),
+    "booking.message_reads": Entry(
+        "MessageReadRow", "delete", False, "when a conversation was last opened: a timestamp for the unread dot"
+    ),
     "booking.verified_people": Entry("VerifiedRow", "delete", True),
     "booking.suspended": Entry(
         "SuspendedRow", "keep", True, "a suspension outlives the account, so a new one can be linked (S-17)"

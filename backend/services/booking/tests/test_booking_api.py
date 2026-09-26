@@ -289,7 +289,17 @@ def test_decline_needs_a_reason_and_frees_the_window(client, app, issuer):
     assert _do(client, issuer, HOST, bid, "decline", reason="   ").status_code == 422
     r = _do(client, issuer, HOST, bid, "decline", reason="Machine is in for service")
     assert r.json()["status"] == "declined" and r.json()["declineReason"]
+    assert "declineReasonCode" not in r.json(), "a person's own words have no code"
     _book(client, issuer)
+
+
+def test_a_chip_reason_is_a_code_the_reader_translates(client, app, issuer):
+    # V8-3: the owner's chip is stored as its English sentence and exposed as a
+    # code, so neither the app nor a mail shows the English to a German renter.
+    bid = _requested(client, app, issuer)
+    assert _do(client, issuer, HOST, bid, "decline", reasonCode="not_a_chip").status_code == 422
+    b = _do(client, issuer, HOST, bid, "decline", reasonCode="needs_repair").json()
+    assert b["declineReason"] == "It needs a repair first" and b["declineReasonCode"] == "needs_repair"
 
 
 def test_strangers_cannot_see_or_touch_a_booking(client, app, issuer):
@@ -528,6 +538,7 @@ def test_removing_a_listing_declines_its_pending_requests(client, app, issuer):
     for bid in (pending, unpaid):
         b = client.get(f"/bookings/{bid}", headers=issuer.headers(BUYER)).json()
         assert b["status"] == "declined" and b["declineReason"] == "The listing was removed by its owner"
+        assert b["declineReasonCode"] == "owner_removed"
     assert client.get(f"/bookings/{accepted}", headers=issuer.headers(BUYER)).json()["status"] == "accepted"
     # FL-9: a staff take-down says so.
     later = _requested(client, app, issuer, start_h=60)
@@ -1110,3 +1121,24 @@ def test_mails_can_say_who_asked_and_where_to_go(client, app, issuer, broker):
     assert all(c["renterName"] == f"Name of {BUYER}" for c in changes)
     assert [c["handover"] is not None for c in changes] == [False, False, True], "only once accepted"
     assert changes[-1]["handover"]["address"] == "Tempelhofer Damm 1, 12101 Berlin"
+
+
+def test_the_inbox_lists_conversations_masked_with_what_is_unread(client, app, issuer):
+    # UX-12: every conversation, both sides, newest first; masked until accepted.
+    bid = _requested(client, app, issuer)
+    msg = {"body": "Call me on +49 170 1234567 please"}
+    assert client.post(f"/bookings/{bid}/messages", json=msg, headers=issuer.headers(BUYER)).status_code == 201
+    host = client.get("/inbox", headers=issuer.headers(HOST)).json()
+    assert host["unread"] == 1 and [c["bookingId"] for c in host["items"]] == [bid]
+    item = host["items"][0]
+    assert item["unread"] == 1 and not item["lastMessage"]["mine"] and "1234567" not in item["lastMessage"]["body"]
+    assert item["listingTitle"] and item["status"] == "requested"
+    buyer = client.get("/inbox", headers=issuer.headers(BUYER)).json()
+    assert buyer["unread"] == 0 and buyer["items"][0]["lastMessage"]["mine"] and buyer["items"][0]["otherName"]
+    assert client.post(f"/inbox/{bid}/read", headers=issuer.headers(HOST)).status_code == 204
+    assert client.get("/inbox", headers=issuer.headers(HOST)).json()["unread"] == 0
+    assert client.post(f"/inbox/{bid}/read", headers=issuer.headers("stranger")).status_code == 404
+    assert client.get("/inbox", headers=issuer.headers("stranger")).json() == {"items": [], "unread": 0}
+    _do(client, issuer, HOST, bid, "accept")
+    shown = client.get("/inbox", headers=issuer.headers(HOST)).json()["items"][0]["lastMessage"]["body"]
+    assert "1234567" in shown, "unmasked once accepted, as in the conversation"

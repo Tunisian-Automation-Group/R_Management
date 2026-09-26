@@ -21,11 +21,12 @@ from cappy_common.events import (
     Handler,
     Outbox,
 )
+from cappy_common.reasons import SYSTEM_REASONS
 
 from .repository import BookingRepository
 from .settings import Settings
 from .state import SystemAction, system_status
-from .tables import IDEMPOTENCY, OUTBOX, BlockRow, BookingRow, SuspendedRow, VerifiedRow
+from .tables import IDEMPOTENCY, OUTBOX, BlockRow, BookingRow, MessageReadRow, SuspendedRow, VerifiedRow
 
 log = logging.getLogger(__name__)
 
@@ -127,11 +128,7 @@ def handlers(settings: Settings) -> dict[str, Handler]:
         repo = BookingRepository(session, outbox)
         now = datetime.now(UTC)
         # FL-9: say who removed it; a staff take-down is not the owner's doing.
-        reason = (
-            "The listing was taken down by Cappy"
-            if event.data.get("by") == "staff"
-            else "The listing was removed by its owner"
-        )
+        reason = SYSTEM_REASONS["taken_down"] if event.data.get("by") == "staff" else SYSTEM_REASONS["owner_removed"]
         for row in await repo.pending_for_listing(event.data["listingId"]):
             to = system_status("listing_removed", row.status)
             if to:
@@ -147,7 +144,7 @@ def handlers(settings: Settings) -> dict[str, Handler]:
         now = datetime.now(UTC)
         for row in await repo.pending_of_requester(event.data["ownerId"]):
             if to := system_status("listing_removed", row.status):
-                await repo.move(row, to, "system", now, expires_at=None, decline_reason="The account was suspended")
+                await repo.move(row, to, "system", now, expires_at=None, decline_reason=SYSTEM_REASONS["suspended"])
 
     async def on_reinstated(session: AsyncSession, event: Event) -> None:
         from sqlalchemy import delete
@@ -165,6 +162,7 @@ def handlers(settings: Settings) -> dict[str, Handler]:
 
         person = event.data["ownerId"]
         await session.execute(delete(BlockRow).where(or_(BlockRow.blocker_id == person, BlockRow.blocked_id == person)))
+        await session.execute(delete(MessageReadRow).where(MessageReadRow.person_id == person))
         await session.execute(delete(VerifiedRow).where(VerifiedRow.person_id == person))
         # What they wrote may name them or hold their number: the other side
         # keeps the conversation's shape, not their words.

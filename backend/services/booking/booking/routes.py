@@ -32,6 +32,7 @@ from cappy_common.ids import new_id
 from cappy_common.markets import market
 from cappy_common.models import Booking, CamelModel, Iso, Outcome, Requirement
 from cappy_common.pagination import Page, clamp_limit
+from cappy_common.reasons import OWNER_REASONS, SYSTEM_REASONS
 from cappy_common.runtime import ReadTx, Tx
 from cappy_common.timeutil import dt_from_iso, iso_from_datetime
 
@@ -75,7 +76,9 @@ class BookingCreated(CamelModel):
 
 
 class DeclineIn(CamelModel):
-    reason: str = Field(min_length=1, max_length=500)
+    # One of the owner's chips by its code (V8-3), or their own words.
+    reason_code: str | None = Field(default=None, pattern="^(" + "|".join(OWNER_REASONS) + ")$")
+    reason: str = Field(default="", max_length=500)
 
 
 class BusyIn(CamelModel):
@@ -410,7 +413,7 @@ async def _end_extensions(repo: BookingRepository, parent: BookingRow, now: date
         BookingRow.extends_id == parent.id,
         BookingRow.status.in_(("awaiting_payment", "requested", "accepted")),
     )
-    reason = "The booking it extends was cancelled"
+    reason = SYSTEM_REASONS["parent_cancelled"]
     for ext in list((await repo.s.execute(q.with_for_update())).scalars()):
         if ext.status == "accepted":
             # The reason is on the booking too, so its page says why (V7-12).
@@ -438,7 +441,7 @@ async def accept(booking_id: str, request: Request, repo: BookingRepository = Re
 async def decline(
     booking_id: str, body: DeclineIn, request: Request, repo: BookingRepository = Repo, p: Principal = Me
 ):
-    reason = body.reason.strip()
+    reason = OWNER_REASONS[body.reason_code] if body.reason_code else body.reason.strip()
     if not reason:
         raise Invalid("tell the buyer why, rather than just refusing")
     return await _transition(request, repo, booking_id, "decline", p.sub, decline_reason=reason)

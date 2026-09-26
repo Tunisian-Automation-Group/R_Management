@@ -19,6 +19,7 @@ NOTIFICATIONS = "notifications"
 RULES: list[tuple[re.Pattern[str], str]] = [
     (re.compile(r"^/bookings(/|$)"), BOOKING),
     (re.compile(r"^/me/blocks(/[^/]+)?$"), BOOKING),
+    (re.compile(r"^/inbox(/[^/]+/read)?$"), BOOKING),
     (re.compile(r"^/payments(/|$)"), PAYMENTS),
     (re.compile(r"^/notifications(/read|/settings|/devices(/[^/]+)?)?$"), NOTIFICATIONS),
     (re.compile(r"^/(matches|quote|feasibility|categories|groups|review-tags|ranking)$"), MATCHING),

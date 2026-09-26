@@ -23,7 +23,7 @@ import asyncio
 import hashlib
 import io
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
@@ -31,7 +31,21 @@ from PIL import Image, ImageOps, UnidentifiedImageError
 
 from cappy_common.errors import Invalid, NotFound
 
-NAME = re.compile(r"^[a-f0-9]{40}\.webp$")
+# A photo and its renditions (U-40): <hash>.webp, and <hash>-<w>.webp for
+# each width, made at upload so the CDN serves them as files (no resizing at
+# the edge). A width the photo does not reach is stored at its own size.
+WIDTHS = (400, 800, 1600)
+NAME = re.compile(r"^[a-f0-9]{40}(-(400|800|1600))?\.webp$")
+
+
+def rendition(name: str, width: int) -> str:
+    return name.removesuffix(".webp") + f"-{width}.webp"
+
+
+def renditions_of(name: str) -> list[str]:
+    return [rendition(name, w) for w in WIDTHS]
+
+
 _FORMATS = {"JPEG", "PNG", "WEBP", "MPO"}  # MPO: multi-picture JPEG some phones write
 
 
@@ -41,6 +55,37 @@ class Processed:
     data: bytes
     width: int
     height: int
+    # Width → the photo at that width, and its dominant colour ("#rrggbb"),
+    # the placeholder shown while it loads.
+    renditions: dict[int, bytes] = field(default_factory=dict)
+    color: str = ""
+
+
+def _encode(img: Image.Image) -> bytes:
+    out = io.BytesIO()
+    # No exif=, no icc_profile=: nothing from the original survives.
+    img.save(out, format="WEBP", quality=82, method=4)
+    return out.getvalue()
+
+
+def sizes(img: Image.Image, full: bytes) -> tuple[dict[int, bytes], str]:
+    """The renditions and the dominant colour of a decoded, oriented photo."""
+    r, g, b = img.convert("RGB").resize((1, 1), Image.Resampling.BOX).getpixel((0, 0))
+    out: dict[int, bytes] = {}
+    for w in WIDTHS:
+        if img.width <= w:
+            out[w] = full
+        else:
+            out[w] = _encode(img.resize((w, max(1, round(img.height * w / img.width))), Image.Resampling.LANCZOS))
+    return out, f"#{r:02x}{g:02x}{b:02x}"
+
+
+def resize_stored(data: bytes) -> tuple[dict[int, bytes], str]:
+    """Renditions of a photo already stored (a WebP we made): for uploads from
+    before renditions existed."""
+    with Image.open(io.BytesIO(data)) as img:
+        img.load()
+        return sizes(img, data)
 
 
 def process(data: bytes, *, max_bytes: int, max_edge: int, max_pixels: int) -> Processed:
@@ -64,14 +109,19 @@ def process(data: bytes, *, max_bytes: int, max_edge: int, max_pixels: int) -> P
             img.thumbnail((max_edge, max_edge), Image.Resampling.LANCZOS)
             if img.mode not in ("RGB", "RGBA"):
                 img = img.convert("RGBA" if "A" in img.getbands() else "RGB")
-            out = io.BytesIO()
-            # No exif=, no icc_profile=: nothing from the original survives.
-            img.save(out, format="WEBP", quality=82, method=4)
+            encoded = _encode(img)
             width, height = img.size
+            renditions, color = sizes(img, encoded)
     except (UnidentifiedImageError, Image.DecompressionBombError, OSError, SyntaxError) as e:
         raise Invalid("that is not an image we can read") from e
-    encoded = out.getvalue()
-    return Processed(name=f"{hashlib.sha256(encoded).hexdigest()[:40]}.webp", data=encoded, width=width, height=height)
+    return Processed(
+        name=f"{hashlib.sha256(encoded).hexdigest()[:40]}.webp",
+        data=encoded,
+        width=width,
+        height=height,
+        renditions=renditions,
+        color=color,
+    )
 
 
 class MediaStore:

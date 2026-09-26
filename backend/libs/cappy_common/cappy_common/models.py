@@ -414,6 +414,9 @@ class Booking(CamelModel):
     created_at: Iso
     requester_id: str | None = None
     decline_reason: str | None = None
+    # The reason's code when it is one of ours (cappy_common.reasons), so the
+    # app words it in the reader's language; absent for a person's own words.
+    decline_reason_code: str | None = None
     outcome: Outcome | None = None
     listing: ListingSnapshot | None = None
     # While a request waits for payment or for the owner: when it lapses.

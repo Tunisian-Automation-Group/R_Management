@@ -112,11 +112,11 @@ TEXTS: dict[str, dict[str, tuple[str, str]]] = {
         ),
         "dispute_refunded": (
             "Settled: {title}",
-            "{how_en} the renter gets the full price back ({amount}). The owner is not paid for this booking.{note}\n\n{link}",
+            "{how_en} the renter gets the full price back ({amount}), and you are not paid for this booking.{note}\n\n{link}",
         ),
         "dispute_partial": (
             "Settled: {title}",
-            "{how_en} {amount} goes back to the renter, and the owner is paid for the rest.{note}\n\n{link}",
+            "{how_en} {amount} goes back to the renter, and you are paid the rest.{note}\n\n{link}",
         ),
         # The renter reads it about themselves (V7-23).
         "dispute_refunded_renter": (
@@ -133,7 +133,7 @@ TEXTS: dict[str, dict[str, tuple[str, str]]] = {
         ),
         "dispute_owner_paid": (
             "Settled: {title}",
-            "{how_en} the owner is paid in full and nothing is refunded.{note}\n\n{link}",
+            "{how_en} you are paid in full and nothing is refunded.{note}\n\n{link}",
         ),
         "dispute_escalated": (
             "We are deciding now: {title}",
@@ -141,11 +141,11 @@ TEXTS: dict[str, dict[str, tuple[str, str]]] = {
         ),
         "claim_filed": (
             "A late return was reported: {title}",
-            "The owner reports that {title} came back late and asks for {amount}. Nothing is charged: we look at it and tell you what we decide. If you see it differently, say so in the conversation.\n\n{link}",
+            "The owner reports that {title} came back late and asks for {amount}. Nothing is charged: we look at it and tell you what we decide. If you see it differently, tell us through Get help on the booking.\n\n{link}",
         ),
         "claim_confirmed": (
             "Late return: our decision on {title}",
-            "We looked at the late return and confirmed it: {amount} is owed to the owner. We will be in touch about paying it.\n\n{link}",
+            "We looked at the late return and confirmed it: you are owed {amount}. We will be in touch about paying it.\n\n{link}",
         ),
         "claim_rejected": (
             "Late return: our decision on {title}",
@@ -154,6 +154,26 @@ TEXTS: dict[str, dict[str, tuple[str, str]]] = {
         "report_outcome_none": (
             "Your report: our decision",
             "Having looked at your report, we found no breach of the law or our terms.\n\n{statement}\n\nReference: {report}",
+        ),
+        "dispute_offer_renter": (
+            "An offer to settle: {title}",
+            "The other side offers to settle the problem with {title}: you get {amount} back. Accept it, or make another offer, by {deadline}; after that we decide.\n\n{link}",
+        ),
+        "claim_confirmed_renter": (
+            "Late return: our decision on {title}",
+            "We looked at the late return and confirmed it: {amount} is owed to the owner. We will be in touch about paying it.\n\n{link}",
+        ),
+        "declined_system": (
+            "Could not go ahead: {title}",
+            "Your request for {title} could not go ahead. Nothing was charged.{reason}\n\n{link}",
+        ),
+        "instant_extended": (
+            "Extended: {title}",
+            "The booking of {title} was extended instantly{by_whom}. The details are in the app.\n\n{link}",
+        ),
+        "extension_confirmed": (
+            "Extension confirmed: {title}",
+            "Your extension of {title} is confirmed.{paid}\n\n{link}",
         ),
     },
     "de": {
@@ -261,11 +281,11 @@ TEXTS: dict[str, dict[str, tuple[str, str]]] = {
         ),
         "dispute_refunded": (
             "Geklärt: {title}",
-            "{how_de} Die mietende Person bekommt den vollen Preis zurück ({amount}). Für diese Buchung wird nichts ausgezahlt.{note}\n\n{link}",
+            "{how_de} Die mietende Person bekommt den vollen Preis zurück ({amount}), und du bekommst für diese Buchung nichts ausgezahlt.{note}\n\n{link}",
         ),
         "dispute_partial": (
             "Geklärt: {title}",
-            "{how_de} {amount} gehen an die mietende Person zurück, der Rest wird ausgezahlt.{note}\n\n{link}",
+            "{how_de} {amount} gehen an die mietende Person zurück, den Rest bekommst du ausgezahlt.{note}\n\n{link}",
         ),
         "dispute_refunded_renter": (
             "Geklärt: {title}",
@@ -281,7 +301,7 @@ TEXTS: dict[str, dict[str, tuple[str, str]]] = {
         ),
         "dispute_owner_paid": (
             "Geklärt: {title}",
-            "{how_de} Der volle Betrag wird ausgezahlt, es wird nichts erstattet.{note}\n\n{link}",
+            "{how_de} Du bekommst den vollen Betrag ausgezahlt, es wird nichts erstattet.{note}\n\n{link}",
         ),
         "dispute_escalated": (
             "Wir entscheiden jetzt: {title}",
@@ -289,11 +309,11 @@ TEXTS: dict[str, dict[str, tuple[str, str]]] = {
         ),
         "claim_filed": (
             "Eine verspätete Rückgabe wurde gemeldet: {title}",
-            "Die vermietende Person meldet, dass {title} verspätet zurückkam, und fordert {amount}. Es wird nichts abgebucht: Wir prüfen es und teilen dir unsere Entscheidung mit. Wenn du es anders siehst, schreib es ins Gespräch.\n\n{link}",
+            "Die vermietende Person meldet, dass {title} verspätet zurückkam, und fordert {amount}. Es wird nichts abgebucht: Wir prüfen es und teilen dir unsere Entscheidung mit. Wenn du es anders siehst, sag es uns über die Hilfe in der Buchung.\n\n{link}",
         ),
         "claim_confirmed": (
             "Verspätete Rückgabe: unsere Entscheidung zu {title}",
-            "Wir haben die verspätete Rückgabe geprüft und bestätigt: {amount} stehen der vermietenden Person zu. Wir melden uns wegen der Zahlung.\n\n{link}",
+            "Wir haben die verspätete Rückgabe geprüft und bestätigt: Dir stehen {amount} zu. Wir melden uns wegen der Zahlung.\n\n{link}",
         ),
         "claim_rejected": (
             "Verspätete Rückgabe: unsere Entscheidung zu {title}",
@@ -302,6 +322,26 @@ TEXTS: dict[str, dict[str, tuple[str, str]]] = {
         "report_outcome_none": (
             "Deine Meldung: unsere Entscheidung",
             "Wir haben deine Meldung geprüft und keinen Verstoß gegen Recht oder unsere Bedingungen festgestellt.\n\n{statement}\n\nAktenzeichen: {report}",
+        ),
+        "dispute_offer_renter": (
+            "Ein Einigungsangebot: {title}",
+            "Die andere Seite schlägt vor, das Problem mit {title} so zu lösen: Du bekommst {amount} zurück. Nimm es an oder mach ein anderes Angebot, bis {deadline}; danach entscheiden wir.\n\n{link}",
+        ),
+        "claim_confirmed_renter": (
+            "Verspätete Rückgabe: unsere Entscheidung zu {title}",
+            "Wir haben die verspätete Rückgabe geprüft und bestätigt: {amount} stehen der vermietenden Person zu. Wir melden uns wegen der Zahlung.\n\n{link}",
+        ),
+        "declined_system": (
+            "Nicht möglich: {title}",
+            "Deine Anfrage für {title} kann nicht stattfinden. Es wurde nichts berechnet.{reason}\n\n{link}",
+        ),
+        "instant_extended": (
+            "Verlängert: {title}",
+            "Die Buchung von {title} wurde sofort verlängert{by_whom}. Alle Details findest du in der App.\n\n{link}",
+        ),
+        "extension_confirmed": (
+            "Verlängerung bestätigt: {title}",
+            "Deine Verlängerung von {title} ist bestätigt.{paid}\n\n{link}",
         ),
     },
     "fr": {
@@ -408,12 +448,12 @@ TEXTS: dict[str, dict[str, tuple[str, str]]] = {
             "Après examen de votre signalement, nous avons pris des mesures.\n\n{statement}\n\nRéférence : {report}",
         ),
         "dispute_refunded": (
-            "Réglé : {title}",
-            "{how_fr} la personne locataire récupère le prix complet ({amount}). Rien n’est versé pour cette réservation.{note}\n\n{link}",
+            "Réglé : {title}",
+            "{how_fr} la personne locataire récupère le prix complet ({amount}), et rien ne vous est versé pour cette réservation.{note}\n\n{link}",
         ),
         "dispute_partial": (
-            "Réglé : {title}",
-            "{how_fr} {amount} sont remboursés à la personne locataire, et le reste est versé au propriétaire.{note}\n\n{link}",
+            "Réglé : {title}",
+            "{how_fr} {amount} sont remboursés à la personne locataire, et le reste vous est versé.{note}\n\n{link}",
         ),
         "dispute_refunded_renter": (
             "Réglé : {title}",
@@ -428,20 +468,20 @@ TEXTS: dict[str, dict[str, tuple[str, str]]] = {
             "{how_fr} le montant complet est versé au propriétaire et rien ne vous est remboursé.{note}\n\n{link}",
         ),
         "dispute_owner_paid": (
-            "Réglé : {title}",
-            "{how_fr} le montant complet est versé et rien n’est remboursé.{note}\n\n{link}",
+            "Réglé : {title}",
+            "{how_fr} le montant complet vous est versé et rien n’est remboursé.{note}\n\n{link}",
         ),
         "dispute_escalated": (
             "Nous décidons maintenant : {title}",
             "Aucun accord n’a été trouvé à temps : Cappy examine maintenant ce qui s’est passé avec {title} et décide. Nous vous recontacterons.\n\n{link}",
         ),
         "claim_filed": (
-            "Un retour tardif a été signalé : {title}",
-            "Le propriétaire signale que {title} a été rendu en retard et demande {amount}. Rien n’est prélevé : nous examinons la demande et vous communiquerons notre décision. Si vous voyez les choses autrement, dites-le dans la conversation.\n\n{link}",
+            "Un retour tardif a été signalé : {title}",
+            "Le propriétaire signale que {title} a été rendu en retard et demande {amount}. Rien n’est prélevé : nous examinons la demande et vous communiquerons notre décision. Si vous voyez les choses autrement, dites-le-nous via l’aide de la réservation.\n\n{link}",
         ),
         "claim_confirmed": (
-            "Retour tardif : notre décision concernant {title}",
-            "Nous avons examiné le retour tardif et l’avons confirmé : {amount} sont dus au propriétaire. Nous vous recontacterons au sujet du paiement.\n\n{link}",
+            "Retour tardif : notre décision concernant {title}",
+            "Nous avons examiné le retour tardif et l’avons confirmé : {amount} vous sont dus. Nous vous recontacterons au sujet du paiement.\n\n{link}",
         ),
         "claim_rejected": (
             "Retour tardif : notre décision concernant {title}",
@@ -450,6 +490,26 @@ TEXTS: dict[str, dict[str, tuple[str, str]]] = {
         "report_outcome_none": (
             "Votre signalement : notre décision",
             "Après examen de votre signalement, nous n’avons constaté aucune infraction à la loi ou à nos conditions.\n\n{statement}\n\nRéférence : {report}",
+        ),
+        "dispute_offer_renter": (
+            "Une offre de règlement : {title}",
+            "L’autre partie propose de régler le problème concernant {title} : vous récupérez {amount}. Acceptez-la ou faites une autre offre avant {deadline} ; ensuite, c’est nous qui décidons.\n\n{link}",
+        ),
+        "claim_confirmed_renter": (
+            "Retour tardif : notre décision concernant {title}",
+            "Nous avons examiné le retour tardif et l’avons confirmé : {amount} sont dus au propriétaire. Nous vous recontacterons au sujet du paiement.\n\n{link}",
+        ),
+        "declined_system": (
+            "Impossible : {title}",
+            "Votre demande pour {title} ne peut pas avoir lieu. Rien n’a été facturé.{reason}\n\n{link}",
+        ),
+        "instant_extended": (
+            "Prolongée : {title}",
+            "La réservation de {title} a été prolongée instantanément{by_whom}. Tous les détails sont dans l’application.\n\n{link}",
+        ),
+        "extension_confirmed": (
+            "Prolongation confirmée : {title}",
+            "Votre prolongation de {title} est confirmée.{paid}\n\n{link}",
         ),
     },
 }
@@ -496,6 +556,12 @@ PHRASES: dict[str, dict[str, str]] = {
         "de": "Die Buchung, die verlängert werden sollte, wurde storniert",
         "fr": "La réservation à prolonger a été annulée",
     },
+    # The owner's decline chips (cappy_common.reasons.OWNER_REASONS), in the
+    # app's own words for them (V8-3).
+    "Already promised it to someone": {"de": "Schon jemand anderem zugesagt", "fr": "Déjà promis à quelqu’un"},
+    "Turns out I need it then": {"de": "Ich brauche es dann doch selbst", "fr": "Finalement, j’en ai besoin"},
+    "It needs a repair first": {"de": "Muss erst repariert werden", "fr": "Il faut d’abord le réparer"},
+    "Too short notice for me": {"de": "Zu kurzfristig für mich", "fr": "Trop court délai pour moi"},
     "Terms of use: rules for listings and conduct": {
         "de": "Nutzungsbedingungen: Regeln für Inserate und Verhalten",
         "fr": "Conditions d’utilisation : règles relatives aux annonces et au comportement",

@@ -88,7 +88,9 @@ def messages(event: Event, web: str) -> list[Message]:
         link = f"{web}/bookings/{d['bookingId']}"
         params = {"title": d.get("title") or "your booking", "link": link, "_cents": (d["refundAmount"], d["currency"])}
         tz = {"_tz": d["timeZone"]} if d.get("timeZone") else {}
-        return [(d["to"], None, "dispute_offer", {**params, "_deadline": d.get("respondBy"), **tz})]
+        # The renter reads what they get back (V8-9).
+        key = "dispute_offer_renter" if d["to"] == d.get("requesterId") else "dispute_offer"
+        return [(d["to"], None, key, {**params, "_deadline": d.get("respondBy"), **tz})]
     if event.type != BOOKING_STATUS_CHANGED:
         return []
     if d.get("from") == "disputed":
@@ -104,8 +106,9 @@ def messages(event: Event, web: str) -> list[Message]:
         if d.get("windowStart"):
             params["_start"] = d["windowStart"]
     if d.get("renterName"):
-        # The owner hears who asked (V7-23).
-        params["_renter"] = d["renterName"]
+        # The owner hears who asked (V7-23); whose name it is, so it can be
+        # taken out of the owner's bell if they delete their account (D-27).
+        params["_renter"], params["_renter_id"] = d["renterName"], d["requesterId"]
     handover = d.get("handover") or {}
     if d["to"] == "accepted" and handover.get("address"):
         # The renter's confirmation says where to go (V7-23).
@@ -154,10 +157,17 @@ def messages(event: Event, web: str) -> list[Message]:
         # and how much comes back (V6-11).
         back = d["refundAmount"] if d.get("refundAmount") is not None else d.get("amount") or 0
         return [(requester, None, "owner_cancelled", {**params, "_cents": (back, d.get("currency") or "EUR")})]
-    out: list[Message] = [(who, None, to, params)] if who else []
+    key = to
+    if to == "declined" and by == "system":
+        # Nobody said no: Cappy took the listing down, it was removed, the
+        # account was suspended, the booking it extends ended (V8-17).
+        key = "declined_system"
+    if to == "accepted" and d.get("extendsId"):
+        key = "extension_confirmed"  # V8-18: it says what it extends
+    out: list[Message] = [(who, None, key, params)] if who else []
     if to == "accepted" and d.get("from") == "awaiting_payment":
         # Instant book: the owner never saw a request, so they hear of the booking.
-        out.append((owner, None, "instant_booked", params))
+        out.append((owner, None, "instant_extended" if d.get("extendsId") else "instant_booked", params))
     if to == "payment_failed":
         # The card step failed: only the renter knew. A capture declined at
         # accept: the owner had said yes, so both hear it is off (FL-2).
@@ -170,7 +180,7 @@ def messages(event: Event, web: str) -> list[Message]:
 
 
 # Settlement notices with a text the renter reads about themselves.
-RENTER_READS = frozenset({"dispute_refunded", "dispute_partial", "dispute_owner_paid"})
+RENTER_READS = frozenset({"dispute_refunded", "dispute_partial", "dispute_owner_paid", "claim_confirmed"})
 
 # Who settled a dispute, in each language (the text picks its own).
 SETTLED_BY = {
@@ -244,7 +254,8 @@ def moderation_mail(event: Event, web: str) -> list[Message]:
     16(4)/(5); telling the person affected why is Art. 17."""
     d = event.data
     if event.type == REPORT_RECEIVED:
-        return [(d.get("reporterId"), d.get("reporterEmail"), "report_received", {"report": d["reportId"]})]
+        lang = {"_locale": d["reporterLocale"]} if d.get("reporterLocale") else {}
+        return [(d.get("reporterId"), d.get("reporterEmail"), "report_received", {"report": d["reportId"], **lang})]
     if event.type != MODERATION_DECISION:
         return []
     out: list[Message] = []
@@ -253,8 +264,14 @@ def moderation_mail(event: Event, web: str) -> list[Message]:
         out.append((d["affectedId"], None, key, {"web": web, **statement_params(d)}))
     if d.get("reportId") and (d.get("reporterId") or d.get("reporterEmail")):
         key = "report_outcome_none" if d["action"] == "dismiss" else "report_outcome_action"
+        lang = {"_locale": d["reporterLocale"]} if d.get("reporterLocale") else {}
         out.append(
-            (d.get("reporterId"), d.get("reporterEmail"), key, {"statement": d["statement"], "report": d["reportId"]})
+            (
+                d.get("reporterId"),
+                d.get("reporterEmail"),
+                key,
+                {"statement": d["statement"], "report": d["reportId"], **lang},
+            )
         )
     return out
 
@@ -266,7 +283,10 @@ def handlers(directory: Directory, mailer: Mailer, web: str, pusher: Pusher | No
         session: AsyncSession, event: Event, msg: Message, *, email: bool = True, push: bool = True
     ) -> None:
         sub, explicit, key, params = msg
-        address, locale = (explicit, None) if explicit else await directory.person_of(sub) if sub else (None, None)
+        # Someone without an account: the language they wrote in (V8-12).
+        params = {k: v for k, v in params.items() if k != "_locale"}
+        given = msg[3].get("_locale")
+        address, locale = (explicit, given) if explicit else await directory.person_of(sub) if sub else (None, None)
         # The reader's own locale, as their app last said it; never the
         # triggering person's (V6-6).
         locale = (await locale_of(session, sub) if sub else None) or locale
@@ -316,6 +336,7 @@ def handlers(directory: Directory, mailer: Mailer, web: str, pusher: Pusher | No
         await _drop_all(session, event.data["ownerId"])
         await session.execute(delete(InboxRow).where(InboxRow.user_id == event.data["ownerId"]))
         await session.execute(delete(PrefsRow).where(PrefsRow.user_id == event.data["ownerId"]))
+        await _unname(session, event.data["ownerId"])
 
     async def signed_out(session: AsyncSession, event: Event) -> None:
         """Sign out everywhere (catalog took the request): every refresh token
@@ -336,6 +357,29 @@ def handlers(directory: Directory, mailer: Mailer, web: str, pusher: Pusher | No
         BOOKING_NOTICE: notify,
         PROFILE_DELETED: forget,
     }
+
+
+# The notices that name the renter to the owner (V7-23).
+NAMES_RENTER = ("requested", "requested_extension", "instant_booked", "instant_extended")
+
+
+async def _unname(session: AsyncSession, person: str) -> None:
+    """A renter who deleted their account is no longer named in anyone's
+    bell (D-27): the name goes from the item's params and its stored words.
+    The email already sent cannot be taken back."""
+    from sqlalchemy import select
+
+    # ponytail: scans the naming kinds in Python (12 months of inbox at most,
+    # INBOX_RETENTION_DAYS); a JSON index on params->>'_renter_id' if it grows.
+    rows = (await session.execute(select(InboxRow).where(InboxRow.kind.in_(NAMES_RENTER)))).scalars()
+    for row in rows:
+        params = row.params or {}
+        if params.get("_renter_id") != person:
+            continue
+        name = params.get("_renter") or ""
+        row.params = {k: v for k, v in params.items() if k not in ("_renter", "_renter_id")}
+        if name:
+            row.title, row.body = row.title.replace(name, "—"), row.body.replace(name, "—")
 
 
 async def _push(session: AsyncSession, pusher: Pusher, sub: str, title: str, text: str) -> None:

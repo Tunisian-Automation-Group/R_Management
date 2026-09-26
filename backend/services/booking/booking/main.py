@@ -11,6 +11,7 @@ from cappy_common.runtime import Runtime
 from . import repository
 from .clients import Catalog, CognitoPeople, HttpCatalog, HttpMatching, HttpPayments, Matching, Payments, People
 from .handlers import handlers
+from .inbox import router as inbox_router
 from .jobs import sweep
 from .messages import router as messages_router
 from .routes import internal, router
@@ -48,6 +49,7 @@ def build_app(
     app.state.people = people or CognitoPeople(settings)
     app.include_router(router)
     app.include_router(messages_router)
+    app.include_router(inbox_router)
     app.include_router(support_router)
     app.include_router(internal)
     app.include_router(support_internal)

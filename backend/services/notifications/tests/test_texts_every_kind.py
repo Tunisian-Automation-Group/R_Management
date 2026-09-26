@@ -127,10 +127,15 @@ def test_the_bell_shows_why_a_request_was_declined():
     # V7-4: the email ended with the reason; the bell stopped at the first paragraph.
     from notifications.texts import summary
 
-    for lang, word in (("en", "Reason"), ("de", "Grund"), ("fr", "Motif")):
+    # V8-3: an owner's chip reads in the renter's language, like our own reasons.
+    for lang, word, chip in (
+        ("en", "Reason", "It needs a repair first."),
+        ("de", "Grund", "Muss erst repariert werden."),
+        ("fr", "Motif", "Il faut d’abord le réparer."),
+    ):
         _, text = render("declined", lang, title="Saw", link="L", _reason="It needs a repair first")
         bell = summary("declined", text)
-        assert word in bell and "It needs a repair first." in bell and "\n\nL" not in bell, bell
+        assert word in bell and chip in bell and "\n\nL" not in bell, bell
         _, staff = render("declined", lang, title="Saw", link="L", _reason="The listing was taken down by Cappy")
         assert "Cappy" in summary("declined", staff), staff
 
@@ -178,3 +183,58 @@ def test_the_owner_hears_who_asked_and_the_renter_where_to_go():
     # A notice stored before (no name, no address) still reads as it did.
     assert render("requested", "de", title="Saw", link="L", _deadline=None)[1].startswith("Jemand")
     assert "in der App" in render("accepted", "de", title="Saw", link="L")[1]
+
+
+# V8-9: each side is spoken to, never about. Who reads which kind (handlers.py).
+OWNER_READS = {
+    "dispute_refunded", "dispute_partial", "dispute_owner_paid", "claim_confirmed", "disputed_owner",
+    "extension_cancelled_owner", "no_show_owner_owner", "no_show_renter_owner", "requested",
+    "requested_extension", "instant_booked", "instant_extended", "paid", "listing_idle", "dispute_offer",
+}  # fmt: skip
+RENTER_READS = {
+    "dispute_refunded_renter", "dispute_partial_renter", "dispute_owner_paid_renter", "claim_confirmed_renter",
+    "dispute_offer_renter", "claim_filed", "owner_cancelled", "declined", "declined_system", "accepted",
+    "extension_confirmed", "extension_cancelled_renter", "no_show_owner_renter", "no_show_renter_renter",
+    "disputed_renter", "expired",
+}  # fmt: skip
+ABOUT = {
+    "owner": {"en": r"\bthe owner\b", "de": r"vermietende[n]? Person", "fr": r"propriétaire"},
+    "renter": {"en": r"\bthe renter\b", "de": r"(?<!ver)mietende[n]? Person", "fr": r"locataire"},
+}
+
+
+@pytest.mark.parametrize(
+    ("kind", "reader"), [(k, "owner") for k in sorted(OWNER_READS)] + [(k, "renter") for k in sorted(RENTER_READS)]
+)
+def test_a_reader_is_spoken_to_not_about(kind, reader):
+    params = _params(kind)
+    for lang in LANGS:
+        text = " ".join(render(kind, lang, **params))
+        hit = re.search(ABOUT[reader][lang], text, re.I)
+        assert not hit, f"{kind}/{lang} tells the {reader} about '{hit.group()}'"
+
+
+def test_notices_pick_the_readers_words():
+    """V8-9 offers to the renter, V8-17 declines nobody made, V8-18 instant
+    extensions, V8-12 a signed-out reporter's language."""
+    from notifications.handlers import messages, moderation_mail
+
+    from cappy_common.events import BOOKING_STATUS_CHANGED, DISPUTE_OFFER, REPORT_RECEIVED, Event
+
+    def ev(type_, **data) -> Event:
+        return Event(id="ev1", type=type_, source="x", occurred_at="2026-10-01T08:00:00Z", data=data)
+
+    offer = {"bookingId": "bk1", "by": "o", "requesterId": "r", "refundAmount": 600, "currency": "EUR"}
+    assert messages(ev(DISPUTE_OFFER, to="r", **offer), "W")[0][2] == "dispute_offer_renter"
+    assert messages(ev(DISPUTE_OFFER, to="o", **offer), "W")[0][2] == "dispute_offer"
+    base = {"bookingId": "bk1", "requesterId": "r", "ownerId": "o", "title": "Saw"}
+    declined = messages(ev(BOOKING_STATUS_CHANGED, **base, to="declined", by="system", declineReason="x"), "W")
+    assert [m[2] for m in declined] == ["declined_system"]
+    assert [m[2] for m in messages(ev(BOOKING_STATUS_CHANGED, **base, to="declined", by="o"), "W")] == ["declined"]
+    instant = ev(
+        BOOKING_STATUS_CHANGED, **base, to="accepted", by="payments", **{"from": "awaiting_payment"}, extendsId="bk0"
+    )
+    assert sorted(m[2] for m in messages(instant, "W")) == ["extension_confirmed", "instant_extended"]
+    report = ev(REPORT_RECEIVED, reportId="rp1", reporterEmail="a@b.c", reporterLocale="de-DE")
+    assert moderation_mail(report, "W")[0][3]["_locale"] == "de-DE"
+    assert render("report_received", "de-DE", report="rp1")[0] != render("report_received", "en", report="rp1")[0]

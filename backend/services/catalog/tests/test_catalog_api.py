@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import io
+import re
 import time
 
 import pytest
@@ -1410,7 +1411,9 @@ def test_deletion_leaves_no_words_photos_or_reports_behind(client, app, issuer):
 
     app.state.cdn = Edge()
     assert _run(app, lambda: sweep_orphans_once(app)) == 1, "their photo goes on the next sweep"
-    assert purged == [f"/media/{photo.rsplit('/', 1)[-1]}"], "and its copies leave the CDN"
+    name = photo.rsplit("/", 1)[-1]
+    widths = [f"/media/{name.removesuffix('.webp')}-{w}.webp" for w in (400, 800, 1600)]
+    assert sorted(purged) == sorted([f"/media/{name}", *widths]), "and its copies leave the CDN, renditions too"
     assert client.get(photo).status_code == 404
 
     async def media():
@@ -1783,3 +1786,83 @@ def test_booking_can_learn_the_name_a_renter_goes_by(client, issuer):
     name = client.get("/internal/people/user-a/name", headers=INTERNAL).json()["name"]
     assert name, name
     assert client.get("/internal/people/nobody/name", headers=INTERNAL).json() == {"name": None}
+
+
+def test_a_report_about_nothing_is_refused_and_a_reporter_hears_back_in_their_language(client, app, broker):
+    # V8-19: a profile "l9" does not exist; V8-12: the German form, German mails.
+    from cappy_common.events import REPORT_RECEIVED
+
+    body = {"goodFaith": True, "reason": "spam", "details": "Looks like spam to me", "email": "a@example.com"}
+    lost = client.post("/reports", json={**body, "targetType": "owner", "targetId": "l9"}, headers=ANON)
+    assert lost.status_code == 404 and lost.json()["error"]["code"] == "report_target_unknown"
+    gone = client.post("/reports", json={**body, "targetType": "message", "targetId": "msg_404"}, headers=ANON)
+    assert gone.status_code == 404
+    german = {**ANON, "Accept-Language": "de-DE,de;q=0.9"}
+    assert (
+        client.post("/reports", json={**body, "targetType": "listing", "targetId": "l9"}, headers=german).status_code
+        == 201
+    )
+    assert (
+        client.post("/reports", json={**body, "targetType": "message", "targetId": "msg_1"}, headers=ANON).status_code
+        == 201
+    )
+    flush(app)
+    assert [e.data["reporterLocale"] for e in broker.of_type(REPORT_RECEIVED)] == ["de-DE", None]
+
+
+def test_audit_lines_name_who_and_what(client, issuer):
+    # V8-11: "Person f675…" and "Listing l63" read as the names the queue shows.
+    why = {"statement": "Repeated fraudulent listings after two warnings (terms §9)."}
+    assert client.post("/admin/owners/o1/suspend", json=why, headers=_staff(issuer)).status_code == 204
+    line = client.get("/admin/audit", headers=_staff(issuer)).json()["items"][0]
+    from cappy_common.fixtures import build_world
+
+    o1 = next(o.name for o in build_world().owners if o.id == "o1")
+    assert line["details"]["targetLabel"] == o1 and line["details"]["personName"] == o1
+
+
+def test_a_photo_comes_in_three_widths_with_its_colour(client, app, issuer):
+    # U-40: renditions made at upload, the dominant colour as the placeholder,
+    # both on the listing's photos; the old string list keeps working.
+    _profile(client, issuer)
+    up = client.post(
+        "/uploads", files={"file": ("p.jpg", _jpeg_with_gps(), "image/jpeg")}, headers=issuer.headers("user-a")
+    ).json()
+    assert re.fullmatch(r"#[0-9a-f]{6}", up["color"]), up
+    for w in (400, 800, 1600):
+        small = Image.open(io.BytesIO(client.get(up["url"].replace(".webp", f"-{w}.webp")).content))
+        assert small.width == w
+        assert Image.open(io.BytesIO(client.get(up["url"], params={"w": w}).content)).width == w
+    lid = client.post(
+        "/listings", json={"listing": _window_listing(photos=[up["url"]])}, headers=issuer.headers("user-a")
+    ).json()["listing"]["id"]
+    detail = client.get(f"/listings/{lid}", headers=issuer.headers("user-a")).json()
+    assert detail["listing"]["photos"] == [up["url"]]
+    meta = detail["photoMeta"][0]
+    assert meta["color"] == up["color"] and meta["widths"] == [400, 800, 1600] and meta["w"] == up["width"]
+
+
+def test_older_uploads_get_their_renditions(client, app, issuer):
+    from sqlalchemy import update
+
+    from catalog.jobs import make_renditions_once
+    from catalog.tables import MediaRow
+
+    _profile(client, issuer)
+    url = client.post(
+        "/uploads", files={"file": ("b.png", _png(), "image/png")}, headers=issuer.headers("user-a")
+    ).json()["url"]
+    name = url.rsplit("/", 1)[-1]
+
+    async def forget_color():
+        async with app.state.db.transaction() as s:
+            await s.execute(update(MediaRow).where(MediaRow.name == name).values(color=None))
+        for w in (400, 800, 1600):
+            await app.state.media.delete(name.replace(".webp", f"-{w}.webp"))
+
+    app.state._portal.call(forget_color)
+    assert client.get(url.replace(".webp", "-800.webp")).status_code == 404
+    assert client.get(url, params={"w": 800}).status_code == 200, "falls back to the photo itself"
+    assert app.state._portal.call(make_renditions_once, app) == 1
+    assert client.get(url.replace(".webp", "-800.webp")).status_code == 200
+    assert app.state._portal.call(make_renditions_once, app) == 0, "done once"

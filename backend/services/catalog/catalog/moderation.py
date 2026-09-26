@@ -144,6 +144,24 @@ def _view(r: ReportRow) -> Report:
 ANONYMOUS_PER_TARGET, MEMBERS_PER_TARGET = 5, 20
 
 
+async def _exists(request: Request, session: AsyncSession, kind: str, target_id: str) -> None:
+    """A notice about nothing never reaches staff (V8-19): the reporter is
+    asked for its link instead. A message lives in booking; if booking cannot
+    be asked, the notice is taken (a notice lost is worse than one checked)."""
+    table = {"listing": ListingRow, "owner": OwnerRow, "review": ReviewRow}.get(kind)
+    if table is not None:
+        found = await session.get(table, target_id) is not None
+    else:
+        try:
+            found = await request.app.state.bookings.message_author(target_id) is not None
+        except ApiError as e:
+            if e.status != 404:
+                return
+            found = False
+    if not found:
+        raise NotFound("We could not find what you are reporting. Paste its link.", code="report_target_unknown")
+
+
 @public.post("/reports", response_model=Report, status_code=status.HTTP_201_CREATED)
 async def report(
     body: ReportIn,
@@ -193,6 +211,7 @@ async def report(
         raise RateLimited(
             "This has been reported many times today; it is already being looked at.", code="reported_enough"
         )
+    await _exists(request, session, body.target_type, body.target_id)
     row = ReportRow(
         id=new_id("rp"),
         target_type=body.target_type,
@@ -201,6 +220,10 @@ async def report(
         details=body.details.strip(),
         reporter_id=p.sub if p else None,
         reporter_email=email,
+        # The form's language: what the reporter wrote in (V8-12).
+        reporter_locale=(request.headers.get("accept-language") or "").split(",")[0].strip()[:16] or None
+        if email
+        else None,
         status="open",
         created_at=datetime.now(UTC),
     )
@@ -213,6 +236,7 @@ async def report(
             "reportId": row.id,
             "reporterId": row.reporter_id,
             "reporterEmail": row.reporter_email,
+            "reporterLocale": row.reporter_locale,
             "targetType": row.target_type,
         },
     )
@@ -428,6 +452,7 @@ async def decide(
             "affectedId": affected if body.action != "dismiss" else None,
             "reporterId": r.reporter_id,
             "reporterEmail": r.reporter_email,
+            "reporterLocale": r.reporter_locale,
             "statement": r.statement,
             "statementOfReasons": r.statement_of_reasons,
         },
@@ -546,6 +571,7 @@ async def audit(
         ).scalars()
     )
     more, rows = len(rows) > n, rows[:n]
+    names = await _audit_names(session, rows)
     return Page(
         items=[
             AuditEntry(
@@ -559,12 +585,40 @@ async def audit(
                 at=iso_from_datetime(r.at),
                 person_id=r.person_id,
                 request_id=r.request_id,
-                details=r.details or {},
+                details={**(r.details or {}), **names(r)},
             )
             for r in rows
         ],
         next_cursor=encode_cursor({"at": rows[-1].at.isoformat(), "id": rows[-1].id}) if more else None,
     )
+
+
+async def _audit_names(session: AsyncSession, rows: list[ModerationActionRow]):
+    """Who and what a line is about, in words (V8-11): read when the log is,
+    so older lines get them too and a renamed listing reads as it is now."""
+    people = {r.person_id for r in rows if r.person_id} | {r.target_id for r in rows if r.target_type == "owner"}
+    listing_ids = {r.target_id for r in rows if r.target_type == "listing"}
+    owners = (
+        dict((await session.execute(select(OwnerRow.id, OwnerRow.name).where(OwnerRow.id.in_(people)))).tuples().all())
+        if people
+        else {}
+    )
+    titles = (
+        dict(
+            (await session.execute(select(ListingRow.id, ListingRow.title).where(ListingRow.id.in_(listing_ids))))
+            .tuples()
+            .all()
+        )
+        if listing_ids
+        else {}
+    )
+
+    def names(r: ModerationActionRow) -> dict:
+        label = {"owner": owners, "listing": titles}.get(r.target_type, {}).get(r.target_id)
+        person = owners.get(r.person_id or "")
+        return {k: v for k, v in (("targetLabel", label), ("personName", person)) if v}
+
+    return names
 
 
 async def on_staff_action(session: AsyncSession, event: Event) -> None:

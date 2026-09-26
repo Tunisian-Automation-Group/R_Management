@@ -114,7 +114,10 @@ def find_matches(
 
     owners = {o.id: o for o in world.owners}
     until = _window_end(req)
-    if ms_from_iso(until) <= ms_from_iso(now):
+    # A window request searches from its own "from" when that is later than
+    # now (the web's From hour narrows the results).
+    start = req.earliest if req.mode == "window" and ms_from_iso(req.earliest) > ms_from_iso(now) else now
+    if ms_from_iso(until) <= ms_from_iso(start):
         return []
 
     slots_by_listing: dict[str, list] = {}
@@ -144,7 +147,7 @@ def find_matches(
         if hours is None or quote is None:
             continue
 
-        offer = earliest_offer(slots_by_listing.get(listing.id, []), hours, now, until, busy.get(listing.id))
+        offer = earliest_offer(slots_by_listing.get(listing.id, []), hours, start, until, busy.get(listing.id))
         if not offer:
             continue
 

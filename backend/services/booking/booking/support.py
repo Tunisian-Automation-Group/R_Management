@@ -388,6 +388,8 @@ async def make_offer(
             "bookingId": row.id,
             "to": other,
             "by": p.sub,
+            # So the renter reads what they get back (V8-9).
+            "requesterId": row.requester_id,
             "title": (row.listing_snapshot or {}).get("title", ""),
             "refundAmount": body.refund_amount,
             "currency": row.currency,
@@ -983,6 +985,9 @@ async def booking_claims(
 class ClaimDecisionIn(CamelModel):
     decision: Literal["confirm", "reject"]
     note: str = Field(default="", max_length=1000)
+    # Cappy's own words for why, as a code the app translates (V8-11); ``note``
+    # is only what staff typed themselves.
+    note_code: Literal["from_record", "not_supported"] | None = None
 
 
 @admin.post("/claims/{claim_id}/decide", response_model=Claim)
@@ -1018,7 +1023,9 @@ async def decide_claim(
         "booking",
         c.booking_id,
         body.note,
-        details=_facts(await repo.get(c.booking_id), amount=c.amount, claimKind=c.kind, claimId=c.id),
+        details=_facts(
+            await repo.get(c.booking_id), amount=c.amount, claimKind=c.kind, claimId=c.id, noteCode=body.note_code
+        ),
     )
     request.app.state.relay.wake()
     return _claim(c)

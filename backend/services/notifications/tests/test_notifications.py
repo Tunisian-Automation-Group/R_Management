@@ -752,3 +752,22 @@ def test_mails_say_the_time_the_money_and_who_they_are_about():
     assert "you get €7.00 back" in render("dispute_partial_renter", "en", **settled[0][3])[1]
     # A notice stored before prices were in it still reads (no amount).
     assert "confirmed. The hand-over" in render("accepted", "en", title="Saw", link="L")[1]
+
+
+def test_a_deleted_renter_is_no_longer_named_in_the_owners_bell():
+    """D-27: the owner's request item named the renter; once the renter's
+    account is deleted, the item stays but the name goes."""
+    from cappy_common.events import PROFILE_DELETED
+    from cappy_common.testing import TestIssuer
+
+    issuer = TestIssuer()
+    settings = Settings(app_env="test", database_url="sqlite+aiosqlite://", internal_token="i" * 40)
+    app = build_app(settings, directory=People(), mailer=LogMailer(), verifier=issuer.verifier())
+    host = issuer.headers("host")
+    with TestClient(app) as c:
+        c.portal.call(app.state.dispatcher.handle, _change("requested", by="payments", renterName="Rae Rival"))
+        before = c.get("/notifications", headers=host).json()["items"]
+        assert "Rae Rival" in before[0]["body"]
+        c.portal.call(app.state.dispatcher.handle, _event(PROFILE_DELETED, ownerId="buyer"))
+        after = c.get("/notifications", headers=host).json()["items"]
+        assert len(after) == 1 and "Rae Rival" not in after[0]["body"] + after[0]["title"]

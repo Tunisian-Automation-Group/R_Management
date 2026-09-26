@@ -9,8 +9,10 @@ from datetime import UTC, datetime, timedelta
 
 from fastapi import FastAPI
 
+from cappy_common.errors import NotFound
 from cappy_common.events import LISTING_CHANGED, jittered
 
+from .media import rendition, renditions_of, resize_stored
 from .repository import CatalogRepository
 
 log = logging.getLogger(__name__)
@@ -33,15 +35,16 @@ async def sweep_orphans_once(app: FastAPI) -> int:
             await s.delete(r)
         await s.flush()
         gone = {n for n in names if not await repo.still_held(n)}
-    for name in gone:
+    files = {f for n in gone for f in (n, *renditions_of(n))}
+    for name in files:
         try:
             await app.state.media.delete(name)
             await app.state.evidence.delete(name)
         except Exception as e:  # noqa: BLE001 - an orphaned file costs cents; try the rest
             log.warning("could not delete photo %s: %s", name, e)
     # A deleted file must not live on at the edge either (a deleted account's
-    # photos above all): the CDN drops the copies now.
-    await app.state.cdn.purge(sorted(f"/media/{n}" for n in gone))
+    # photos above all): the CDN drops the copies now, renditions too.
+    await app.state.cdn.purge(sorted(f"/media/{n}" for n in files))
     return len(gone)
 
 
@@ -137,8 +140,37 @@ async def hold_out_of_market_once(app: FastAPI) -> int:
     return len(found)
 
 
+async def make_renditions_once(app: FastAPI, batch: int = 50) -> int:
+    """Uploads from before renditions (U-40) get their widths and colour.
+    ponytail: a batch an hour; a one-off script if a backlog ever matters."""
+    from sqlalchemy import select, update
+
+    from .tables import MediaRow
+
+    async with app.state.db.transaction() as s:
+        names = list(
+            (await s.execute(select(MediaRow.name).where(MediaRow.color.is_(None)).distinct().limit(batch))).scalars()
+        )
+    done = 0
+    for name in names:
+        try:
+            data = await app.state.media.get(name)
+        except NotFound:
+            data = None  # an evidence photo (private store) or gone: nothing to make
+        color = ""
+        if data is not None:
+            widths, color = await asyncio.to_thread(resize_stored, data)
+            for width, rendered in widths.items():
+                await app.state.media.put(rendition(name, width), rendered)
+        async with app.state.db.transaction() as s:
+            await s.execute(update(MediaRow).where(MediaRow.name == name).values(color=color))
+        done += 1
+    return done
+
+
 async def sweep_orphans(app: FastAPI) -> None:
     await sweep_orphans_once(app)
+    await make_renditions_once(app)
     await forget_reporters_once(app)
     await keep_schedules_once(app)
     await attribute_decisions_once(app)

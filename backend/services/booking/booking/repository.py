@@ -26,6 +26,7 @@ from cappy_common.events import (
 from cappy_common.markets import market_of_currency
 from cappy_common.models import Booking, Handover, ListingSnapshot, Match, Outcome, Requirement
 from cappy_common.pagination import decode_cursor, encode_cursor
+from cappy_common.reasons import code_of
 from cappy_common.timeutil import dt_from_iso, iso_from_datetime
 
 from .state import HOLDING, OPEN
@@ -49,6 +50,7 @@ def to_booking(row: BookingRow, viewer: str) -> Booking:
         created_at=iso_from_datetime(row.created_at),
         requester_id=None if row.requester_id == viewer else row.requester_id,
         decline_reason=row.decline_reason,
+        decline_reason_code=code_of(row.decline_reason),
         outcome=Outcome.model_validate(outcome) if outcome else None,
         listing=ListingSnapshot.model_validate(row.listing_snapshot),
         expires_at=iso_from_datetime(row.expires_at) if row.expires_at else None,

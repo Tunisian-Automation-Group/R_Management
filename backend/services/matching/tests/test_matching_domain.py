@@ -110,6 +110,15 @@ def test_window_request_matches_window_listings(world, now, saw):
         assert l.category == "workshop"
 
 
+def test_a_window_request_searches_from_its_own_start(world, now, saw):
+    # The web's From hour: nothing may start before the requirement's earliest.
+    later = plus(now, 48)
+    moved = saw.model_copy(update={"earliest": later})
+    found = find_matches(moved, world, now)
+    assert found and all(ms_from_iso(m.start) >= ms_from_iso(later) for m in found)
+    assert any(ms_from_iso(m.start) < ms_from_iso(later) for m in find_matches(saw, world, now))
+
+
 # 3 - a batch request matches only batch listings, and respects tolerance
 def test_batch_request_respects_tolerance(world, now, brackets):
     m = find_matches(brackets, world, now)

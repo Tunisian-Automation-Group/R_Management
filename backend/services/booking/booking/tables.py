@@ -106,6 +106,16 @@ class MessageRow(Base):
 Index("ix_booking_messages_booking_at", MessageRow.booking_id, MessageRow.at)
 
 
+class MessageReadRow(Base):
+    """When someone last opened a booking's conversation: what the inbox counts
+    as unread is the other side's messages after it."""
+
+    __tablename__ = "message_reads"
+    booking_id: Mapped[str] = mapped_column(String(40), ForeignKey("bookings.id", ondelete="CASCADE"), primary_key=True)
+    person_id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    read_at: Mapped[datetime] = mapped_column(UtcDateTime)
+
+
 class BlockRow(Base):
     """Someone who does not want to hear from, or be booked by, someone else."""
 

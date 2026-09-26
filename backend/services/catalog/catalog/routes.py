@@ -98,6 +98,7 @@ class ListingDetail(CamelModel):
     slots: list[Slot]
     reviews: ReviewSummary
     saved: bool | None = None
+    photo_meta: list[PhotoMeta] = Field(default_factory=list)
 
 
 class Me(CamelModel):
@@ -193,6 +194,20 @@ class Uploaded(CamelModel):
     width: int
     height: int
     bytes: int
+    # The dominant colour, the placeholder while it loads (U-40).
+    color: str | None = None
+
+
+class PhotoMeta(CamelModel):
+    """One of a listing's photos, parallel to ``listing.photos`` (U-40): the
+    widths it exists at (``/media/<hash>-<w>.webp``), and a colour to show
+    while it loads. A photo that is not an upload (a demo photo) has none."""
+
+    url: str
+    w: int | None = None
+    h: int | None = None
+    color: str | None = None
+    widths: list[int] = Field(default_factory=list)
 
 
 class CandidatesIn(CamelModel):
@@ -534,7 +549,22 @@ async def detail_of(repo, row, saved: bool | None = None) -> ListingDetail:
         slots=await repo.upcoming_slots({listing_id}, after=dt_from_iso(now_iso())),
         reviews=_summary(await repo.review_stats(listing_id)),
         saved=saved,
+        photo_meta=await _photo_meta(repo, listing.photos or []),
     )
+
+
+async def _photo_meta(repo, photos: list[str]) -> list[PhotoMeta]:  # noqa: ANN001
+    names = {url: url.rsplit("/", 1)[-1] for url in photos if "/media/" in url}
+    rows = await repo.photo_meta(list(names.values()))
+    out = []
+    for url in photos:
+        row = rows.get(names.get(url, ""))
+        if row is None:
+            out.append(PhotoMeta(url=url))
+            continue
+        widths = list(media.WIDTHS) if row.color else []
+        out.append(PhotoMeta(url=url, w=row.width, h=row.height, color=row.color or None, widths=widths))
+    return out
 
 
 @router.get("/listings/{listing_id}/reviews", response_model=Page[Review])
@@ -757,21 +787,39 @@ async def upload(
             max_pixels=settings.media_max_pixels,
         )
     private = purpose == "evidence"
-    await (request.app.state.evidence if private else request.app.state.media).put(processed.name, processed.data)
-    await repo.record_media(processed.name, p.sub, len(processed.data), processed.width, processed.height)
+    store = request.app.state.evidence if private else request.app.state.media
+    await store.put(processed.name, processed.data)
+    if not private:
+        # The widths a gallery and a card ask for (U-40); evidence is shown
+        # only in the booking, at one size.
+        for width, data in processed.renditions.items():
+            await store.put(media.rendition(processed.name, width), data)
+    # "" for evidence: it has no renditions, and the backfill must not wait on it.
+    color = "" if private else processed.color
+    await repo.record_media(processed.name, p.sub, len(processed.data), processed.width, processed.height, color)
     return Uploaded(
         url=media.evidence_ref(processed.name) if private else media.url_for(settings, processed.name),
         width=processed.width,
         height=processed.height,
         bytes=len(processed.data),
+        color=color or None,
     )
 
 
 @media_router.get("/media/{name}", include_in_schema=False)
-async def serve_media(name: str, request: Request) -> Response:
+async def serve_media(name: str, request: Request, w: int | None = None) -> Response:
     """Only used where no CDN fronts the bucket (local development). In AWS,
-    CloudFront serves ``/media/*`` from S3 and this is never reached."""
-    data = await request.app.state.media.get(name)
+    CloudFront serves ``/media/*`` from S3 and this is never reached.
+    ``?w=`` picks a rendition, as ``/media/<hash>-<w>.webp`` does (U-40); an
+    upload older than renditions falls back to the photo itself."""
+    store = request.app.state.media
+    if w in media.WIDTHS and media.NAME.match(name) and "-" not in name:
+        try:
+            data = await store.get(media.rendition(name, w))
+        except NotFound:
+            data = await store.get(name)
+    else:
+        data = await store.get(name)
     return Response(data, media_type="image/webp", headers={"Cache-Control": "public, max-age=31536000, immutable"})
 
 
