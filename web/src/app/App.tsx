@@ -141,7 +141,7 @@ function Member() {
       {/* Keyboard users skip the navigation; the nav comes first in the page. */}
       <a
         href="#main"
-        className="sr-only z-[70] rounded-[var(--radius-control)] bg-[var(--field)] px-4 py-3 text-[0.875rem] font-semibold text-[var(--on-field)]
+        className="sr-only z-[70] rounded-[var(--radius-control)] bg-[var(--field)] px-4 py-3 text-body font-semibold text-[var(--on-field)]
           focus:not-sr-only focus:fixed focus:left-4 focus:top-4"
       >
         {t('Skip to content')}

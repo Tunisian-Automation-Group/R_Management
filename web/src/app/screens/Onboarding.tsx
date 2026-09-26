@@ -135,7 +135,7 @@ export function Onboarding() {
           hint={t('Cappy is for adults: bookings are contracts.')}
         />
         {error && (
-          <p role="alert" className="text-[0.875rem] font-semibold text-[var(--danger)]">
+          <p role="alert" className="text-body font-semibold text-[var(--danger)]">
             {error}
           </p>
         )}

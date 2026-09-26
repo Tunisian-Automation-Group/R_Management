@@ -280,7 +280,7 @@ function Queue() {
             return (
               <li key={r.id}>
                 <Card className="p-4">
-                  <p className="text-[0.9375rem] font-semibold">
+                  <p className="text-body font-semibold">
                     {t(REASON_LABEL[r.reason] ?? r.reason)} · {targetLabel(r.targetType)}{' '}
                     {link ? (
                       <Link className="underline" to={link}>
@@ -377,7 +377,7 @@ function Decide({ report, onClose }: { report: Report | null; onClose: () => voi
         {/* What was reported, so nobody decides blind (V7-26). */}
         {report && (
           <div className="rounded-[var(--radius-control)] bg-[var(--sunken)] p-3">
-            <p className="text-[0.9375rem] font-semibold">
+            <p className="text-body font-semibold">
               {t(REASON_LABEL[report.reason] ?? report.reason)} · {targetLabel(report.targetType)} <TargetName r={report} />
             </p>
             {report.targetText && (
@@ -458,7 +458,7 @@ function HeldCard({ h, busy, onApprove }: { h: HeldListing; busy: boolean; onApp
   return (
     <Card className="flex flex-wrap items-center gap-3 p-4">
       <div className="min-w-0 flex-1">
-        <p className="text-[0.9375rem] font-semibold">{h.title}</p>
+        <p className="text-body font-semibold">{h.title}</p>
         <p className="t-sm text-[var(--ink-4)]">
           {t('{price} / hour', { price: formatMoney(h.ratePerHour, h.currency) })} · {ago(h.heldAt)}
         </p>

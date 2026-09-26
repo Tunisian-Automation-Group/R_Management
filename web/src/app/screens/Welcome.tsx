@@ -42,7 +42,7 @@ export function Welcome() {
         style={{ paddingTop: 'max(20px, env(safe-area-inset-top))', paddingBottom: 'max(24px, env(safe-area-inset-bottom))' }}
       >
         <header className="flex items-center justify-between gap-4">
-          <p className="t-h2 leading-none" style={{ fontSize: 28 }}>
+          <p className="t-h2 leading-none">
             Cappy
           </p>
           <div className="rounded-full bg-[var(--surface)]">
@@ -66,7 +66,7 @@ export function Welcome() {
                   <Icon name={v.icon} size={17} strokeWidth={2} />
                 </span>
                 <div>
-                  <h2 className="text-[1rem] font-semibold">{t(v.title)}</h2>
+                  <h2 className="text-body-l font-semibold">{t(v.title)}</h2>
                   <p className="t-sm mt-1 text-[var(--on-field-dim)]">{t(v.body)}</p>
                 </div>
               </li>
@@ -81,7 +81,7 @@ export function Welcome() {
           <button
             type="button"
             onClick={() => nav('/login', { replace: true })}
-            className="min-h-[48px] rounded-[var(--radius-control)] border border-[var(--on-field-dim)] px-4 text-[0.9375rem] font-semibold"
+            className="min-h-[48px] rounded-[var(--radius-control)] border border-[var(--on-field-dim)] px-4 text-body font-semibold"
           >
             {t('I have an account')}
           </button>

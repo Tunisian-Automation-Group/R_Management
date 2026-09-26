@@ -46,6 +46,7 @@ import {
   Sheet,
   oneDecimal,
   Stars,
+  DetailSkeleton,
 } from '../components/ui.tsx'
 import { cancelRate, day, formatDistance, percent, policyInForce, policyName, policyText, range, relative, responseRate, responseTime, time } from '../format.ts'
 import { useOnline } from '../components/Offline.tsx'
@@ -180,7 +181,7 @@ export function Listing({ preview }: { preview?: { detail: ListingDetail; banner
   const selectedStart = selected?.start
   useEffect(startOver, [selectedStart])
 
-  if (detail.isPending) return <Screen back="/">{null}</Screen>
+  if (detail.isPending) return <Screen back="/"><DetailSkeleton /></Screen>
   if (!detail.data || !listing || !owner) return <NotFound what="listing" />
   const info = detail.data
   // The owner's policy only binds once Cappy switches paid policies on (V3-4).
@@ -311,7 +312,7 @@ export function Listing({ preview }: { preview?: { detail: ListingDetail; banner
             className="absolute left-20 right-5 flex flex-wrap items-center justify-end gap-2"
             style={{ top: 'calc(var(--safe-top) + 14px)' }}
           >
-            <span className="glass glass-dark min-w-0 max-w-full truncate rounded-full px-3 py-1 text-[0.75rem] font-semibold">
+            <span className="glass glass-dark min-w-0 max-w-full truncate rounded-full px-3 py-1 text-label font-semibold">
               {meta.label}
             </span>
             <WhenBadge
@@ -330,12 +331,12 @@ export function Listing({ preview }: { preview?: { detail: ListingDetail; banner
           <div className="flex flex-wrap items-center gap-x-4 gap-y-2 md:block">
             <div className="min-w-[10rem] flex-1">
               <p className="t-label hidden md:block">{t('Your booking')}</p>
-              <p className="tnum text-[1.1875rem] font-bold leading-tight md:mt-2 md:text-[1.75rem]">
+              <p className="tnum text-title-s font-bold leading-tight md:mt-2 md:text-title-l">
                 {quote ? formatMoney(quote.total, cur) : '—'}
               </p>
               {/* U-20: the total is the whole price; the fee is inside it, never added at the end. */}
               {quote && (
-                <p className="tnum truncate text-[0.7812rem] text-[var(--ink-3)]">
+                <p className="tnum truncate text-label text-[var(--ink-3)]">
                   {t('Total, incl. {fee} service fee', { fee: formatMoney(quote.platformFee, cur) })}
                 </p>
               )}
@@ -379,9 +380,9 @@ export function Listing({ preview }: { preview?: { detail: ListingDetail; banner
     >
       {/* ------------------------------------------------------------- title */}
       <header className="-mt-1">
-        <h1 className="t-h1 text-balance">{listing.title}</h1>
+        <h1 className="t-title-user text-balance">{listing.title}</h1>
         <p className="t-lede mt-2.5 text-[var(--ink-3)]">{listing.blurb}</p>
-        <div className="mt-4 flex flex-wrap items-center gap-x-4 gap-y-2 text-[0.875rem] text-[var(--ink-3)]">
+        <div className="mt-4 flex flex-wrap items-center gap-x-4 gap-y-2 text-body text-[var(--ink-3)]">
           {/* Approximate for everyone but the owner (M-6): the exact place comes with the booking. */}
           <span className="tnum inline-flex items-center gap-1.5" title={mine ? undefined : addressNote}>
             <Icon name="pin" size={15} className="text-[var(--ink-4)]" />
@@ -402,7 +403,7 @@ export function Listing({ preview }: { preview?: { detail: ListingDetail; banner
             <Stars value={info.reviews.average} count={info.reviews.count} />
           </a>
           {listing.instantBook && (
-            <span className="inline-flex items-center gap-1 rounded-full bg-[var(--sunken)] px-2.5 py-0.5 text-[0.8125rem] font-semibold text-[var(--ink-2)]">
+            <span className="inline-flex items-center gap-1 rounded-full bg-[var(--sunken)] px-2.5 py-0.5 text-label font-semibold text-[var(--ink-2)]">
               <Icon name="bolt" size={13} />
               {t('Instant book')}
             </span>
@@ -431,7 +432,7 @@ export function Listing({ preview }: { preview?: { detail: ListingDetail; banner
         <div className="flex items-center gap-4">
           <Avatar initials={owner.initials} size={48} business={owner.kind === 'business'} />
           <div className="min-w-0 flex-1">
-            <p className="flex items-center gap-1.5 text-[1rem] font-semibold">
+            <p className="flex items-center gap-1.5 text-body-l font-semibold">
               {/* Wraps: a name is not cut to "Nadia Bra…" when the rating beside it is long (V4-11). */}
               <span className="min-w-0 break-words">{owner.name}</span>
               {owner.verified && (
@@ -492,7 +493,7 @@ export function Listing({ preview }: { preview?: { detail: ListingDetail; banner
         <>
           <SectionHead title={t('Hand-over address')} className="mt-7" />
           <Card className="p-5">
-            <p className="text-[0.9375rem] text-[var(--ink-2)]">{preview.address}</p>
+            <p className="text-body text-[var(--ink-2)]">{preview.address}</p>
           </Card>
         </>
       )}
@@ -657,7 +658,7 @@ export function Listing({ preview }: { preview?: { detail: ListingDetail; banner
 
       <SectionHead title={t('Cancellation')} className="mt-7" />
       <Card className="p-5">
-        <p className="text-[0.9375rem] font-semibold">{policyName(policy)}</p>
+        <p className="text-body font-semibold">{policyName(policy)}</p>
         <p className="t-sm mt-1 text-[var(--ink-3)]">
           {policyText(policy)} {preview ? t('If the owner cancels, the renter gets everything back.') : t('If the owner cancels, you get everything back.')}
         </p>
@@ -674,7 +675,7 @@ export function Listing({ preview }: { preview?: { detail: ListingDetail; banner
       <Card className="p-5">
         <ul className="space-y-3">
           {listing.rules.map((r) => (
-            <li key={r} className="flex gap-3 text-[0.9375rem] text-[var(--ink-2)]">
+            <li key={r} className="flex gap-3 text-body text-[var(--ink-2)]">
               <Icon
                 name="check"
                 size={16}
@@ -741,10 +742,10 @@ export function Listing({ preview }: { preview?: { detail: ListingDetail; banner
                 categoryId={listing.category}
                 aspect={1}
                 thumb
-                className="w-[52px] shrink-0 rounded-[14px]"
+                className="w-[52px] shrink-0 rounded-[var(--radius-m)]"
               />
               <div className="min-w-0">
-                <p className="truncate text-[0.9688rem] font-semibold">{listing.title}</p>
+                <p className="truncate text-body font-semibold">{listing.title}</p>
                 <p className="t-sm truncate text-[var(--ink-3)]">{owner.name}</p>
               </div>
             </div>
@@ -804,7 +805,7 @@ export function Listing({ preview }: { preview?: { detail: ListingDetail; banner
           </div>
         }
       >
-        <p className="pb-2 text-[0.9375rem] text-[var(--ink-2)]">
+        <p className="pb-2 text-body text-[var(--ink-2)]">
           {t('This booking needs a one-time ID check. You photograph an ID document and your face; it takes about two minutes and is never needed again. Your booking is sent as soon as it is done.')}
         </p>
         <div className="pb-3">

@@ -1366,4 +1366,9 @@ export const DE: Record<string, string> = {
   "The booking this extended was cancelled": "Die Buchung, die hier verlängert wurde, ist storniert",
   "Cappy stopped this request": "Cappy hat diese Anfrage gestoppt",
   "This has already been reported enough times. Our team is looking at it.": "Das wurde schon oft genug gemeldet. Unser Team sieht es sich an.",
+  "System": "System",
+  "Light": "Hell",
+  "Dark": "Dunkel",
+  "Appearance": "Darstellung",
+  "System follows your phone or computer. Saved on this device only.": "„System“ folgt deinem Handy oder Computer. Nur auf diesem Gerät gespeichert.",
 }

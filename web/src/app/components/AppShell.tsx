@@ -5,6 +5,7 @@ import { Icon, type IconName } from './Icon.tsx'
 import { useBack } from '../nav.ts'
 import { LANGS, lang, locale, setLang, t } from '../../i18n.ts'
 import { updateLocale } from '../../data/auth.ts'
+import { setAppearance, useAppearance, type Appearance } from '../theme.ts'
 
 type Tab = { to: string; label: string; icon: IconName; badge?: number }
 
@@ -44,7 +45,7 @@ export function Dock({ badges }: { badges: Record<string, number> }) {
       aria-label={t('Main')}
       className="glass fixed z-40 shadow-[var(--glass-shadow-raised)]
         max-md:bottom-0 max-md:left-1/2 max-md:w-[calc(100%-32px)] max-md:max-w-[420px]
-        max-md:-translate-x-1/2 max-md:rounded-[28px]
+        max-md:-translate-x-1/2 max-md:rounded-[var(--radius-l)]
         md:inset-x-0 md:top-0 md:h-[var(--header-h)]"
       style={{ viewTransitionName: 'dock' }}
     >
@@ -76,7 +77,7 @@ export function Dock({ badges }: { badges: Record<string, number> }) {
               to="/earn/new"
               aria-label={t('List capacity you own')}
               className="grid h-[40px] w-[44px] place-items-center rounded-full bg-[var(--accent)] text-[var(--on-accent)]
-                shadow-[var(--shadow-float)] transition-colors duration-[160ms] hover:bg-[var(--accent-hover)]"
+                shadow-[var(--shadow-float)] transition-colors duration-[var(--dur-short)] hover:bg-[var(--accent-hover)]"
             >
               <Icon name="plus" size={19} strokeWidth={2.4} />
             </NavLink>
@@ -98,7 +99,7 @@ export function Dock({ badges }: { badges: Record<string, number> }) {
           {badges['/notifications'] ? (
             <span
               aria-hidden="true"
-              className="tnum absolute right-1 top-1 grid h-[15px] min-w-[15px] place-items-center rounded-[2px] bg-[var(--accent)] px-1 text-[0.5938rem] font-bold text-[var(--on-accent)]"
+              className="tnum absolute right-1 top-1 grid h-[15px] min-w-[15px] place-items-center rounded-[var(--radius-xs)] bg-[var(--badge)] px-1 text-caption font-bold text-[var(--on-badge)]"
             >
               {badges['/notifications']}
             </span>
@@ -108,8 +109,8 @@ export function Dock({ badges }: { badges: Record<string, number> }) {
         <NavLink
           to="/earn/new"
           className="hidden shrink-0 items-center gap-2 rounded-full bg-[var(--accent)] px-4 py-2.5
-            text-[0.875rem] font-semibold text-[var(--on-accent)] shadow-[var(--shadow-float)]
-            transition-colors duration-[160ms] hover:bg-[var(--accent-hover)] md:inline-flex"
+            text-body font-semibold text-[var(--on-accent)] shadow-[var(--shadow-float)]
+            transition-colors duration-[var(--dur-short)] hover:bg-[var(--accent-hover)] md:inline-flex"
         >
           <Icon name="plus" size={16} strokeWidth={2.4} />
           {t('List capacity')}
@@ -154,8 +155,8 @@ function TabItem({ tab, big }: { tab: Tab; big: boolean }) {
           // The label is capped at 14 px and truncates: four labels in a 390 px dock
           // overlapped at 200 % text (V4-12); the link's name stays whole for screen readers.
           `relative flex h-full min-h-[56px] min-w-0 flex-col items-center justify-center gap-[3px] text-[min(0.6562rem,14px)]
-           transition-colors duration-[160ms]
-           md:min-h-0 md:flex-row md:gap-3 md:rounded-full md:px-3.5 md:py-2 md:text-[0.875rem]
+           transition-colors duration-[var(--dur-short)]
+           md:min-h-0 md:flex-row md:gap-3 md:rounded-full md:px-3.5 md:py-2 md:text-body
            ${
              isActive
                ? 'font-semibold text-[var(--ink)]'
@@ -170,7 +171,7 @@ function TabItem({ tab, big }: { tab: Tab; big: boolean }) {
             {isActive && (
               <span
                 aria-hidden="true"
-                className="absolute inset-x-2 inset-y-1.5 -z-10 rounded-[16px] bg-[var(--sunken)]
+                className="absolute inset-x-2 inset-y-1.5 -z-10 rounded-[var(--radius-m)] bg-[var(--sunken)]
                   md:inset-0 md:rounded-full"
               />
             )}
@@ -180,7 +181,7 @@ function TabItem({ tab, big }: { tab: Tab; big: boolean }) {
                 <span
                   aria-hidden="true"
                   // On the icon's corner, clear of the label beside it on a desktop (V5-29).
-                  className="tnum absolute -right-2 -top-1 grid h-[15px] min-w-[15px] place-items-center rounded-[2px] bg-[var(--accent)] px-1 text-[0.5938rem] font-bold text-[var(--on-accent)] md:-right-1.5 md:-top-2"
+                  className="tnum absolute -right-2 -top-1 grid h-[15px] min-w-[15px] place-items-center rounded-[var(--radius-xs)] bg-[var(--badge)] px-1 text-caption font-bold text-[var(--on-badge)] md:-right-1.5 md:-top-2"
                 >
                   {tab.badge}
                 </span>
@@ -318,7 +319,7 @@ export function Screen({
               className="sticky hidden md:block"
               style={{ top: 'calc(var(--header-h) + 24px)' }}
             >
-              <div className="rounded-[24px] border border-[var(--line)] bg-[var(--surface)] p-5 shadow-[var(--shadow-float)]">
+              <div className="rounded-[var(--radius-l)] border border-[var(--line)] bg-[var(--surface)] p-5 shadow-[var(--shadow-float)]">
                 {footer}
               </div>
             </aside>
@@ -338,7 +339,7 @@ export function Screen({
           }}
         >
           <div
-            className="glass-strong mx-auto max-w-[560px] rounded-[24px] px-4 py-3
+            className="glass-strong mx-auto max-w-[560px] rounded-[var(--radius-l)] px-4 py-3
               shadow-[var(--glass-shadow-raised)]"
           >
             {footer}
@@ -403,7 +404,7 @@ function SiteFooter() {
                 <li key={l.label}>
                   <NavLink
                     to={l.to}
-                    className="text-[0.875rem] text-[var(--ink-2)] transition-opacity duration-[160ms] hover:opacity-60"
+                    className="text-body text-[var(--ink-2)] transition-opacity duration-[var(--dur-short)] hover:opacity-60"
                   >
                     {l.label}
                   </NavLink>
@@ -433,7 +434,7 @@ function BackButton({ onClick, floating }: { onClick: () => void; floating?: boo
     <button
       onClick={onClick}
       aria-label={t('Back')}
-      className={`grid h-10 w-10 place-items-center rounded-full transition-all duration-[160ms]
+      className={`grid h-10 w-10 place-items-center rounded-full transition-all duration-[var(--dur-short)]
         ${
           floating
             ? 'glass glass-dark absolute left-4 z-10 hover:brightness-110 md:left-12 md:mt-6'
@@ -452,7 +453,7 @@ export function LanguageSwitch() {
   const current = lang()
   const options = LANGS
   return (
-    <div role="group" aria-label={t('Language')} className="inline-flex max-w-full flex-wrap rounded-[1.25rem] border border-[var(--line)] p-0.5">
+    <div role="group" aria-label={t('Language')} className="inline-flex max-w-full flex-wrap rounded-[var(--radius-l)] border border-[var(--line)] p-0.5">
       {options.map((o) => (
         <button
           key={o.value}
@@ -463,7 +464,34 @@ export function LanguageSwitch() {
             // The language, then the full locale it gives with the device's region (en-US, fr-CA).
             void setLang(o.value).then(() => updateLocale(locale()))
           }}
-          className={`rounded-full px-3 py-1.5 text-[0.8125rem] font-semibold transition-colors duration-[160ms] ${
+          className={`rounded-full px-3 py-1.5 text-label font-semibold transition-colors duration-[var(--dur-short)] ${
+            current === o.value ? 'bg-[var(--field)] text-[var(--on-field)]' : 'text-[var(--ink-3)] hover:text-[var(--ink)]'
+          }`}
+        >
+          {o.label}
+        </button>
+      ))}
+    </div>
+  )
+}
+
+/** System, Light or Dark (UX-36), stored on this device. */
+export function AppearanceSwitch() {
+  const current = useAppearance()
+  const options: { value: Appearance; label: string }[] = [
+    { value: 'system', label: t('System') },
+    { value: 'light', label: t('Light') },
+    { value: 'dark', label: t('Dark') },
+  ]
+  return (
+    <div role="group" aria-label={t('Appearance')} className="inline-flex max-w-full flex-wrap rounded-[var(--radius-l)] border border-[var(--line)] p-0.5">
+      {options.map((o) => (
+        <button
+          key={o.value}
+          type="button"
+          aria-pressed={current === o.value}
+          onClick={() => setAppearance(o.value)}
+          className={`rounded-full px-3 py-1.5 text-label font-semibold transition-colors duration-[var(--dur-short)] ${
             current === o.value ? 'bg-[var(--field)] text-[var(--on-field)]' : 'text-[var(--ink-3)] hover:text-[var(--ink)]'
           }`}
         >
@@ -489,7 +517,7 @@ export function SectionHead({
       className={`flex items-baseline justify-between gap-4 border-t border-[var(--ink)] pb-3 pt-3 ${className}`}
     >
       <h2 className="t-h3 min-w-0">{title}</h2>
-      {aside && <span className="tnum shrink-0 text-[0.8125rem] text-[var(--ink-4)]">{aside}</span>}
+      {aside && <span className="tnum shrink-0 text-label text-[var(--ink-4)]">{aside}</span>}
     </div>
   )
 }

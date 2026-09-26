@@ -19,7 +19,7 @@ function Body({ text, closed }: { text: string; closed: boolean }) {
       out.push(
         <span
           key={i}
-          className="mx-0.5 inline-block rounded-[var(--radius-control)] bg-[var(--sunken)] px-1.5 text-[0.7812rem] font-semibold text-[var(--ink-3)]"
+          className="mx-0.5 inline-block rounded-[var(--radius-control)] bg-[var(--sunken)] px-1.5 text-label font-semibold text-[var(--ink-3)]"
         >
           {/* The server shows it again once the booking is accepted (V3-6); a booking
               that closed before that never reveals it. */}
@@ -27,14 +27,14 @@ function Body({ text, closed }: { text: string; closed: boolean }) {
         </span>,
       )
   })
-  return <p className="whitespace-pre-wrap break-words text-[0.9375rem] leading-[1.375rem]">{out}</p>
+  return <p className="whitespace-pre-wrap break-words text-body leading-[1.375rem]">{out}</p>
 }
 
 function Bubble({ m, otherName, closed }: { m: Message; otherName: string; closed: boolean }) {
   return (
     <li className={`flex flex-col ${m.mine ? 'items-end' : 'items-start'}`}>
       <div
-        className={`max-w-[85%] rounded-[14px] px-3.5 py-2.5 ${
+        className={`max-w-[85%] rounded-[var(--radius-m)] px-3.5 py-2.5 ${
           m.mine ? 'bg-[var(--field)] text-[var(--on-field)]' : 'bg-[var(--sunken)] text-[var(--ink)]'
         }`}
       >

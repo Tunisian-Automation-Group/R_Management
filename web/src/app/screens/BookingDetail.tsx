@@ -39,7 +39,7 @@ import { messageOf, useToast } from '../store.tsx'
 import { Screen } from '../components/AppShell.tsx'
 import { Photo } from '../components/Photo.tsx'
 import { Icon } from '../components/Icon.tsx'
-import { Avatar, Banner, Button, Card, Chip, Field, Row, Sheet, Stars, Textarea } from '../components/ui.tsx'
+import { Avatar, Banner, Button, Card, Chip, DetailSkeleton, Field, Row, Sheet, Stars, Textarea } from '../components/ui.tsx'
 import { REVIEW_TAGS } from '../../domain/reviews.ts'
 import { formatDistance, percent, range, relative, renterRecord, responseTime, sentence } from '../format.ts'
 import { useOnline } from '../components/Offline.tsx'
@@ -88,7 +88,7 @@ export function BookingDetail() {
       </Screen>
     )
   }
-  if (!authReady || booking.isPending) return <Screen back="/bookings">{null}</Screen>
+  if (!authReady || booking.isPending) return <Screen back="/bookings"><DetailSkeleton /></Screen>
   if (!booking.data) return <NotFound what="booking" />
 
   // Remount when the booking changes so the rating form never carries over.
@@ -402,7 +402,7 @@ function Detail({
       footer={footer}
     >
       <header className="-mt-1 mb-6">
-        <h1 className="t-h1 text-balance">{title}</h1>
+        <h1 className="t-title-user text-balance">{title}</h1>
         <p className="t-lede mt-2 text-[var(--ink-3)]">
           {asOwner ? t('Booked by {name}', { name: requester?.name ?? t('a buyer') }) : ownerName}
           {district && ` · ${district}`}
@@ -566,9 +566,9 @@ function Detail({
               <li key={step.id} className="flex gap-3.5">
                 <div className="flex flex-col items-center">
                   <span
-                    className={`grid h-7 w-7 shrink-0 place-items-center rounded-[var(--radius-control)] text-[0.7188rem] font-bold transition-colors duration-[240ms] ${
+                    className={`grid h-7 w-7 shrink-0 place-items-center rounded-[var(--radius-control)] text-caption font-bold transition-colors duration-[var(--dur-medium)] ${
                       reached
-                        ? 'bg-[var(--success)] text-white'
+                        ? 'bg-[var(--success)] text-[var(--on-status)]'
                         : 'border border-[var(--line-strong)] text-[var(--ink-4)]'
                     }`}
                   >
@@ -582,7 +582,7 @@ function Detail({
                 </div>
                 <div className={`pb-6 ${reached ? '' : 'opacity-40'}`}>
                   <p
-                    className={`text-[0.9688rem] leading-7 ${current ? 'font-bold' : 'font-semibold'}`}
+                    className={`text-body leading-7 ${current ? 'font-bold' : 'font-semibold'}`}
                   >
                     {/* Nobody requested an instant booking: it was booked (V4-23). */}
                     {step.id === 'requested' && booking.listing?.instantBook ? t('Booked') : t(step.label)}
@@ -607,7 +607,7 @@ function Detail({
         <Card className="p-5">
           <h2 className="t-label mb-2.5">{t('Getting in')}</h2>
           {booking.handover?.address && (
-            <p className="text-[0.9688rem] font-semibold text-[var(--ink)]">
+            <p className="text-body font-semibold text-[var(--ink)]">
               {booking.handover.address}
               {booking.handover.postalCode && `, ${booking.handover.postalCode}`}
             </p>
@@ -637,7 +637,7 @@ function Detail({
           <div className="flex items-center gap-3.5">
             <Avatar initials={other.initials} size={44} business={other.kind === 'business'} />
             <div className="min-w-0 flex-1">
-              <p className="truncate text-[0.9688rem] font-semibold">{other.name}</p>
+              <p className="truncate text-body font-semibold">{other.name}</p>
               <p className="t-sm text-[var(--ink-3)]">
                 {asOwner ? renterRecord(other.renterRatingSum, other.renterJobs) : trackRecord(other)}
               </p>
@@ -706,7 +706,7 @@ function Detail({
 
       <Card className="mt-3 flex flex-wrap items-center justify-between gap-3 p-5">
         <p className="t-sm text-[var(--ink-3)]">{t('Something not right? Tell us, and we see this booking with it.')}</p>
-        <div className="flex gap-4 text-[0.875rem] font-semibold">
+        <div className="flex gap-4 text-body font-semibold">
           <Link to="/help/problems" className="underline">
             {t('Help')}
           </Link>
@@ -1003,7 +1003,7 @@ function Detail({
       >
         <div className="space-y-5 pb-3">
           <div>
-            <p className="mb-3 text-[0.875rem] font-semibold text-[var(--ink-2)]">
+            <p className="mb-3 text-body font-semibold text-[var(--ink-2)]">
               {t('Was it ready when they said?')}
             </p>
             <div className="flex gap-2">
@@ -1015,7 +1015,7 @@ function Detail({
                   key={o.label}
                   onClick={() => setOnTime(o.v)}
                   aria-pressed={onTime === o.v}
-                  className={`min-h-[48px] flex-1 rounded-[var(--radius-control)] border text-[0.9062rem] font-semibold transition-colors duration-[160ms] ${
+                  className={`min-h-[48px] flex-1 rounded-[var(--radius-control)] border text-body font-semibold transition-colors duration-[var(--dur-short)] ${
                     onTime === o.v
                       ? 'border-[var(--field)] bg-[var(--field)] text-[var(--on-field)]'
                       : 'border-[var(--line)] hover:border-[var(--ink-4)]'
@@ -1028,14 +1028,14 @@ function Detail({
           </div>
 
           <div>
-            <p className="mb-3 text-[0.875rem] font-semibold text-[var(--ink-2)]">
+            <p className="mb-3 text-body font-semibold text-[var(--ink-2)]">
               {t('How was the thing itself?')}
             </p>
             <StarPicker value={stars} onChange={setStars} label={t('How was the thing itself?')} />
           </div>
 
           <div>
-            <p className="mb-3 text-[0.875rem] font-semibold text-[var(--ink-2)]">
+            <p className="mb-3 text-body font-semibold text-[var(--ink-2)]">
               {t('What stood out?')} <span className="font-normal text-[var(--ink-4)]">{t('Pick any')}</span>
             </p>
             <div className="flex flex-wrap gap-2">
@@ -1152,13 +1152,13 @@ function StarPicker({ value, onChange, label }: { value: number; onChange: (n: n
           aria-label={plural(n, '{n} star', '{n} stars')}
           onClick={() => onChange(n)}
           onMouseEnter={() => setHover(n)}
-          className="grid h-12 w-12 place-items-center rounded-[var(--radius-control)] transition-colors duration-[160ms] hover:bg-[var(--sunken)]"
+          className="grid h-12 w-12 place-items-center rounded-[var(--radius-control)] transition-colors duration-[var(--dur-short)] hover:bg-[var(--sunken)]"
         >
           <Icon
             name="star"
             size={30}
             strokeWidth={0}
-            className={`transition-colors duration-[160ms] ${n <= shown ? 'fill-[var(--ink)]' : 'fill-[var(--line-strong)]'}`}
+            className={`transition-colors duration-[var(--dur-short)] ${n <= shown ? 'fill-[var(--ink)]' : 'fill-[var(--line-strong)]'}`}
           />
         </button>
       ))}

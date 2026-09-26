@@ -198,7 +198,7 @@ export function Cases() {
 function CaseCard({ c }: { c: CaseRow }) {
   return (
     <Card className="p-4">
-      <p className="text-[0.9375rem] font-semibold">
+      <p className="text-body font-semibold">
         <Link className="underline" to={`/admin/case/${c.id}`}>
           {c.title}
         </Link>
@@ -209,7 +209,7 @@ function CaseCard({ c }: { c: CaseRow }) {
       <p className="t-sm text-[var(--ink-4)]">
         <Person id={c.requesterId} /> → <Person id={c.ownerId} /> · {t('changed {when}', { when: ago(c.updatedAt) })}
       </p>
-      <div className="mt-2 flex flex-wrap gap-2 text-[0.8125rem] font-semibold">
+      <div className="mt-2 flex flex-wrap gap-2 text-label font-semibold">
         {c.status === 'disputed' && c.dispute?.escalatedAt && <span className="text-[var(--danger)]">{t('Escalated to staff')}</span>}
         {/* Only while it is still open: a settled case has no offer on the table (V6-8). */}
         {c.status === 'disputed' && c.dispute?.offer && <span className="text-[var(--ink-2)]">{t('Offer on the table: {amount}', { amount: formatMoney(c.dispute.offer.refundAmount, c.currency) })}</span>}
@@ -274,7 +274,7 @@ export function Approvals() {
                   {r.title ?? r.bookingId}
                   {r.ownerName ? ` · ${r.ownerName}` : ''}
                 </p>
-                <p className="text-[0.9375rem] font-semibold">
+                <p className="text-body font-semibold">
                   {t(OUTCOME_LABEL[r.outcome])}
                   {r.refundAmount ? ` · ${formatMoney(r.refundAmount, r.currency)}` : ''}
                 </p>
@@ -463,7 +463,7 @@ function AuditLine({ a, me }: { a: AuditEntry; me?: string }) {
   const bookingLink = a.targetType === 'booking' ? `/admin/case/${a.targetId}` : null
   return (
     <li className="border-b border-[var(--line)] pb-3 last:border-0 last:pb-0">
-      <p className="text-[0.9062rem] font-semibold">
+      <p className="text-body font-semibold">
         {t(ACTION_LABEL[a.action] ?? a.action)} · {t(TARGET_LABEL[a.targetType] ?? a.targetType)}{' '}
         {bookingLink ? (
           <Link className="tnum underline" to={bookingLink}>
@@ -568,7 +568,7 @@ export function AdminCase() {
           <Card className="space-y-3 p-5">
             {c.resolutions.map((r) => (
               <div key={r.id} className="border-b border-[var(--line)] pb-3 last:border-0 last:pb-0">
-                <p className="text-[0.9375rem] font-semibold">
+                <p className="text-body font-semibold">
                   {t(OUTCOME_LABEL[r.outcome])}
                   {r.refundAmount ? ` · ${formatMoney(r.refundAmount, r.currency)}` : ''} · {t(RESOLUTION_STATUS[r.status])}
                 </p>
@@ -612,7 +612,7 @@ export function AdminCase() {
                   {m.senderId === c.requesterId ? t('Renter') : t('Owner')} · {when(m.at)}
                   {m.flagged ? ` · ${t('flagged: paying outside Cappy')}` : ''}
                 </p>
-                <p className="whitespace-pre-wrap text-[0.9375rem] text-[var(--ink)]">{m.body}</p>
+                <p className="whitespace-pre-wrap text-body text-[var(--ink)]">{m.body}</p>
               </li>
             ))}
           </ul>
@@ -756,7 +756,7 @@ function Claims({ claims, bookingId }: { claims: Claim[]; bookingId: string }) {
       <Card className="space-y-3 p-5">
         {claims.map((c) => (
           <div key={c.id} className="border-b border-[var(--line)] pb-3 last:border-0 last:pb-0">
-            <p className="text-[0.9375rem] font-semibold">
+            <p className="text-body font-semibold">
               {t('Late return: {n} minutes', { n: c.minutesLate })} · {formatMoney(c.amount, c.currency)} · {t(CLAIM_STATUS[c.status])}
             </p>
             {c.note && <p className="t-sm text-[var(--ink-2)]">{c.note}</p>}

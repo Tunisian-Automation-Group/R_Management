@@ -197,7 +197,7 @@ export function Earn() {
                     <div className="flex items-start gap-3.5">
                       <Avatar initials={who?.initials ?? '??'} size={42} />
                       <div className="min-w-0 flex-1">
-                        <p className="text-[0.9688rem] font-semibold">
+                        <p className="text-body font-semibold">
                           {who?.name ?? t('Someone nearby')}
                         </p>
                         {who && (
@@ -208,7 +208,7 @@ export function Earn() {
                           {durationLabel(b.match.quote.hours)}
                         </p>
                       </div>
-                      <span className="tnum shrink-0 text-[1.0625rem] font-bold text-[var(--accent-text)]">
+                      <span className="tnum shrink-0 text-body-l font-bold text-[var(--accent-text)]">
                         {formatMoney(b.match.quote.ownerNet, b.currency ?? b.match.quote.currency)}
                       </span>
                     </div>
@@ -291,8 +291,8 @@ export function Earn() {
       <section className="-mt-1">
         <p className="t-label">{t('Still idle this week')}</p>
         <p className="mt-3 flex flex-wrap items-baseline gap-x-2.5">
-          <span className="t-display tnum">{Math.round(hoursIdle)}</span>
-          <span className="text-[1.25rem] font-medium text-[var(--ink-4)]">{t('hours')}</span>
+          <span className="t-figure text-[clamp(3.5rem,19vw,4.75rem)] leading-[0.9]">{Math.round(hoursIdle)}</span>
+          <span className="text-title-s font-medium text-[var(--ink-4)]">{t('hours')}</span>
         </p>
         <p className="t-lede mt-3 text-[var(--ink-2)]">
           <span className="hl font-semibold">{formatMoney(unsold, currency)}</span> {t('of time nobody is paying you for.')}
@@ -324,10 +324,10 @@ export function Earn() {
               <li key={b.id}>
                 <button
                   onClick={() => nav(`/bookings/${b.id}`)}
-                  className="flex w-full items-center gap-4 py-3.5 text-left transition-opacity duration-[160ms] hover:opacity-70"
+                  className="flex w-full items-center gap-4 py-3.5 text-left transition-opacity duration-[var(--dur-short)] hover:opacity-70"
                 >
                   <span className="min-w-0 flex-1">
-                    <span className="block truncate text-[0.9375rem] font-semibold">{b.listing?.title ?? t('Your listing')}</span>
+                    <span className="block truncate text-body font-semibold">{b.listing?.title ?? t('Your listing')}</span>
                     <span className="t-sm tnum block truncate text-[var(--ink-3)]">{range(b.match.start, b.match.end)}</span>
                   </span>
                   <Pill tone="warn">{t('Payout on hold')}</Pill>
@@ -347,10 +347,10 @@ export function Earn() {
               <li key={b.id}>
                 <button
                   onClick={() => nav(`/bookings/${b.id}`)}
-                  className="flex w-full items-center gap-4 py-3.5 text-left transition-opacity duration-[160ms] hover:opacity-70"
+                  className="flex w-full items-center gap-4 py-3.5 text-left transition-opacity duration-[var(--dur-short)] hover:opacity-70"
                 >
                   <span className="min-w-0 flex-1">
-                    <span className="block truncate text-[0.9375rem] font-semibold">{b.listing?.title ?? t('Your listing')}</span>
+                    <span className="block truncate text-body font-semibold">{b.listing?.title ?? t('Your listing')}</span>
                     <span className="t-sm tnum block truncate text-[var(--ink-3)]">{range(b.match.start, b.match.end)}</span>
                   </span>
                   <Pill tone="success">{b.status === 'active' ? t('In progress') : t('Confirmed')}</Pill>
@@ -382,7 +382,7 @@ export function Earn() {
                       className={`w-[56px] shrink-0 rounded-[var(--radius-plate)] ${l.active ? '' : 'opacity-40'}`}
                     />
                     <div className="min-w-0 flex-1">
-                      <p className="truncate text-[0.9688rem] font-semibold">{l.title}</p>
+                      <p className="truncate text-body font-semibold">{l.title}</p>
                       <p className="t-sm tnum text-[var(--ink-3)]">
                         {formatMoney(l.ratePerHour, l.currency)}/h ·{' '}
                         {l.active ? t('{h} h free this week', { h: Math.round(h) }) : t('Paused')}
@@ -450,12 +450,12 @@ export function Earn() {
               <li key={inv.number}>
                 <button
                   onClick={() => void repo.openInvoice(inv.number).catch((err) => toast(messageOf(err), 'error'))}
-                  className="flex w-full items-center gap-4 py-3.5 text-left transition-opacity duration-[160ms] hover:opacity-70"
+                  className="flex w-full items-center gap-4 py-3.5 text-left transition-opacity duration-[var(--dur-short)] hover:opacity-70"
                 >
                   <span className="min-w-0 flex-1">
                     {/* Built here from the parts, so both dates follow the reader's
                         locale; the server's description carries a German date (V4-8). */}
-                    <span className="block truncate text-[0.9375rem] font-semibold">
+                    <span className="block truncate text-body font-semibold">
                       {inv.title
                         ? `${t('Service fee')} · ${inv.title}${inv.serviceStart ? ` · ${serviceDates(inv.serviceStart, inv.serviceEnd)}` : ''}`
                         : (inv.description ?? t('Cappy fee for booking {id}', { id: inv.bookingId.slice(-6).toUpperCase() }))}
@@ -464,7 +464,7 @@ export function Earn() {
                       {inv.number} · {new Date(inv.issuedAt).toLocaleDateString(locale())}
                     </span>
                   </span>
-                  <span className="tnum shrink-0 text-[0.9375rem] font-semibold">{formatMoney(inv.gross, inv.currency)}</span>
+                  <span className="tnum shrink-0 text-body font-semibold">{formatMoney(inv.gross, inv.currency)}</span>
                 </button>
               </li>
             ))}
@@ -480,13 +480,13 @@ export function Earn() {
             <div className="flex items-center gap-3.5">
               <Avatar initials={you.initials} size={44} />
               <div className="min-w-0 flex-1">
-                <p className="text-[0.9688rem] font-semibold">{you.name}</p>
+                <p className="text-body font-semibold">{you.name}</p>
                 <p className="t-sm tnum text-[var(--ink-3)]">
                   {plural(you.jobsDone, '{n} booking', '{n} bookings')} ·{' '}
                   {t('{pct} on time', { pct: percent(you.onTimeJobs / Math.max(1, you.jobsDone)) })}
                 </p>
               </div>
-              <span className="tnum text-[1.1875rem] font-bold">
+              <span className="tnum text-title-s font-bold">
                 {you.jobsDone ? `${oneDecimal(you.ratingSum / you.jobsDone)}★` : t('New')}
               </span>
             </div>

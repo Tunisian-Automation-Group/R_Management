@@ -247,7 +247,7 @@ export function Login() {
                 aria-pressed={reveal}
                 aria-controls="f-password"
                 onClick={() => setReveal((r) => !r)}
-                className="absolute inset-y-0 right-0 min-w-[64px] px-3 text-[0.8125rem] font-semibold text-[var(--ink-3)] hover:text-[var(--ink)]"
+                className="absolute inset-y-0 right-0 min-w-[64px] px-3 text-label font-semibold text-[var(--ink-3)] hover:text-[var(--ink)]"
               >
                 {reveal ? t('Hide') : t('Show')}
               </button>
@@ -256,7 +256,7 @@ export function Login() {
         )}
 
         {error && (
-          <p role="alert" className="text-[0.875rem] font-semibold text-[var(--danger)]">
+          <p role="alert" className="text-body font-semibold text-[var(--danger)]">
             {error}
           </p>
         )}
@@ -302,7 +302,7 @@ export function Login() {
         </div>
       )}
 
-      <p className="mt-6 text-center text-[0.8438rem] text-[var(--ink-3)]">
+      <p className="mt-6 text-center text-label text-[var(--ink-3)]">
         {mode === 'in' && (
           <button type="button" className="font-semibold text-[var(--ink)] underline" onClick={() => go('forgot')}>
             {t('Forgot your password?')}

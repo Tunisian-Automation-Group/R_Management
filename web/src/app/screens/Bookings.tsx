@@ -149,11 +149,11 @@ export function Bookings() {
             alt=""
             categoryId={next.booking.requirement.category}
             aspect={1}
-            className="w-[64px] shrink-0 rounded-[14px]"
+            className="w-[64px] shrink-0 rounded-[var(--radius-m)]"
           />
           <div className="min-w-0 flex-1">
             <p className="t-label mb-1">{t('Next up')}</p>
-            <p className="truncate text-[1rem] font-semibold">{next.booking.listing?.title ?? t('Listing removed')}</p>
+            <p className="truncate text-body-l font-semibold">{next.booking.listing?.title ?? t('Listing removed')}</p>
             <p className="t-sm tnum text-[var(--ink-3)]">{range(next.booking.match.start, next.booking.match.end)}</p>
             <p className="t-sm mt-1 font-semibold text-[var(--ink-2)]">{next.action}</p>
             <Button size="sm" className="mt-3" onClick={() => nav(`/bookings/${next.booking.id}`)}>
@@ -219,7 +219,7 @@ function BookingRow({ booking, hosting, onOpen }: { booking: Booking; hosting: b
   return (
     <button
       onClick={onOpen}
-      className="flex w-full items-center gap-4 py-4 text-left transition-opacity duration-[160ms] hover:opacity-70"
+      className="flex w-full items-center gap-4 py-4 text-left transition-opacity duration-[var(--dur-short)] hover:opacity-70"
     >
       {/* The same photograph as the card it came from, so a booking still looks
           like the thing you booked. */}
@@ -233,10 +233,10 @@ function BookingRow({ booking, hosting, onOpen }: { booking: Booking; hosting: b
       />
       <span className="min-w-0 flex-1">
         <span className="flex items-baseline justify-between gap-3">
-          <span className={`truncate text-[0.9688rem] font-semibold ${dim ? 'text-[var(--ink-3)]' : ''}`}>
+          <span className={`truncate text-body font-semibold ${dim ? 'text-[var(--ink-3)]' : ''}`}>
             {title}
           </span>
-          <span className="tnum shrink-0 text-[0.9688rem] font-bold">
+          <span className="tnum shrink-0 text-body font-bold">
             {formatMoney(amountOf(booking, hosting), booking.currency ?? booking.match.quote.currency)}
           </span>
         </span>

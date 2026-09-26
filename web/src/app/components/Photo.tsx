@@ -111,7 +111,7 @@ export function WhenChip({
   return (
     <span
       className={`glass glass-dark tnum absolute bottom-3 left-3 rounded-full px-2.5 py-1
-        text-[0.75rem] font-semibold ${className}`}
+        text-label font-semibold ${className}`}
       style={{
         // A photograph can be any colour, so the chip carries a darker tint than
         // glass over a known surface needs. At 42% over a pale upload it went
@@ -181,7 +181,7 @@ export function SaveButton({
       }}
       // shrink-0 + square: a row that runs out of room at 200 % text must not squash it into a pill (V4-12).
       className={`glass glass-dark z-10 grid h-9 w-9 shrink-0 aspect-square cursor-pointer place-items-center rounded-full
-        transition-transform duration-[160ms] active:scale-90 ${className}`}
+        transition-transform duration-[var(--dur-short)] active:scale-90 ${className}`}
       style={{ ['--glass-tint-dark' as string]: 'rgba(20, 30, 19, 0.5)' }}
     >
       <Icon
