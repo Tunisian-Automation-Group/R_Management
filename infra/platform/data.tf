@@ -17,6 +17,26 @@ module "messaging" {
   consumers = local.consumers
 }
 
+# Only the publishing services may put events on the bus (P-9): a leaked
+# role elsewhere cannot forge payment.authorised or booking.status_changed.
+# Same-account reads and subscriptions still work through IAM.
+resource "aws_sns_topic_policy" "events_publishers" {
+  arn = module.messaging.topic_arn
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Sid       = "OnlyThePublishers"
+      Effect    = "Deny"
+      Principal = { AWS = "*" }
+      Action    = "sns:Publish"
+      Resource  = module.messaging.topic_arn
+      Condition = {
+        ArnNotEquals = { "aws:PrincipalArn" = [for s in local.publishes : aws_iam_role.task[s].arn] }
+      }
+    }]
+  })
+}
+
 resource "aws_db_subnet_group" "main" {
   name       = local.name
   subnet_ids = aws_subnet.private[*].id

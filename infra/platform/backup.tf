@@ -94,6 +94,8 @@ resource "aws_sns_topic_policy" "tickets_events" {
         Principal = { Service = "cloudwatch.amazonaws.com" }
         Action    = "sns:Publish"
         Resource  = aws_sns_topic.tickets.arn
+        # Only this account's services may publish (R2-23).
+        Condition = { StringEquals = { "aws:SourceAccount" = data.aws_caller_identity.me.account_id } }
       },
       {
         Sid       = "Events"
@@ -101,6 +103,7 @@ resource "aws_sns_topic_policy" "tickets_events" {
         Principal = { Service = ["events.amazonaws.com", "budgets.amazonaws.com", "costalerts.amazonaws.com"] }
         Action    = "sns:Publish"
         Resource  = aws_sns_topic.tickets.arn
+        Condition = { StringEquals = { "aws:SourceAccount" = data.aws_caller_identity.me.account_id } }
       },
     ]
   })

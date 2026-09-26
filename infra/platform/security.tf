@@ -148,6 +148,8 @@ resource "aws_sns_topic_policy" "alarms_events" {
         Principal = { Service = "cloudwatch.amazonaws.com" }
         Action    = "sns:Publish"
         Resource  = aws_sns_topic.alarms.arn
+        # Only this account's alarms and rules, never another account's (R2-23).
+        Condition = { StringEquals = { "aws:SourceAccount" = data.aws_caller_identity.me.account_id } }
       },
       {
         Sid       = "GuardDuty"
@@ -155,6 +157,10 @@ resource "aws_sns_topic_policy" "alarms_events" {
         Principal = { Service = "events.amazonaws.com" }
         Action    = "sns:Publish"
         Resource  = aws_sns_topic.alarms.arn
+        Condition = {
+          StringEquals = { "aws:SourceAccount" = data.aws_caller_identity.me.account_id }
+          ArnEquals    = { "aws:SourceArn" = aws_cloudwatch_event_rule.guardduty_high[0].arn }
+        }
       },
     ]
   })

@@ -884,7 +884,7 @@ def test_a_won_chargeback_pays_out_what_it_held(chargebacks, issuer):
     # Staff see it, with its deadline, and answer it; the answer is audited.
     staff = {"Authorization": f"Bearer {issuer.token('staff-1', **{'cognito:groups': ['admin']})}"}
     [cb] = c.get("/admin/payments/chargebacks", headers=staff).json()
-    assert cb["bookingId"] == "bk_w" and cb["status"] == "needs_response" and cb["evidenceDueAt"]
+    assert cb["bookingId"] == "bk_w" and cb["status"] == "needs_response" and cb["dueBy"]
     assert c.get("/admin/payments/chargebacks", headers=issuer.headers("buyer")).status_code == 403
     r = c.post(
         "/admin/payments/bk_w/dispute-evidence",
@@ -918,3 +918,35 @@ def test_a_lost_chargeback_takes_the_payout_back_or_records_the_debt(chargebacks
     _dispute(c, "charge.dispute.closed", "ch_o", "lost")
     p = call(app, _payment, app, "bk_o")
     assert p.status == "charged_back" and p.owner_owes == 4000 and p.recovered_amount == 0
+
+
+def test_what_an_owner_owes_is_kept_from_their_next_payouts(chargebacks, issuer, broker):
+    """R2-20: a lost chargeback the owner's balance could not cover is taken
+    from their next payouts, oldest debt first, never more than a payout."""
+    from cappy_common.events import PAYOUT_SENT
+
+    app, c, provider = chargebacks
+    provider.reversal_fails = True
+    _paid(app, "bk_d", "ch_d", status="transferred", transfer_id="tr_bk_d", paid_out_amount=4000, title="Table saw")
+    obj = {"id": "dp_d", "object": "dispute", "charge": "ch_d", "status": "lost", "reason": "fraudulent"}
+    body, headers = _signed(_event("charge.dispute.closed", obj))
+    assert c.post("/payments/webhooks/stripe", content=body, headers=headers).status_code == 200
+    assert call(app, _payment, app, "bk_d").owner_owes == 4000
+    staff = {"Authorization": f"Bearer {issuer.token('staff-1', **{'cognito:groups': ['admin']})}"}
+    [cb] = c.get("/admin/payments/chargebacks", headers=staff).json()
+    assert cb["title"] == "Table saw" and cb["reason"] == "fraudulent" and cb["ownerOwes"] == 4000
+
+    # The next payout (4000) goes wholly to the debt: nothing is transferred.
+    _paid(app, "bk_n1", "ch_n1")
+    assert _status(app, "bk_n1", "completed")
+    first = call(app, _payment, app, "bk_n1")
+    assert first.status == "transferred" and first.paid_out_amount == 0 and first.debt_deducted == 4000
+    assert not [x for x in provider.calls if x[:2] == ("transfer", "bk_n1")]
+    assert call(app, _payment, app, "bk_d").owner_owes == 0
+    # The one after is paid in full, and the owner was told what was kept.
+    _paid(app, "bk_n2", "ch_n2")
+    assert _status(app, "bk_n2", "completed")
+    assert call(app, _payment, app, "bk_n2").paid_out_amount == 4000
+    call(app, app.state.relay.flush)
+    sent = [e.data for e in broker.of_type(PAYOUT_SENT) if e.data["bookingId"] == "bk_n1"]
+    assert sent and sent[-1]["deducted"] == 4000 and sent[-1]["amount"] == 0

@@ -133,8 +133,14 @@ variable "account_security" {
   default     = true
 }
 
+variable "allow_no_pager" {
+  description = "Let prod apply without a pager (R2-23): only on purpose, e.g. a rehearsal before the on-call exists"
+  type        = bool
+  default     = false
+}
+
 variable "pager_endpoint" {
-  description = "The pager's SNS HTTPS integration URL (PagerDuty, Opsgenie, or an Incident Manager response plan's endpoint): page-level alarms go there as well as to alarm_email. A prod plan warns without it (check prod_has_a_pager)"
+  description = "The pager's SNS HTTPS integration URL (PagerDuty, Opsgenie, or an Incident Manager response plan's endpoint): page-level alarms go there as well as to alarm_email. A prod plan fails without it unless allow_no_pager"
   type        = string
   default     = ""
   sensitive   = true

@@ -48,16 +48,19 @@ def messages(event: Event, web: str) -> list[Message]:
         # Named by the listing and its start, never the booking id (V5-13).
         about = {"_start": d["windowStart"]} if d.get("windowStart") else {}
         tz = {"_tz": d["timeZone"]} if d.get("timeZone") else {}
+        # Part of it settled a chargeback the owner lost earlier (R2-20).
+        kept = {"_kept": (d["deducted"], d["currency"])} if d.get("deducted") else {}
         return [
             (
                 d["ownerId"],
                 None,
-                "paid",
+                "paid_kept" if kept else "paid",
                 {
                     "booking": d["bookingId"],
                     "title": d.get("title") or "your booking",
                     "web": web,
                     "_cents": (d["amount"], d["currency"]),
+                    **kept,
                     **about,
                     **tz,
                 },

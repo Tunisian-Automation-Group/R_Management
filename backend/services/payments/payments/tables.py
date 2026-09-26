@@ -53,6 +53,12 @@ class PaymentRow(Base):
     # owner's account (a transfer reversal), and what is still owed.
     recovered_amount: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
     owner_owes: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
+    # This payout's share kept back to settle the owner's owed chargebacks on
+    # other bookings (R2-20): paid_out_amount is what was actually sent.
+    debt_deducted: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
+    # For staff: the bank's dispute reason, and what the booking was (R2-24).
+    dispute_reason: Mapped[str | None] = mapped_column(String(40), nullable=True)
+    title: Mapped[str | None] = mapped_column(String(200), nullable=True)
     # Stripe's fingerprint of the card (the same for the same card on any
     # account): booking links it to suspended accounts (S-17).
     card_fingerprint: Mapped[str | None] = mapped_column(String(64), nullable=True)

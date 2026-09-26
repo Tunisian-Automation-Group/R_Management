@@ -27,8 +27,9 @@
    And this environment **secret**:
    - `PAGER_ENDPOINT`: the pager's SNS HTTPS integration URL (PagerDuty,
      Opsgenie, or an Incident Manager response plan). Page-level alarms go
-     there as well as to `ALARM_EMAIL`; a prod plan warns without it
-     (see "Severity and on-call").
+     there as well as to `ALARM_EMAIL`. A prod plan **fails** without it
+     (R2-23); the variable `ALLOW_NO_PAGER=true` lets it through on purpose,
+     for a rehearsal before on-call exists (see "Severity and on-call").
 
    Add the `LOCALSTACK_AUTH_TOKEN` repository secret so CI runs the e2e.
 3. **DNS**: the domain in `infra/envs/<env>/main.tf` must live in that hosted zone.
@@ -61,17 +62,38 @@ refuses any sha without a successful `ci` run.
 - **Prod**: Actions → deploy → Run workflow, `env: prod`, `release:` the sha
   staging runs (empty means the latest on `main`). The prod environment asks
   a reviewer.
-- **Rollback**: the same, with the previous release's sha. Its images
-  already exist in ECR, so only Terraform and the roll run (minutes). The
-  database is not rolled back: every migration is **expand/contract**, so the
-  previous release runs against the newer schema:
+- **Rollback** (R2-19): Run workflow with `release:` the previous release's
+  sha **and `rollback: true`**. Only the services' images change:
+  - Terraform comes from `main`'s head, not the old commit, so nothing newer
+    is destroyed (the locked backup vault could not be anyway);
+  - no migration runs: the database stays where it is. An old release's
+    migrate task would stop with "a migration failed; nothing was rolled
+    out", because Alembic does not know the newer revision;
+  - the old images already exist in ECR, so it takes minutes.
+
+  This works because every migration only **expands**: the previous release
+  runs on the newer schema. `test_migrations_expand_only.py` (in `make test`,
+  so in CI) refuses `drop_column`, `drop_table`, `rename_table` and renaming
+  `alter_column` in `upgrade()` unless the migration says
+  `# contract: <release that stopped using it>`. The steps for any change of
+  shape:
   1. *expand*: add columns and tables, nullable or with defaults; the code
      writes both old and new;
   2. *migrate*: backfill in a later release;
-  3. *contract*: drop what nothing reads any more, one release after that.
+  3. *contract*: drop what nothing reads any more, at least one release
+     after the last code that read it went out. That release cannot be
+     rolled back past; say so in its PR.
 
-  A migration that cannot be undone this way (dropping data) is its own
-  release, after a restore rehearsal.
+  The same holds for settings: a release may add an environment variable
+  with a default, never require one the previous release lacks.
+
+  A deploy **without** `rollback` of an older sha runs that sha's own
+  migrations and Terraform, and stops safely at the migrate step: use
+  `rollback: true`.
+- **Forward fix** instead of a rollback, when the bad release migrated data
+  the old code cannot read, or a contract step went out: fix on `main`, let
+  CI pass, deploy that sha normally. The kill switches ("Kill switches")
+  hold the damage meanwhile.
 - **Web**: the previous release's hashed files stay published for 30 days
   (R2-9), so tabs opened before a deploy keep working.
 
@@ -173,9 +195,18 @@ transfers the platform carries it (R2-3). Payments follows every
   paid out, with its invoice.
 - **Lost**: the money went back to the card holder. An owner already paid
   gives their share back through a transfer reversal; if their Stripe
-  balance cannot cover it, the chargeback list shows `ownerOwes`, and it is
-  taken from their next payout per the terms (counsel confirms the clause).
-  Repeated losses on one owner or renter go to moderation.
+  balance cannot cover it, the chargeback list shows `ownerOwes`. Payments
+  keeps it from the owner's next payouts in the same currency, oldest debt
+  first, never more than one payout (R2-20): each payout records
+  `debt_deducted`, the debt's `recovered` grows and `ownerOwes` shrinks to 0,
+  and the owner's payout notice (`paid_kept`, EN/DE/FR) says what was kept
+  and why. Counsel confirms the clause in the terms. An owner who stops
+  earning keeps the debt: collect it through Stripe or write it off, and
+  note it on the case. Repeated losses on one owner or renter go to
+  moderation.
+- **The list** (`GET /api/admin/payments/chargebacks`) gives, per row, the
+  booking, the listing title, the amount, the bank's reason, `dueBy`, the
+  status, and what was paid out, recovered and is still owed.
 
 ## A buyer reported a problem (disputed booking)
 

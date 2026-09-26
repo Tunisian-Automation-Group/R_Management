@@ -189,7 +189,7 @@ def test_the_owner_hears_who_asked_and_the_renter_where_to_go():
 OWNER_READS = {
     "dispute_refunded", "dispute_partial", "dispute_owner_paid", "claim_confirmed", "disputed_owner",
     "extension_cancelled_owner", "no_show_owner_owner", "no_show_renter_owner", "requested",
-    "requested_extension", "instant_booked", "instant_extended", "paid", "listing_idle", "dispute_offer",
+    "requested_extension", "instant_booked", "instant_extended", "paid", "paid_kept", "listing_idle", "dispute_offer",
 }  # fmt: skip
 RENTER_READS = {
     "dispute_refunded_renter", "dispute_partial_renter", "dispute_owner_paid_renter", "claim_confirmed_renter",

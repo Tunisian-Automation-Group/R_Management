@@ -17,9 +17,13 @@ on:
         options: [staging, prod]
         default: staging
       release:
-        description: Commit sha to deploy (empty = the latest on main). A rollback is the previous release's sha; its images already exist, so it takes minutes.
+        description: Commit sha to deploy (empty = the latest on main). For a rollback, the previous release's sha; its images already exist, so it takes minutes.
         type: string
         default: ""
+      rollback:
+        description: Roll back to `release`. Only the services' images change; Terraform and the database stay at main's current state and no migration runs (R2-19).
+        type: boolean
+        default: false
 
 # Each job asks for AWS (id-token) only if it needs it; see P-2.
 permissions:
@@ -33,6 +37,14 @@ env:
   ENV: ${{ inputs.env || 'staging' }}
   # What is deployed: the named release, the commit CI just passed, or main.
   TAG: ${{ inputs.release || github.event.workflow_run.head_sha || github.sha }}
+  # Where Terraform and the migrations come from. A rollback keeps today's
+  # infrastructure and schema (main's head) and swaps only the image tag, so
+  # an old release never runs its own migrations (Alembic would not know the
+  # newer revision) nor its own Terraform (it would destroy newer resources,
+  # the locked backup vault among them). Migrations only expand, so old code
+  # runs on the newer schema (test_migrations_expand_only.py).
+  ROLLBACK: ${{ inputs.rollback == true }}
+  INFRA_REF: ${{ inputs.rollback == true && github.sha || inputs.release || github.event.workflow_run.head_sha || github.sha }}
 
 jobs:
   gate:
@@ -106,11 +118,12 @@ jobs:
       TF_VAR_legal: ${{ vars.LEGAL }}
       TF_VAR_apps: ${{ vars.APPS || '{}' }}
       TF_VAR_pager_endpoint: ${{ secrets.PAGER_ENDPOINT }}
+      TF_VAR_allow_no_pager: ${{ vars.ALLOW_NO_PAGER || 'false' }}
       TF_VAR_switches: ${{ vars.SWITCHES || '{"bookings":true,"payouts":true,"listings":true}' }}
       TF_VAR_feature_flags: ${{ vars.FEATURE_FLAGS }}
     steps:
       - uses: actions/checkout@v5
-        with: { ref: "${{ env.TAG }}" }
+        with: { ref: "${{ env.INFRA_REF }}" }
 
       - uses: aws-actions/configure-aws-credentials@v5
         with:
@@ -129,6 +142,7 @@ jobs:
         run: terraform init -input=false $([ "$CELL" = eu ] || echo "-backend-config=key=$CELL/$ENV/terraform.tfstate")
 
       - name: Register the new migrate tasks
+        if: env.ROLLBACK != 'true'
         working-directory: infra/envs/${{ env.ENV }}
         run: |
           terraform apply -input=false -auto-approve -var image_tag=$TAG \
@@ -136,6 +150,7 @@ jobs:
             -target=module.platform.aws_ecs_task_definition.migrate
 
       - name: Migrate every database, before any service rolls
+        if: env.ROLLBACK != 'true'
         working-directory: infra/envs/${{ env.ENV }}
         run: |
           out=$(terraform output -json platform)
@@ -211,7 +226,7 @@ jobs:
       TF_VAR_cell: ${{ vars.CELL || 'eu' }}
     steps:
       - uses: actions/checkout@v5
-        with: { ref: "${{ env.TAG }}" }
+        with: { ref: "${{ env.INFRA_REF }}" }
 
       - uses: actions/download-artifact@v4
         with: { name: web-dist, path: web/dist }

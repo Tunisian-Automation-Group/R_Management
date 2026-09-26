@@ -509,6 +509,7 @@ async def _chargeback(request: Request, session: AsyncSession, kind: str, obj: d
     now = _now()
     row.dispute_id = obj.get("id") or row.dispute_id
     row.dispute_status = (obj.get("status") or row.dispute_status or "")[:30] or None
+    row.dispute_reason = (obj.get("reason") or row.dispute_reason or "")[:40] or None
     due = (obj.get("evidence_details") or {}).get("due_by")
     if due:
         row.dispute_due_at = datetime.fromtimestamp(int(due), UTC)
@@ -555,10 +556,15 @@ async def _chargeback_lost(request: Request, row: PaymentRow) -> None:
 
 
 class Chargeback(CamelModel):
+    """One row of the staff chargebacks screen (R2-24): what was disputed,
+    why, by when evidence is due, and where the money stands."""
+
     booking_id: str
+    title: str | None
     dispute_id: str | None
     status: str | None
-    evidence_due_at: Iso | None
+    reason: str | None
+    due_by: Iso | None
     amount: int
     currency: str
     paid_out: int
@@ -582,9 +588,11 @@ async def chargebacks(session: AsyncSession = Tx, staff: Principal = Depends(req
     return [
         Chargeback(
             booking_id=r.booking_id,
+            title=r.title,
             dispute_id=r.dispute_id,
             status=r.dispute_status,
-            evidence_due_at=iso_from_datetime(r.dispute_due_at) if r.dispute_due_at else None,
+            reason=r.dispute_reason,
+            due_by=iso_from_datetime(r.dispute_due_at) if r.dispute_due_at else None,
             amount=r.amount,
             currency=r.currency,
             paid_out=r.paid_out_amount,

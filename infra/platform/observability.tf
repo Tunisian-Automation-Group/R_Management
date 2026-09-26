@@ -8,6 +8,16 @@
 # subscription), set through var.pager_endpoint.
 resource "aws_sns_topic" "alarms" {
   name = "${local.name}-alarms"
+
+  # A prod plan fails without a pager (R2-23): pages that reach only a mailbox
+  # reach nobody at 3 a.m. allow_no_pager = true is the explicit, visible
+  # exception (a first rehearsal apply, say).
+  lifecycle {
+    precondition {
+      condition     = var.env != "prod" || var.pager_endpoint != "" || var.allow_no_pager
+      error_message = "prod pages nobody: set pager_endpoint (the PAGER_ENDPOINT secret) to the pager's SNS HTTPS integration URL, or set allow_no_pager = true on purpose."
+    }
+  }
 }
 
 resource "aws_sns_topic" "tickets" {
@@ -32,13 +42,6 @@ resource "aws_sns_topic_subscription" "pager" {
   protocol               = "https"
   endpoint               = var.pager_endpoint
   endpoint_auto_confirms = true
-}
-
-check "prod_has_a_pager" {
-  assert {
-    condition     = var.env != "prod" || var.pager_endpoint != ""
-    error_message = "prod pages nobody: set pager_endpoint (the PAGER_ENDPOINT environment variable) to the pager's SNS HTTPS integration URL."
-  }
 }
 
 locals {

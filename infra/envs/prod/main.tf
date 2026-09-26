@@ -91,11 +91,18 @@ variable "apps" {
 }
 
 # The pager's SNS HTTPS integration URL (TF_VAR_pager_endpoint from the
-# PAGER_ENDPOINT secret). A prod plan warns loudly without one (check block).
+# PAGER_ENDPOINT secret). A prod plan fails without one unless allow_no_pager.
 variable "pager_endpoint" {
   type      = string
   default   = ""
   sensitive = true
+}
+
+# Only on purpose (R2-23): lets a prod apply go ahead without a pager.
+# TF_VAR_allow_no_pager from the environment variable ALLOW_NO_PAGER.
+variable "allow_no_pager" {
+  type    = bool
+  default = false
 }
 
 module "platform" {
@@ -110,6 +117,7 @@ module "platform" {
   legal          = var.legal
   apps           = var.apps
   pager_endpoint = var.pager_endpoint
+  allow_no_pager = var.allow_no_pager
 
   env          = "prod"
   cell         = var.cell

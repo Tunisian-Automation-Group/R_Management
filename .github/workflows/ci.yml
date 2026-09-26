@@ -69,6 +69,7 @@ jobs:
       - run: npm run check:a11y
       - run: npm run check:money
       - run: npm run check:contrast
+      - run: npm run check:release
       - run: npm run check:tokens
 
   images:

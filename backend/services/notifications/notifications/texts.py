@@ -16,6 +16,10 @@ TEXTS: dict[str, dict[str, tuple[str, str]]] = {
             "You have been paid {amount}",
             "Your share for {title} is on its way to your bank.\n\n{web}/earn",
         ),
+        "paid_kept": (
+            "Payout for {title}: {amount}",
+            "{kept} of your share for {title} settled a chargeback you lost earlier; {amount} is on its way to your bank.\n\n{web}/earn",
+        ),
         "requested": (
             "New request: {title}",
             "{who} wants to book {title}{for_amount}. Answer by {deadline}, or the request lapses.\n\n{link}",
@@ -180,6 +184,10 @@ TEXTS: dict[str, dict[str, tuple[str, str]]] = {
         "paid": (
             "Du hast {amount} erhalten",
             "Dein Anteil für {title} ist auf dem Weg zu deiner Bank.\n\n{web}/earn",
+        ),
+        "paid_kept": (
+            "Auszahlung für {title}: {amount}",
+            "{kept} deines Anteils für {title} gleichen eine frühere verlorene Rückbuchung aus; {amount} ist auf dem Weg zu deiner Bank.\n\n{web}/earn",
         ),
         "requested": (
             "Neue Anfrage: {title}",
@@ -348,6 +356,10 @@ TEXTS: dict[str, dict[str, tuple[str, str]]] = {
         "paid": (
             "Vous avez reçu {amount}",
             "Votre part pour {title} est en route vers votre banque.\n\n{web}/earn",
+        ),
+        "paid_kept": (
+            "Versement pour {title} : {amount}",
+            "{kept} de votre part pour {title} règlent une rétrofacturation perdue auparavant ; {amount} est en route vers votre banque.\n\n{web}/earn",
         ),
         "requested": (
             "Nouvelle demande : {title}",
@@ -631,6 +643,8 @@ def render(key: str, locale: str | None, **params) -> tuple[str, str]:
     params.setdefault("note", "")  # inbox items stored before notes existed
     if "_cents" in params:
         params["amount"] = money(*params.pop("_cents"), locale)
+    if "_kept" in params:
+        params["kept"] = money(*params.pop("_kept"), locale)
     # The price where a notice knows it (V7-23); nothing where it does not
     # (a notice stored before, an event without it).
     paid = params.get("amount")

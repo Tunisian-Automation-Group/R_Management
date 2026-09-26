@@ -78,6 +78,7 @@ CATEGORY = {
     "claim_rejected": "bookings",
     "message": "messages",
     "paid": "payouts",
+    "paid_kept": "payouts",
 }
 ALWAYS_EMAILED = frozenset(
     {

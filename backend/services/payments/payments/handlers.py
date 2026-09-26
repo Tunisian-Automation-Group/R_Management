@@ -21,7 +21,7 @@ import json
 import logging
 from datetime import UTC, datetime
 
-from sqlalchemy import update
+from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from cappy_common.events import (
@@ -69,18 +69,24 @@ async def pay_out(
     account = await session.get(ConnectAccountRow, row.owner_id)
     if account is None or not row.charge_id:
         raise NotReady(f"cannot pay out {row.booking_id}: no connected account or charge")
-    row.transfer_id = await provider.transfer(
-        booking_id=row.booking_id,
-        amount=row.owner_net,
-        currency=row.currency,
-        account_id=account.account_id,
-        charge_id=row.charge_id,
-    )
+    row.title = d.get("title") or row.title
+    deducted = await _settle_debts(session, row)
+    amount = row.owner_net - deducted
+    if amount > 0:
+        row.transfer_id = await provider.transfer(
+            booking_id=row.booking_id,
+            amount=amount,
+            currency=row.currency,
+            account_id=account.account_id,
+            charge_id=row.charge_id,
+        )
     row.status = "transferred"
-    row.paid_out_amount = row.owner_net
+    row.paid_out_amount = amount
+    row.debt_deducted = deducted
     facts = {"bookingId": row.booking_id, "ownerId": row.owner_id, "requesterId": row.requester_id}
     about = {k: d[k] for k in ("title", "windowStart", "timeZone") if d.get(k)}
-    await outbox.add(session, PAYOUT_SENT, {**facts, **about, "amount": row.owner_net, "currency": row.currency})
+    kept = {"deducted": deducted} if deducted else {}
+    await outbox.add(session, PAYOUT_SENT, {**facts, **about, **kept, "amount": amount, "currency": row.currency})
     await issue(
         session,
         booking_id=row.booking_id,
@@ -91,6 +97,32 @@ async def pay_out(
         issuer=issuer,
         verified_address=await _address(provider, account.account_id),
     )
+
+
+async def _settle_debts(session: AsyncSession, row: PaymentRow) -> int:
+    """What this payout keeps back for the owner's lost chargebacks not yet
+    recovered (R2-20, runbook "A chargeback"): oldest debt first, never more
+    than this payout, and only debts in the same currency. Each debt records
+    what came back, so staff see it shrink."""
+    debts = (
+        await session.execute(
+            select(PaymentRow)
+            .where(PaymentRow.owner_id == row.owner_id, PaymentRow.owner_owes > 0)
+            .where(PaymentRow.booking_id != row.booking_id, PaymentRow.currency == row.currency)
+            .order_by(PaymentRow.updated_at)
+            .with_for_update()
+        )
+    ).scalars()
+    left = row.owner_net
+    for debt in debts:
+        take = min(debt.owner_owes, left)
+        if not take:
+            break
+        debt.owner_owes -= take
+        debt.recovered_amount += take
+        left -= take
+        log.warning("payout %s kept %s for the lost chargeback on %s", row.booking_id, take, debt.booking_id)
+    return row.owner_net - left
 
 
 def handlers(
@@ -113,6 +145,7 @@ def handlers(
         facts = {"bookingId": row.booking_id, "ownerId": row.owner_id, "requesterId": row.requester_id}
         # What the payout notice names instead of the booking id (V5-13).
         about = {k: d[k] for k in ("title", "windowStart", "timeZone") if d.get(k)}
+        row.title = d.get("title") or row.title
 
         if to == "accepted" and row.status in ("created", "authorised"):
             try:
