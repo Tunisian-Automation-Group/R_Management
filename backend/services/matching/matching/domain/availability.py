@@ -57,7 +57,10 @@ def offers_for(
     ``per_day`` caps the starts on any one day, so a busy near day cannot use
     up ``limit`` and hide the days after it (V6-23: an every-day schedule ran
     out after four days). Days are the listing's own (``time_zone``), so an
-    evening start after midnight UTC still counts on its local day.
+    evening start after midnight UTC still counts on its local day. A day
+    with more starts than the cap is thinned evenly (every k-th start), never
+    cut: the evening stays bookable (V7-1: a 24 h listing showed only
+    00:00-13:30).
     """
     zone = ZoneInfo(time_zone)
     from_ms = ms_from_iso(from_)
@@ -66,7 +69,6 @@ def offers_for(
     step = _step_ms(hours)
     taken = sorted(busy or [])
     out: list[Offer] = []
-    per: dict[date, int] = {}
 
     for slot in sorted(slots, key=lambda s: ms_from_iso(s.start)):
         slot_start = ms_from_iso(slot.start)
@@ -87,17 +89,18 @@ def offers_for(
                 # Jump past the booking to the next aligned start.
                 t = _align_up(clash[1], step)
                 continue
-            day = datetime.fromtimestamp(t / 1000, zone).date()
-            if per_day is not None and per.get(day, 0) >= per_day:
-                t += step
-                continue
-            per[day] = per.get(day, 0) + 1
             out.append(Offer(slot_id=slot.id, start=iso_from_ms(t), end=iso_from_ms(t + duration_ms)))
-            if len(out) >= limit:
+            if per_day is None and len(out) >= limit:
                 return out
             t += step
 
-    return out
+    if per_day is None:
+        return out
+    by_day: dict[date, list[Offer]] = {}
+    for offer in sorted(out, key=lambda o: ms_from_iso(o.start)):
+        by_day.setdefault(datetime.fromtimestamp(ms_from_iso(offer.start) / 1000, zone).date(), []).append(offer)
+    thinned = [o for day in sorted(by_day) for o in by_day[day][:: math.ceil(len(by_day[day]) / per_day)]]
+    return thinned[:limit]
 
 
 def earliest_offer(

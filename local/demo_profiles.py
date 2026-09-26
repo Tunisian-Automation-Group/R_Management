@@ -7,6 +7,7 @@ Additive: a profile someone already filled in is left alone.
 
 from __future__ import annotations
 
+import re
 import sys
 from pathlib import Path
 
@@ -134,14 +135,21 @@ if not httpx.get(f"{API}/me/listings", headers=h).raise_for_status().json()["ite
 
 
 def every_day(h: dict, match) -> None:
-    """Give a demo listing the every-day schedule if it has none yet, on a
-    stack seeded before (the edit keeps everything else as it is)."""
+    """Give a demo listing the every-day schedule, on a stack seeded before
+    too (the edit keeps everything else as it is). The seed's own dated
+    windows (ids w1, w2, ...) go first: kept, they win over the schedule and
+    close Sunday mornings (V7-11); the edit then fills the days from it."""
     for v in httpx.get(f"{API}/me/listings", headers=h, params={"limit": 100}).raise_for_status().json()["items"]:
         listing = v["listing"]
-        if match(listing) and (listing.get("availability") or {}).get("weekly") != EVERY_DAY["weekly"]:
+        if not match(listing):
+            continue
+        seeded = [slot["id"] for slot in v.get("slots", []) if re.fullmatch(r"w\d+", slot["id"])]
+        for slot_id in seeded:
+            httpx.delete(f"{API}/listings/{listing['id']}/slots/{slot_id}", headers=h).raise_for_status()
+        if seeded or (listing.get("availability") or {}).get("weekly") != EVERY_DAY["weekly"]:
             body = {"listing": {**listing, "availability": EVERY_DAY}}
             httpx.put(f"{API}/listings/{listing['id']}", headers=h, json=body).raise_for_status()
-            print(f"demo: {listing['title']} is open every day")
+            print(f"demo: {listing['title']} is open every day, 08:00-22:00")
 
 
 every_day(signed_in("host"), lambda l: l["id"] == "l9")

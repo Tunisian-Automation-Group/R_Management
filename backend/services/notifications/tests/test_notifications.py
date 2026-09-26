@@ -711,3 +711,44 @@ def test_the_apps_locale_is_remembered_for_emails():
             _change("requested", by="buyer", frm="awaiting_payment", expiresAt="2026-10-03T13:00:00Z"),
         )
     assert "3:00 PM" in app.state.mailer.sent[-1].text
+
+
+def test_mails_say_the_time_the_money_and_who_they_are_about():
+    """V7-12/V7-23: a confirmation names the time and the price; an extension
+    request says it is one; an extension cancelled with its booking tells both
+    sides why and what comes back; a renter reads a settlement about
+    themselves."""
+    from notifications.handlers import messages
+    from notifications.texts import render
+
+    from cappy_common.events import BOOKING_NOTICE
+
+    base = {"bookingId": "bk", "requesterId": "r", "ownerId": "o", "title": "Saw", "amount": 1500, "currency": "EUR"}
+    start = {"windowStart": "2030-10-05T08:00:00Z", "timeZone": "Europe/Berlin"}
+    [(who, _, key, params)] = messages(_event(BOOKING_STATUS_CHANGED, **base, **start, to="accepted", by="o"), "W")
+    _, body = render(key, "en-GB", **params)
+    assert who == "r" and "You paid €15.00." in body and "5 Oct" in body and "10:00" in body, body
+    ask = messages(_event(BOOKING_STATUS_CHANGED, **base, to="requested", by="r", extendsId="bk0"), "W")
+    assert [(m[0], m[2]) for m in ask] == [("o", "requested_extension")]
+    gone = messages(
+        _event(BOOKING_STATUS_CHANGED, **base, to="cancelled", by="system", extendsId="bk0", refundAmount=1500), "W"
+    )
+    assert [(m[0], m[2]) for m in gone] == [("r", "extension_cancelled_renter"), ("o", "extension_cancelled_owner")]
+    assert "€15.00 back" in render(gone[0][2], "en", **gone[0][3])[1]
+    settled = messages(
+        _event(
+            BOOKING_NOTICE,
+            bookingId="bk",
+            kind="dispute_partial",
+            to=["r", "o"],
+            requesterId="r",
+            refundAmount=700,
+            currency="EUR",
+            title="Saw",
+        ),
+        "W",
+    )
+    assert [(m[0], m[2]) for m in settled] == [("r", "dispute_partial_renter"), ("o", "dispute_partial")]
+    assert "you get €7.00 back" in render("dispute_partial_renter", "en", **settled[0][3])[1]
+    # A notice stored before prices were in it still reads (no amount).
+    assert "confirmed. The hand-over" in render("accepted", "en", title="Saw", link="L")[1]

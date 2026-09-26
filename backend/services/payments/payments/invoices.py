@@ -236,6 +236,28 @@ def _lang(accept_language: str | None) -> str:
     return code if code in LABELS else "de" if not code else "en"
 
 
+# The reader's typography (V7-10): French puts a no-break space before ':' and
+# '%'; English writes 19% and the reader's own date order.
+COLON = {"de": ":", "en": ":", "fr": "\u00a0:"}
+# The tax's name in the reader's words. ponytail: German VAT only (one issuer);
+# a market's tax words come with the market -> Issuer map.
+TAX = {"en": "VAT", "fr": "TVA"}
+
+
+def _pct(rate_bps: int, lang: str) -> str:
+    n = f"{rate_bps / 100:g}"
+    return f"{n}%" if lang == "en" else f"{n}\u00a0%" if lang == "fr" else f"{n} %"
+
+
+def _date(t: datetime, tz: str, lang: str, locale: str) -> str:
+    local = t.astimezone(ZoneInfo(tz))
+    if lang == "de":
+        return f"{local:%d.%m.%Y}"
+    if locale.lower().startswith("en-us"):
+        return f"{local.month}/{local.day}/{local.year}"
+    return f"{local:%d/%m/%Y}"
+
+
 def _money(cents: int, currency: str, lang: str) -> str:
     symbol = {"EUR": "€", "GBP": "£", "USD": "$", "CAD": "$"}.get(currency.upper(), currency.upper())
     amount = f"{cents / 100:,.2f}"
@@ -260,16 +282,24 @@ async def invoice_page(
         raise NotFound("no such invoice")
     st = request.app.state.settings
     tz, label = st.invoice_time_zone, st.invoice_tax_label
-    lang = _lang(request.headers.get("accept-language"))
-    w = LABELS[lang]
+    locale = (request.headers.get("accept-language") or "").split(",")[0].strip()
+    lang = _lang(locale)
+    w, c = LABELS[lang], COLON[lang]
+    day = lambda t: _date(t, tz, lang, locale)  # noqa: E731
+    period = (
+        day(r.issued_at)
+        if r.service_start is None
+        else " – ".join(dict.fromkeys((day(r.service_start), day(r.service_end or r.service_start))))
+    )
+    label = TAX.get(lang, label)
     e = lambda v: html.escape(v or "")  # noqa: E731
     lines = lambda v: "<br>".join(html.escape(x.strip()) for x in (v or "").split(",") if x.strip())  # noqa: E731
     cash = lambda c: _money(c, r.currency, lang)  # noqa: E731
     tax_ids = "<br>".join(
         x
         for x in (
-            f"{w['vat_id']}: {e(st.legal_vat_id)}" if st.legal_vat_id else "",
-            f"{w['tax_number']}: {e(st.legal_tax_number)}" if st.legal_tax_number else "",
+            f"{w['vat_id']}{c} {e(st.legal_vat_id)}" if st.legal_vat_id else "",
+            f"{w['tax_number']}{c} {e(st.legal_tax_number)}" if st.legal_tax_number else "",
         )
         if x
     )
@@ -277,19 +307,19 @@ async def invoice_page(
     # verified (V4-7); see ``issue``.
     recipient = e(r.recipient_name) + (f"<br>{lines(r.recipient_address)}" if r.recipient_address else "")
     if r.recipient_vat_id:
-        recipient += f"<br>{w['vat_id']}: {e(r.recipient_vat_id)}"
+        recipient += f"<br>{w['vat_id']}{c} {e(r.recipient_vat_id)}"
     # Named by the listing; the booking id is the reference, not the service (V6-21).
     what = w["fee"].format(title=e(r.title)) if r.title else w["fee_untitled"]
     body = f"""<!doctype html><html lang="{lang}"><meta charset="utf-8"><title>{w["invoice"]} {e(r.number)}</title>
 <style>body{{font:14px system-ui;max-width:640px;margin:40px auto}}td{{padding:4px 12px}}
 .cols{{display:flex;justify-content:space-between;gap:24px}}</style>
 <div class="cols"><p><b>{e(st.legal_company)}</b><br>{lines(st.legal_address)}<br>{tax_ids}</p>
-<p>{w["to"]}:<br>{recipient}</p></div>
+<p>{w["to"]}{c}<br>{recipient}</p></div>
 <h1>{w["invoice"]} {e(r.number)}</h1>
-<p>{w["date"]}: {_day(r.issued_at, tz)}<br>{w["service_date"]}: {_period(r, tz)}
-<br>{w["service"]}: {what}<br>{w["booking"]}: {e(r.booking_id)}</p>
+<p>{w["date"]}{c} {day(r.issued_at)}<br>{w["service_date"]}{c} {period}
+<br>{w["service"]}{c} {what}<br>{w["booking"]}{c} {e(r.booking_id)}</p>
 <table><tr><td>{w["net"]}</td><td>{cash(r.net)}</td></tr>
-<tr><td>{e(label)} {r.vat_rate_bps / 100:g} %</td><td>{cash(r.vat)}</td></tr>
+<tr><td>{e(label)} {_pct(r.vat_rate_bps, lang)}</td><td>{cash(r.vat)}</td></tr>
 <tr><td><b>{w["total"]}</b></td><td><b>{cash(r.gross)}</b></td></tr></table>
 <p>{w["withheld"]}</p></html>"""
     return HTMLResponse(body)

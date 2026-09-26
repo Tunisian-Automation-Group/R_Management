@@ -105,3 +105,27 @@ def test_the_bell_shows_the_staff_note_with_the_outcome():
         )
         bell = summary("dispute_partial", text)
         assert "The fence was bent." in bell and "\n\nL" not in bell, bell
+
+
+def test_the_bell_shows_why_a_request_was_declined():
+    # V7-4: the email ended with the reason; the bell stopped at the first paragraph.
+    from notifications.texts import summary
+
+    for lang, word in (("en", "Reason"), ("de", "Grund"), ("fr", "Motif")):
+        _, text = render("declined", lang, title="Saw", link="L", _reason="It needs a repair first")
+        bell = summary("declined", text)
+        assert word in bell and "It needs a repair first." in bell and "\n\nL" not in bell, bell
+        _, staff = render("declined", lang, title="Saw", link="L", _reason="The listing was taken down by Cappy")
+        assert "Cappy" in summary("declined", staff), staff
+
+
+def test_peoples_own_words_are_quoted_as_written_in_french():
+    # V7-24: staff wrote "No proof either way; a small goodwill refund?", the
+    # French mail re-spaced it to "No proof either way ; a small goodwill refund ?".
+    note = "No proof either way; a small goodwill refund?"
+    _, body = render("dispute_partial", "fr", title="Saw", link="L", how_fr="", _cents=(300, "EUR"), _note=note)
+    assert note in body and " :" in body, body
+    _, declined = render("declined", "fr", title="Saw", link="L", _reason="Broken: sorry!")
+    assert "Broken: sorry!" in declined and "sorry!." not in declined and "Motif :" in declined, declined
+    _, ours = render("declined", "fr", title="Saw", link="L", _reason="The listing was taken down by Cappy")
+    assert "retirée par Cappy." in ours

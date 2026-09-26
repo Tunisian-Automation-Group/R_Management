@@ -716,9 +716,22 @@ class CatalogRepository:
         return list((await self.s.execute(q)).scalars())
 
     async def remove_slot(self, listing_id: str, slot_id: str) -> None:
+        slot = await self.s.get(SlotRow, slot_id)
         result = await self.s.execute(delete(SlotRow).where(SlotRow.id == slot_id, SlotRow.listing_id == listing_id))
         if result.rowcount == 0:
             raise NotFound(f"slot {slot_id} not found on listing {listing_id}")
+        # A hand-made window taken away: the weekly hours it stood over come
+        # back at once, not at the next roll a day later (V7-11). Removing a
+        # generated window is the owner closing that time, so it stays closed.
+        # ponytail: the hourly roll-on still refills a deleted generated
+        # window; exceptions to a schedule (H-4 holidays) will fix that.
+        listing = await self.s.get(ListingRow, listing_id)
+        spec = (listing.spec or {}) if listing else {}
+        if slot is not None and not slot.generated and spec.get("availability"):
+            await self.s.flush()
+            await self.apply_schedule(
+                listing_id, Availability.model_validate(spec["availability"]), datetime.now(UTC), replace=False
+            )
 
     async def upcoming_slots(
         self, listing_ids: set[str], *, after: datetime, until: datetime | None = None, per_listing: int = 200

@@ -763,6 +763,8 @@ def test_anyone_can_report_and_staff_decide_with_reasons(client, app, issuer, br
     assert client.get("/admin/reports", headers=issuer.headers("user-a")).status_code == 403, "staff only"
     queue = client.get("/admin/reports", headers=_staff(issuer)).json()["items"]
     assert [r["id"] for r in queue] == [anon["id"], mine["id"]], "oldest first"
+    title = client.get("/listings/l9").json()["listing"]["title"]
+    assert queue[0]["targetLabel"] == title, "named, not a raw id (V7-19)"
 
     short = {"action": "take_down", "statement": "no"}
     assert client.post(f"/admin/reports/{anon['id']}/decide", json=short, headers=_staff(issuer)).status_code == 422
@@ -897,8 +899,9 @@ def test_reports_cannot_be_used_to_flood_an_inbox(client, issuer):
         "details": "Looks like spam to me",
         "email": "victim@example.com",
     }
-    codes = [client.post("/reports", json=body, headers=ANON).status_code for _ in range(4)]
-    assert codes == [201, 201, 201, 429]
+    answers = [client.post("/reports", json=body, headers=ANON) for _ in range(4)]
+    assert [a.status_code for a in answers] == [201, 201, 201, 429]
+    assert answers[-1].json()["error"]["code"] == "reports_today", "a code the app can translate (V7-18)"
     mine = client.post("/reports", json={**body, "email": "elsewhere@example.com"}, headers=issuer.headers("user-a"))
     assert mine.status_code == 201
 
@@ -1237,11 +1240,18 @@ def test_audit_lines_carry_their_facts_and_a_repeated_read_is_one(client, app, i
         line("resolve_dispute", reason="The motor fault is on video.", details=facts),
         line("read_case", dedupe="staff-1:read_case:bk_9:202609271000"),
         line("read_case", dedupe="staff-1:read_case:bk_9:202609271000"),
+        # V7-13: the refetch after a decision, 23 s later across a calendar minute.
+        line("read_case", at="2026-09-27T10:00:23Z", dedupe="staff-1:read_case:bk_9:202609271000"),
+        line("read_case", at="2026-09-27T09:59:50Z", dedupe="staff-1:read_case:bk_9:202609270959"),
     ]
     for e in events:
         app.state._portal.call(app.state.dispatcher.handle, e)
     items = client.get("/admin/audit", params={"target": "bk_9"}, headers=_staff(issuer)).json()["items"]
     assert sorted(a["action"] for a in items) == ["read_case", "resolve_dispute"]
+    later = line("read_case", at="2026-09-27T10:05:00Z", dedupe="staff-1:read_case:bk_9:202609271005")
+    app.state._portal.call(app.state.dispatcher.handle, later)
+    again = client.get("/admin/audit", params={"target": "bk_9"}, headers=_staff(issuer)).json()["items"]
+    assert [a["action"] for a in again].count("read_case") == 2, "a real second opening, minutes later, counts"
     [resolved] = [a for a in items if a["action"] == "resolve_dispute"]
     assert resolved["statement"] == "The motor fault is on video." and resolved["details"] == facts
 
@@ -1556,6 +1566,33 @@ def test_a_weekly_schedule_keeps_eight_weeks_of_windows_open(client, issuer):
     # An edit that does not mention the schedule keeps it.
     assert client.put(f"/listings/{lid}", json={"listing": _window_listing()}, headers=h).status_code == 200
     assert client.get(f"/listings/{lid}").json()["listing"]["availability"] == weekends
+
+
+def test_removing_a_hand_made_window_brings_the_weekly_hours_back(client, issuer):
+    """V7-11: the seed's dated windows won over the demo schedule, and once
+    taken away the day stayed empty until the next roll, up to a day later."""
+    from datetime import UTC, datetime, timedelta
+    from zoneinfo import ZoneInfo
+
+    _profile(client, issuer)
+    h = issuer.headers("user-a")
+    berlin = ZoneInfo("Europe/Berlin")
+    day = datetime.now(berlin).date() + timedelta(days=3)
+    while day.isoweekday() > 5:
+        day += timedelta(days=1)
+    at = lambda hh: datetime(day.year, day.month, day.day, hh, tzinfo=berlin).astimezone(UTC).isoformat()  # noqa: E731
+    extra = {"start": at(8), "end": at(12), "hoursUsable": 4}
+    lid = client.post("/listings", json={"listing": _window_listing(), "slots": [extra]}, headers=h).json()["listing"][
+        "id"
+    ]
+    body = {"listing": _window_listing(availability=WEEKDAYS)}
+    assert client.put(f"/listings/{lid}", json=body, headers=h).status_code == 200
+    on = lambda: [s for s in client.get(f"/listings/{lid}").json()["slots"] if s["start"][:10] == at(12)[:10]]  # noqa: E731
+    [hand] = on()
+    assert hand["hoursUsable"] == 4, "the dated window stood over the day's hours"
+    assert client.delete(f"/listings/{lid}/slots/{hand['id']}", headers=h).status_code == 204
+    [back] = on()
+    assert back["hoursUsable"] == 8, "the weekday's 09:00-17:00 again, at once"
 
 
 @pytest.mark.parametrize(

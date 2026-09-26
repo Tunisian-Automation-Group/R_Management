@@ -254,6 +254,13 @@ whether the alarms fired and whether the runbook worked.
   refreshes afterwards carries on locally. With real Cognito,
   `AdminUserGlobalSignOut` revokes the refresh tokens too. Fronting
   cognito-local with a deny list was judged not worth it for a local-only gap.
+- **A plain Sign out leaves the access token working locally (V7-28).** The
+  app calls Cognito `RevokeToken` on the refresh token (`web/src/data/cognito.ts`).
+  Real Cognito then also refuses the access tokens that refresh token issued,
+  and access tokens last 15 minutes anyway (`identity.tf`). cognito-local
+  ignores the revocation for access tokens and issues them for 24 hours, so
+  locally the old token keeps working until it expires. Sign out everywhere
+  does end it locally (P-24).
 - **Staff MFA is off** (`ADMIN_MFA_REQUIRED`), see Moderation.
 - **Short windows** (`MIN_LEAD_MINUTES=5`, `START_EARLY_MINUTES`,
   `SWEEP_SECONDS` in `compose.yaml`) so every flow can be walked in minutes;

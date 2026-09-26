@@ -18,9 +18,25 @@ TEXTS: dict[str, dict[str, tuple[str, str]]] = {
         ),
         "requested": (
             "New request: {title}",
-            "Someone wants to book {title}. Answer by {deadline}, or the request lapses.\n\n{link}",
+            "Someone wants to book {title}{for_amount}. Answer by {deadline}, or the request lapses.\n\n{link}",
         ),
-        "accepted": ("Confirmed: {title}", "Your booking of {title} is confirmed.\n\n{link}"),
+        "requested_extension": (
+            "Extension request: {title}",
+            "Your renter wants to extend their booking: {title}{for_amount}. Answer by {deadline}, or the request lapses.\n\n{link}",
+        ),
+        "accepted": (
+            "Confirmed: {title}",
+            "Your booking of {title} is confirmed.{paid} The hand-over address is in the app.\n\n{link}",
+        ),
+        # An extension ends with the booking it extends (V6-22, V7-12).
+        "extension_cancelled_renter": (
+            "Extension cancelled: {title}",
+            "Your extension of {title} was cancelled because the booking it extends was cancelled. You get {amount} back to your card.\n\n{link}",
+        ),
+        "extension_cancelled_owner": (
+            "Extension cancelled: {title}",
+            "The extension of {title} was cancelled because the booking it extends was cancelled. The renter gets everything back ({amount}).\n\n{link}",
+        ),
         "instant_booked": (
             "New booking: {title}",
             "{title} was booked instantly. The details are in the app.\n\n{link}",
@@ -102,6 +118,19 @@ TEXTS: dict[str, dict[str, tuple[str, str]]] = {
             "Settled: {title}",
             "{how_en} {amount} goes back to the renter, and the owner is paid for the rest.{note}\n\n{link}",
         ),
+        # The renter reads it about themselves (V7-23).
+        "dispute_refunded_renter": (
+            "Settled: {title}",
+            "{how_en} you get the full price back ({amount}).{note}\n\n{link}",
+        ),
+        "dispute_partial_renter": (
+            "Settled: {title}",
+            "{how_en} you get {amount} back to your card, and the owner is paid for the rest.{note}\n\n{link}",
+        ),
+        "dispute_owner_paid_renter": (
+            "Settled: {title}",
+            "{how_en} the owner is paid in full and nothing comes back to you.{note}\n\n{link}",
+        ),
         "dispute_owner_paid": (
             "Settled: {title}",
             "{how_en} the owner is paid in full and nothing is refunded.{note}\n\n{link}",
@@ -134,9 +163,24 @@ TEXTS: dict[str, dict[str, tuple[str, str]]] = {
         ),
         "requested": (
             "Neue Anfrage: {title}",
-            "Jemand möchte {title} buchen. Bitte antworte bis {deadline}, sonst verfällt die Anfrage.\n\n{link}",
+            "Jemand möchte {title}{for_amount} buchen. Bitte antworte bis {deadline}, sonst verfällt die Anfrage.\n\n{link}",
         ),
-        "accepted": ("Bestätigt: {title}", "Deine Buchung von {title} ist bestätigt.\n\n{link}"),
+        "requested_extension": (
+            "Verlängerungsanfrage: {title}",
+            "Die mietende Person möchte ihre Buchung verlängern: {title}{for_amount}. Bitte antworte bis {deadline}, sonst verfällt die Anfrage.\n\n{link}",
+        ),
+        "accepted": (
+            "Bestätigt: {title}",
+            "Deine Buchung von {title} ist bestätigt.{paid} Die Übergabeadresse findest du in der App.\n\n{link}",
+        ),
+        "extension_cancelled_renter": (
+            "Verlängerung storniert: {title}",
+            "Deine Verlängerung von {title} wurde storniert, weil die Buchung, die sie verlängert, storniert wurde. Du bekommst {amount} auf deine Karte zurück.\n\n{link}",
+        ),
+        "extension_cancelled_owner": (
+            "Verlängerung storniert: {title}",
+            "Die Verlängerung von {title} wurde storniert, weil die Buchung, die sie verlängert, storniert wurde. Die mietende Person bekommt alles zurück ({amount}).\n\n{link}",
+        ),
         "instant_booked": (
             "Neue Buchung: {title}",
             "{title} wurde sofort gebucht. Alle Details findest du in der App.\n\n{link}",
@@ -223,6 +267,18 @@ TEXTS: dict[str, dict[str, tuple[str, str]]] = {
             "Geklärt: {title}",
             "{how_de} {amount} gehen an die mietende Person zurück, der Rest wird ausgezahlt.{note}\n\n{link}",
         ),
+        "dispute_refunded_renter": (
+            "Geklärt: {title}",
+            "{how_de} Du bekommst den vollen Preis zurück ({amount}).{note}\n\n{link}",
+        ),
+        "dispute_partial_renter": (
+            "Geklärt: {title}",
+            "{how_de} Du bekommst {amount} auf deine Karte zurück, der Rest wird an die vermietende Person ausgezahlt.{note}\n\n{link}",
+        ),
+        "dispute_owner_paid_renter": (
+            "Geklärt: {title}",
+            "{how_de} Der volle Betrag wird an die vermietende Person ausgezahlt, du bekommst nichts zurück.{note}\n\n{link}",
+        ),
         "dispute_owner_paid": (
             "Geklärt: {title}",
             "{how_de} Der volle Betrag wird ausgezahlt, es wird nichts erstattet.{note}\n\n{link}",
@@ -255,9 +311,24 @@ TEXTS: dict[str, dict[str, tuple[str, str]]] = {
         ),
         "requested": (
             "Nouvelle demande : {title}",
-            "Quelqu’un souhaite réserver {title}. Répondez avant {deadline}, sinon la demande expire.\n\n{link}",
+            "Quelqu’un souhaite réserver {title}{for_amount}. Répondez avant {deadline}, sinon la demande expire.\n\n{link}",
         ),
-        "accepted": ("Confirmé : {title}", "Votre réservation de {title} est confirmée.\n\n{link}"),
+        "requested_extension": (
+            "Demande de prolongation : {title}",
+            "La personne locataire souhaite prolonger sa réservation : {title}{for_amount}. Répondez avant {deadline}, sinon la demande expire.\n\n{link}",
+        ),
+        "accepted": (
+            "Confirmé : {title}",
+            "Votre réservation de {title} est confirmée.{paid} L’adresse de remise est dans l’application.\n\n{link}",
+        ),
+        "extension_cancelled_renter": (
+            "Prolongation annulée : {title}",
+            "Votre prolongation de {title} a été annulée, car la réservation qu’elle prolonge a été annulée. Vous récupérez {amount} sur votre carte.\n\n{link}",
+        ),
+        "extension_cancelled_owner": (
+            "Prolongation annulée : {title}",
+            "La prolongation de {title} a été annulée, car la réservation qu’elle prolonge a été annulée. La personne locataire récupère tout ({amount}).\n\n{link}",
+        ),
         "instant_booked": (
             "Nouvelle réservation : {title}",
             "{title} a été réservé instantanément. Tous les détails sont dans l’application.\n\n{link}",
@@ -342,7 +413,19 @@ TEXTS: dict[str, dict[str, tuple[str, str]]] = {
         ),
         "dispute_partial": (
             "Réglé : {title}",
-            "{how_fr} {amount} sont remboursés à la personne locataire, et le reste est versé.{note}\n\n{link}",
+            "{how_fr} {amount} sont remboursés à la personne locataire, et le reste est versé à la personne propriétaire.{note}\n\n{link}",
+        ),
+        "dispute_refunded_renter": (
+            "Réglé : {title}",
+            "{how_fr} vous récupérez le prix complet ({amount}).{note}\n\n{link}",
+        ),
+        "dispute_partial_renter": (
+            "Réglé : {title}",
+            "{how_fr} vous récupérez {amount} sur votre carte, et le reste est versé à la personne propriétaire.{note}\n\n{link}",
+        ),
+        "dispute_owner_paid_renter": (
+            "Réglé : {title}",
+            "{how_fr} le montant complet est versé à la personne propriétaire et rien ne vous est remboursé.{note}\n\n{link}",
         ),
         "dispute_owner_paid": (
             "Réglé : {title}",
@@ -380,11 +463,12 @@ STATEMENTS = frozenset({"taken_down", "suspended", "content_removed"})
 def summary(key: str, text: str) -> str:
     """What the bell shows of a notice: its first paragraph, or for a
     decision the whole statement (why, ground, how to contest). Staff's note
-    on a settlement is shown with it, as in the email (V6-1)."""
+    on a settlement and the reason for a decline are shown with it, as in
+    the email (V6-1, V7-4)."""
     if key in STATEMENTS:
         return text
     first, *rest = text.split("\n\n")
-    notes = [p for p in rest if p.startswith(tuple(_NOTE.values()))]
+    notes = [p for p in rest if p.startswith((*_NOTE.values(), *_REASON.values()))]
     return "\n\n".join([first, *notes])
 
 
@@ -418,6 +502,8 @@ PHRASES: dict[str, dict[str, str]] = {
     },
 }
 _REASON = {"en": "Reason: ", "de": "Grund: ", "fr": "Motif\u00a0: "}
+_FOR = {"en": " for {}", "de": " für {}", "fr": " pour {}"}
+_PAID = {"en": " You paid {}.", "de": " Du hast {} bezahlt.", "fr": " Vous avez payé {}."}
 _NOTE = {"en": "From Cappy's team: ", "de": "Vom Cappy-Team: ", "fr": "De l\u2019équipe Cappy\u00a0: "}
 
 
@@ -441,18 +527,36 @@ def render(key: str, locale: str | None, **params) -> tuple[str, str]:
     language it is read."""
     params = dict(params)
     lang = language(locale)
+    # People's own words (an owner's reason, staff's note) are quoted as
+    # written: French typography is for our templates, not for them (V7-24).
+    theirs: list[str] = []
+
+    def quoted(text: str) -> str:
+        theirs.append(text)
+        return f"\x00{len(theirs) - 1}\x00"
+
+    raw_reason = params.get("_reason")
     params = {k: phrase(v, lang) if isinstance(v, str) else v for k, v in params.items()}
     if "_reason" in params:
         # Its own paragraph, one full stop whatever the reason ended with (V5-16).
-        reason = phrase((params.pop("_reason") or "").strip().rstrip("."), lang)
-        params["reason"] = f"\n\n{_REASON[lang]}{reason}." if reason else ""
+        given = (raw_reason or "").strip().rstrip(".")
+        reason = phrase(given, lang)
+        reason = reason if given in PHRASES else quoted(reason) if reason else ""
+        params.pop("_reason")
+        stop = "" if given.endswith(("!", "?")) else "."
+        params["reason"] = f"\n\n{_REASON[lang]}{reason}{stop}" if reason else ""
     if "_note" in params:
         # Staff wrote it for both sides: their own paragraph, as written.
         note = (params.pop("_note") or "").strip()
-        params["note"] = f"\n\n{_NOTE[lang]}{note}" if note else ""
+        params["note"] = f"\n\n{_NOTE[lang]}{quoted(note)}" if note else ""
     params.setdefault("note", "")  # inbox items stored before notes existed
     if "_cents" in params:
         params["amount"] = money(*params.pop("_cents"), locale)
+    # The price where a notice knows it (V7-23); nothing where it does not
+    # (a notice stored before, an event without it).
+    paid = params.get("amount")
+    params.setdefault("for_amount", _FOR[lang].format(paid) if paid else "")
+    params.setdefault("paid", _PAID[lang].format(paid) if paid else "")
     zone = params.pop("_tz", None) or DEFAULT_TIME_ZONE
     if "_start" in params:
         params["title"] = f"{params['title']}, {when(dt_from_iso(params.pop('_start')), locale, zone)}"
@@ -465,7 +569,10 @@ def render(key: str, locale: str | None, **params) -> tuple[str, str]:
         )
     subject, body = TEXTS[lang][key]
     subject, body = subject.format(**params), body.format(**params)
-    return (french(subject), french(body)) if lang == "fr" else (subject, body)
+    if lang == "fr":
+        subject, body = french(subject), french(body)
+    unquote = lambda t: re.sub(r"\x00(\d+)\x00", lambda m: theirs[int(m.group(1))], t)  # noqa: E731
+    return unquote(subject), unquote(body)
 
 
 # Times are told in the listing's zone when the event carries one

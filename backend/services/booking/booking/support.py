@@ -290,6 +290,8 @@ async def notice(s: AsyncSession, outbox: Outbox, row: BookingRow, kind: str, to
             "bookingId": row.id,
             "kind": kind,
             "to": to,
+            # So a renter can be told about themselves (V7-23).
+            "requesterId": row.requester_id,
             "title": snap.get("title", ""),
             "currency": row.currency,
             "timeZone": snap.get("timeZone") or market_of_currency(row.currency).time_zone,

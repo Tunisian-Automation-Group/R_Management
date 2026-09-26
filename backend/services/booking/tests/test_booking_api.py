@@ -803,8 +803,12 @@ def test_neither_side_sees_the_other_s_review_before_publication(client, app, is
     _do(client, issuer, BUYER, bid, "rate", onTime=True, quality=1)
     assert "outcome" not in client.get(f"/bookings/{bid}", headers=issuer.headers(HOST)).json(), "blind to the owner"
     assert client.get(f"/bookings/{bid}", headers=issuer.headers(BUYER)).json()["outcome"]["quality"] == 1
+    export = lambda: client.get(f"/internal/people/{BUYER}/export", headers=INTERNAL).json()  # noqa: E731
+    assert export()["renterRatingsAboutMe"] == [], "not before the owner has rated"
     r = client.post(f"/bookings/{bid}/rate-renter", json={"quality": 5}, headers=issuer.headers(HOST)).json()
     assert r["outcome"]["quality"] == 1 and r["renterRating"] == 5, "both published: both visible"
+    # V7-16: the renter's export has how they were rated, once published.
+    assert [x["rating"] for x in export()["renterRatingsAboutMe"]] == [5]
 
 
 def test_a_reinstated_person_can_book_again(client, app, issuer):

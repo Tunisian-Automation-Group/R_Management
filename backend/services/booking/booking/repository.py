@@ -62,7 +62,46 @@ def to_booking(row: BookingRow, viewer: str) -> Booking:
         currency=row.currency,
         no_show=row.no_show,
         extends_id=row.extends_id,
+        **money_of(row),
     )
+
+
+CAPTURED = frozenset({"accepted", "active", "completed", "disputed"})
+SETTLED = frozenset({"completed", "cancelled"})
+
+
+def money_of(row: BookingRow) -> dict[str, int]:
+    """The money of a booking from its own facts, the way payments moves it
+    (payments/handlers.py): charged at accept; a cancelled booking was charged
+    only if it recorded a refund; the owner gets their share of what was kept.
+    The detail view overlays payments' real figures (``payments_money``)."""
+    charged = (
+        row.amount if row.status in CAPTURED or (row.status == "cancelled" and row.refund_amount is not None) else 0
+    )
+    refunded = min(charged, row.refund_amount or 0) if charged else 0
+    owner_net = int((row.match or {}).get("quote", {}).get("ownerNet", 0))
+    share = (charged - refunded) * owner_net // row.amount if row.amount else 0
+    return {
+        "charged": charged,
+        "refunded": refunded,
+        "owner_share": share,
+        "paid_out": share if row.status in SETTLED else 0,
+    }
+
+
+def payments_money(state: dict) -> dict[str, int]:
+    """Payments' own record (/internal/bookings/{id}/payment) as booking fields;
+    nothing when it carries no amounts (an older payments service)."""
+    if "captured" not in state:
+        return {}
+    return {
+        "charged": state["captured"],
+        "refunded": state["refunded"],
+        "owner_share": (state["captured"] - state["refunded"]) * state["ownerNet"] // state["amount"]
+        if state["amount"]
+        else 0,
+        "paid_out": state["paidOut"],
+    }
 
 
 # How long before the window the hand-over may be marked; set from settings
@@ -98,6 +137,8 @@ def status_event(row: BookingRow, before: str | None, by: str) -> dict:
         "currency": row.currency,
         "refundAmount": row.refund_amount,
         "noShow": row.no_show,
+        # An extension names the booking it extends (V7-12, V7-23).
+        "extendsId": row.extends_id,
         # Why the owner said no: the renter hears it in the notice (V5-16).
         "declineReason": row.decline_reason if row.status == "declined" else None,
         "windowStart": iso_from_datetime(row.window_start),

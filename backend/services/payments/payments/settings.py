@@ -31,7 +31,8 @@ class Settings(CommonSettings):
     # postal address (comma-separated lines) and tax number and/or VAT ID.
     legal_company: str = "Cappy (local, not a company)"
     legal_address: str = "Musterstraße 1, 10115 Berlin"
-    legal_vat_id: str = ""
+    # Both lines show locally, as a German issuer's invoice has them (V7-10).
+    legal_vat_id: str = "DE000000000 (local)"
     legal_tax_number: str = "00/000/00000 (local)"
     # The issuer's calendar and tax (invoices.Issuer): Germany by default.
     invoice_time_zone: str = "Europe/Berlin"
@@ -53,8 +54,11 @@ class Settings(CommonSettings):
             problems.append("STRIPE_PUBLISHABLE_KEY is required")
         if "local" in self.legal_company or "Muster" in self.legal_address:
             problems.append("LEGAL_COMPANY and LEGAL_ADDRESS must be the operator's (invoices, § 14 UStG)")
-        if not self.legal_vat_id and (not self.legal_tax_number or "local" in self.legal_tax_number):
+        vat = self.legal_vat_id if "local" not in self.legal_vat_id else ""
+        if not vat and (not self.legal_tax_number or "local" in self.legal_tax_number):
             problems.append("LEGAL_VAT_ID or LEGAL_TAX_NUMBER is required (invoices, § 14 UStG)")
+        if "local" in self.legal_vat_id:
+            problems.append("LEGAL_VAT_ID must be the operator's, not the local placeholder")
         if not self.web_base_url.startswith("https://"):
             problems.append("WEB_BASE_URL must be https")
         return problems

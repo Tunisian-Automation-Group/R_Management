@@ -38,7 +38,7 @@ from cappy_common.timeutil import dt_from_iso, iso_from_datetime
 from .cancellation import refund_amount
 from .clients import PaymentStart
 from .messages import blocked_between
-from .repository import REVIEW_WINDOW, SHOWS_HANDOVER, BookingRepository, to_booking
+from .repository import REVIEW_WINDOW, SHOWS_HANDOVER, BookingRepository, payments_money, to_booking
 from .settings import Settings
 from .state import Action, check_can_rate, next_status
 from .tables import IDEMPOTENCY, BookingRow, SuspendedRow, VerifiedRow
@@ -117,7 +117,15 @@ async def get_booking(
             row.handover = await request.app.state.catalog.handover(row.listing_id)
         except Exception as e:  # noqa: BLE001 - the booking still shows, with the last copy if any
             log.warning("no hand-over details for %s yet: %s", row.id, e)
-    return to_booking(row, p.sub)
+    booking = to_booking(row, p.sub)
+    # The real figures where payments has them (V7-2); the booking's own
+    # reckoning otherwise, which is the same rule.
+    try:
+        state = await request.app.state.payments.state(row.id)
+    except Exception as e:  # noqa: BLE001 - the booking still shows, with its own reckoning
+        log.warning("no payment state for %s: %s", row.id, e)
+        state = None
+    return booking.model_copy(update=payments_money(state)) if state else booking
 
 
 LIVE_HANDOVER = frozenset({"accepted", "active"})
@@ -380,11 +388,14 @@ async def _end_extensions(repo: BookingRepository, parent: BookingRow, now: date
         BookingRow.extends_id == parent.id,
         BookingRow.status.in_(("awaiting_payment", "requested", "accepted")),
     )
+    reason = "The booking it extends was cancelled"
     for ext in list((await repo.s.execute(q.with_for_update())).scalars()):
         if ext.status == "accepted":
-            await repo.move(ext, "cancelled", "system", now, refund_amount=ext.amount, expires_at=None)
+            # The reason is on the booking too, so its page says why (V7-12).
+            await repo.move(
+                ext, "cancelled", "system", now, refund_amount=ext.amount, decline_reason=reason, expires_at=None
+            )
         else:
-            reason = "The booking it extends was cancelled"
             await repo.move(ext, "declined", "system", now, decline_reason=reason, expires_at=None)
 
 
@@ -611,6 +622,11 @@ class PersonExport(CamelModel):
     # Disputes they opened and claims they made (S-12, S-21).
     disputes: list[dict] = []
     claims: list[dict] = []
+    # About them (GDPR art. 15, V7-16): claims owners made against them, and
+    # how owners rated them as a renter once the reviews are published (a
+    # blind rating stays blind until then, so export is not a way to peek).
+    claims_about_me: list[dict] = []
+    renter_ratings_about_me: list[dict] = []
 
 
 @internal.get("/people/{person}/export", response_model=PersonExport)
@@ -637,7 +653,28 @@ async def export_person(person: str, request: Request, repo: BookingRepository =
 
     disputes = (await s.execute(select(DisputeRow).where(DisputeRow.by == person))).scalars()
     claims = (await s.execute(select(ClaimRow).where(ClaimRow.by == person))).scalars()
+    rented = {r.id: r for r in rows if r.requester_id == person}
+    against = (await s.execute(select(ClaimRow).where(ClaimRow.booking_id.in_(rented)))).scalars() if rented else []
+
+    def claim(c: ClaimRow) -> dict:
+        return {
+            "bookingId": c.booking_id,
+            "kind": c.kind,
+            "minutesLate": c.minutes_late,
+            "amount": c.amount,
+            "currency": c.currency,
+            "note": c.note,
+            "status": c.status,
+            "at": iso_from_datetime(c.created_at),
+        }
+
     return PersonExport(
+        claims_about_me=[claim(c) for c in against if c.by != person],
+        renter_ratings_about_me=[
+            {"bookingId": r.id, "rating": r.renter_rating, "publishedAt": iso_from_datetime(r.reviews_published_at)}
+            for r in rented.values()
+            if r.renter_rating is not None and r.reviews_published_at is not None
+        ],
         disputes=[
             {
                 "bookingId": d.booking_id,
@@ -647,19 +684,7 @@ async def export_person(person: str, request: Request, repo: BookingRepository =
             }
             for d in disputes
         ],
-        claims=[
-            {
-                "bookingId": c.booking_id,
-                "kind": c.kind,
-                "minutesLate": c.minutes_late,
-                "amount": c.amount,
-                "currency": c.currency,
-                "note": c.note,
-                "status": c.status,
-                "at": iso_from_datetime(c.created_at),
-            }
-            for c in claims
-        ],
+        claims=[claim(c) for c in claims],
         bookings=[to_booking(r, person) for r in rows],
         blocked=list(blocked),
         identity_verified=await s.get(VerifiedRow, person) is not None,

@@ -377,6 +377,46 @@
       "country": "CH",
       "lat": 46.521,
       "lng": 6.629
+    },
+    {
+      "name": "Altona",
+      "city": "Hamburg",
+      "metro": "Hamburg",
+      "country": "DE",
+      "lat": 53.5503,
+      "lng": 9.9357
+    },
+    {
+      "name": "Maxvorstadt",
+      "city": "München",
+      "metro": "München",
+      "country": "DE",
+      "lat": 48.1508,
+      "lng": 11.57
+    },
+    {
+      "name": "Ehrenfeld",
+      "city": "Köln",
+      "metro": "Köln",
+      "country": "DE",
+      "lat": 50.9492,
+      "lng": 6.9165
+    },
+    {
+      "name": "Bockenheim",
+      "city": "Frankfurt am Main",
+      "metro": "Frankfurt am Main",
+      "country": "DE",
+      "lat": 50.1206,
+      "lng": 8.6499
+    },
+    {
+      "name": "Plagwitz",
+      "city": "Leipzig",
+      "metro": "Leipzig",
+      "country": "DE",
+      "lat": 51.3285,
+      "lng": 12.3346
     }
   ],
   "owners": [

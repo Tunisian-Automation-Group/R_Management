@@ -312,8 +312,10 @@ def test_nearest_district(world):
     assert at("Navigli").district.metro == "Milan"
     assert at("Marvila").district.metro == "Lisbon"
     assert nearest_district(world, 48.8566, 2.3522).district.metro == "Paris"
-    hamburg = nearest_district(world, 53.5511, 9.9937)
-    assert hamburg.km > 200
+    assert nearest_district(world, 53.5511, 9.9937).district.city == "Hamburg"
+    # Nowhere near a place of ours: the distance says so.
+    reykjavik = nearest_district(world, 64.1466, -21.9426)
+    assert reykjavik.km > 200
     assert nearest_district(world, 0, 0) is not None
 
 
@@ -445,5 +447,21 @@ def test_the_daily_cap_counts_the_listings_own_day():
     slot = Slot(id="eve", listing_id="lt", start="2030-10-01T22:00:00Z", end="2030-10-02T03:30:00Z", hours_usable=5.5)
     args = ([slot], 1, "2030-10-01T00:00:00Z", "2030-10-03T00:00:00Z", 60, None, 4)
     local = offers_for(*args, "America/Toronto")
-    assert [o.start[11:16] for o in local] == ["22:00", "22:30", "23:00", "23:30"]
+    # Ten starts on one local day, thinned evenly to four (V7-1), not cut.
+    assert [o.start[11:16] for o in local] == ["22:00", "23:30", "01:00", "02:30"]
     assert len(offers_for(*args, "UTC")) > 4, "UTC days split the evening in two"
+
+
+def test_a_capped_day_keeps_its_evening():
+    """V7-1: perDay=28 on a listing open all day kept 00:00-13:30 and lost
+    the rest. The cap spreads over the whole day instead."""
+    day = Slot(id="all", listing_id="l", start="2030-10-01T00:00:00Z", end="2030-10-02T00:00:00Z", hours_usable=24)
+    starts = [
+        o.start[11:16] for o in offers_for([day], 1, "2030-10-01T00:00:00Z", "2030-10-02T00:00:00Z", 500, None, 28)
+    ]
+    assert len(starts) <= 28 and starts[0] == "00:00" and starts[-1] >= "22:00", starts
+    assert "18:00" in starts, "the evening is bookable"
+    # A day that fits under the cap keeps every start (08:00-22:00, 1 h: 27 starts).
+    shop = Slot(id="shop", listing_id="l", start="2030-10-01T08:00:00Z", end="2030-10-01T22:00:00Z", hours_usable=14)
+    kept = offers_for([shop], 1, "2030-10-01T00:00:00Z", "2030-10-02T00:00:00Z", 500, None, 28)
+    assert len(kept) == 27 and kept[-1].start[11:16] == "21:00"

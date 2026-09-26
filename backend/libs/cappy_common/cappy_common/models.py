@@ -436,6 +436,13 @@ class Booking(CamelModel):
     no_show: Literal["owner", "renter"] | None = None
     # An extension names the booking it extends (S-12, V6-22).
     extends_id: str | None = None
+    # Where the money stands (V7-2, V7-3), minor units of ``currency``:
+    # what the card was charged, what went back, the owner's share of the
+    # rest, and what has actually reached the owner.
+    charged: int = 0
+    refunded: int = 0
+    owner_share: int = 0
+    paid_out: int = 0
 
 
 class World(CamelModel):

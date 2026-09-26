@@ -776,3 +776,26 @@ def test_the_fee_invoice_reads_in_the_owners_language(client, app, issuer):
     assert "Tax number (Steuernummer)" in en, "a German issuer's fields stay"
     fr = client.get(url, headers={**issuer.headers("host"), "Accept-Language": "fr-CA"}).text
     assert "Facture" in fr and "6,00 €" in fr and "Référence de réservation" in fr
+
+
+def test_the_fee_invoice_follows_the_readers_typography(client, app, issuer):
+    # V7-10: French spacing, the tax in the reader's words, the reader's date
+    # order, and the issuer's VAT ID and tax number both.
+    _intent(client)
+    _status(app, "bk_1", "accepted")
+    _status(app, "bk_1", "completed")
+    [inv] = client.get("/payments/invoices", headers=issuer.headers("host")).json()
+    url = f"/payments/invoices/{inv['number']}"
+    page = lambda lang: client.get(url, headers={**issuer.headers("host"), "Accept-Language": lang}).text  # noqa: E731
+    fr, us, gb, de = page("fr-FR"), page("en-US"), page("en-GB"), page("de-DE")
+    assert "Date de facture : " in fr and "TVA 19 %" in fr and "USt" not in fr.split("<table>")[1]
+    assert "VAT 19%" in us and "USt" not in us.split("<table>")[1]
+    from datetime import datetime
+    from zoneinfo import ZoneInfo
+
+    local = datetime.fromisoformat(inv["issuedAt"].replace("Z", "+00:00")).astimezone(ZoneInfo("Europe/Berlin"))
+    y, m, d = local.year, local.month, local.day
+    assert f"{m}/{d}/{y}" in us and f"{d:02d}/{m:02d}/{y}" in gb and f"{d:02d}.{m:02d}.{y}" in de
+    assert "USt 19 %" in de
+    for text in (fr, us, de):
+        assert "USt-IdNr." in text and "Steuernummer" in text, "both of the issuer's lines"

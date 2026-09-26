@@ -88,6 +88,10 @@ class Report(CamelModel):
     decision: str | None = None
     statement: str | None = None
     statement_of_reasons: StatementOfReasons | None = None
+    # For staff: who or what was reported, in words (V7-19), and for a review
+    # its text (V7-26). A message's text is in the case view.
+    target_label: str | None = None
+    target_text: str | None = None
 
 
 class Grounds(CamelModel):
@@ -169,7 +173,7 @@ async def report(
             )
         ).scalar_one()
         if sent >= 3:
-            raise RateLimited("we already have your reports from today; we will be in touch")
+            raise RateLimited("We already have your reports from today; we will be in touch.", code="reports_today")
     # Anonymous and signed-in reports have their own caps, so strangers filling
     # the anonymous one never turn away a member's report (P-7). The anonymous
     # receipt mail stays: DSA Art. 16(2)(c) asks notices for an email and
@@ -186,7 +190,9 @@ async def report(
         )
     ).scalar_one()
     if about >= (ANONYMOUS_PER_TARGET if anonymous else MEMBERS_PER_TARGET):
-        raise RateLimited("this has been reported many times today; it is already being looked at")
+        raise RateLimited(
+            "This has been reported many times today; it is already being looked at.", code="reported_enough"
+        )
     row = ReportRow(
         id=new_id("rp"),
         target_type=body.target_type,
@@ -238,7 +244,29 @@ async def queue(
     more = len(rows) > n
     rows = rows[:n]
     nxt = encode_cursor({"at": rows[-1].created_at.isoformat(), "id": rows[-1].id}) if more else None
-    return Page(items=[_view(r) for r in rows], next_cursor=nxt)
+    return Page(items=await _labelled(session, [_view(r) for r in rows]), next_cursor=nxt)
+
+
+async def _labelled(session: AsyncSession, items: list[Report]) -> list[Report]:
+    """Names and titles instead of raw ids in the staff queue (V7-19)."""
+    from .tables import ListingRow, OwnerRow, ReviewRow
+
+    def ids(kind: str) -> set[str]:
+        return {r.target_id for r in items if r.target_type == kind}
+
+    async def of(table, column, wanted: set[str]) -> dict:  # noqa: ANN001
+        if not wanted:
+            return {}
+        rows = await session.execute(select(table.id, column).where(table.id.in_(wanted)))
+        return dict(rows.tuples().all())
+
+    owners = await of(OwnerRow, OwnerRow.name, ids("owner"))
+    listings = await of(ListingRow, ListingRow.title, ids("listing"))
+    reviews = await of(ReviewRow, ReviewRow.text, ids("review"))
+    for r in items:
+        r.target_label = {"owner": owners, "listing": listings}.get(r.target_type, {}).get(r.target_id)
+        r.target_text = reviews.get(r.target_id) if r.target_type == "review" else None
+    return items
 
 
 async def purge(request: Request, session: AsyncSession, listing_ids: list[str]) -> None:
@@ -544,8 +572,27 @@ async def on_staff_action(session: AsyncSession, event: Event) -> None:
     from cappy_common.db import insert_or_ignore
 
     d = event.data
-    # A read repeated within the minute (the web may ask twice) is one line:
-    # the sender names it with ``dedupe`` (V6-9).
+    at = dt_from_iso(d["at"]) if d.get("at") else datetime.now(UTC)
+    if d["action"] in ("read_case", "read_evidence"):
+        # A read within 60 s of the same staff member's last read of the same
+        # case is one line, even across a calendar minute (V7-13: a decision's
+        # refetch 23 s later crossed 14:35 and made a second line).
+        from sqlalchemy import select
+
+        recent = await session.scalar(
+            select(ModerationActionRow.id)
+            .where(
+                ModerationActionRow.actor_id == d["actorId"],
+                ModerationActionRow.action == d["action"][:20],
+                ModerationActionRow.target_id == d["targetId"][:64],
+                ModerationActionRow.at >= at - timedelta(seconds=60),
+                ModerationActionRow.at <= at + timedelta(seconds=60),
+            )
+            .limit(1)
+        )
+        if recent:
+            return
+    # An exact repeat of one event is one line; the sender names it (V6-9).
     key = d.get("dedupe")
     line_id = "sa_" + (hashlib.sha256(key.encode()).hexdigest()[:36] if key else event.id.split("_", 1)[-1][:36])
     await insert_or_ignore(
@@ -557,7 +604,7 @@ async def on_staff_action(session: AsyncSession, event: Event) -> None:
         target_type=d["targetType"][:10],
         target_id=d["targetId"][:64],
         statement=(d.get("reason") or "")[:2000],
-        at=dt_from_iso(d["at"]) if d.get("at") else datetime.now(UTC),
+        at=at,
         person_id=d.get("personId"),
         request_id=(d.get("requestId") or None) and d["requestId"][:64],
         details=d.get("details") or None,

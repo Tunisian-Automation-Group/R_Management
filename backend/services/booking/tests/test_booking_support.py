@@ -229,6 +229,11 @@ def test_the_owner_claims_a_late_return_and_staff_decide(client, app, issuer, br
     assert client.post(f"/admin/claims/{c['id']}/decide", json={"decision": "reject"}, headers=staff).status_code == 409
     assert _events(app, broker, STAFF_ACTION)[-1]["action"] == "confirm_claim"
     assert _events(app, broker, BOOKING_NOTICE)[-1]["kind"] == "claim_confirmed"
+    # V7-16: the renter's export has the claim against them; the owner's has it as theirs.
+    mine = client.get(f"/internal/people/{BUYER}/export", headers=INTERNAL).json()
+    assert [x["amount"] for x in mine["claimsAboutMe"]] == [4500] and mine["claims"] == []
+    theirs = client.get(f"/internal/people/{HOST}/export", headers=INTERNAL).json()
+    assert [x["amount"] for x in theirs["claims"]] == [4500] and theirs["claimsAboutMe"] == []
 
     other = _requested(client, app, issuer, start_h=60)
     _do(client, issuer, HOST, other, "accept")

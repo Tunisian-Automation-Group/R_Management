@@ -75,7 +75,9 @@ def messages(event: Event, web: str) -> list[Message]:
             **SETTLED_BY[d.get("how", "staff")],
             "_note": d.get("note") or "",
         }
-        return [(sub, None, d["kind"], params) for sub in d["to"]]
+        # The renter reads a settlement about themselves (V7-23).
+        own = d["kind"] in RENTER_READS and d.get("requesterId")
+        return [(sub, None, f"{d['kind']}_renter" if own and sub == own else d["kind"], params) for sub in d["to"]]
     if event.type == LISTING_IDLE:
         # H-4: the listing has nothing free next week; adding times fixes it.
         return [
@@ -96,6 +98,11 @@ def messages(event: Event, web: str) -> list[Message]:
     params = {"title": d.get("title", "your booking"), "link": f"{web}/bookings/{d['bookingId']}"}
     if d["to"] == "declined":
         params["_reason"] = d.get("declineReason") or ""
+    if d["to"] in ("requested", "accepted") and d.get("amount") is not None:
+        # What the mail must say (V7-23): the booked time and the money.
+        params["_cents"] = (d["amount"], d.get("currency") or "EUR")
+        if d.get("windowStart"):
+            params["_start"] = d["windowStart"]
     if d["to"] == "requested":
         params["_deadline"] = d.get("expiresAt")
         if d.get("timeZone"):
@@ -120,6 +127,19 @@ def messages(event: Event, web: str) -> list[Message]:
                 (owner, None, "no_show_owner_owner", {**params, **refunded}),
             ]
         return [(owner, None, "no_show_renter_owner", params), (requester, None, "no_show_renter_renter", params)]
+    if to == "cancelled" and by == "system" and d.get("extendsId"):
+        # An extension that ended with its booking (V7-12): both hear why and
+        # what comes back.
+        back = (
+            d["refundAmount"] if d.get("refundAmount") is not None else d.get("amount") or 0,
+            d.get("currency") or "EUR",
+        )
+        return [
+            (requester, None, "extension_cancelled_renter", {**params, "_cents": back}),
+            (owner, None, "extension_cancelled_owner", {**params, "_cents": back}),
+        ]
+    if to == "requested" and d.get("extendsId"):
+        return [(owner, None, "requested_extension", params)]
     if to == "cancelled" and by == owner and d.get("from") in ("accepted", "active"):
         # The owner cancelled a confirmed booking: the renter hears it was them,
         # and how much comes back (V6-11).
@@ -139,6 +159,9 @@ def messages(event: Event, web: str) -> list[Message]:
         out += [(owner, None, "disputed_owner", params), (requester, None, "disputed_renter", params)]
     return out
 
+
+# Settlement notices with a text the renter reads about themselves.
+RENTER_READS = frozenset({"dispute_refunded", "dispute_partial", "dispute_owner_paid"})
 
 # Who settled a dispute, in each language (the text picks its own).
 SETTLED_BY = {
