@@ -3,6 +3,7 @@ import type { CategoryId, Iso, Slot } from '../../domain/types.ts'
 import { category } from '../../domain/categories.ts'
 import { locale, t } from '../../i18n.ts'
 import { weekday2 } from '../format.ts'
+import { Icon, categoryIcon } from './Icon.tsx'
 
 /** Matching's minimum lead time: nothing can be booked to start sooner. The
  *  deployed 2 hours; the dev server runs against the local stack, which books
@@ -231,10 +232,18 @@ export function Plate({
           )}
         </div>
       ) : (
-        <div className={`relative flex h-full items-end ${thumb ? 'p-2' : 'p-4'}`}>
-          <p className="text-label font-medium" style={{ color: 'var(--on-field-dim)' }}>
-            {thumb ? '' : known ? t('Nothing free this week') : meta.label}
-          </p>
+        // No photo and no times to set large (UX-1): the category's own mark,
+        // drawn, with its name on top where no chip or heart covers it. It
+        // says honestly "a thing of this kind", never someone else's photo.
+        <div className={`relative flex h-full flex-col ${thumb ? 'items-center justify-center' : 'p-4'}`} style={{ color: 'var(--on-field-dim)' }}>
+          {!thumb && (
+            <p className="t-label" style={{ color: 'var(--on-field-dim)' }}>
+              {known ? t('Nothing free this week') : meta.label}
+            </p>
+          )}
+          <span className={thumb ? '' : 'm-auto opacity-70'}>
+            <Icon name={categoryIcon(meta.icon)} size={thumb ? 20 : 44} strokeWidth={1.4} />
+          </span>
         </div>
       )}
 
