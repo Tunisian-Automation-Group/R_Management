@@ -6,9 +6,11 @@ not the plan: planned work appears only as task ids from
 [`TASKS.md`](TASKS.md). Markets are all of Europe, the US and Canada
 ([GOAL 16](GOAL.md), [ADR 0013](adr/0013-markets.md)). Where the code
 assumes one market (German tax, Berlin time, EU-shaped rules), this file
-says so. Last synced with the code as of `1cb2d67` (covering `090c890`,
-`6c2f2ec`, `73610c4` and `1cb2d67` since the previous sync at `9107ad2`,
-which covered `e2e77ab` to `9107ad2`).
+says so. Last synced with the code as of `0a74b1c` (covering `174028c` to
+`0a74b1c`: `25e79d3`, synced in its own commit; `faebae7`, the readiness
+infrastructure and the chargeback lifecycle; the UX merge `1daf0da`; the V8
+backend `933ed14` and web `0a74b1c`). The sync before, at `1cb2d67`, covered
+`090c890`, `6c2f2ec`, `73610c4` and `1cb2d67`.
 
 Paths are relative to the repository root. `path:line` points at the
 definition. "Seam" means the interface or module boundary a replacement
@@ -58,7 +60,7 @@ changes to several services.
 | Dispute offers between the parties, late returns, extensions | In-house (`booking/support.py`, since `7444e37`) | n/a | n/a |
 | Profiles, business identity, VAT ID check | In-house (regex, no VIES) | n/a (no provider) | S to add VIES |
 | Listings, windows, saved | In-house (Postgres) | n/a | n/a |
-| Photo storage | S3 + CloudFront (listing photos), S3 private prefix (hand-over evidence); Pillow re-encode | Yes (`MediaStore`, public and private instances) | S |
+| Photo storage | S3 + CloudFront (listing photos, with 400/800/1600 px renditions and a dominant colour since `933ed14`), S3 private prefix (hand-over evidence); Pillow re-encode | Yes (`MediaStore`, public and private instances) | S |
 | CDN purge on take-down | CloudFront `CreateInvalidation` | Yes (`Cdn`, `catalog/cdn.py`, since `235eeaa`, F-4) | S |
 | Markets (currency, thresholds, open countries) | In-house configuration, `cappy_common/markets.json` (since `747ed6b`, M-2) | n/a (a launch is a config change) | n/a |
 | Places, distance, map | Own `districts` table, a point per listing (snapped to about 500 m in public), haversine, own SVG map | No geocoder at all | M (M-7) |
@@ -67,14 +69,15 @@ changes to several services.
 | Weekly opening hours | In-house (`catalog/schedule.py`) | n/a | n/a |
 | Booking state machine, no double booking | In-house (Postgres exclusion constraint) | n/a | n/a |
 | Instant book, cancellation policies, discounts | In-house | n/a | n/a |
-| Card authorise, capture, cancel, refund | Stripe PaymentIntents (manual capture) | Yes (`payments/provider.py` `Provider`) | L |
+| Card authorise, capture, cancel, refund | Stripe PaymentIntents (manual capture); the card form is Stripe's Payment Element in Cappy's tokens, with Apple Pay and Google Pay where the device and domain allow (since `0a74b1c`) | Yes (`payments/provider.py` `Provider`; web: `PayStep.tsx`) | L |
 | Owner onboarding and payouts | Stripe Connect Express, transfers | Yes (same `Provider`) | L |
-| Webhooks, chargebacks | Stripe events | Partial (signature check behind `Provider`; event handling is Stripe-shaped) | M |
+| Webhooks, chargebacks (the whole lifecycle since `faebae7`: hold, evidence, won pays out, lost reverses the transfer) | Stripe events, Disputes API, transfer reversals | Partial (signature check, `submit_dispute_evidence` and `reverse_transfer` behind `Provider`; event handling and statuses are Stripe-shaped) | M |
 | Reconciliation sweep | Stripe intent status | Partial (`Provider.intent_status` returns Stripe's words) | S |
 | Fee invoices | In-house HTML, German § 14 UStG template; a private owner's address from the payout provider's KYC (`Provider.account_address`, since `42c777c`) | Partial (`Issuer`: zone, rate, label) | M |
 | VAT / sales tax, platform tax reporting | None (fixed rate from settings; DAC7 tags only) | No | L (M-11..M-14, M-24..M-27) |
 | Identity verification | Stripe Identity (document + selfie) | Backend: yes (`IdentityProvider`, `payments/identity.py`, its own webhook route, since `235eeaa`, F-1). Web: yes since `2257182` (a session's hosted `url` opens; the Stripe.js modal only when `identityProvider` is `stripe`) | M |
 | Messaging, contact masking, pay-outside flag | In-house regex | Module boundary (`mask`, `flagged`) | S |
+| Inbox of conversations, read receipts, unread badge (since `933ed14`/`0a74b1c`) | In-house (booking's `GET /inbox`, `message_reads`) | n/a | n/a |
 | Blocks | In-house | n/a | n/a |
 | Hand-over evidence photos | In-house: catalog's private media store, booking's signed links | Yes (via `MediaStore`) | S |
 | Reviews (two-way, blind) | In-house | n/a | n/a |
@@ -88,8 +91,12 @@ changes to several services.
 | Fraud signals: card fingerprint | Stripe card fingerprint | Yes (`Provider.card_fingerprint`) | S |
 | Fraud rules: velocity, held listings | In-house (settings) | n/a | n/a |
 | Edge protection | AWS WAF (+ Bot Control in prod) | Infra only | M |
+| Paging and tickets (since `faebae7`) | SNS topics `…-alarms` (page) and `…-tickets`; mail, plus any pager that takes an SNS HTTPS subscription (PagerDuty, Opsgenie, Incident Manager) | Yes (`pager_endpoint`) | S |
+| Account security logging (since `faebae7`) | CloudTrail, GuardDuty, Security Hub | Infra only (`account_security` turns it off for an organisation that runs them centrally) | M |
+| Backups beyond Aurora PITR, budgets (since `faebae7`) | AWS Backup (locked vault), AWS Budgets, Cost Anomaly Detection | Infra only | M |
 | Data export, account deletion | In-house fan-out over `/internal`; deletion also removes the Cognito user (`AdminDeleteUser`), the Stripe Identity session (redact) and SNS endpoints; a register of personal data with a test (`cappy_common/privacy.py`) | n/a | n/a |
 | Web app shell, offline cache | vite-plugin-pwa (Workbox) | n/a | S |
+| Design tokens, dark mode, motion (since `1daf0da`) | In-house (`web/src/app/theme.css`, `theme.ts`; `check:tokens`, `check:contrast`) | n/a | n/a |
 | Store shells, push registration, deep links | Capacitor 8 plugins | `web/src/native.ts` | M |
 | Feature flags, rollouts | In-house (`FEATURE_FLAGS` env) | Yes (`cappy_common/flags.py` + `web/src/domain/flags.ts`) | S |
 | Kill switches | Settings via Terraform `switches` | Yes (settings) | n/a |
@@ -136,7 +143,8 @@ These apply to several features below.
   `country_unsupported`, `conversation_closed`, and since `4e86866`
   `district_not_in_country`, `four_eyes`, `needs_lead`, `approval_pending`,
   `invalid_refund`, `own_offer`, `offer_changed`, `not_extendable`,
-  `within_grace`, `claim_window`, `claim_exists`; EN/DE/FR) before the
+  `within_grace`, `claim_window`, `claim_exists`, and since `0a74b1c`
+  `report_target_unknown`; EN/DE/FR) before the
   server's English message. Error toasts have their own tone (`useToast(message,
   'error')`, `Toast` in `ui.tsx`: no tick, `role="alert"`, 6 s instead of
   2.8 s, V4-4).
@@ -621,6 +629,24 @@ GPS, bounds its size and stores it under a content hash.
     stores (`catalog/jobs.py:24-42`). A file is deleted only when nobody holds
     it. Since `235eeaa` an account deletion hands every photo of the person to
     the next sweep (D-1).
+  - **Renditions** (since `933ed14`, U-40): each public upload is also stored
+    at 400, 800 and 1600 px wide as `<hash>-<w>.webp` (a width the photo does
+    not reach is stored at its own size), and its dominant colour
+    (`#rrggbb`, `media.color`) is recorded (`media.sizes`, `WIDTHS`;
+    `upload` in `catalog/routes.py`). Evidence gets no renditions. The upload
+    answers `color`; `GET /api/listings/{id}` adds `photoMeta`, one entry per
+    `listing.photos` URL with `w`, `h`, `color` and `widths` (empty for a demo
+    photo or one not yet backfilled). Uploads from before are filled in by
+    the hourly `make_renditions_once` (`catalog/jobs.py`, 50 a run). The
+    orphan sweep deletes and purges a photo's renditions with it. Locally
+    `GET /media/<name>?w=` serves a rendition, falling back to the photo.
+  - Web (since `0a74b1c`, UX-3): `Photo` builds a `srcset` from `photoMeta`'s
+    widths and shows the photo's colour while it loads; Unsplash demo
+    photos get a `w=` srcset; every image carries `width`, `height` and
+    `sizes`, and the hero keeps `fetchpriority="high"`. In one grid a
+    picture is shown once: a later card with the same picture shows its
+    category's drawn plate instead (`PhotoGrid`, since `1daf0da`), and so
+    does a listing with no photo (`Plate`, `Cover.tsx`).
   - Web: `shrink` downsizes to 2048 px JPEG on the device and refuses HEIC
     with a reason where the browser cannot decode it (`web/src/app/photos.ts`);
     `uploadPhoto` (`repo.ts:576`, `purpose` `listing` or `evidence`) reports
@@ -643,7 +669,8 @@ GPS, bounds its size and stores it under a content hash.
      Add the new origin to the CSP `img-src` (`edge.tf:412`).
   5. If the new service transforms images itself (Cloudinary, imgix), keep
      `media.process` anyway: it is the EXIF/GPS stripping and the bomb guard.
-- **Limits:** no responsive sizes (U-40). The server does not decode HEIC;
+- **Limits:** renditions are made at upload, not at the edge, so a new
+  width needs a backfill. The server does not decode HEIC;
   the device converts it (Safari) or refuses it (U-25, done in `f42a4ef`). No
   duplicate detection (S-20).
 
@@ -699,6 +726,10 @@ far). Matching returns ranked offers with a quote.
   and a line when it cannot load. Browse links to it as **How results are
   ordered** beside the match count and the free-text results (H-3, P2B
   Art. 5).
+- **Earliest start** (since `933ed14`): a window requirement searches from
+  its own `earliest` when that is later than now (`find_matches`,
+  `matching/domain/match.py`), so the web's **When?** day and **From** hour
+  narrow the results; before, every search started now.
 - **Distance** (since `61b15b8`): from the searched district's centre to the
   listing's own point when it has one, already snapped to about 500 m, else
   its district's centre (`point_of`, `match.py:44`), in matches, offers,
@@ -837,7 +868,38 @@ system completes it 48 hours after the end.
     what stayed, "Refunded" when everything came back and "Nothing: hold
     released" when nothing was charged; **Past** in Bookings shows the net
     (the renter's cost after a refund, the owner's share) instead of the
-    list price.
+    list price. Since `0a74b1c` (V8-1) a request that is only held
+    (`awaiting_payment` or `requested`, `charged` 0) shows its **Total**, and
+    to the owner the **Service fee** and **You receive**, with "Held on your
+    card, charged when {name} accepts." (renter) or "Their card is held and
+    charged when you accept." (owner); "Nothing: hold released" only once it
+    is declined, withdrawn or lapsed. Since `0a74b1c` (V8-2) **Earn** and
+    **Profile** add up the same figures: earned is the owner's share of
+    completed and cancelled bookings (a renter no-show pays the owner),
+    spent is `charged − refunded`, no longer the list prices.
+  - **One price summary** (since `1daf0da`, UX-23, `PriceSummary.tsx`): the
+    listing's price card and the confirm sheet show the same lines (the
+    booking page's **What you agreed** keeps its own rows, with the fee
+    named the same way, **Service fee · 15%**, and **You receive**): rate ×
+    duration, extras, discount, then **Total** with
+    "Includes the service fee of {fee}" to the renter, or **Renter pays**,
+    **Service fee** `−` and **You receive** to the owner; the renter never
+    sees the owner's net. The cancellation policy is a dated line ("Free
+    cancellation until Sat 3 Oct, 10:00", `policyLine`, `format.ts`), and the
+    **Book and pay** button carries the amount ("Book and pay · €16.00").
+  - **Decline reasons as codes** (since `933ed14`, V8-3): the owner's four
+    chips go as `reasonCode` (`already_promised`, `need_it_myself`,
+    `needs_repair`, `short_notice`; `POST /bookings/{id}/decline` takes
+    `{reasonCode}` or their own words as `{reason}`), system reasons are
+    `taken_down`, `owner_removed`, `suspended`, `parent_cancelled`
+    (`cappy_common/reasons.py`). Every booking answer adds
+    `declineReasonCode` when the stored reason is one of them; the web words
+    it in the reader's language by code (`REASON_TEXT`, `repo.ts`, since
+    `0a74b1c`, V8-4/V8-5), and mails and the bell translate chips like the
+    system reasons (`PHRASES`, `notifications/texts.py`). An owner's own
+    words are quoted as written. A confirmed extension cancelled with its
+    booking now says why on its page too ("Reason: The booking it extends
+    was cancelled.").
   - **A repeated action is success** (since `73610c4`, V7-6): when accept,
     start, complete or cancel answers 409, the web reads the booking again,
     and if it is already where the action takes it, that is the answer
@@ -1292,15 +1354,43 @@ cancellation.
 
 ### 7.3 Chargebacks
 
-A card holder's dispute with their bank holds the owner's payout and pages
-support.
+A card holder's dispute with their bank. With separate charges and
+transfers the platform carries it, so since `faebae7` (R2-3; runbook "A
+chargeback") payments follows it to the end.
 
-- **Where:** `charge.dispute.created` (`payments/routes.py:450`) sets
-  `payments.chargeback_at` and logs `CHARGEBACK`. The metric filter and alarm are
-  in `infra/platform/observability.tf:134`.
-- **Seam:** partial (Stripe event name and `obj["charge"]`).
-- **Limits:** `charge.dispute.closed` is not handled; support settles by hand
-  (runbook). There is no evidence submission.
+- **Where:** every `charge.dispute.*` webhook goes to `_chargeback`
+  (`payments/routes.py:502-533`), which records the dispute's id, status and
+  evidence deadline each time (Stripe sends them out of order):
+  - **opened**: `chargeback_at` is set and `CHARGEBACK` is logged (the
+    `chargeback` alarm opens a ticket, `observability.tf:167-190`). A
+    completion that arrives while it is open is kept in `held_payout`, not
+    dropped (`payments/handlers.py:178-181`).
+  - **won** or `warning_closed`: the hold ends and a held payout is paid out
+    with its fee invoice, once (`pay_out`, `handlers.py:64-94`).
+  - **lost**: status `charged_back`; an owner already paid gives their share
+    back through a transfer reversal (`recovered_amount`), and what their
+    balance cannot cover is recorded as `owner_owes` (`_chargeback_lost`,
+    `:536-552`).
+  - **Staff** (admin, with MFA; gateway routes `/admin/payments/chargebacks`
+    and `/admin/payments/{id}/dispute-evidence` to payments):
+    `GET /api/admin/payments/chargebacks` lists open ones, soonest evidence
+    deadline first, then lost ones still owed (`bookingId`, `disputeId`,
+    `status`, `evidenceDueAt`, `amount`, `currency`, `paidOut`, `recovered`,
+    `ownerOwes`); `POST /api/admin/payments/{bookingId}/dispute-evidence
+    {text, links}` submits the text (20 to 20 000 characters) and links to
+    Stripe, sets `under_review` and writes a `submit_chargeback_evidence`
+    `staff.action` to the audit log; 409 once it is closed.
+- **Seam:** partial. `Provider.submit_dispute_evidence` (Stripe:
+  `disputes.update` with `uncategorized_text`, submitted) and
+  `Provider.reverse_transfer` (Stripe: `transfers.reversals.create`,
+  idempotency key `reversal-<booking>`) (`payments/provider.py`); the fake
+  provider records both. Event names and statuses are Stripe's.
+- **To swap it:** the new provider's dispute events mapped onto the same
+  statuses, and the two provider methods.
+- **Limits:** evidence is text and links only; photos are attached as files
+  in the Stripe dashboard (ponytail in `provider.py`). `owner_owes` is
+  recorded, not collected: nothing takes it from the next payout yet, and no
+  console screen shows the chargebacks list (the API only).
 
 ---
 
@@ -1502,7 +1592,22 @@ the app warns both sides.
   booking's status (`useMessages(bookingId, status)`), so accepting,
   cancelling or any other change reads it afresh and masking follows at once
   (V5-5); the meta line under a bubble is a `<div>`, so the report sheet is
-  no longer inside a `<p>` (V5-15).
+  no longer inside a `<p>` (V5-15). Since `1daf0da` the chat scrolls inside
+  its own box, not the page.
+- **Inbox** (UX-12; screen since `1daf0da`, served by the API since
+  `933ed14`/`0a74b1c`): `GET /api/inbox?cursor=&limit=`
+  (`booking/inbox.py`) lists every conversation the person has, as renter
+  or owner (the owner only once the card is held), newest message first:
+  `bookingId`, `otherName` (from the booking snapshot), `listingTitle`,
+  `photo`, `status`, `lastMessage` (`body`, `at`, `mine`; masked as the
+  thread is) and `unread`, plus a top-level `unread` for the dock badge.
+  `POST /api/inbox/{bookingId}/read` (204, 404 for a non-party) records when
+  the person opened it (`message_reads`); unread is the other side's
+  messages after that. The web's **Inbox** tab (`Inbox.tsx`, dock order
+  Explore · Bookings · Inbox · Earn · You) asks for 50 threads, every 30 s
+  and on focus, with **All** / **Unread**; a row opens the booking at
+  `#messages`, and opening a thread whose last message is the other side's
+  marks it read (`Conversation.tsx`), on every device.
 - **Seam:** module boundary. `mask(text)` and `flagged(text)` are pure
   functions. A moderation API (for example Hive, or a text classifier) would sit
   behind them.
@@ -1513,6 +1618,8 @@ the app warns both sides.
   - The per-sender limit is per booking (30 in 10 minutes, `messages.py:39`,
     `:160-175`, P-12).
   - After a cancellation, messages are masked again (`messages.py:106`).
+  - The inbox shows the first 50 threads; older ones (`next`) have no
+    "more" button yet.
 
 ---
 
@@ -1641,6 +1748,30 @@ decisions, in the recipient's language.
   ("Cancelled by the owner: …", with the amount back). All five are
   `bookings` and always emailed. The escalation notice says "no agreement in
   time" rather than "within 72 hours", since the window is a setting (5.5).
+- **Second person to the reader** (since `933ed14`, V8-9): owner-facing
+  settlement and claim mails say "you": `dispute_refunded` "…and you are not
+  paid for this booking", `dispute_partial` "…and you are paid the rest",
+  `dispute_owner_paid` "you are paid in full", `claim_confirmed` "you are
+  owed {amount}". The renter gets `dispute_offer_renter` ("you get {amount}
+  back") instead of `dispute_offer` (booking's `booking.dispute_offer` now
+  carries `requesterId`) and `claim_confirmed_renter` instead of the
+  owner's text. `claim_filed` tells the renter to contest "through Get help
+  on the booking", the same route as the page (V8-10). A test refuses third
+  person to the reader (`test_texts_every_kind.py`).
+- **What happened, not "declined"** (since `933ed14`): a decline nobody made
+  (`by: system`: take-down, removal, suspension, the extended booking ended)
+  is `declined_system` ("Could not go ahead: …", V8-17); an accepted
+  extension is `extension_confirmed` ("Extension confirmed: …") and an
+  instant one tells the owner `instant_extended` ("Extended: …") instead of
+  `instant_booked` (V8-18). The owner's decline chips reach the renter
+  translated (`PHRASES`, V8-3).
+- **A signed-out reporter's language** (since `933ed14`, V8-12): the report
+  keeps the form's `Accept-Language` (`reports.reporter_locale`), and
+  `report_received` and the outcome mails are written in it (`_locale` on
+  the message).
+- **A deleted renter leaves the owner's bell** (since `933ed14`, D-27): on
+  `profile.deleted` the owner's request notices that named them lose the
+  name (`_unname`, `handlers.py`); the email already sent stays.
 - **Seam:** **yes,** `Mailer.send(Email(to, subject, text))`.
 - **Provider-specific data:** none stored. Bounces and complaints are handled
   by SES's account suppression list (`infra/platform/email.tf:50`), with alarms
@@ -1752,6 +1883,10 @@ count, rendered in the reader's language.
   staff's "From Cappy's team: …" paragraph after the first one, and since
   `1cb2d67` (V7-4) a decline keeps its "Reason: …" paragraph. Reading the
   bell also remembers the app's locale for that person's emails (12.1).
+  This is the bell (**Notifications**, its badge on the **You** tab); the
+  conversations have their own **Inbox** tab since `1daf0da` (section 10).
+  Since `933ed14` (D-27) a deleted renter's name is taken out of the
+  owner's items that named them.
 - **Retention** (since `747ed6b`): items older than `INBOX_RETENTION_DAYS`
   (365) are deleted by an hourly loop (`expire_inbox_once`,
   `notifications/jobs.py:16`; `docs/retention.md`).
@@ -1804,7 +1939,12 @@ email. Every report is acknowledged by email.
   touch.", the anonymous per-email cap) and 429 `reported_enough` ("This has
   been reported many times today; it is already being looked at."). The
   web reads both codes in `CODE_TEXT`, in English, German and French
-  (`d4a458a`).
+  (`d4a458a`). Since `933ed14` (V8-19) a report of something that does not
+  exist is refused before it reaches staff: 404 `report_target_unknown`
+  (the web: "We could not find that. Paste its link from the app."); a
+  message is checked with booking, and if booking cannot answer, the report
+  is taken. A signed-out reporter's mails are in the form's language
+  (V8-12, 12.1).
 - **Provider:** none. No CAPTCHA.
 - **Limits:** anonymous addresses are still not confirmed; the receipt mail is
   kept on purpose (DSA Art. 16(4)) and bounded by the per-address cap.
@@ -2013,7 +2153,14 @@ AT, CHF 95 in CH) waits for a staff check.
   key and catalog derives the row id from it. Since `1cb2d67` (V7-13) a
   `read_case` or `read_evidence` within 60 s of the same staff member's
   last read of the same target is dropped, so a refetch that crosses a
-  calendar minute no longer makes a second line.
+  calendar minute no longer makes a second line. Since `933ed14` (V8-11)
+  `GET /api/admin/audit` adds `targetLabel` (the owner's name or the
+  listing's title) and `personName` to each line's `details` when it reads
+  the log, so older lines get them too and a renamed listing reads as it is
+  now; a claim decision takes `noteCode` (`from_record` or
+  `not_supported`) for Cappy's own words, and `note` is only what staff
+  typed. Since `faebae7` payments sends `submit_chargeback_evidence`
+  (7.3).
 - **Web** (`4e86866`): `web/src/app/screens/AdminCases.tsx`. The console
   (`/admin`) opens with **Cases** (disputed or all; member id or email,
   booking id, only with open claims; **Next page**), **Waiting for approval**
@@ -2042,6 +2189,14 @@ AT, CHF 95 in CH) waits for a staff check.
   and bare echoes such as "withdrew rs_…" are dropped); the case is fetched
   once per opening (no refetch on focus); case cards show the offer and
   "Escalated" only while disputed, and "1 open claim" in the singular.
+  Since `0a74b1c`: audit lines name the listing, owner or person
+  (`listingTitle`, `targetLabel`, `personName`; "this booking" or "(no longer
+  here)" as the fallback, never a raw id), a claim's statement is worded by
+  its code in the reader's language ("Confirmed from the booking record",
+  "Not supported by the booking record"), and "Confirming records the claim;
+  nothing is charged to the renter yet." shows only while a claim is open
+  (V8-15). The staff listing view says "Durations it takes" and "Start
+  times" instead of speaking to a renter (V8-13).
 - **Provider:** none; the email lookup is Cognito behind `People`.
 - **Limits:** staff appear in the log and the console as the first 8
   characters of their id. Leads are the `admin-lead` group, filled by hand
@@ -2146,7 +2301,20 @@ reason and a date.
   above 170 kB after a build. The welcome screen is shown once per device
   (`device.ts`).
 - **Hosting:** S3 plus CloudFront in AWS. Locally the gateway can serve
-  `web/dist` (`gateway/main.py:268`).
+  `web/dist` (`gateway/main.py:268`). Since `faebae7` a deploy keeps the
+  previous release's hashed files for 30 days, so a tab opened before a
+  release still loads its lazy chunks (R2-9; reloading once on
+  `vite:preloadError` is still open), and a release is only a commit whose
+  CI passed on `main`; a rollback is a deploy run naming the previous sha
+  (INFRA §5).
+- **Release build guard** (since `faebae7`, R2-1, `releaseProblems` in
+  `web/vite.config.ts`): with `VITE_RELEASE=1` (the deploy sets it) the
+  build refuses to run without `VITE_LEGAL_COMPANY`, `VITE_LEGAL_ADDRESS`
+  and `VITE_LEGAL_EMAIL` (what the Impressum, privacy policy and DSA contact
+  point show), with an email that is not an address, or with a malformed
+  `VITE_ANDROID_SHA256` or `VITE_APPLE_TEAM_ID`. CD fills them from the
+  `LEGAL` and `APPS` environment variables through Terraform's
+  `web_config`. Local and CI builds leave `VITE_RELEASE` unset.
 - **Fonts:** self-hosted through `@fontsource-variable` (`web/src/main.tsx:5-6`).
 - **Languages:** English, German and French (`web/src/i18n.ts:10`,
   `Lang = 'en' | 'de' | 'fr'`; catalogues `i18n.de.ts`, `i18n.fr.ts`, one
@@ -2166,7 +2334,10 @@ reason and a date.
   `73610c4` the German catalogue names people neutrally ("die vermietende
   Person", "die mietende Person", the emails' words too since D-25; "Neu auf
   Cappy") instead of "der Anbieter"
-  and "der Mieter" (V7-25). Dev builds
+  and "der Mieter" (V7-25); since `0a74b1c` (V8-8) none is left anywhere
+  ("Anbieter" on result cards, Earn, the console, the renter-rating notes),
+  and `check:i18n` refuses "Anbieter" and "Mieter" in the German catalogue
+  and in the German prose of `Help.tsx` and `Legal.tsx`. Dev builds
   stretch every string with `?pseudo=1` (U-28). Emails, pushes and the bell
   have French since `235eeaa`; since `2257182` so do the legal pages
   (privacy, terms, withdrawal with the EU model form, ranking, reporting,
@@ -2178,6 +2349,57 @@ reason and a date.
   `clockTime` in `format.ts`: "5:00 PM" without a leading zero for en-US,
   V4-19). The English privacy policy lists messages, hand-over photos,
   reports, ID checks and push like the German since `2257182`.
+- **Look and feel** (since `1daf0da`, from `docs/research/2026-09-ui-ux-review.md`):
+  - **Tokens** (UX-4/5): a nine-step type scale as Tailwind utilities
+    (`text-caption` … `text-display`), radii `xs`/`s`/`m`/`l`, motion
+    durations (`--dur-instant` 100 ms to `--dur-xlong` 500 ms) and easings,
+    and colour roles (focus is a blue ink, errors a red apart from the action
+    crimson, badges and money their own) in `web/src/app/theme.css`.
+    `npm run check:tokens` (`web/scripts/check-tokens.ts`, in CI) fails on a
+    literal text size, radius, hex or rgb colour, named Tailwind colour or
+    inline font size outside the tokens; the few left are counted in
+    `scripts/tokens-allowlist.json`, and the count may only go down.
+    `npm run check:contrast` (since `0a74b1c`, `scripts/check-contrast.ts`,
+    in CI) measures every text colour on the backgrounds it is used on, in
+    both themes, against WCAG 2.2 AA (4.5:1 text, 3:1 large text and UI).
+  - **Dark mode** (UX-36): **Appearance** in Profile (System, Light, Dark;
+    per device, `cappy.theme.v1` in `localStorage`, `theme.ts`); the colour
+    roles swap under `data-theme="dark"`; `public/theme-init.js` sets it
+    before the first paint (a same-origin script the CSP allows), and the
+    `theme-color` meta follows. Other tabs follow a change.
+  - **Type**: Bodoni Moda only for words at 28 px and up; prices, times,
+    ratings and user-written titles in Archivo with tabular figures.
+  - **Motion** (UX-8): entries decelerate, exits accelerate at 2/3 of the
+    entry time; press states; skeletons after 300 ms, and detail pages load
+    as layout-shaped skeletons; since `0a74b1c` on a phone a drill-down
+    slides in (push) and back out (pop) and moving between dock tabs is a
+    crossfade (view transitions, `nav.ts`); reduced motion keeps short fades.
+  - **Sheets** (UX-9, `Sheet` in `ui.tsx`): on a phone a sheet drags between
+    a large and a medium height and closes when dragged down (30 % or a
+    flick); its grabber is a button that changes the height; from 768 px it
+    is a centred dialog. The phone dock steps aside on listing, booking,
+    add/edit listing and staff detail screens (UX-13).
+  - **Gallery** (UX-1/2, `Gallery.tsx`): a swipe strip with "n / N" on a
+    phone, a mosaic with **Show all {n} photos** on a wide screen, and a
+    full-screen viewer (arrows, keys, swipe, pinch).
+  - **Welcome** (UX-30): example rentals with prices under the promise
+    (examples, not live listings), and the primary button in ivory on the
+    green plate.
+  - **Card form** (UX-24, `PayStep.tsx`): Stripe's Payment Element takes
+    Cappy's tokens in light and dark (the Appearance API, read from the
+    page) inside an enclosed panel headed "Card details go to Stripe, never
+    to Cappy"; since `0a74b1c` it offers Apple Pay and Google Pay where the
+    device and domain allow (`wallets: auto`). Apple Pay needs the domain
+    registered in Stripe first; the separate Express Checkout Element is not
+    used.
+  - **Desktop buy box** (UX-20, since `0a74b1c`): from 768 px the listing's
+    booking box has **Day**, **Starts** and **Duration** selects on the same
+    state as the chips.
+  - **When** in search (UX-15): the filter sheet's **When?** (**Any time**,
+    then each day of the search window, at most 14) and, with a day,
+    **From** (**Any hour**, or 08:00 to 20:00 in two-hour steps), kept in the URL as `on=YYYY-MM-DD` and `at=H`; results
+    are priced for that day and, since the matcher honours `earliest`
+    (`933ed14`), start no earlier than the hour.
 - **Large text** (since `9107ad2`, V6-7): the dock watches a 1rem probe, so
   a text-size change after load (Dynamic Type, a text zoom) switches it to
   icons only, and the listing's host card wraps its rating column, so 200 %
@@ -2187,7 +2409,8 @@ reason and a date.
   Profile's notification settings are rows that wrap (each with **Push** and
   **Email** checkboxes), not a fixed table, so 200 % text in French fits a
   390 px phone; the language switch and the listing's category chip wrap
-  instead of cutting.
+  instead of cutting. Since `0a74b1c` long one-word headings hyphenate and
+  wrap at 200 % (V8-6), and the listing's category label wraps (V8-14).
 - **Small words** (since `73610c4`): a countdown in its last minute reads
   "in under a minute", never "in 0 min" (`relative`, `format.ts`, V7-21); a
   radius under 16 km in miles keeps one decimal ("0.6 mi", V7-17); Browse's
@@ -2202,9 +2425,11 @@ reason and a date.
 - **Limits:** no Web Vitals (S-23). `npm run check:a11y` is a static check
   (image alt text, 24 px targets) and not a browser axe run (U-30 partly).
   Since `44a5520` CI runs `tsc --noEmit`, the build and every `check:*`
-  script (`size`, `i18n`, `flags`, `attempt`, `a11y`, and since `73610c4`
-  `money`), installing with
-  `--ignore-scripts` (`.github/workflows/ci.yml:52-61`).
+  script (`size`, `i18n`, `flags`, `attempt`, `a11y`, `money` since
+  `73610c4`, `contrast` since `0a74b1c`, `tokens` since `7051660`),
+  installing with `--ignore-scripts` (`.github/workflows/ci.yml:58-72`).
+  axe-core is not installed (UX-35), nor the Capacitor status-bar,
+  splash-screen and keyboard plugins (UX-37); both need a network install.
 
 ### 15.2 Store shells (Capacitor)
 
@@ -2237,7 +2462,9 @@ open their `link`.
 
 - **Where:** the build emits `.well-known/apple-app-site-association` and
   `assetlinks.json` from `VITE_APPLE_TEAM_ID` and `VITE_ANDROID_SHA256`
-  (`web/vite.config.ts:25-55`). The `appUrlOpen` listener is at `native.ts:67`.
+  (`appLinks`, `web/vite.config.ts:26-64`); since `faebae7` each file only
+  when its value is set (no placeholder files), from the `APPS` environment
+  variable in CD. The `appUrlOpen` listener is at `native.ts:67`.
   The iOS associated domain is `applinks:$(CAPPY_DOMAIN)` (`cappy.app` in the
   Xcode build settings), and release builds sign with
   `web/ios/App/App/App.release.entitlements` (`aps-environment`
@@ -2297,7 +2524,7 @@ Stop new bookings, stop payouts or stop new listings without a deploy.
   (`payments/settings.py:29`) and `ACCEPTING_LISTINGS` (`catalog/settings.py:41`),
   set from Terraform `switches` (`variables.tf:86`, `ecs.tf:43,47,50`), which
   CD reads from the GitHub environment variable `SWITCHES`
-  (`.github/workflows/deploy.yml:73`). How to use them is in `docs/runbook.md`.
+  (`.github/workflows/deploy.yml:109`). How to use them is in `docs/runbook.md`.
 - **Seam:** settings. A task restart is needed (new task definition).
 
 ### 16.3 Client crash reports
@@ -2346,8 +2573,16 @@ Stop new bookings, stop payouts or stop new listings without a deploy.
   synthetic canary are in `infra/platform/observability.tf`, `synthetics.tf` and
   `docs/slo.md`. Since `7444e37` (T-35c) each access line of a request in an
   SLO journey names it (`journey`: `browse`, `book`, `answer`,
-  `observability.py`), which the per-journey burn alarms count.
-- **Seam:** yes, OTLP. Swap to Datadog, Honeycomb or Grafana by pointing
+  `observability.py`), which the per-journey burn alarms count. Since
+  `faebae7` (R2-6) alarms have two severities: a page (`…-alarms` topic:
+  5xx rate, dead letters, the canary, the fast burns, root-account use,
+  high GuardDuty findings) goes to the alarm mailbox and to the pager set in
+  `pager_endpoint`; everything else is a ticket (`…-tickets` topic, mail).
+  Severity, on-call and the incident and postmortem templates are in
+  `docs/runbook.md` and `docs/incidents/`.
+- **Seam:** yes, OTLP. The pager is any service that takes an SNS HTTPS
+  subscription (PagerDuty, Opsgenie, AWS Incident Manager): set its URL as
+  the `PAGER_ENDPOINT` secret. Swap to Datadog, Honeycomb or Grafana by pointing
   `OTEL_ENDPOINT` at their collector, or by changing the sidecar.
 
 ### 16.6 Event bus

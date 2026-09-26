@@ -16,7 +16,18 @@ committed. The reasons behind them are in the ADRs, mainly
 > when applied".
 
 References are `path:line` in the committed tree. Last synced with the code
-as of `1cb2d67` (`090c890` to `1cb2d67`): `check:money` in CI's web job,
+as of `0a74b1c` (`174028c` to `0a74b1c`): account security
+(`security.tf`: CloudTrail, GuardDuty, Security Hub, root-use and IAM-change
+alarms), backups and budgets (`backup.tf`: AWS Backup into a locked vault,
+a monthly budget, cost anomaly detection), two alarm severities (a
+`…-tickets` topic beside the paging `…-alarms` topic, and `pager_endpoint`),
+the operator's identity and the store-app values in `web_config` with the
+`VITE_RELEASE` guard, deploys only from a green CI run on `main` with a
+`release` input for rollback, the previous release's web assets kept 30
+days, payments' `cognito-idp:AdminGetUser` (the staff chargeback routes),
+the Stripe Link entries in the CSP, and `check:tokens` and `check:contrast`
+in CI's web job. The sync before, as of `1cb2d67` (`090c890` to `1cb2d67`),
+covered: `check:money` in CI's web job,
 payments' local `LEGAL_VAT_ID` placeholder (refused deployed),
 `VITE_MIN_LEAD_MINUTES` in `web/.env.example`, the demo listings without the
 seed's dated windows, five German districts in the seed and the runbook's
@@ -91,7 +102,10 @@ One cell (today: EU, eu-central-1) is one copy of `infra/platform`:
                                         --> S3 analytics (dt= partitions) --> Glue table --> Athena
 
    Outside-in: CloudWatch Synthetics canary (every 5 min) --> the public URL
-   Alarms: CloudWatch --> SNS cappy-<env>-alarms --> email
+   Alarms: CloudWatch --> SNS cappy-<env>-alarms (page) --> email + pager
+                      --> SNS cappy-<env>-tickets (ticket) --> email
+   Account: CloudTrail (object-locked bucket), GuardDuty, Security Hub;
+            AWS Backup vault (locked), a monthly budget, cost anomalies
 ```
 
 Where each box is defined: CloudFront, WAF, ALB `infra/platform/edge.tf`;
@@ -99,7 +113,9 @@ Cognito and its WAF `infra/platform/identity.tf`; VPC `infra/platform/network.tf
 ECS `infra/platform/ecs.tf`; Aurora and secrets `infra/platform/data.tf`;
 SNS/SQS `infra/modules/messaging/main.tf`; SES `infra/platform/email.tf`;
 buckets `infra/platform/storage.tf`; analytics `infra/platform/analytics.tf`;
-alarms `infra/platform/observability.tf`; canary `infra/platform/synthetics.tf`.
+alarms `infra/platform/observability.tf`; canary `infra/platform/synthetics.tf`;
+CloudTrail, GuardDuty and Security Hub `infra/platform/security.tf`; AWS
+Backup, the budget and cost anomaly detection `infra/platform/backup.tf`.
 
 ---
 
@@ -120,7 +136,7 @@ Versions: Terraform `>= 1.10`, AWS provider `~> 6.0`, random `~> 3.6`, http
 `~> 3.4`, archive `~> 2.4` (`infra/platform/versions.tf:1-9`). The platform
 takes a second AWS provider, `aws.us_east_1`, for CloudFront's certificate and
 WAF (`infra/platform/versions.tf:4`; wired in `infra/envs/staging/main.tf:27-33`).
-CI pins Terraform 1.12.2 (`.github/workflows/ci.yml:84`). State locking is
+CI pins Terraform 1.12.2 (`.github/workflows/ci.yml:95`). State locking is
 S3-native (`use_lockfile = true`, `infra/envs/prod/main.tf:9`).
 
 All names start with `local.name = "cappy-${var.cell}-${var.env}"`
@@ -150,13 +166,17 @@ us-east-1 WAF ACL colliding. Below, `cappy-<env>` in a name reads
 | `alarm_email` | (required) | `vars.ALARM_EMAIL` | same | 87 |
 | `waf_rate_limit` | `2000` per 5 min per IP | default | default | 92 |
 | `switches` | all `true` | GitHub environment variable `SWITCHES` (JSON; all on when unset), as `TF_VAR_switches` | same | 98 |
-| `legal` | (required: company, address, VAT ID, tax number) | GitHub environment variable `LEGAL` (JSON), as `TF_VAR_legal` | same | 108 |
-| `feature_flags` | `""` | GitHub environment variable `FEATURE_FLAGS`, as `TF_VAR_feature_flags` | same | 113 |
-| `bot_control` | `false` | default | `true` | 119 |
-| `cognito_threat_protection` | `false` | default | `true` | 125 |
-| `push_app_arns` | `{ ios = "", android = "" }` | default | default (set once the store apps exist) | 131 |
+| `legal` | (required: company, address, contact email, VAT ID, tax number; `register` optional, since `faebae7`: `email` and `register` feed the app's Impressum, privacy policy and DSA contact point, R2-1) | GitHub environment variable `LEGAL` (JSON), as `TF_VAR_legal` | same | 108 |
+| `apps` | `{}` (Apple team id, Android release SHA-256, App Store and Play URLs, all `""`; since `faebae7`) | GitHub environment variable `APPS` (JSON), as `TF_VAR_apps` | same | 113 |
+| `monthly_budget_usd` | `1000` (since `faebae7`, R2-4) | default | `4000` | 124 |
+| `account_security` | `true`: CloudTrail, GuardDuty, Security Hub in this account (since `faebae7`, P-14); off only when the organisation runs them centrally | default | default | 130 |
+| `pager_endpoint` | `""`, sensitive: the pager's SNS HTTPS integration URL (since `faebae7`, R2-6) | GitHub environment secret `PAGER_ENDPOINT`, as `TF_VAR_pager_endpoint` | same; a prod plan warns without it (`check "prod_has_a_pager"`, `observability.tf:37-42`) | 136 |
+| `feature_flags` | `""` | GitHub environment variable `FEATURE_FLAGS`, as `TF_VAR_feature_flags` | same | 143 |
+| `bot_control` | `false` | default | `true` | 149 |
+| `cognito_threat_protection` | `false` | default | `true` | 155 |
+| `push_app_arns` | `{ ios = "", android = "" }` | default | default (set once the store apps exist) | 161 |
 
-Env overrides: `infra/envs/staging/main.tf:65-90`, `infra/envs/prod/main.tf:65-86`.
+Env overrides: `infra/envs/staging/main.tf:62-130`, `infra/envs/prod/main.tf:62-129`.
 
 `scale` (cpu units / MiB / min tasks / max tasks):
 
@@ -437,8 +457,49 @@ adding a service starts there.
 
 ### `infra/platform/observability.tf`: alarms
 
-See [§5 Alarms](#alarms). One SNS topic `cappy-<env>-alarms` with an email
-subscription to `alarm_email` (`:4-12`).
+See [§5 Alarms](#alarms). Since `faebae7` (R2-6) two SNS topics, one per
+severity: `cappy-<env>-alarms` pages, `cappy-<env>-tickets` is looked at in
+working hours (`:9-16`). Both have an email subscription to `alarm_email`
+(`:17-28`); the pages topic also gets an HTTPS subscription to
+`pager_endpoint` when it is set (`:29-35`), and a `check` block warns on a
+prod plan without one (`:37-42`). `local.alarm_actions` and
+`local.ticket_actions` point alarms at the two (`:44-47`).
+
+### `infra/platform/security.tf`: account detection (since `faebae7`, P-14)
+
+All behind `account_security` (count 0 when off, `:6-8`):
+
+- **CloudTrail** `cappy-<env>-trail`: multi-region, global service events,
+  log file validation (`:93-103`), into a bucket with **object lock in
+  compliance mode for 365 days**, so nobody, the deploy role included, can
+  delete or shorten a log (`:13-28`), public access blocked (`:30-37`), and a
+  bucket policy for CloudTrail only (`:39-62`). A copy goes to CloudWatch Logs
+  `/cappy/<env>/cloudtrail`, kept 90 days (`:65-91`).
+- **GuardDuty** detector, findings every 15 minutes (`:105-109`); findings of
+  severity 7 and above go to the pages topic through an EventBridge rule
+  (`:123-137`, topic policy `:139-163`).
+- **Security Hub** with AWS Foundational Security Best Practices (`:111-119`).
+- Two metric filters on the trail's log group and their alarms
+  (`Cappy/Security`): `root-used` (the root user doing anything; pages) and
+  `iam-changed` (policy attachments, inline policies, new access keys; a
+  ticket, since deploys change IAM on purpose) (`:165-199`).
+
+### `infra/platform/backup.tf`: backups and budgets (since `faebae7`)
+
+- **AWS Backup** (R2-5): a vault `cappy-<env>-vault` under **Vault Lock in
+  compliance mode** (35 to 400 days; the lock is fixed after 3 days, `:10-20`),
+  a plan with a daily rule kept 35 days and a monthly rule kept 365 days in
+  prod (35 in staging) (`:22-42`), a role with the managed backup and restore
+  policies (`:44-61`), and a selection of the Aurora cluster and the media
+  bucket (`:64-70`). A failed, aborted or expired backup job opens a ticket
+  (EventBridge, `:71-84`).
+- **Budget** (R2-4): `cappy-<env>-monthly`, `monthly_budget_usd` filtered on
+  the `env` cost allocation tag (activated once in Billing, runbook step 1);
+  a ticket at 80 % of the forecast and at 100 % of the actual (`:112-141`).
+- **Cost anomaly detection**: a per-service monitor and an immediate
+  subscription for anomalies of $50 or more, to the tickets topic
+  (`:143-164`). The tickets topic's policy lets CloudWatch, EventBridge,
+  Budgets and cost alerts publish (`:86-110`).
 
 ### `infra/platform/synthetics.tf` and `canary/`
 
@@ -453,20 +514,33 @@ timeout (`:47-64`), with artifacts in a bucket that expires them after 14 days
 `url`, `cluster`, `services`, `service_task_definitions` (the deploy checks
 each service runs these), `migrate_task_definitions`, `private_subnets`,
 `task_security_group`, `ecr`, `web_bucket`, `cloudfront_id`, and `web_config`
-(`VITE_COGNITO_REGION`, `VITE_COGNITO_CLIENT_ID`; public values)
-(`:1-48`). The env roots expose them all as `output "platform"`.
+(`:45-60`; public values): `VITE_COGNITO_REGION`, `VITE_COGNITO_CLIENT_ID`,
+and since `faebae7` (R2-1) `VITE_RELEASE=1`, the operator's identity from
+`legal` (`VITE_LEGAL_COMPANY`, `_ADDRESS`, `_EMAIL`, `_VAT` (the VAT ID, or
+the tax number without one), `_REGISTER`) and the store values from `apps`
+(`VITE_APPLE_TEAM_ID`, `VITE_ANDROID_SHA256`, `VITE_APP_STORE_URL`,
+`VITE_PLAY_STORE_URL`). `VITE_RELEASE=1` switches on the web build's
+release guard (`web/vite.config.ts`, `releaseProblems`): the build fails when
+the company, address or email is empty, the email is not an address, the
+Android fingerprint is not 32 colon-separated hex bytes (or all zeros), or
+the Apple team id is not 10 characters. Without an Apple team id or Android
+fingerprint the build publishes no `.well-known` app-link file at all (a
+placeholder would verify nothing). The env roots expose every output as
+`output "platform"`.
 
 ### `infra/envs/staging/main.tf` and `infra/envs/prod/main.tf`
 
 Each sets the backend, the two providers (cell region and us-east-1), takes
-`image_tag`, `zone_id`, `alarm_email`, `switches`, `legal`, `feature_flags`
-as variables, and calls `../../platform` with the sizes in the tables above.
-Prod additionally turns on `cognito_threat_protection` and `bot_control`
-(`infra/envs/prod/main.tf:69`, `:85`). CD sets `legal`, `switches` and
-`feature_flags` from the GitHub environment's variables `LEGAL`, `SWITCHES`
-and `FEATURE_FLAGS` (`TF_VAR_*`, `.github/workflows/deploy.yml:71-74`), and
-since `44a5520` the env roots' comments say so, with an example of each value
-(`infra/envs/prod/main.tf:47-48`, `:54-55`, `:60-61`). A local apply passes the
+`image_tag`, `zone_id`, `alarm_email`, `switches`, `legal`, `feature_flags`,
+and since `faebae7` `apps` and `pager_endpoint` (`:83-99`) as variables, and
+calls `../../platform` with the sizes in the tables above. Prod additionally
+turns on `cognito_threat_protection` and `bot_control`
+(`infra/envs/prod/main.tf:105`, `:125`) and sets `monthly_budget_usd = 4000`
+(`:128`). CD sets `legal`, `apps`, `switches` and `feature_flags` from the
+GitHub environment's variables `LEGAL`, `APPS`, `SWITCHES` and
+`FEATURE_FLAGS`, and `pager_endpoint` from the secret `PAGER_ENDPOINT`
+(`TF_VAR_*`, `.github/workflows/deploy.yml:106-111`); the env roots'
+comments say so, with an example of each value. A local apply passes the
 same values with `-var` or a tfvars file.
 
 ### `infra/bootstrap/main.tf`
@@ -504,7 +578,7 @@ it includes `payment.failed` for booking, which it had been missing. Run by
 **What "validated" means.** `make infra-validate` and the CI `infra` job run
 `terraform fmt -check -recursive` and, in `bootstrap`, `envs/staging`,
 `envs/prod` and `localstack`, `terraform init -backend=false` then
-`terraform validate` (`Makefile:56-57`, `.github/workflows/ci.yml:79-90`).
+`terraform validate` (`Makefile:56-57`, `.github/workflows/ci.yml:90-101`).
 That checks syntax, types and references. It does not evaluate `check`
 blocks, data sources or provider-side rules, which only a plan against an
 account would (and a plan against real AWS is out of scope, GOAL 12).
@@ -569,7 +643,7 @@ reviewed but has never run against an account.
 
 `make infra-local` (after `make up`) applies `infra/localstack` and runs
 `check.py` (`Makefile:59-60`). CI does the same in the `e2e` job when the
-`LOCALSTACK_AUTH_TOKEN` secret is set (`.github/workflows/ci.yml:94-116`).
+`LOCALSTACK_AUTH_TOKEN` secret is set (`.github/workflows/ci.yml:103-130`).
 Only the messaging module is applied: the LocalStack licence in use has no
 Cognito, ECS, RDS, ELB, CloudFront, WAF, ECR or SES v2 (ADR 0009).
 
@@ -608,10 +682,10 @@ What the committed Terraform has for it, and still needs:
   second cell in the same account no longer collides on IAM roles, the
   Lambda, S3 buckets or the us-east-1 WAF ACL. The deploy workflow reads the
   region and cell from the GitHub environment's `AWS_REGION` and `CELL`
-  variables (defaults `eu-central-1`, `eu`; `.github/workflows/deploy.yml:37-40`,
-  `:78-81`, `:178-181`), passes them as `TF_VAR_region` and `TF_VAR_cell`, and
+  variables (defaults `eu-central-1`, `eu`; `.github/workflows/deploy.yml:58-62`,
+  `:100-105`, `:210-215`), passes them as `TF_VAR_region` and `TF_VAR_cell`, and
   a cell other than `eu` gets its own state key `<cell>/<env>/terraform.tfstate`
-  (`:102`, `:199`); `eu` keeps the first key.
+  (in the `deploy` and `publish` jobs' `terraform init`); `eu` keeps the first key.
 - Still missing: an env root for the NA cell (M-21), and images: the workflow
   pushes to one registry and ECR is regional, so the NA cell needs its own
   push or ECR replication.
@@ -647,7 +721,7 @@ What the committed Terraform has for it, and still needs:
   P-10), so a task that can reach port 8000 still cannot call a route its
   service is not allowed to. The gateway does not forward them (the canary
   and CD smoke test check `/api/internal/busy` answers 404,
-  `journeys.js:32`, `deploy.yml:207`).
+  `journeys.js:32`, `deploy.yml:264`).
 
 ### IAM per service
 
@@ -669,7 +743,7 @@ Every service has two roles (`ecs.tf:165-260`):
 | matching | since `ad9dee9`, `cognito-idp:AdminGetUser` on this pool (the staff MFA check for its staff routes, the preview's offers and quote, V6-2) | 233-234 |
 | catalog | `s3:Put/Get/DeleteObject` on `media/*` and `private/*` of the media bucket; `cloudfront:CreateInvalidation` on this distribution; `cognito-idp:AdminGetUser` on this pool (staff MFA check, P-3); `sns:Publish` on the event topic; consume its queue | 235-239, 268-280 |
 | booking | `cognito-idp:AdminGetUser` on this pool (staff MFA check for the staff tools and evidence); since `7444e37`, `cognito-idp:ListUsers` on this pool (the staff case view finds a member by email, H-9); `sns:Publish` on the event topic; consume its queue | 240-244, 268-280 |
-| payments | `sns:Publish` on the event topic; consume its queue | 245, 268-280 |
+| payments | since `faebae7`, `cognito-idp:AdminGetUser` on this pool (the staff MFA check on its chargeback routes, R2-3); `sns:Publish` on the event topic; consume its queue | 246-248, 268-280 |
 | notifications | `ses:SendEmail`/`SendRawEmail` only from `no-reply@<domain>`; `cognito-idp:AdminGetUser`, `ListUsers`, `AdminUserGlobalSignOut`, `AdminDeleteUser` on this pool; `sns:CreatePlatformEndpoint` on the push apps and publish/manage/delete `endpoint/*` (never the event topic); consume its queue | 246-253 |
 
 "Consume" is `sqs:ReceiveMessage`, `DeleteMessage`, `ChangeMessageVisibility`,
@@ -682,7 +756,10 @@ the managed Service Connect TLS policy (`tls.tf:63-71`); Firehose may only write
 scrub Lambda (`analytics.tf:45-59`); the scrub Lambda may only write its logs
 (`analytics.tf:93-104`); SNS may only put records to that stream
 (`analytics.tf:117-131`); the canary role writes its bucket, logs,
-`CloudWatchSynthetics` metrics and X-Ray (`synthetics.tf:34-45`).
+`CloudWatchSynthetics` metrics and X-Ray (`synthetics.tf:34-45`); since
+`faebae7`, `cappy-<env>-trail-logs` lets CloudTrail write only its log group
+(`security.tf:72-91`) and `cappy-<env>-backup` holds the managed AWS Backup
+and restore policies (`backup.tf:44-61`).
 
 Known limit (runbook "Known limits"): every publisher may publish any event
 type to the one topic.
@@ -704,17 +781,23 @@ Pull requests get no AWS access (`ci.yml` has only `contents: read`).
 
 ### The deploy workflow's jobs
 
-`.github/workflows/deploy.yml`: a push to `main` deploys staging; prod is
-`workflow_dispatch` with `env=prod` (`:5-14`). One deploy per environment at
-a time, never cancelled midway (`:20-22`). Workflow permissions default to
-`contents: read`; each job asks for `id-token` only if it needs AWS (`:17-18`).
+`.github/workflows/deploy.yml`: since `faebae7` (R2-8) a release is a commit
+whose `ci` run passed on `main`. A **completed `ci` run on `main`**
+(`workflow_run`) deploys it to staging; prod, or a rollback, is
+`workflow_dispatch` with `env` and an optional `release` sha (empty = the
+latest on `main`) (`:7-23`). What is deployed is `TAG` = the `release`
+input, else the commit CI just passed, else the workflow's sha (`:35`), and
+every job checks out that sha. One deploy per environment at a time, never
+cancelled midway. Workflow permissions default to `contents: read`; each job
+asks for `id-token` only if it needs AWS.
 
 | Job | AWS | What it does | Lines |
 |---|---|---|---|
-| `images` | images role (ECR push only) | Builds each service image with buildx and pushes `cappy/<svc>:<sha>`, skipping tags that already exist (tags are immutable) | 30-59 |
-| `deploy` | deploy role | Terraform only, plus the AWS CLI. Reads the region and cell (`AWS_REGION`, `CELL`, since `7444e37`; also set on `images` and `publish`) and `legal`, `switches` and `feature_flags` from the GitHub environment's variables `LEGAL`, `SWITCHES` and `FEATURE_FLAGS` as `TF_VAR_*` (`:76-84`; `SWITCHES` defaults to all on) and stops at once if `LEGAL` is unset (`:93-94`). `terraform init` uses the cell's own state key for a cell other than `eu` (`:102`). Then registers the migrate task definitions (targeted apply), runs every migrate task and fails if any exits non-zero, then a full apply, waits for services to be stable and checks each runs the task definition this deploy registered with rollout `COMPLETED` (a rolled-back service fails the job); outputs the public web config | 61-139 |
-| `web` | **none** | `npm ci --ignore-scripts && npm run build` with the web config; uploads `web/dist` | 141-158 |
-| `publish` | deploy role | Syncs the build to the web bucket (hashed assets `immutable` for a year; `index.html`, `sw.js`, `registerSW.js`, `manifest.webmanifest` `no-cache`; `.well-known` deep-link files as JSON, 5 min), invalidates the entry points, then smoke-tests the URL: `/` 200, `/api/categories` 200, `/api/internal/busy` 404, `/api/bookings` 401 | 160-208 |
+| `gate` | **none** | Runs only on `main` and only when the triggering CI run succeeded; asks the GitHub API for a successful `ci.yml` run on `main` for `TAG` and fails without one, so a red or untested sha never deploys | 38-51 |
+| `images` | images role (ECR push only) | Needs `gate`. Builds each service image with buildx and pushes `cappy/<svc>:<sha>`, skipping tags that already exist (tags are immutable, so a rollback builds nothing) | 53-88 |
+| `deploy` | deploy role | Terraform only, plus the AWS CLI. Reads the region and cell (`AWS_REGION`, `CELL`) and `legal`, `apps`, `switches`, `feature_flags` from the GitHub environment's variables `LEGAL`, `APPS`, `SWITCHES` and `FEATURE_FLAGS`, and `pager_endpoint` from the secret `PAGER_ENDPOINT`, as `TF_VAR_*` (`:100-110`; `SWITCHES` defaults to all on, `APPS` to `{}`) and stops at once if `LEGAL` is unset (`:120-121`). `terraform init` uses the cell's own state key for a cell other than `eu`. Then registers the migrate task definitions (targeted apply), runs every migrate task and fails if any exits non-zero, then a full apply, waits for services to be stable and checks each runs the task definition this deploy registered with rollout `COMPLETED` (a rolled-back service fails the job); outputs the public web config | 90-177 |
+| `web` | **none** | Writes the web config to `web/.env.production.local` as a dotenv file Vite reads (each value JSON-quoted, so addresses with spaces and commas survive; before `faebae7` an `export $(…)` broke them), then `npm ci --ignore-scripts && npm run build`; the config carries `VITE_RELEASE=1`, so the release guard applies; uploads `web/dist` | 179-199 |
+| `publish` | deploy role | Syncs the build to the web bucket **without `--delete`** (since `faebae7`, R2-9): hashed assets `immutable` for a year, and an asset under `assets/` is removed only when it is both absent from this build and older than 30 days, so a tab opened before the release still finds its lazy chunks (`:238-247`); `index.html`, `sw.js`, `registerSW.js`, `manifest.webmanifest` `no-cache`; `.well-known` deep-link files, when built, as JSON, 5 min; invalidates the entry points, then smoke-tests the URL: `/` 200, `/api/categories` 200, `/api/internal/busy` 404, `/api/bookings` 401 | 201-265 |
 
 Third-party code (package installs, image builds) never runs holding the
 deploy role (P-2, `bootstrap/main.tf:62-65`).
@@ -756,15 +839,21 @@ credentials, adaptive authentication) is enforced too (`identity.tf:10-17`,
 
 ### CSP and headers
 
-CloudFront's response headers policy on the web app (`edge.tf:400-440`):
+CloudFront's response headers policy on the web app (`edge.tf:402-448`):
 
-- **CSP**: `default-src 'self'`; scripts from self and `js.stripe.com`;
-  styles self plus `'unsafe-inline'` (React style attributes; scripts never
-  get it); fonts self-hosted; images self, `data:`, `blob:`, `*.stripe.com`,
-  and `images.unsplash.com` outside prod only (demo photos, ADR 0010);
-  `connect-src` self, this region's Cognito and `api.stripe.com`; frames
-  Stripe only; `object-src 'none'`, `base-uri 'self'`, `form-action 'self'`,
-  `frame-ancestors 'none'`.
+- **CSP**: `default-src 'self'`; scripts from self, `js.stripe.com` and,
+  since `faebae7` (R2-2, as Stripe's security guide lists it),
+  `*.js.stripe.com`; styles self plus `'unsafe-inline'` (React style
+  attributes; scripts never get it); fonts self-hosted; images self, `data:`,
+  `blob:`, `*.stripe.com`, `*.link.com`, and `images.unsplash.com` outside
+  prod only (demo photos, ADR 0010); `connect-src` self, this region's
+  Cognito, `api.stripe.com`, `link.com` and `*.link.com`; frames
+  `js.stripe.com`, `*.js.stripe.com`, `hooks.stripe.com` (3D Secure),
+  `link.com` and `*.link.com` (Stripe Link); `object-src 'none'`,
+  `base-uri 'self'`, `form-action 'self'`, `frame-ancestors 'none'`. The
+  theme is set before first paint by `web/public/theme-init.js`, a script
+  from the app's own origin, so `script-src 'self'` covers it. The walk
+  through the card form with test keys under this CSP is still open (R2-2).
 - HSTS two years with subdomains and preload; `nosniff`; `X-Frame-Options:
   DENY`; `Referrer-Policy: strict-origin-when-cross-origin`.
 
@@ -787,6 +876,7 @@ None is in git. `.gitignore`d `.env` holds local ones (`.env.example`).
 | Stripe secret, publishable and webhook keys | `cappy-<env>/stripe` (`data.tf:169-171`) | an operator, by hand (runbook step 4); never in state |
 | APNs key, FCM service account | in the SNS platform applications, created by an operator; only their ARNs reach Terraform (`push_app_arns`) | an operator |
 | `legal` (company identity, not secret) | the GitHub environment variable `LEGAL` for CD; an operator's local `*.tfvars` otherwise, which `.gitignore` excludes since `35a742c` | an operator |
+| Pager integration URL | the GitHub environment secret `PAGER_ENDPOINT` → `pager_endpoint` (sensitive; it ends up in state as the SNS subscription's endpoint) | an operator (runbook step 1) |
 | LocalStack auth token | `.env` locally; the `LOCALSTACK_AUTH_TOKEN` repository secret in CI | the developer |
 | Local Stripe test keys | `.env` | the developer |
 
@@ -808,7 +898,9 @@ never get AWS credentials. Rotation: runbook "Everyday operations".
   `alias/aws/sns` (`messaging/main.tf:26`); SQS SSE (`:33`, `:42`); Secrets
   Manager (its default key); the state bucket SSE-KMS
   (`bootstrap/main.tf:36-43`). The web, media, analytics and canary buckets
-  set no encryption configuration and so get S3's default SSE-S3.
+  set no encryption configuration and so get S3's default SSE-S3; so does
+  the CloudTrail bucket (since `faebae7`), which is object-locked instead.
+  The AWS Backup vault uses its default key.
 
 ---
 
@@ -816,29 +908,38 @@ never get AWS credentials. Rotation: runbook "Everyday operations".
 
 ### Alarms
 
-All go to the `cappy-<env>-alarms` topic and `alarm_email`.
+Two severities since `faebae7` (R2-6; runbook "Severity and on-call"): a
+**page** goes to `cappy-<env>-alarms` (mail to `alarm_email`, and the pager
+when `pager_endpoint` is set); a **ticket** goes to `cappy-<env>-tickets`
+(mail only). Before `faebae7` everything went to the one alarms topic.
 
-| Alarm | Condition | Where |
-|---|---|---|
-| `api-5xx-rate` | ALB target 5xx above 2 % of requests, 2 of 3 minutes | `observability.tf:18-55` |
-| `api-p99-latency` | ALB `TargetResponseTime` p99 above 1.5 s, 3 of 5 minutes | `:57-72` |
-| `<svc>-dead-letters` | any message in a DLQ | `:74-88` |
-| `<svc>-queue-age` | oldest message older than the queue's SLI for 5 minutes: payments 900 s, notifications 600 s (since `7444e37`, T-35c; `slo.md`), catalog and booking 300 s | `:90-106` |
-| `db-cpu` | Aurora CPU above 80 % for 10 minutes | `:106-117` |
-| `db-at-max-capacity` | `ServerlessDatabaseCapacity` at 90 % of `db_max_acu` for 15 minutes | `:119-131` |
-| `chargeback` | a `CHARGEBACK` line in the payments log (metric filter) | `:134-157` |
-| `outbox-set-aside` | an `OUTBOX_SET_ASIDE` line in any database service's log: an event failed to publish 20 times and will not go out by itself (metric filter per service, D-14, since `235eeaa`; the relay logs it at `cappy_common/events.py:278-286`) | `:159-186` |
-| `replica-lag` | reader more than 1 s behind for 5 minutes | `data.tf:193-206` |
-| `ses-bounce-rate`, `ses-complaint-rate` | above 2 % / 0.05 % | `email.tf:54-80` |
-| `canary-failing` | canary success below 100 % for two runs, missing data breaches | `synthetics.tf:66-80` |
-| `slo-burning-fast` (composite) | page: burn 14.4× over 1 h **and** 5 min | `observability.tf:240-246` |
-| `slo-burning` (composite) | ticket: burn 6× over 6 h **and** 30 min | `:248-253` |
-| `slo-<journey>-burning-fast`, `slo-<journey>-burning` (composites; journeys `browse`, `book`, `answer`) | per journey, the same page and ticket pairs (since `7444e37`, T-35c) | `:261-347` |
+| Alarm | Condition | Severity | Where |
+|---|---|---|---|
+| `api-5xx-rate` | ALB target 5xx above 2 % of requests, 2 of 3 minutes | page | `observability.tf:49-86` |
+| `api-p99-latency` | ALB `TargetResponseTime` p99 above 1.5 s, 3 of 5 minutes | ticket | `:88-103` |
+| `<svc>-dead-letters` | any message in a DLQ | page | `:105-119` |
+| `<svc>-queue-age` | oldest message older than the queue's SLI for 5 minutes: payments 900 s, notifications 600 s (T-35c; `slo.md`), catalog and booking 300 s | ticket | `:121-137` |
+| `db-cpu` | Aurora CPU above 80 % for 10 minutes | ticket | `:139-150` |
+| `db-at-max-capacity` | `ServerlessDatabaseCapacity` at 90 % of `db_max_acu` for 15 minutes | ticket | `:152-164` |
+| `chargeback` | a `CHARGEBACK` line in the payments log (metric filter): a chargeback opened, or one was lost | ticket | `:167-190` |
+| `outbox-set-aside` | an `OUTBOX_SET_ASIDE` line in any database service's log: an event failed to publish 20 times and will not go out by itself (metric filter per service, D-14; the relay logs it at `cappy_common/events.py:278-286`) | ticket | `:195-219` |
+| `replica-lag` | reader more than 1 s behind for 5 minutes | ticket | `data.tf:193-206` |
+| `ses-bounce-rate`, `ses-complaint-rate` | above 2 % / 0.05 % | ticket | `email.tf:54-80` |
+| `canary-failing` | canary success below 100 % for two runs, missing data breaches | page | `synthetics.tf:66-80` |
+| `slo-burning-fast` (composite) | burn 14.4× over 1 h **and** 5 min | page | `observability.tf:271-277` |
+| `slo-burning` (composite) | burn 6× over 6 h **and** 30 min | ticket | `:279-284` |
+| `slo-<journey>-burning-fast`, `slo-<journey>-burning` (composites; journeys `browse`, `book`, `answer`) | per journey, the same page and ticket pairs (T-35c) | page / ticket | `:292-378` |
+| `root-used` (since `faebae7`, P-14) | any root-user action in CloudTrail (metric filter `Cappy/Security`) | page | `security.tf:165-199` |
+| `iam-changed` (since `faebae7`) | a policy attached or put, a policy version or access key created (deploys do this on purpose) | ticket | `security.tf:165-199` |
+| GuardDuty finding, severity 7+ (since `faebae7`) | EventBridge rule to the pages topic | page | `security.tf:123-137` |
+| Backup job failed, aborted or expired (since `faebae7`) | EventBridge rule | ticket | `backup.tf:72-84` |
+| Budget: forecast above 80 %, actual above 100 % (since `faebae7`, R2-4) | `aws_budgets_budget` notifications | ticket | `backup.tf:112-141` |
+| Cost anomaly of $50 or more (since `faebae7`) | Cost Explorer anomaly subscription, immediate | ticket | `backup.tf:143-164` |
 
 **SLO burn alarms.** The Terraform implements one API-wide availability
-objective, 99.5 % (budget 0.5 % of requests as 5xx, `observability.tf:188-201`).
+objective, 99.5 % (budget 0.5 % of requests as 5xx, `observability.tf:226-234`).
 Four metric alarms compute the 5xx share over 5 min, 1 h, 30 min and 6 h
-(`:203-236`) with thresholds 7.2 % (14.4 × 0.5 %) and 3 % (6 × 0.5 %); the two
+(`:236-269`) with thresholds 7.2 % (14.4 × 0.5 %) and 3 % (6 × 0.5 %); the two
 composites pair them, Google SRE workbook style.
 
 **Per-journey burn alarms** (since `7444e37`, T-35c). Each gateway access
@@ -847,10 +948,10 @@ log line names its journey (`cappy_common/observability.py` `journey`:
 /matches`; `book` for `POST /bookings`; `answer` for accept and decline).
 Two log metric filters per journey on the gateway's log group count every
 request and the bad ones (`Cappy/<env>` `JourneyRequests-<j>` and
-`JourneyBad-<j>`, `:273-297`): bad is a 5xx, and for browse also slower than
-800 ms. Budgets 0.5 % (browse) and 0.1 % (book, answer) (`:262-266`), the
-same four windows and factors as the API-wide alarms (`:299-330`), paired
-into a page and a ticket composite per journey (`:332-347`). The two event
+`JourneyBad-<j>`, `:304-328`): bad is a 5xx, and for browse also slower than
+800 ms. Budgets 0.5 % (browse) and 0.1 % (book, answer) (`:292-302`), the
+same four windows and factors as the API-wide alarms (`:330-361`), paired
+into a page and a ticket composite per journey (`:363-378`). The two event
 journeys ([`slo.md`](slo.md): money within 15 minutes, mail within 10) are
 alarmed on queue age at those thresholds. First look for each alarm:
 runbook "Alarms".
@@ -877,7 +978,7 @@ console for the canary. Dashboards per cell are planned (M-45).
 `ACCEPTING_LISTINGS` on catalog (`ecs.tf:43`, `:47`, `:50`). The services read
 them at start (`booking/routes.py:135`, `catalog/routes.py:529`,
 `payments/handlers.py:91`, `:120`). Since `35a742c` the GitHub environment's
-`SWITCHES` variable is the one place they are set (`deploy.yml:73`): change it
+`SWITCHES` variable is the one place they are set (`deploy.yml:109`): change it
 (for example `{"bookings":false,"payouts":true,"listings":true}`), then run
 the deploy workflow for that environment. The apply registers new task
 definitions and rolls the services with the same image, and later deploys keep
@@ -890,7 +991,7 @@ gateway's `/api/app-config` (cached up to 5 minutes at CloudFront) and
 enforced by the service that owns the rule (booking reads
 `paidCancellationPolicies`, where anything under 100 counts as off:
 `booking/settings.py:38-47`). Roll out by setting the GitHub environment
-variable `FEATURE_FLAGS` (`deploy.yml:74`) to `newcheckout:5`, then 25, 50,
+variable `FEATURE_FLAGS` (`deploy.yml:110`) to `newcheckout:5`, then 25, 50,
 100, each followed by a deploy run; `0` turns it off for everyone.
 
 Locally, set the same variables on the service in `compose.yaml` (for
@@ -903,21 +1004,37 @@ example `ACCEPTING_BOOKINGS: "false"` on booking) and `docker compose up -d`.
   snapshot in prod (`:71-73`).
 - Media bucket versioning, old versions kept 30 days (`storage.tf:31-51`).
 - Terraform state versioned (`bootstrap/main.tf:29-34`).
+- Since `faebae7` (R2-5), **AWS Backup** copies the Aurora cluster and the
+  media bucket into the vault `cappy-<env>-vault`, daily (kept 35 days) and
+  monthly (kept a year in prod, 35 days in staging), under Vault Lock in
+  compliance mode: no role in the account, the deploy role included, can
+  delete a recovery point or shorten its retention (`backup.tf:10-70`). A
+  failed job opens a ticket. The vault is in the cell's own region (EU data
+  stays in the EU, ADR 0013); a copy to a second region or a separate backup
+  account is not built (`backup.tf:6-8`).
 - Restore procedure (point-in-time to a new cluster, then copy back or
-  repoint the `database-url` secrets): runbook "Restoring the database".
+  repoint the `database-url` secrets; or restore a recovery point from the
+  vault when the cluster itself is gone): runbook "Restoring the database".
   It has never been rehearsed.
 
 ### Deploy and rollback
 
-- **Deploy**: [the workflow above](#the-deploy-workflows-jobs). The same
-  image sha goes to staging and then to prod.
+- **Deploy**: [the workflow above](#the-deploy-workflows-jobs). Since
+  `faebae7` (R2-8) only a commit with a successful `ci` run on `main` is
+  deployed: a green CI run deploys it to staging by itself, and prod is a
+  manual run naming the release. The same image sha goes to staging and then
+  to prod.
 - **Automatic rollback**: the ECS circuit breaker if new tasks fail health
   checks, and the deployment alarms (`api-5xx-rate`, `slo-burn-page_short`)
   if users' errors rise during the roll (`ecs.tf:341-354`). The deploy job
   then fails because the primary deployment is not the new task definition.
-- **Manual rollback**: run the deploy workflow for the previous commit on
-  `main` (its images already exist, so the `images` job skips the build), or
-  apply the env root with `-var image_tag=<previous sha>`.
+- **Manual rollback**: Actions → deploy → Run workflow with the environment
+  and `release:` the previous release's sha (since `faebae7`). Its images
+  already exist, so the `images` job skips the build and only Terraform and
+  the roll run (minutes). Or apply the env root with `-var
+  image_tag=<previous sha>`. The database is not rolled back (see
+  Migrations). The web app's previous hashed assets stay in the bucket for
+  30 days, so open tabs keep working across a release and a rollback.
 - A failed migration stops the deploy before any service rolls (runbook
   "A deploy failed").
 
@@ -927,9 +1044,13 @@ Each database service has its own migrations, run by
 `python -m cappy_common.migrations <svc>` with `ADMIN_DATABASE_URL`
 (creates the database and role, sets its password) and `DATABASE_URL`
 (`ecs.tf:453-480`). CD runs them as one-off Fargate tasks before rolling the
-services (`deploy.yml:93-114`); locally `local/run.sh:12-14` runs them at
+services (`deploy.yml:131-153`); locally `local/run.sh:12-14` runs them at
 container start. Old code keeps running against the new schema until the roll
-completes, so migrations are expand-then-contract.
+completes, and a rollback runs the previous release against the newer
+schema, so migrations are expand-then-contract (runbook "Releasing and
+rolling back": add nullable columns and write both, backfill in a later
+release, drop one release after that; a migration that drops data is its own
+release, after a restore rehearsal).
 
 ---
 
@@ -983,7 +1104,15 @@ for the region. The quantities below come from the Terraform.
 | ALB | 1, plus LCUs | 1 | see AWS pricing |
 | CloudWatch | logs (90 days prod; the ECS Exec session log a year), Container Insights enhanced, ~40 alarms since the per-journey burn alarms (`7444e37`: 12 metric alarms and 6 composites more) and 6 more log metric filters, canary runs (8,640 a month at one per 5 minutes) | logs 14 days | see AWS pricing |
 | AWS Private CA (since `7444e37`, P-11) | 1 CA in short-lived-certificate mode, plus a KMS key | same | "~$50 a month" for the short-lived mode (`tls.tf:12-13`) |
+| CloudTrail, GuardDuty, Security Hub (since `faebae7`, P-14; `account_security`) | one multi-region trail (the first management trail is free; S3 for a year of object-locked logs, CloudWatch Logs 90 days), GuardDuty per analysed event, Security Hub per check | same | see AWS pricing |
+| AWS Backup (since `faebae7`, R2-5) | Aurora and media recovery points, 35 daily and 12 monthly | 35 daily, 1 monthly | see AWS pricing |
 | SES, SNS, SQS, Firehose, the analytics scrub Lambda, S3, X-Ray | per use | per use | see AWS pricing |
+
+**Budgets** (since `faebae7`, R2-4): `monthly_budget_usd`, $1,000 by default
+(staging) and $4,000 in prod (`infra/envs/prod/main.tf:126-128`: Aurora with
+a reader, 3 NATs, Cognito Plus, Bot Control, the private CA at launch
+traffic; raise it with real numbers). A forecast above 80 % or an actual
+above 100 % opens a ticket, and so does a cost anomaly of $50 or more.
 
 Levers already in the code: one NAT in staging (`variables.tf:35-39`), the S3
 gateway endpoint (`network.tf:79-85`), Bot Control and threat protection as
@@ -1028,10 +1157,16 @@ The web dev server is `cd web && npm run dev` (Vite; it proxies `/api` to the
 gateway, `web/vite.config.ts:13`, `:89`).
 
 CI's `web` job does more than `make web` (since `44a5520`,
-`.github/workflows/ci.yml:43-61`): `npm ci --ignore-scripts` (no package
-install scripts run), `npx tsc --noEmit -p .`, the build, then
-`check:size`, `check:i18n`, `check:flags`, `check:attempt`, `check:a11y` and,
-since `73610c4`, `check:money`, each failing the job when broken.
+`.github/workflows/ci.yml:49-72`): `npm ci --ignore-scripts` (no package
+install scripts run), `npm audit`, `npx tsc --noEmit -p .`, the build, then
+`check:size`, `check:i18n`, `check:flags`, `check:attempt`, `check:a11y`,
+`check:money` (since `73610c4`), `check:contrast` (since `0a74b1c`: every
+text colour token on the backgrounds it is used on, light and dark, WCAG AA,
+`web/scripts/check-contrast.ts`) and `check:tokens` (since `7051660`: no
+literal text size, radius, hex or rgb colour, named Tailwind colour or
+inline font size outside `theme.css`; the counts in
+`web/scripts/tokens-allowlist.json` may only go down), each failing the job
+when broken.
 
 ### Ports
 

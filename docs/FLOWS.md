@@ -6,9 +6,11 @@ Capacitor shells for the App Store and Google Play (ADR 0012). Where the two
 behave differently, the flow says so.
 
 This file describes the **committed code**. It was written against commit
-`ac716b5` on `prod-readiness` and last synced with the code as of `1cb2d67`
-(`090c890`, `6c2f2ec`, `73610c4` and `1cb2d67` since the previous sync at
-`9107ad2`). Numbers come from the code, and each has its
+`ac716b5` on `prod-readiness` and last synced with the code as of `0a74b1c`
+(`174028c` to `0a74b1c`: the readiness infrastructure `faebae7`, the UX merge
+`1daf0da`, the V8 backend `933ed14` and web `0a74b1c`; `25e79d3` was synced
+in its own commit). The sync before, at `1cb2d67`, covered `090c890`,
+`6c2f2ec`, `73610c4` and `1cb2d67`. Numbers come from the code, and each has its
 source file next to it. If the code and this file disagree, the code wins, and
 this file needs fixing (see the last section).
 
@@ -136,8 +138,12 @@ The booking lifecycle diagram is in [section 7](#the-booking-lifecycle).
    language switch (English, Deutsch, Français; the first language follows
    the device, else English), and two buttons: **Create an account**
    (`/login?mode=up`) and **I have an account** (`/login`). There are links to
-   Impressum, privacy, terms and help. No listings, prices or people are shown
-   (GOAL 13). Opening the page sets `welcomeSeen`.
+   Impressum, privacy, terms and help. Since `1daf0da` (UX-30) a row of
+   example rentals with prices sits under the promise (Plunge saw €4.00 / h,
+   Cargo van €25.00 / h, Photo studio €40.00 / h, 3D printer €6.00 / h):
+   fixed examples, not live listings, so no real listing, price or person
+   is shown (GOAL 13). **Create an account** is ivory on the green plate.
+   Opening the page sets `welcomeSeen`.
 4. After that, a signed-out device skips the welcome and goes to `/login`.
    Once anyone signs in, `signedInBefore` and `welcomeSeen` are both set
    (`auth.ts` `adopt`).
@@ -402,6 +408,15 @@ country no longer live stays selectable for someone already in it),
 district (only that country's) and business details. The track record is
 never touched by an edit.
 
+The Profile screen (the **You** tab) also shows **Spent** and **Earned**:
+since `0a74b1c` (V8-2) what really moved after refunds and no-shows (spent
+is charged minus refunded; earned is the owner's share of completed
+bookings and of cancelled ones that paid them, such as a renter no-show),
+not the list prices. Since `1daf0da` (UX-36) it has **Appearance**:
+**System**, **Light** or **Dark**, kept on this device; the page is set
+before its first paint, so a dark phone never flashes white, and other
+open tabs follow.
+
 **Edge cases**
 
 - *Double submit.* `PUT /me` is idempotent (one profile per `sub`).
@@ -440,7 +455,13 @@ the same. The phone layout has a bottom dock; the desktop has a header.
    slots, sorted by best match, cheapest, soonest or nearest. The sort is kept
    in the URL (`?sort=`). The filters sheet changes hours or quantity and the
    radius (the chip shows it in km or miles, like every distance, since
-   `2257182`). The results can be shown as a list or on a map. Beside the
+   `2257182`), and since `1daf0da` (UX-15) **When?**: **Any time**, or one
+   day of the search window (at most 14), and with a day **From**: **Any
+   hour**, or 08:00 to 20:00 in two-hour steps. The day and hour live in the
+   URL (`on=YYYY-MM-DD`, `at=H`); the requirement then runs from that hour
+   to the end of that day, results are priced for it, and since `933ed14`
+   the matcher starts no offer before the hour (it searched from now
+   before). The results can be shown as a list or on a map. Beside the
    count, and beside the free-text results, **How results are ordered**
    opens `/legal/ranking` (since `2257182`, H-3), which shows the ranker's
    signals and weights as `GET /ranking` serves them.
@@ -488,6 +509,12 @@ What the page shows, and the calls behind it:
 
 - The listing, its owner, district, upcoming windows and review summary:
   `GET /listings/{id}`. Reviews: `GET /listings/{id}/reviews?limit=100`.
+- **Photos** (since `1daf0da`, UX-1): on a phone a swipe strip with "n / N";
+  on a wide screen a mosaic, the first photo large, with **Show all {n}
+  photos**; either opens a full-screen viewer (arrows, keys, swipe, pinch).
+  Since `0a74b1c` an uploaded photo loads at the width the screen needs
+  (400/800/1600 px renditions, `photoMeta`) with its own colour behind it
+  while it loads. A listing with no photo shows its category's drawn plate.
 - **How long / how many**: duration chips between the listing's minimum and
   maximum hours, or batch quantities. Since `9107ad2` (V6-3) the duration
   being priced is always one of the chips, and selected.
@@ -508,9 +535,19 @@ What the page shows, and the calls behind it:
   what the longest free window holds; a freight listing reads "{n} pallets
   take about {duration}, including {setup} to load" and its fixed price row
   is **Loading** (the category's `setupLabel`, since `22b5e0f`).
-- **Price**: the base, extras, any discount and the total, under which the
-  bar says "Total, incl. {fee} service fee". The 15 % fee is inside the total,
-  and the owner's share is shown. Amounts are formatted for the reader's
+- **Desktop buy box** (since `0a74b1c`, UX-20): from 768 px the side panel
+  has **Day**, **Starts** and **Duration** selects, the same choice as the
+  chips below.
+- **Price** (since `1daf0da`, UX-23, one `PriceSummary` for the page and
+  the confirm sheet): rate ×
+  duration, extras, any discount, then **Total** and "Includes the service
+  fee of {fee}"; the renter no longer sees the owner's share. Under it the
+  policy as a dated line ("Free cancellation until Sat 3 Oct, 10:00", or
+  "Free cancellation until it starts" / "No free cancellation for this
+  time"), and how the card is used ("Paid by card when {name} accepts; if
+  they decline, the hold is released." or "Instant book: paid by card when
+  you book, confirmed at once."). The bar says "Total, incl. {fee} service
+  fee". The 15 % fee is inside the total. Amounts are formatted for the reader's
   locale in the listing's currency, which the API sends on listings, quotes
   and bookings since `235eeaa` (`domain/money.ts` `formatMoney`). Nothing is
   converted.
@@ -563,13 +600,18 @@ What the page shows, and the calls behind it:
 a lightning icon for instant book) opens a confirm sheet. Web and app are the
 same.
 
-1. **The confirm sheet** shows when, how long, where, "You pay", "{owner}
-   receives", the cancellation policy and the trader's identity. For a
+1. **The confirm sheet** (a sheet that drags between two heights and closes
+   when dragged down on a phone; a centred dialog from 768 px, since
+   `1daf0da`) shows when, how long, where, the same price summary as the
+   page (the total with "Includes the service fee of {fee}", never what the
+   owner receives, since `1daf0da`), the dated cancellation line and the
+   trader's identity. For a
    request it says "Nothing is charged yet: your card is held… {owner} has to
    accept first; if they decline or do not answer, the hold is released."
    (since `2257182` without "usually within {n} minutes"). For instant book
    it says "Confirmed as soon as your card is held." The final button always
-   reads **Book and pay** (§ 312j BGB).
+   reads **Book and pay** (§ 312j BGB), since `1daf0da` with the amount
+   after it ("Book and pay · €16.00").
 2. `POST /bookings {requirement, listingId, slotId, start, end}` with an
    `Idempotency-Key` per attempt (`Listing.tsx` `attempt`,
    `domain/attempt.ts`): a retry of the same request after a 5xx, a timeout
@@ -649,10 +691,13 @@ longer reached.
   `listing.changed` (`removed`) and moves `awaiting_payment` and `requested`
   bookings to `declined`, with the reason "The listing was removed by its
   owner", or "The listing was taken down by Cappy" when staff took it down
-  (since `235eeaa`). Payments releases the hold, and the renter gets
-  "Declined… Nothing was charged". ~~The app shows the reason in English in
-  every language~~: since `2257182` the three system reasons are in the
-  German and French catalogues.
+  (since `235eeaa`). Payments releases the hold, and the renter gets, since
+  `933ed14` (V8-17), "Could not go ahead: {title}. Your request for {title}
+  could not go ahead. Nothing was charged." with the reason (before:
+  "Declined…", though nobody declined it). ~~The app shows the reason in
+  English in every language~~: since `2257182` the three system reasons are
+  in the German and French catalogues, and since `0a74b1c` the page words
+  every reason by its code (`declineReasonCode`).
   Accepted bookings stand: the owner still owes them, and the hand-over
   address is still served for a removed listing.
 - *Owner suspended.* Their live listings are taken down, which declines
@@ -751,7 +796,12 @@ sequenceDiagram
    `/bookings/{id}` and says "The payment did not go through" if Stripe's
    `redirect_status` is `failed`. In the store apps `/pay/*` is an app link,
    so the bank hands back to the app. The card form (and Stripe.js) is a
-   separate chunk, fetched only here.
+   separate chunk, fetched only here. Since `1daf0da` (UX-24) the Payment
+   Element wears Cappy's colours, type and radii in light and dark (the
+   Appearance API) inside an enclosed panel headed "Card details go to
+   Stripe, never to Cappy", and since `0a74b1c` it shows Apple Pay or Google
+   Pay as a tab where the device supports it (and, for Apple Pay, once the
+   domain is registered with Stripe).
 4. The card is **authorised, not charged**. Stripe sends
    `payment_intent.amount_capturable_updated`. The webhook is
    signature-checked and handled once per Stripe event id. Payments marks the
@@ -788,9 +838,18 @@ sequenceDiagram
   `accepted` to `payment_failed` and the window is free. Nothing was taken.
   Both sides get "Payment failed: {title}… the booking is off" (email,
   always, since `235eeaa`).
-- *Chargeback* (`charge.dispute.created`). Payments stamps `chargeback_at`
-  and logs an error line that the chargeback alarm pages on. A later
-  `completed` does **not** pay the owner out; the money waits for a person.
+- *Chargeback* (the card holder disputes the charge with their bank; since
+  `faebae7`, R2-3, every `charge.dispute.*` event). Opened: payments stamps
+  `chargeback_at` and logs a line that opens a `chargeback` ticket; a later
+  `completed` does **not** pay the owner out but is kept. Staff list open
+  chargebacks (`GET /admin/payments/chargebacks`, soonest evidence deadline
+  first) and answer one with the booking's story and links
+  (`POST /admin/payments/{bookingId}/dispute-evidence`, audited); there is no
+  console screen for either yet. **Won**: the hold ends and the kept payout
+  goes to the owner with its invoice. **Lost**: the payment is
+  `charged_back`; an owner already paid gives their share back through a
+  transfer reversal, and what their balance cannot cover is recorded as
+  owed. Neither side of the booking is told anything by Cappy.
 - *Payment result for a booking that already moved on* (cancelled while the
   card was being entered). `system_status` ignores it, and payments voids the
   authorisation when it sees the cancel.
@@ -808,7 +867,13 @@ the booking page is `/bookings/{id}` (from the email, push, bell or the
 
 The owner sees the renter's name and renter record ("renter rating"), what
 they want and for how long, their own share, the window, when the request was
-made, and "Answer {when}, or the request lapses".
+made, and "Answer {when}, or the request lapses". Since `0a74b1c` (V8-1)
+the booking page's **What you agreed** shows a held request's money as
+agreed: the owner sees **Total**, **Service fee · 15 %** and **You receive**
+with "Their card is held and charged when you accept."; the renter sees
+**Total** with "Held on your card, charged when {name} accepts." (before, both
+read "Charged · Nothing: hold released"). "Nothing: hold released" is left
+for a request that was declined, withdrawn or lapsed.
 
 ### Accept
 
@@ -846,19 +911,24 @@ made, and "Answer {when}, or the request lapses".
    notice for me") and presses **Send decline** (on the booking page too
    since `9107ad2`). The server needs a non-empty reason of up to 500
    characters.
-2. `POST /bookings/{id}/decline {reason}`. The booking becomes `declined`.
+2. `POST /bookings/{id}/decline`: since `933ed14` a chip goes as its code
+   (`{reasonCode: "needs_repair"}`), the owner's own words as
+   `{reason}`. The booking becomes `declined`.
 3. Payments releases the hold.
 4. The renter gets "Declined: {title}. Nothing was charged." with, since
    `22b5e0f`, "Reason: {reason}." on its own paragraph with one full stop
    (email, always; V5-16; a system reason such as "The listing was taken
-   down by Cappy" in the reader's language since `e2e77ab`), and
+   down by Cappy" in the reader's language since `e2e77ab`, and since
+   `933ed14` a chip too: a French renter reads "Motif : Il faut d’abord le
+   réparer." in the mail and the bell, V8-3), and
    sees the reason on the booking; since `1cb2d67` (V7-4) the bell item
    keeps the "Reason: …" paragraph too, and the owner's own words are
    quoted as written, never re-typeset in French (V7-24). A request Cappy
    declined, not the owner, is headed by what happened since `73610c4`
    (V7-14): "Cappy removed this listing", "The listing was removed", "The
    booking this extended was cancelled" or "Cappy stopped this request",
-   not "{name} could not take this one". Since `4e86866` both pages show
+   not "{name} could not take this one"; its mail is "Could not go ahead:
+   {title}" since `933ed14`. Since `4e86866` both pages show
    "Reason: {reason}." on its own line above "The hold on the card is
    released; nothing was charged.", and only the renter's page offers **Find
    another**.
@@ -980,12 +1050,19 @@ this listing. Pick a length or amount it takes."
    step is still confirming it, V7-7), else a request the owner answers
    ("Asked for more time"; the owner's notice is "Extension request:
    {title}" with the price since `1cb2d67`). The app opens the new booking, which since
-   `9107ad2` links back: "This extends your booking before it."
+   `9107ad2` links back: "This extends your booking before it." Since
+   `933ed14` (V8-18) the mails say it is an extension: the renter gets
+   "Extension confirmed: {title}" instead of "Confirmed", and for an
+   instant one the owner gets "Extended: {title}… was extended instantly by
+   {name}" instead of "New booking".
 3. Since `ad9dee9` (V6-22) an extension ends with its booking: when the
    booking it extends is cancelled (a no-show too), a waiting extension is
    declined with "The booking it extends was cancelled" (nothing was
    charged) and a confirmed one is cancelled with a full refund. Since
-   `1cb2d67` (V7-12) the cancelled one carries that reason on its page too,
+   `1cb2d67` (V7-12) the cancelled one carries that reason on its page too
+   (since `0a74b1c`, V8-5, also a confirmed extension cancelled with its
+   booking: "This booking was cancelled", then "Reason: The booking it
+   extends was cancelled.", in the reader's language),
    and both sides get "Extension cancelled: {title}" (always emailed): the
    renter "You get {amount} back to your card", the owner "The renter gets
    everything back ({amount})".
@@ -1009,11 +1086,15 @@ Report it within 24 hours after the end. The first 30 minutes are free." with
    market ([section 0](#0-the-numbers)). The owner sees "{n} minutes late,
    {amount} · Cappy is looking at it".
 3. The renter gets "A late return was reported: {title}" (bell, push, email
-   per setting): nothing is charged, and they can answer in the conversation.
+   per setting): nothing is charged, and since `933ed14` (V8-10) "If you see
+   it differently, tell us through Get help on the booking", the same route
+   as the page (before: "say so in the conversation").
 4. Staff confirm or reject it on the case page
    ([section 13](#13-dispute-and-staff-resolution)); both sides get "Late
    return: our decision on {title}" (always emailed): confirmed means the
-   amount is owed to the owner and "We will be in touch about paying it";
+   owner reads "you are owed {amount}" (since `933ed14`, V8-9) and the
+   renter "{amount} is owed to the owner", both with "We will be in touch
+   about paying it";
    **nothing is ever charged to the card** (collecting needs a saved card,
    S-9). The owner's card then reads **Confirmed by Cappy** or **Not
    confirmed by Cappy**.
@@ -1197,7 +1278,8 @@ Locally MFA is not required (cognito-local has none).
    table, replaces any earlier offer, and gives the other side the whole
    window again. The other side gets "An offer to settle: {title}… {amount} back to
    the renter. Accept it, or make another offer, by {deadline}; after that
-   we decide." (bell, push, email per setting). The app says "Offer sent.
+   we decide." (bell, push, email per setting); since `933ed14` (V8-9) a
+   renter reads "…you get {amount} back." instead. The app says "Offer sent.
    {name} can answer until {day} {time}" (the server's `respondBy`, since
    `9107ad2`, V6-5).
 5. The other side sees "{name} offers {amount} back to the renter · Of
@@ -1282,8 +1364,10 @@ Locally MFA is not required (cognito-local has none).
      `ad9dee9` the bell item keeps that paragraph too (V6-1). Since
      `1cb2d67` (V7-23) the renter reads it about themselves ("…you get
      {amount} back to your card, and the owner is paid for the rest",
-     `dispute_*_renter`) and the owner the third-person text, and staff's
-     note is quoted as written (V7-24). No
+     `dispute_*_renter`), and since `933ed14` (V8-9) the owner reads it in
+     the second person too ("…and you are paid the rest", "…and you are not
+     paid for this booking", "you are paid in full"); staff's note is quoted
+     as written (V7-24). No
      "Cancelled" or "How was …?" follows a dispute.
    - Both booking pages show **The reported problem was decided** with the
      outcome from their side ("You get {amount} back to your card, and the
@@ -1375,7 +1459,8 @@ are over. A redelivered `booking.rated` is counted once (review id
 ## 15. Messaging and masking
 
 **Who and where.** Both sides, in **Messages with {name}** on
-`/bookings/{id}`. The panel is hidden while the booking is `awaiting_payment`,
+`/bookings/{id}` (since `1daf0da` the chat scrolls in its own box, not the
+page), and across bookings in the **Inbox** tab (step 8). The panel is hidden while the booking is `awaiting_payment`,
 and read-only once it is declined, cancelled, expired or `payment_failed`,
 or completed more than 14 days after its window (the last since `2257182`).
 The server agrees since `235eeaa`: a message to such a booking gets 409
@@ -1421,6 +1506,21 @@ invitation (FL-18, V4-18).
 6. Drafts are saved per booking and survive an expired session.
 7. Staff can remove a reported message: its words become "[removed by Cappy:
    it broke our rules]" for both sides ([section 20](#20-reporting-and-moderation-dsa)).
+8. **The Inbox** (since `1daf0da`, UX-12; server read receipts since
+   `933ed14`/`0a74b1c`). The dock is **Explore · Bookings · Inbox · Earn ·
+   You**. `/inbox` lists every conversation across bookings, both as renter
+   and as owner, newest message first (`GET /inbox?limit=50`, re-read every
+   30 s and on focus): the other side's name ("Your renter" when the
+   booking does not know it), the listing ("Listing removed" when gone), the
+   last message ("You: …" for your own, masked as in the thread), how long
+   ago, the booking's status chip and an unread dot; **All** / **Unread**.
+   The **Inbox** tab carries a badge with the number of unread messages. A
+   row opens `/bookings/{id}#messages`; when the last message there is the
+   other side's, the app calls `POST /inbox/{id}/read`, so the thread is
+   read on every device and the badge drops. Empty: "No messages yet" or
+   "Nothing unread", "Messages about a booking appear here, for what you
+   booked and for what people booked from you." The bell (notifications)
+   stays under **You**.
 
 ---
 
@@ -1605,8 +1705,12 @@ hours and their value leave held listings out (V5-30).
   week: {title}" (email, push, bell; the Bookings category), linking to
   `/earn/edit/{id}`, at most once a week per listing.
 - The Earn screen also shows idle hours this week and their value, hours sold,
-  earned (completed) and "to come" (accepted or active), what is coming up,
-  invoices, and the owner's record.
+  earned and "to come" (accepted or active), what is coming up, invoices,
+  and the owner's record. Since `0a74b1c` (V8-2) earned is the owner's share
+  of what was really kept (completed bookings, and cancelled ones that paid
+  them), after refunds; before it added up list prices. A listing's
+  thumbnail names its next start that can really be booked, with the day
+  when it is not today ("Sun 10:00", V8-7).
 
 **Payouts must be set up before anyone can pay the owner** ([section 18](#18-payouts-and-invoices)).
 Deployed, the catalog hides listings of owners Stripe cannot pay yet.
@@ -1704,9 +1808,10 @@ Profile screen under **Notifications**.
 |---|---|---|---|---|---|
 | to `requested` | owner | "New request: {title}, {start}", "{renter} wants to book … for {amount}. Answer by {deadline}" (start and amount since `1cb2d67`, the renter's name since D-26) | per setting | per setting | yes |
 | to `requested`, an extension (since `1cb2d67`) | owner | "Extension request: …", "Your renter wants to extend their booking: … for {amount}" | per setting | per setting | yes |
-| to `accepted` | renter | "Confirmed: {title}, {start}", "… is confirmed. You paid {amount}. Hand-over: {address, postal code}." (since `1cb2d67`; the address since D-26) | **always** | per setting | yes |
-| instant book (`awaiting_payment` to `accepted`) | owner | "New booking: … booked instantly" | **always** | per setting | yes |
-| to `declined` | renter | "Declined: … Nothing was charged." and "Reason: …" (since `22b5e0f`; in the bell too since `1cb2d67`) | **always** | per setting | yes |
+| to `accepted` | renter | "Confirmed: {title}, {start}", "… is confirmed. You paid {amount}. Hand-over: {address, postal code}." (since `1cb2d67`; the address since D-26); an extension "Extension confirmed: …" (since `933ed14`, V8-18) | **always** | per setting | yes |
+| instant book (`awaiting_payment` to `accepted`) | owner | "New booking: … booked instantly by {name}"; an instant extension "Extended: … was extended instantly by {name}" (since `933ed14`) | **always** | per setting | yes |
+| to `declined` by the owner | renter | "Declined: … Nothing was charged." and "Reason: …" (since `22b5e0f`; in the bell too since `1cb2d67`; a chip in the reader's language since `933ed14`) | **always** | per setting | yes |
+| to `declined` by the system (take-down, removal, suspension, the extended booking ended; since `933ed14`, V8-17) | renter | "Could not go ahead: … Nothing was charged." and "Reason: …" | **always** | per setting | yes |
 | an extension cancelled with its booking (since `1cb2d67`, V7-12) | renter; owner | "Extension cancelled: …", "You get {amount} back to your card."; "The renter gets everything back ({amount})." | **always** | per setting | yes |
 | to `cancelled` | the side that did not cancel (the renter when staff or the system did), except the two cases below | "Cancelled: …" | **always** | per setting | yes |
 | to `cancelled` by the owner from `accepted` (since `ad9dee9`) | renter | "Cancelled by the owner: … You get {amount} back to your card." | **always** | per setting | yes |
@@ -1717,15 +1822,15 @@ Profile screen under **Notifications**.
 | to `payment_failed` | renter; the owner too when it failed after they accepted | "Payment failed: … Nothing was taken." | **always** | per setting | yes |
 | to `disputed` | owner | "A problem was reported: … Your payout waits" | **always** | per setting | yes |
 | to `disputed` | renter | "We received your report: …" | **always** | per setting | yes |
-| a dispute offer (`booking.dispute_offer`, since `7444e37`) | the other side | "An offer to settle: … by {deadline}" | per setting | per setting | yes |
+| a dispute offer (`booking.dispute_offer`, since `7444e37`) | the other side | "An offer to settle: … by {deadline}"; to the renter "…you get {amount} back" since `933ed14` | per setting | per setting | yes |
 | no agreement in time (`booking.notice` `dispute_escalated`, since `22b5e0f`) | both | "We are deciding now: … There was no agreement in time" | per setting | per setting | yes |
-| a dispute settled (`dispute_refunded`, `dispute_partial`, `dispute_owner_paid`, since `22b5e0f`) | both | "Settled: …" with "You agreed a settlement:" or "Cappy decided:" and the amount, and staff's note ("From Cappy's team: …", since `b5cdd93`; in the bell too since `ad9dee9`); since `1cb2d67` the renter gets the `…_renter` text, about themselves ("you get {amount} back to your card") | **always** | per setting | yes |
-| a late return reported (`claim_filed`, since `22b5e0f`) | renter | "A late return was reported: … Nothing is charged" | per setting | per setting | yes |
-| a late-return claim decided (`claim_confirmed`, `claim_rejected`, since `22b5e0f`) | both | "Late return: our decision on …" | **always** | per setting | yes |
+| a dispute settled (`dispute_refunded`, `dispute_partial`, `dispute_owner_paid`, since `22b5e0f`) | both | "Settled: …" with "You agreed a settlement:" or "Cappy decided:" and the amount, and staff's note ("From Cappy's team: …", since `b5cdd93`; in the bell too since `ad9dee9`); since `1cb2d67` the renter gets the `…_renter` text, about themselves ("you get {amount} back to your card"), and since `933ed14` the owner reads "you" too ("you are paid the rest") | **always** | per setting | yes |
+| a late return reported (`claim_filed`, since `22b5e0f`) | renter | "A late return was reported: … Nothing is charged", contest "through Get help on the booking" (since `933ed14`) | per setting | per setting | yes |
+| a late-return claim decided (`claim_confirmed`, `claim_rejected`, since `22b5e0f`) | both | "Late return: our decision on …"; confirmed, the owner reads "you are owed {amount}", the renter "{amount} is owed to the owner" (since `933ed14`) | **always** | per setting | yes |
 | payout sent | owner | "You have been paid {amount}"; "Your share for {title}, {start}…" since `22b5e0f` | per setting | per setting | yes |
 | new message | recipient | "New message: …" | per setting, at most once per conversation per 15 min | per setting | yes |
 | a live listing has no free time in the next 7 days (`listing.idle`, since `61b15b8`) | owner | "No free time next week: …" | per setting (Bookings), at most once a week per listing | per setting | yes |
-| report received | reporter | "We received your report" | always | never | yes, if signed in |
+| report received | reporter | "We received your report" (a signed-out reporter in the form's language since `933ed14`) | always | never | yes, if signed in |
 | moderation decision | person affected, reporter | statement of reasons / outcome | always | never | yes, if signed in |
 
 The `payment_failed`, `disputed` and message emails are new in `235eeaa`
@@ -1790,7 +1895,10 @@ removed) shows the whole statement of reasons, with its line breaks (since
 `22b5e0f` and `4e86866`, V5-31); a settled dispute also shows staff's note
 (since `ad9dee9`), and a decline its "Reason: …" (since `1cb2d67`, V7-4).
 Reading the bell remembers the app's locale for the
-person's emails. Tapping an item opens its screen inside the app. Links
+person's emails. Since `933ed14` (D-27) an owner's items that named a renter
+who has since deleted their account show "—" instead of the name.
+Conversations are not here but in the **Inbox** tab ([section
+15](#15-messaging-and-masking), step 8). Tapping an item opens its screen inside the app. Links
 that point off the app are never followed.
 
 ### In the store apps
@@ -1829,10 +1937,16 @@ Art. 16).
    use up the members' share. Since `1cb2d67` the refusals are 429 with a
    code: `reports_today` ("We already have your reports from today; we will
    be in touch.") and `reported_enough` ("This has been reported many
-   times today; it is already being looked at.").
+   times today; it is already being looked at."). Since `933ed14` (V8-19)
+   the target must exist (a listing, profile or review in catalog; a
+   message is checked with booking, and taken if booking cannot answer):
+   otherwise 404 `report_target_unknown`, which the app shows as "We could
+   not find that. Paste its link from the app.", and nothing reaches staff.
 3. The report is stored as `open`, and `moderation.report_received` goes out.
    The reporter gets "We received your report", with the reference (email,
-   plus the bell if signed in). The sheet shows the reference too, and after a
+   plus the bell if signed in); since `933ed14` (V8-12) a signed-out
+   reporter's mails, this one and the outcome, are in the language of the
+   form (its `Accept-Language`). The sheet shows the reference too, and after a
    message report offers **Block {name} too**.
 
 ### Staff decide (`/admin`)
@@ -1897,7 +2011,14 @@ Art. 16).
    nothing. Opening a case twice within a minute is one line
    (`ad9dee9`), and since `1cb2d67` (V7-13) within 60 s of the last read,
    even across a calendar minute (deciding no longer adds a second "Opened
-   a case"). The DSA
+   a case"). Since `933ed14`/`0a74b1c` (V8-11) a line names what it is
+   about as the queue does ("Dismissed · Person Nadia Brandt", "Removed ·
+   Listing Table saw"; the booking link reads the listing's title), never a
+   raw id ("(no longer here)" when it is gone), and a claim decision's
+   statement is Cappy's own words by code, in the reader's language
+   ("Confirmed from the booking record"). Since `faebae7` a chargeback
+   answered through payments' staff route is a line too
+   (`submit_chargeback_evidence`). The DSA
    transparency figures for a month come from `GET /admin/dsa-stats?month=`.
 6. Six months after a decision (183 days) the report forgets who made it:
    their id, email and words go; the case and the decision stay (since
@@ -1973,13 +2094,16 @@ people who cannot sign in.
      `7444e37`). Bookings stay as
      financial records, without the hand-over address and instructions, the
      owner's name and business, notes, and (unless suspended) the card
-     fingerprint; their hand-over photos and notes go;
+     fingerprint; their hand-over photos and notes go, and since `933ed14`
+     their inbox read receipts;
    - payments: the payout link deleted, the ID-check session erased at the
      provider and its record deleted, and card fingerprints cleared. The
      Stripe account itself stays with Stripe;
    - notifications: the Cognito user deleted (`AdminDeleteUser`: the sign-in
      and the email go), then devices (with their push endpoints), bell items
-     and settings.
+     and settings; since `933ed14` (D-27) their name also leaves the bell
+     items of owners they had asked to book ("—" instead), though mails
+     already sent stay sent.
 
    The redactions are new in `235eeaa` (D-1 to D-7).
 4. The app also calls Cognito `DeleteUser` itself (twice at most, the quick
@@ -2049,8 +2173,11 @@ platform's app storage), because iOS can purge a web view's localStorage.
 - **Universal Links (iOS) and App Links (Android)** for `/listing/*`,
   `/bookings/*`, `/earn*` and `/pay/*`. The web build writes
   `/.well-known/apple-app-site-association` and `/.well-known/assetlinks.json`
-  from `VITE_APPLE_TEAM_ID` and `VITE_ANDROID_SHA256`. Unset, they carry
-  placeholders and verify nothing. The Android intent filter uses
+  from `VITE_APPLE_TEAM_ID` and `VITE_ANDROID_SHA256`. Since `faebae7`
+  (R2-1) a file is written only when its value is set: unset, none is
+  published (a placeholder would verify nothing), and a release build
+  refuses a malformed team id or fingerprint. CD takes both from the `APPS`
+  environment variable. The Android intent filter uses
   `${appLinkHost}`; the iOS entitlements say `applinks:$(CAPPY_DOMAIN)`
   (`cappy.app` in the Xcode build settings).
 - An opened link (`appUrlOpen`) or a tapped push (`data.link`) is turned into
@@ -2105,6 +2232,12 @@ available" today.
 - **Crash reports** from both go to `POST /client-errors`: the message, stack,
   route, version and platform, and nothing that identifies the person. The
   gateway replaces emails and phone numbers before logging.
+- **Wallets**: the card form asks for Apple Pay and Google Pay
+  automatically (since `0a74b1c`); whether they show inside the shells'
+  web views has not been tested, and they are not hidden there (UX-24).
+- **Status bar, splash screen, keyboard**: the Capacitor plugins that would
+  theme the status bar, hold the splash until the first render and hide
+  the sticky bars over the keyboard are not installed (UX-37).
 
 ---
 
@@ -2224,6 +2357,25 @@ Found in the `1cb2d67` pass (no task yet unless named):
   instant-booking mails name the renter; the renter's confirmation gives
   the hand-over address with its postal code. ~~V7-30~~ fixed in `d4a458a`
   (the language follows across tabs).
+
+Found in the `0a74b1c` pass (from V8 and the readiness work; tasks named
+where there are any):
+
+- **Owner-cancelled and no-show wording** (V8-20, in part). The two
+  **Accept** buttons now thank the same way ("Accepted. {name} has been
+  told"), but an owner's own cancellation still reads "This booking was
+  cancelled" rather than that they cancelled it, and a renter no-show reads
+  "Cancelled" in Bookings → Past.
+- **Chargebacks have no console screen.** Staff use the API
+  (`/api/admin/payments/chargebacks`, `…/dispute-evidence`), evidence is
+  text and links only, and what a lost chargeback leaves an owner owing is
+  recorded but not taken from a later payout ([section 8](#8-payment)).
+- **Wallets.** Apple Pay needs the domain registered with Stripe before it
+  shows; the one-tap Express Checkout Element is not used (UX-24).
+- **Stale tabs after a release.** The previous release's files stay 30
+  days, but the app does not yet reload once on `vite:preloadError` (R2-9).
+- **Inbox paging.** The Inbox shows the newest 50 conversations; there is
+  no "older" button yet.
 ---
 
 ## 24. How to keep this file true

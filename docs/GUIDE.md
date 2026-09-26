@@ -23,9 +23,11 @@ Everything here runs on one computer. **Nothing is ever run against real AWS
 or any real cloud account** (GOAL 12). No staging or production environment
 exists yet: the Terraform for them is only validated, never applied.
 
-Last synced with the code as of `1cb2d67` (`090c890`, `6c2f2ec`, `73610c4`
-and `1cb2d67`, the fixes from verification round 7; the sync before, at
-`9107ad2`, covered `e2e77ab` to `9107ad2` and the guide items V6-25 to V6-27).
+Last synced with the code as of `0a74b1c` (`174028c` to `0a74b1c`: the
+readiness work `faebae7`, the first UX build `1daf0da`, and the verification
+round 8 fixes `933ed14` and `0a74b1c`, with the guide items V8-21; `25e79d3`
+was synced in its own commit). The sync before, at `1cb2d67`, covered
+`090c890`, `6c2f2ec`, `73610c4` and `1cb2d67`.
 
 ## Contents
 
@@ -341,15 +343,21 @@ The ID check opens Stripe Identity's own window in test mode.
   person. To be the buyer and the host at the same time, use two separate
   Chrome profiles, or one normal and one Incognito window, or two browsers.
 - **Where things are.** On a phone-sized screen there is a bottom dock:
-  **Explore**, **Bookings**, **Earn**, **You**. On a desktop the same links
-  are in the header. **The staff console** is not in the header or the
+  **Explore**, **Bookings**, **Inbox**, **Earn**, **You** (the **Inbox**
+  since `1daf0da`). On a desktop the same links are in the header. On a
+  phone the dock steps aside on a listing, a booking, the listing form and
+  the staff detail pages, so their own bar sits at the bottom; go back one
+  level to get it again. **The staff console** is not in the header or the
   dock: staff open it from **You** (Profile) → **Staff** → **Open the staff
   console**, on a phone and a desktop alike; on a desktop there is also a
   **Staff** link at the very bottom of every page, in the footer's row of
   legal links (the footer is not shown on a phone). Or go to
   http://localhost:5173/admin.
 - **The bell** (notifications) is at `/notifications`: on the **You** tab on
-  a phone, in the header on a desktop.
+  a phone, in the header on a desktop. Conversations are not in the bell but
+  in the **Inbox** tab (script 13).
+- **Light or dark.** The app follows your device's setting; **You** →
+  **Appearance** changes it for this browser (script 30). Test both.
 - **Emails.** No real emails leave your computer. A developer can show you
   every email sent at http://localhost:4566/_aws/ses (raw JSON).
 - **A booking's id** is the last part of its address, `/bookings/<id>`.
@@ -383,9 +391,12 @@ Each script is a checklist. **Do** the steps, and tick when you see the
 Use a fresh Incognito window (so the app thinks this is a first visit).
 
 - [ ] Open http://localhost:5173/. **Expect:** the welcome screen, with what
-      Cappy is, a language switch, **Create an account**, **I have an
-      account**, and links to Privacy, Terms and Help. No listings, prices or
-      people.
+      Cappy is, a language switch, **Create an account** (ivory on the green
+      plate, since `1daf0da`), **I have an account**, and links to Privacy,
+      Terms and Help. Under the promise, four example rentals with prices
+      (Plunge saw €4.00 / h, Cargo van €25.00 / h, Photo studio €40.00 / h,
+      3D printer €6.00 / h; UX-30): fixed examples, not real listings. No
+      real listing, owner or live price.
 - [ ] Open http://localhost:5173/listing/l9 signed out. **Expect:** the
       sign-in screen (not the welcome), and after signing in you land on that
       listing.
@@ -456,7 +467,21 @@ Use a fresh Incognito window (so the app thinks this is a first visit).
       **Expect** "die vermietende Person" / "die mietende Person" (for
       example "Wartet auf die Annahme durch die vermietende Person", "Neu
       auf Cappy"), never "der Anbieter", "der Mieter" or "die … Seite". In
-      French: "le propriétaire" / "la personne locataire".
+      French: "le propriétaire" / "la personne locataire". Since `0a74b1c`
+      (V8-8) look where it slipped before: a search result card (under the
+      rating), Explore's new-owner line, Earn's headings, the staff case's
+      **People** rows, the console's block action and the renter-rating
+      notes. **Expect** "Anbieter" and "Mieter" nowhere; `npm run
+      check:i18n` now refuses both words in the German catalogue and in the
+      help and legal pages.
+- [ ] **Decline reasons in your language** (since `933ed14`/`0a74b1c`,
+      V8-3/V8-4). With the buyer in French, the host declines with the chip
+      **It needs a repair first**. **Expect** "Motif : Il faut d’abord le
+      réparer." on the page, in the bell and in the email (before, the bell
+      and the email said it in English). A reason the host typed stays as
+      typed. A declined extension reads "Motif : La réservation à prolonger
+      a été annulée." (German: "Grund: Die Buchung, die verlängert werden
+      sollte, wurde storniert.").
 - [ ] Open the app in two tabs and switch the language in one. **Expect**
       (since `d4a458a`, V7-30) the other tab follows, and the next email
       comes in that language.
@@ -503,6 +528,14 @@ As the demo buyer.
       [A5](#a5-shortcutting-time-based-steps)).
 - [ ] Change the sort (best match, cheapest, soonest, nearest). **Expect:**
       the order changes and `?sort=` in the address changes with it.
+- [ ] **When and From** (since `1daf0da`, UX-15; the hour counts since
+      `933ed14`). With a category chosen, open the filters. **Expect** a
+      **When?** row: **Any time**, then one chip per day of the search window
+      (at most 14). Pick tomorrow. **Expect** a **From** row: **Any hour**,
+      08:00, 10:00 … 20:00, and `on=YYYY-MM-DD` in the address. Pick 14:00
+      (`at=14`). **Expect** only starts on that day at 14:00 or later, priced
+      for it; **Any hour** brings the morning back. Reload: the day and hour
+      stay (they are in the address).
 - [ ] Switch between the list and the map. Pick another district or city.
 - [ ] Ask for something nothing fits (a tiny radius, many hours). **Expect:**
       "No idle capacity fits that", with **Widen to 90 km** and **Allow 3
@@ -528,8 +561,25 @@ As the demo buyer, open the plunge saw (`/listing/l9`).
 
 - [ ] **Expect:** photos, title, the host card (name, verified shield, track
       record, whether a business or a private person), reviews, house rules,
-      the cancellation policy (shown as flexible), and a price with "Total,
-      incl. … service fee".
+      the cancellation policy (shown as flexible), and a price. Since
+      `1daf0da` (UX-23) the price card lists "€4.00/h × 2 hours", any extra
+      and discount, **Total**, and under it "Includes the service fee of
+      €…" (the renter no longer sees what the host receives), then a dated
+      line such as "Free cancellation until Sat 3 Oct, 10:00". The phone's
+      bottom bar reads "Total, incl. … service fee".
+- [ ] **The gallery** (since `1daf0da`, UX-1). On a phone-sized window,
+      **Expect** a swipe strip with "1 / 3"; on a desktop a mosaic with the
+      first photo large and **Show all … photos**. Tap a photo. **Expect** a
+      full-screen viewer: arrows, the arrow keys, swipe, pinch to zoom, and
+      Escape closes it. A listing you uploaded photos to loads a sharp image
+      at every width and shows the photo's own colour, not a grey box, while
+      it loads (since `0a74b1c`; the demo photos from Unsplash do the same
+      through Unsplash's widths). In a grid of results the same picture
+      never shows twice: a later card shows its category's drawn plate.
+- [ ] **The desktop buy box** (since `0a74b1c`, UX-20). On a window 768 px
+      or wider, **Expect** the side panel to have **Day**, **Starts** and
+      **Duration** drop-downs. Change each. **Expect** the chips below and
+      the price follow, and the other way round.
 - [ ] Choose a duration, then a day, then a time. **Expect:** the price
       updates; only free starts are offered, and **every** start of the day
       (since `4e86866`: with 2 hours on a day open until 22:00, 20:00 is
@@ -576,9 +626,17 @@ As the demo buyer, open the plunge saw (`/listing/l9`).
 only the bandsaw is instant):
 
 - [ ] As the demo buyer, on the plunge saw, pick a time and tap **Request**.
-      **Expect:** a confirm sheet with when, how long, where, "You pay",
-      "Nadia receives", the cancellation policy, and "Nothing is charged
-      yet… has to accept first". The final button reads **Book and pay**.
+      **Expect:** a confirm sheet with when, how long, where, the same price
+      summary as the page (**Total** and "Includes the service fee of €…";
+      since `1daf0da` it no longer shows what Nadia receives), the dated
+      cancellation line, and "Nothing is charged yet… has to accept first".
+      The final button reads **Book and pay · €…** with the total (since
+      `1daf0da`; the words "Book and pay" are the legal ones and stay).
+- [ ] **The sheet** (since `1daf0da`, UX-9). On a phone-sized window drag
+      its grabber up and down. **Expect** it to sit at a large or a medium
+      height, and to close when dragged down far enough or flicked; tapping
+      the grabber changes the height. On a desktop the same sheet is a
+      centred dialog. Escape and the close button close both.
 - [ ] Tap **Book and pay**. **Expect:** "Request sent to …", then the booking
       page. With Stripe, a card form appears first (see script 6).
 - [ ] Tap **Book and pay** twice fast, or on a flaky connection. **Expect:**
@@ -587,7 +645,8 @@ only the bandsaw is instant):
       the Earn inbox, a bell item "New request: …", and an email. Since
       `1cb2d67` (V7-23) the email's subject names the start ("New request:
       Festool TS 55…, Sat 3 Oct, 10:00") and the text the price ("Someone
-      wants to book … for €8.00."). It does not name the renter yet.
+      wants to book … for €8.00."). Since `25e79d3` (D-26) it names the
+      renter too ("Demo Buyer wants to book … for €8.00.").
 
 **By instant book** (you need a listing with Instant book on). The second
 host's *Bandsaw and bench, book instantly* already has it on; or:
@@ -598,7 +657,7 @@ host's *Bandsaw and bench, book instantly* already has it on; or:
       lightning icon, and the sheet says "Confirmed as soon as your card is
       held."
 - [ ] Book it. **Expect:** "Booked", the booking is confirmed at once, and
-      the host gets "New booking: … was booked instantly".
+      the host gets "New booking: … was booked instantly by Demo Buyer".
 - [ ] Turn Instant book off again afterwards.
 
 **Limits:**
@@ -616,8 +675,13 @@ itself and the host sees the request.
 
 **Stripe test mode** (see [A2](#a2-payments-while-testing)):
 
-- [ ] Book with `4242 4242 4242 4242`. **Expect:** the card form in the sheet,
-      then "Request sent". If the page briefly says "Confirming your
+- [ ] Book with `4242 4242 4242 4242`. **Expect:** the card form in the sheet
+      inside a framed panel headed "Card details go to Stripe, never to
+      Cappy", in Cappy's colours (dark in dark mode; since `1daf0da`,
+      UX-24), then "Request sent". On a device with Apple Pay or Google Pay
+      set up, **Expect** it as a tab in the form (since `0a74b1c`); Apple Pay
+      shows only once the domain is registered with Stripe, so not on
+      localhost. If the page briefly says "Confirming your
       payment…", it should settle within a minute.
 - [ ] Book with `4000 0000 0000 3220`. **Expect:** the bank check appears
       inside the form; complete it; the booking goes through.
@@ -636,7 +700,16 @@ Use two windows: buyer and host.
 - [ ] Host: open the request (Earn inbox, bell or email link). **Expect:** the
       renter's name and renter rating, the time, your share, and "Answer …,
       or the request lapses".
-- [ ] Host: **Accept**. **Expect:** "Accepted. … has been told". Buyer:
+- [ ] **The held price** (since `0a74b1c`, V8-1). Before accepting, open the
+      booking page on both sides. **Expect** under **What you agreed**: the
+      host sees **Total**, **Service fee · 15%** with "−€…" and **You
+      receive** with "Their card is held and charged when you accept."; the
+      buyer sees **Total** and "Held on your card, charged when Nadia
+      accepts." Never "Nothing: hold released" while it waits (that is only
+      for a declined, withdrawn or lapsed request).
+- [ ] Host: **Accept**, on the booking page or in the Earn inbox.
+      **Expect:** "Accepted. Demo has been told" from both places (since
+      `0a74b1c`; the Earn inbox used to say "They have the details now"). Buyer:
       "Confirmed" (bell and email); since `1cb2d67` the email names the start
       and says "You paid €…. Hand-over: <address, postal code>. The instructions are in the app." (D-26). Both now see **Getting in**: the hand-over
       address (for the plunge saw "Tempelhofer Damm 22, 12099 Berlin") and
@@ -845,6 +918,26 @@ On a booking of the plunge saw, in **Messages with …**.
       sent." (since `2257182`). The same text appears if the server refuses
       a message as closed.
 
+**The Inbox** (since `1daf0da`, UX-12; read on every device since
+`0a74b1c`). Buyer and host in two browsers:
+
+- [ ] Open the **Inbox** tab. **Expect:** every conversation you have, as a
+      renter and as a host, newest message first: the other person's name,
+      the listing, the last message ("You: …" when it is yours; contact
+      details hidden as in the thread until accepted), how long ago, the
+      booking's status and **All** / **Unread**. With none: "No messages
+      yet".
+- [ ] Host sends the buyer a message. **Expect** on the buyer's side within
+      30 seconds (or at once when the window gets focus): a number on the
+      **Inbox** tab (the dock on a phone, the header on a desktop), the
+      thread in bold with a dot, and under **Unread**.
+- [ ] Buyer: tap the thread. **Expect** the booking page opens at the
+      messages; back in the Inbox the dot and the badge are gone. Open the
+      Inbox in a second browser signed in as the buyer. **Expect** it read
+      there too (the server keeps the receipt, `POST /api/inbox/{id}/read`;
+      before `0a74b1c` it was kept per device and there was no badge).
+- [ ] **Unread** with nothing unread. **Expect:** "Nothing unread".
+
 ### 14. The ID check
 
 Needed once per person when a booking's total is above the ID-check
@@ -853,7 +946,9 @@ threshold of the listing owner's market (`markets.json`
 Switzerland. Every demo owner is German, so €300 here.
 
 - [ ] As the demo buyer, open *LED wall, 4 × 3 m* (Kreuzberg, €26 an hour)
-      and book 12 hours or more. **Expect:** the sheet **Check your ID once**,
+      and book long enough that the total passes €300: the €180 delivery
+      fee counts, so 8 hours (€388) already do (V8-21; this guide said 12
+      before). **Expect:** the sheet **Check your ID once**,
       explaining a photo of an ID and a selfie, with a consent tick.
 - [ ] Try to start without ticking. **Expect:** you cannot.
 - [ ] Tick and start. **Fake provider:** it passes at once and the booking
@@ -947,6 +1042,15 @@ Austria, CHF 95 in Switzerland.
       details" until it is done.
 - [ ] Complete a booking of one of your listings (scripts 5, 7, 8). **Expect:**
       "You have been paid …" (bell, email), and Earn shows it under earned.
+- [ ] **Totals after refunds** (since `0a74b1c`, V8-2). Settle a dispute on
+      one of the host's bookings with part of the price back (script 25), and
+      let a staff refund go through on another (script 24). **Expect** Earn's
+      earned total to add up the host's share of what was really kept, the
+      same "your share" each booking page shows, not the list prices; a
+      renter no-show counts, because the host was paid. (In round 8 Earn read
+      3 × €12.75 = €38.25 while €28.05 had been paid out.) As the buyer, **You** →
+      **Spent**. **Expect** what was charged minus what came back, the same
+      figure as the booking pages and **Bookings → Past** add up to.
 - [ ] **Invoices** on Earn. **Expect:** one invoice for Cappy's fee per
       completed booking, listed as "Service fee · {title} · {dates}" in your
       language's date format (since `2257182`). Tapping it opens the invoice
@@ -992,6 +1096,15 @@ Austria, CHF 95 in Switzerland.
 - [ ] Decline a request with a reason (script 7). **Expect** the buyer's
       bell item to show "Reason: …" under its first line (since `1cb2d67`,
       V7-4; before, only the email had it).
+- [ ] **What happened, not "declined"** (since `933ed14`, V8-17). With a
+      request waiting, take the listing down (script 19). **Expect** the
+      buyer's mail and bell item "Could not go ahead: {title}… Your request
+      for {title} could not go ahead. Nothing was charged." with the reason,
+      not "Declined". The same for a waiting extension whose booking was
+      cancelled ("Nicht möglich: …" in German, "Impossible : …" in French).
+- [ ] **The bell and the Inbox are separate.** **Expect** the bell (**You**
+      tab badge) for notices, and conversations in the **Inbox** tab with
+      its own badge (script 13).
 - [ ] A removal notice in the bell (a message or review of yours removed by
       staff, script 19). **Expect** (since `22b5e0f` and `4e86866`) the whole
       statement: what was removed, why, the ground and how to contest, on
@@ -1024,6 +1137,14 @@ Austria, CHF 95 in Switzerland.
       reference (paste `http://localhost:5173/listing/l9`, or just `l9`), your
       email, and the good-faith statement. Under the form: "If someone is in
       danger, call 112 first" (your country's number since `2257182`).
+- [ ] With the app in German, send a report. **Expect** the "We received
+      your report" email in German ("Wir haben deine Meldung erhalten…"),
+      the language of the form (since `933ed14`, V8-12; before, always
+      English), and the outcome mail later in German too.
+- [ ] Report "a profile" with the reference `l9` (a listing id, not a
+      person), or any made-up reference. **Expect** "We could not find that.
+      Paste its link from the app." (404 `report_target_unknown`, since
+      `933ed14`, V8-19), in your language, and nothing in the staff queue.
 - [ ] Send 4 reports with the same email in one day. **Expect:** the 4th is
       refused: "We already have your reports from today; we will be in
       touch." (429 `reports_today` since `1cb2d67`), in your language
@@ -1082,7 +1203,10 @@ reports queue, held listings, **Act directly** and the **Audit log**.
       "Business. EU consumer rights apply to bookings with it." (a business
       owner, by its whole name), "If the owner cancels, the renter gets
       everything back.", and the week's bar in free and sold, not "your
-      booking".
+      booking"; since `0a74b1c` (V8-13) the headings read **Durations it
+      takes** and **Start times**, not "How long do you need it?" and "Pick a
+      start", and a listing without reviews says only how many bookings its
+      owner has behind them ("Whoever books first…" is gone).
 - [ ] Back on **Waiting for a check**, **Approve** the studio (or approve it
       from its staff view). **Expect:** "Approved: it is live now"; the
       buyer finds it and can book it Monday to Friday, 09:00 to 18:00, for
@@ -1106,8 +1230,14 @@ reports queue, held listings, **Act directly** and the **Audit log**.
       a case is one "Opened a case" (twice within a minute is one line,
       since `ad9dee9`; since `1cb2d67`, V7-13, any read within 60 s of the
       last, so deciding a case no longer adds a second "Opened a case" when
-      its refetch crosses the minute). A booking's id links to its
-      case. Type an id under **About (booking, listing or person id)** and
+      its refetch crosses the minute). Since `0a74b1c` (V8-11) every line
+      names what it is about, as the queue does: "Dismissed · Person Nadia
+      Brandt", "Removed · Listing Festool TS 55…", "Approved · Listing Photo
+      studio…", a booking by its listing's title; never a raw id such as
+      `f675779c-…` or `ls_01m3…` ("(no longer here)" when it is gone). A
+      claim decision reads "Late return · Confirmed from the booking record"
+      or "… · Not supported by the booking record", in German too. A
+      booking's title links to its case. Type an id under **About (booking, listing or person id)** and
       **Filter**: only that target's entries. **Older** loads the next page
       (since `4e86866`). In German, the approve statement reads in German,
       not "Checked and approved".
@@ -1185,10 +1315,21 @@ menu → **Offline**.
 See [A7](#a7-testing-the-app-version) for how to set it up. Then walk through
 scripts 1 to 22 again at 390 × 844 and check:
 
-- [ ] The bottom dock (**Explore**, **Bookings**, **Earn**, **You**) with
-      badges, and nothing hidden behind it.
+- [ ] The bottom dock (**Explore**, **Bookings**, **Inbox**, **Earn**,
+      **You**) with badges, and nothing hidden behind it. Open a listing or a
+      booking. **Expect** the dock to step aside (since `1daf0da`, UX-13) so
+      the page's own bar sits at the bottom edge; back on a tab it returns.
 - [ ] On a listing, the price and button sit in a bottom bar.
-- [ ] Sheets open from the bottom and can be closed.
+- [ ] Sheets open from the bottom, drag between a large and a medium height,
+      and close when dragged down or with the close button (since
+      `1daf0da`, script 5).
+- [ ] **Moving around** (since `0a74b1c`, UX-8). Tap a result. **Expect** the
+      listing to slide in from the side; **Back** slides it out. Tap between
+      dock tabs. **Expect** a crossfade, not a slide. With reduced motion on
+      (macOS: Accessibility → Display → Reduce motion; Chrome DevTools →
+      Rendering → prefers-reduced-motion), **Expect** short fades only.
+- [ ] On a booking, the chat scrolls inside its own box; the page does not
+      jump down to it (since `1daf0da`).
 - [ ] No sideways scrolling on any screen, in all three languages (German
       words are long).
 - [ ] Text and buttons are big enough to tap.
@@ -1197,7 +1338,11 @@ scripts 1 to 22 again at 390 × 844 and check:
       turns to icons only, also when the text size changes after the page
       has loaded (since `9107ad2`); since `73610c4` also none on **You**
       (Profile: the notification settings wrap, V7-8), and the listing's
-      category chip wraps instead of cutting to "At…" (V7-27).
+      category chip wraps instead of cutting to "At…" (V7-27). Since
+      `0a74b1c` also none on **Bookings**, **Notifications** and
+      `/legal/terms` in French and German: long one-word headings
+      ("Réservations", "Benachrichtigungen") hyphenate and wrap (V8-6), and
+      the listing's category label ("Atelier & outils") wraps (V8-14).
 
 ### 24. The staff case view and resolving a dispute
 
@@ -1267,8 +1412,10 @@ limit is €2 500.
       "Refund part of it · €5.00 · Done" with the reason, "you" and your
       note.
 - [ ] **Expect** for both sides (always emailed): "Settled: Bandsaw and
-      bench…", "Cappy decided: €5.00 goes back to the renter, and the owner
-      is paid for the rest.", then "From Cappy's team: The photos show a
+      bench…"; host2 reads "Cappy decided: €5.00 goes back to the renter, and
+      you are paid the rest." (the second person since `933ed14`, V8-9), the
+      buyer "Cappy decided: you get €5.00 back to your card, and the owner is
+      paid for the rest."; then "From Cappy's team: The photos show a
       bent fence; …" as its own paragraph (email since `b5cdd93`; the bell
       item carries the note too since `ad9dee9`). No "Cancelled" and no
       "How was …?". Host2 gets "You have been paid €8.50" (their 85 % of the
@@ -1337,9 +1484,10 @@ windows.
 - [ ] Both pages. **Expect:** **Settle it between you**: "Agree on what goes
       back to the renter, and it is settled at once. Otherwise Cappy decides
       {when}." (in about 10 minutes locally, about three days deployed; one
-      full stop, also in German) and **Make an offer**. In the last minute
-      it reads "in under a minute", never "in 0 min" (since `73610c4`,
-      V7-21).
+      full stop, also in German) and **Make an offer**. In the last 30
+      seconds it reads "in under a minute", never "in 0 min" (since
+      `73610c4`, V7-21); from about 90 to 30 seconds it reads "in 1 min"
+      (minutes are rounded; V8-21).
 - [ ] Buyer: **Make an offer**. **Expect:** a sheet "What should go back to
       the renter?", the field **You get back**, "Of €15.00. The owner is paid
       the rest." Type `20`. **Expect:** "Between nothing and €15.00." and
@@ -1357,14 +1505,19 @@ windows.
 - [ ] Host2: **Make another offer** (the field reads **You give back**, and
       "Of €15.00. You are paid the rest.", since `9107ad2`), €6.
       **Expect:** the buyer's page shows host2's offer instead, and the
-      window starts again.
+      window starts again. The buyer's mail and bell item speak to them
+      (since `933ed14`, V8-9): "The other side offers to settle the problem
+      with Bandsaw and bench…: you get €6.00 back.", not "back to the
+      renter".
 - [ ] Stale offer: with the buyer's page open, host2 offers €7; before the
       buyer's page refreshes (15 s), the buyer taps **Accept €6.00**.
       **Expect:** "The offer changed a moment ago. Look at the new one."
 - [ ] Buyer: **Accept €7.00**. **Expect:** "Agreed. The dispute is
       settled"; the booking completes; both get "Settled: …" (always
-      emailed): host2 "You agreed a settlement: €7.00 goes back to the
-      renter, and the owner is paid for the rest.", and since `1cb2d67`
+      emailed): host2, since `933ed14` (V8-9) in the second person, "You
+      agreed a settlement: €7.00 goes back to the renter, and you are paid
+      the rest." (before: "…and the owner is paid for the rest"; in French
+      "…et le reste vous est versé"), and since `1cb2d67`
       (V7-23) the buyer, about themselves, "You agreed a settlement: you get
       €7.00 back to your card, and the owner is paid for the rest."; both pages show **You agreed on the
       reported problem** (since `9107ad2`; staff decisions keep **The
@@ -1413,7 +1566,9 @@ open every day 08:00 to 22:00):
       in Germany; with 45 minutes it would be €3.75 + €15 = €18.75).
 - [ ] Buyer: **Expect:** "A late return was reported: …", "The owner
       reports that … came back late and asks for €30.00. Nothing is charged:
-      we look at it and tell you what we decide."
+      we look at it and tell you what we decide. If you see it differently,
+      tell us through Get help on the booking." (since `933ed14`, V8-10: the
+      same route as the page; before, "say so in the conversation").
 - [ ] Buyer, on the booking page (since `73610c4`, V7-15). **Expect:** a
       **Late return** card with "90 minutes late, €30.00 · Cappy is looking
       at it" and "The owner says it came back late. Not so? Tell Cappy with
@@ -1428,10 +1583,14 @@ open every day 08:00 to 22:00):
       `9107ad2`). Open it: **Claims**,
       "Late return: 90 minutes · €30.00 · Open", the note, **Confirm** and
       **Reject**, and "Confirming records the claim; nothing is charged to
-      the renter yet."
+      the renter yet." (since `0a74b1c`, V8-15, only while a claim is open:
+      it is gone once decided).
 - [ ] **Confirm**. **Expect:** "Claim confirmed"; both get "Late return: our
-      decision on …" ("… confirmed it: €30.00 is owed to the owner. We will
-      be in touch about paying it.", always emailed); host2's card reads
+      decision on …" (always emailed): since `933ed14` (V8-9) host2 reads
+      "… confirmed it: you are owed €30.00. We will be in touch about paying
+      it." and the buyer "… confirmed it: €30.00 is owed to the owner…"; the
+      audit log line reads "… · Confirmed from the booking record" in the
+      reader's language (V8-11); host2's card reads
       "Confirmed by Cappy"; nothing moves on the card or the payment. On
       another booking, **Reject**: "… did not confirm it: nothing is owed",
       "Not confirmed by Cappy".
@@ -1448,8 +1607,10 @@ open every day 08:00 to 22:00):
       **4 h**, and "A new booking right after this one, at the listing’s
       price, confirmed at once." Pick 1 h, **Book 1 h more and pay**.
       **Expect:** "Extended", and the app opens the **new** booking: the hour
-      straight after the first, confirmed; host2 gets "New booking: …". The
-      first booking is unchanged.
+      straight after the first, confirmed; since `933ed14` (V8-18) host2
+      gets "Extended: … The booking of … was extended instantly by Demo
+      Buyer." (not "New booking") and the buyer "Extension confirmed: … Your
+      extension of … is confirmed.". The first booking is unchanged.
 - [ ] On the plunge saw (by request, 2 hours at least), extend an accepted
       booking. **Expect:** the sheet offers only **2 h** and **4 h** (never
       less than the listing's minimum, since `9107ad2`) and says "… The owner
@@ -1466,7 +1627,9 @@ open every day 08:00 to 22:00):
       **Expect:** the extension is declined, "Reason: The booking it extends
       was cancelled." (German and French too), and nothing is charged for
       it. A confirmed extension (the bandsaw) is cancelled with a full
-      refund when its first booking is, its page gives the same reason, and
+      refund when its first booking is, its page gives the same reason
+      ("This booking was cancelled", then "Reason: The booking it extends
+      was cancelled.", since `0a74b1c`, V8-5; before, no reason), and
       both sides get "Extension cancelled: …" with the amount back (since
       `1cb2d67`, V7-12).
 - [ ] Block the time after: as another renter (script 29) book the hour
@@ -1544,6 +1707,28 @@ unpaid bookings at once (script 5).
 - [ ] To be renter and host at once, use two browsers or Chrome profiles
       ([A3](#a3-before-you-start-tips-that-save-time)): all tabs of one
       browser follow one account.
+
+### 30. Appearance (dark mode)
+
+Since `1daf0da` (UX-36). As any account:
+
+- [ ] **You** → **Appearance**. **Expect** three buttons, **System**,
+      **Light** and **Dark**, with **System** chosen at first.
+- [ ] **Dark**. **Expect** every screen dark at once (Explore, a listing, the
+      booking page, sheets, the card form in Stripe mode, the staff console),
+      text readable everywhere, and the browser's toolbar colour following.
+      Reload. **Expect** no white flash: the page is dark from the first
+      frame.
+- [ ] **System**, then switch your computer or phone between light and dark
+      (macOS: System Settings → Appearance). **Expect** the app follows
+      without a reload. **Light** keeps it light whatever the device says.
+- [ ] Two tabs: change it in one. **Expect** the other follows.
+- [ ] The choice is per browser: another browser or an Incognito window
+      starts at **System**.
+- [ ] In both themes, **Expect** focus rings in blue, errors in red,
+      buttons for actions in crimson, prices and "You receive" in their money
+      colour. Developers: `npm run check:contrast` measures every text colour
+      on its backgrounds in both themes (B8).
 
 ## A5. Shortcutting time-based steps
 
@@ -1888,22 +2073,64 @@ server: the Cognito client id changes.
 | `make infra-validate`, `make infra-local` | Terraform validates; the event fabric applied to LocalStack routes each event type correctly | Terraform (`infra-local` also `make up`) |
 | `make bench` | How fast the candidate search (25 km over 7 days, 500 km over 30 days) and two free-text searches are at 100 000 listings: the mean of 10 runs after a warm-up, printed per query. For another size: `cd backend && uv run python services/catalog/bench/candidates.py 20000`. It compares changes on one machine, it does not size production; add a row to `docs/bench.md` (date, commit, conditions) when search code changes | `make up` |
 
-Web checks (`cd web`; CI runs all six after `npm ci --ignore-scripts`,
-`npx tsc --noEmit -p .` and `npm run build`):
+Web checks (`cd web`; CI runs all eight after `npm ci --ignore-scripts`,
+`npm audit`, `npx tsc --noEmit -p .` and `npm run build`):
 
 | Script | What it checks |
 |---|---|
-| `npm run check:i18n` | Every German and French text keeps its English key's `{placeholders}`; French and German have the same keys; every literal `t('…')` in the app has a German (and so French) entry; French typography, a no-break space (U+00A0) before ":" and a narrow one (U+202F) before "; ? !", in the catalogue (since `090c890`; URLs, placeholders and clock times left out) and in the French prose of `Legal.tsx` (since `73610c4`) |
+| `npm run check:i18n` | Every German and French text keeps its English key's `{placeholders}`; French and German have the same keys; every literal `t('…')` in the app has a German (and so French) entry; French typography, a no-break space (U+00A0) before ":" and a narrow one (U+202F) before "; ? !", in the catalogue (since `090c890`; URLs, placeholders and clock times left out) and in the French prose of `Legal.tsx` (since `73610c4`); the agreed words for the two sides: German refuses "mietende Seite", and since `0a74b1c` "Anbieter" and "Mieter" in the catalogue and in the German prose of `Help.tsx` and `Legal.tsx`; French refuses "personne propriétaire", "qui loue" and "le/au/du/un locataire" |
 | `npm run check:flags` | The rollout bucket matches the server's |
 | `npm run check:size` | The first-paint JavaScript is under 170 kB gzipped (run after a build) |
 | `npm run check:a11y` | Every `<img>` has `alt`; nothing clickable is smaller than 24 × 24 px |
 | `npm run check:attempt` | Idempotency keys: a retry after an unknown outcome reuses the key, a known outcome or changed body gets a new one |
 | `npm run check:money` | `moved()` (`web/src/domain/pricing.ts`, since `73610c4`): what a booking charged, refunded, and the fee and owner's share of what stayed, for a renter no-show, a part refund, a withdrawn or declined request and a cancellation with or without a refund |
+| `npm run check:tokens` | Since `edd0521` (in CI since `7051660`): no literal text size (`text-[…px]`), radius (`rounded-[…px]`), hex or `rgb()` colour, named Tailwind colour (`bg-white`, `text-gray`…) or inline `fontSize` in `web/src` outside the tokens of `theme.css`. The few left are counted in `web/scripts/tokens-allowlist.json`; a new one fails, and so does a count below the file's (lower the file then). Use a token: `text-body`, `rounded-[var(--radius-m)]`, `var(--ink-3)` |
+| `npm run check:contrast` | Since `0a74b1c`: every text colour token (`--ink` … `--focus`, `--on-accent`, `--on-badge`, …) on the backgrounds it is used on (`--page`, `--surface`, `--sunken`, `--accent`, `--field`…), in light and dark, measured against WCAG 2.2 AA (4.5:1 for text, 3:1 for large text and UI parts). A new colour or a changed one in `theme.css` must pass it |
 
 A single backend test: `cd backend && uv run pytest -q services/booking -k no_show`.
 
 Before a commit (the rule in PLAN.md): `make test` and every web `check:*`
-green, chained with `&&`.
+green, chained with `&&`:
+
+```sh
+make test && (cd web && npx tsc --noEmit -p . && npm run build && npm run check:size \
+  && npm run check:i18n && npm run check:flags && npm run check:attempt && npm run check:a11y \
+  && npm run check:money && npm run check:contrast && npm run check:tokens)
+```
+
+There is no browser accessibility run (axe) yet: axe-core is not installed
+(UX-35; `npm i -D axe-core @axe-core/playwright` needs the network).
+
+### Releasing and rolling back (not run from a laptop)
+
+Nothing is deployed from here (GOAL 12); this is how a release would go once
+the owner has AWS, as the committed workflow is written (since `faebae7`,
+R2-8; `docs/runbook.md` "Releasing and rolling back"):
+
+- A **release** is a commit on `main` whose `ci` run passed. A green `ci` run
+  on `main` deploys it to staging by itself; `deploy`'s first job, `gate`,
+  refuses any sha without a successful `ci` run on `main`.
+- **Prod:** GitHub → Actions → **deploy** → **Run workflow**, `env: prod`,
+  `release:` the sha staging runs (empty = the latest on `main`). With the
+  GitHub CLI: `gh workflow run deploy.yml -f env=prod -f release=<sha>`. The
+  prod environment asks a reviewer.
+- **Rollback:** the same with the previous release's sha,
+  `gh workflow run deploy.yml -f env=prod -f release=<previous sha>` (or
+  `env=staging`). Its images exist already, so only Terraform and the roll
+  run. The database is not rolled back, which is why every migration is
+  expand/contract (add, backfill in a later release, drop one release after
+  that).
+- The web's previous release stays readable for 30 days: `publish` no longer
+  deletes old hashed files, only those gone from the build and older than
+  30 days.
+- A release web build (`VITE_RELEASE=1`, set by the deploy) refuses to build
+  without `VITE_LEGAL_COMPANY`, `VITE_LEGAL_ADDRESS` and a valid
+  `VITE_LEGAL_EMAIL`, or with a malformed `VITE_ANDROID_SHA256` or
+  `VITE_APPLE_TEAM_ID`. To see the guard locally:
+  `cd web && VITE_RELEASE=1 npm run build` fails with "Release build
+  refused: …"; add `VITE_LEGAL_COMPANY=… VITE_LEGAL_ADDRESS=…
+  VITE_LEGAL_EMAIL=ops@example.com` and it builds. Do not commit such a
+  file.
 
 ## B9. Adding a feature
 
@@ -2069,7 +2296,8 @@ first real apply is the owner's decision.
 | What exists and its provider seams | `docs/FEATURES.md` |
 | AWS resources, local stack, kill switches | `docs/INFRA.md` |
 | Tables, events, personal data | `docs/DATA.md` |
-| Deploying and operating | `docs/runbook.md`, `docs/slo.md`, `docs/resilience.md` |
+| Deploying and operating | `docs/runbook.md` (releasing and rolling back, severity and on-call, a breach, a chargeback), `docs/slo.md`, `docs/resilience.md`, `docs/incidents/` (incident and postmortem templates) |
+| Colours, type, radii, motion, dark mode | `web/src/app/theme.css` (the tokens), `web/src/app/theme.ts` (Appearance), `web/scripts/check-tokens.ts`, `web/scripts/check-contrast.ts`; the design direction in `docs/research/2026-09-ui-ux-review.md` |
 | Store review notes | `docs/app-review.md` |
 | The web app: run, checks, what is stored on the device, languages, store shells | `web/README.md` (rewritten in `2257182`, GD-1) |
 | The API | `docs/api/*.json` |
