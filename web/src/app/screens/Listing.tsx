@@ -1,5 +1,6 @@
 import { lazy, Suspense, useMemo, useRef, useState, useEffect, type ReactNode } from 'react'
-import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
+import { useNav } from '../nav.ts'
+import { useParams, useSearchParams } from 'react-router-dom'
 import { NotFound } from './NotFound.tsx'
 import { useQueryClient } from '@tanstack/react-query'
 import type { Offer, Requirement, Review } from '../../domain/types.ts'
@@ -51,7 +52,7 @@ import {
 } from '../components/ui.tsx'
 import { cancelRate, day, formatDistance, policyInForce, policyLine, policyName, policyText, range, relative, responseRate, responseTime, time } from '../format.ts'
 import { useOnline } from '../components/Offline.tsx'
-import { t } from '../../i18n.ts'
+import { locale, t } from '../../i18n.ts'
 
 /** Stripe's card form, fetched only when a payment starts (S-15, V3-1). */
 const PayStep = lazy(() => import('../components/PayStep.tsx').then((m) => ({ default: m.PayStep })))
@@ -63,7 +64,7 @@ const QUANTITY_STEPS = [10, 25, 50, 100, 250, 500, 1000]
 export function Listing({ preview }: { preview?: { detail: ListingDetail; banner: ReactNode; address?: string; reviews?: Review[]; bookable: boolean } } = {}) {
   const { id } = useParams()
   const [params] = useSearchParams()
-  const nav = useNavigate()
+  const nav = useNav()
   const qc = useQueryClient()
   const { state } = useCappy()
   const toast = useToast()
@@ -361,7 +362,8 @@ export function Listing({ preview }: { preview?: { detail: ListingDetail; banner
                     >
                       {Object.keys(byDay).slice(0, 14).map((d) => (
                         <option key={d} value={d}>
-                          {d}
+                          {/* A list entry starts with a capital, as the chips do (V9-18). */}
+                          {d.charAt(0).toLocaleUpperCase(locale()) + d.slice(1)}
                         </option>
                       ))}
                     </select>
@@ -483,7 +485,7 @@ export function Listing({ preview }: { preview?: { detail: ListingDetail; banner
       {mine && !preview && (
         <div className="mt-6">
           <Banner
-            tone="warn"
+            tone="neutral"
             title={t('This is your listing')}
             body={t('You are seeing it the way a buyer would. Manage availability from the Earn tab.')}
             action={
@@ -761,7 +763,15 @@ export function Listing({ preview }: { preview?: { detail: ListingDetail; banner
               <Button block size="lg" disabled={sending || !online} onClick={() => void book()}>
                 {/* The final button must say it commits to paying (§312j BGB). */}
                 {/* The amount on the button (UX-23), the legal wording kept verbatim. */}
-                {sending ? t('Sending…') : quote ? `${t('Book and pay')} · ${formatMoney(quote.total, cur)}` : t('Book and pay')}
+                {/* It says what happens (UX-50): a request holds the amount, a
+                    booking pays it. German keeps the legal "zahlungspflichtig". */}
+                {sending
+                  ? t('Sending…')
+                  : !quote
+                    ? t('Book and pay')
+                    : listing.instantBook
+                      ? `${t('Book and pay')} · ${formatMoney(quote.total, cur)}`
+                      : t('Request · {amount} held', { amount: formatMoney(quote.total, cur) })}
               </Button>
               <Button block variant="quiet" onClick={() => setConfirming(false)}>
                 {t('Not yet')}
@@ -815,18 +825,20 @@ export function Listing({ preview }: { preview?: { detail: ListingDetail; banner
 
             {listing.instantBook ? (
               <Banner
-                tone="warn"
+                tone="neutral"
                 title={t('Instant book')}
                 body={t('Confirmed as soon as your card is held; {name} does not need to accept first.', { name: first })}
               />
             ) : (
               <Banner
-                tone="warn"
+                tone="neutral"
                 title={t('Nothing is charged yet')}
                 body={t('Your card is held for the total. {name} has to accept first; if they decline or do not answer, the hold is released.', { name: first })}
               />
             )}
-            <p className="t-sm text-[var(--ink-3)]">{t('Cancellation: {policy}', { policy: policyText(policy) })}</p>
+            {/* How it is paid, said before the button (UX-50); the cancellation
+                terms are the price summary's dated line, said once. */}
+            <Row label={t('Payment')} value={t('Card, on the next step')} />
             <TraderNote business={owner.business} />
           </div>
         )}

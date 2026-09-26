@@ -9,6 +9,7 @@ import {
   type TextareaHTMLAttributes,
 } from 'react'
 import { Link } from 'react-router-dom'
+import { useNav } from '../nav.ts'
 import { Icon, type IconName } from './Icon.tsx'
 import { anySheetOpen, sheetOpened } from '../sheets.ts'
 import { locale, t } from '../../i18n.ts'
@@ -141,7 +142,7 @@ export function Chip({
       onClick={onClick}
       aria-pressed={selected}
       aria-label={ariaLabel}
-      className={`press tap inline-flex min-h-[38px] shrink-0 items-center gap-1.5 rounded-[var(--radius-control)] border px-3.5 text-label font-medium ${TR}
+      className={`press tap inline-flex min-h-[38px] max-w-full shrink-0 items-center gap-1.5 rounded-[var(--radius-control)] border px-3.5 py-1 text-left text-label font-medium ${TR}
         ${
           selected
             ? 'border-[var(--field)] bg-[var(--field)] font-semibold text-[var(--on-field)]'
@@ -509,13 +510,20 @@ export function Sheet({
       if (e.key === 'Escape') close.current()
       // A sheet is modal: keyboard focus must not escape behind it.
       if (e.key === 'Tab' && panel.current) {
-        const f = panel.current.querySelectorAll<HTMLElement>(
-          'button:not([disabled]), [href], input, select, textarea, [tabindex]:not([tabindex="-1"])',
-        )
+        // Only what can take focus: the grabber is display:none on a dialog.
+        const f = [
+          ...panel.current.querySelectorAll<HTMLElement>(
+            'button:not([disabled]), [href], input, select, textarea, [tabindex]:not([tabindex="-1"])',
+          ),
+        ].filter((el) => el.getClientRects().length > 0)
         if (!f.length) return
         const first = f[0]
         const last = f[f.length - 1]
-        if (e.shiftKey && document.activeElement === first) {
+        // Focus outside the sheet (on the page behind, or the body) comes back in (V9-1).
+        if (!panel.current.contains(document.activeElement)) {
+          e.preventDefault()
+          ;(e.shiftKey ? last : first).focus()
+        } else if (e.shiftKey && document.activeElement === first) {
           e.preventDefault()
           last.focus()
         } else if (!e.shiftKey && document.activeElement === last) {
@@ -530,7 +538,6 @@ export function Sheet({
     const unstack = sheetOpened(() => close.current())
     const prev = document.body.style.overflow
     document.body.style.overflow = 'hidden'
-    panel.current?.querySelector<HTMLElement>('button, input, [tabindex]')?.focus()
     return () => {
       document.removeEventListener('keydown', onKey)
       unstack()
@@ -561,6 +568,21 @@ export function Sheet({
     const timer = setTimeout(() => setMounted(false), 400)
     return () => clearTimeout(timer)
   }, [leaving])
+
+  // The panel mounts a render after `open` flips (UX-9), so focus moves in here,
+  // once it exists: the first field if there is one, else the first control (V9-1).
+  useEffect(() => {
+    if (!open || !mounted || !panel.current) return
+    if (panel.current.contains(document.activeElement)) return
+    const p = panel.current
+    const shown = (sel: string) => [...p.querySelectorAll<HTMLElement>(sel)].find((el) => el.getClientRects().length > 0)
+    ;(shown('input:not([type=hidden]), select, textarea') ??
+      shown('[data-sheet-body] button:not([disabled]), [data-sheet-body] [href]') ??
+      shown('button:not([disabled])'))?.focus()
+    // A sheet shorter than the medium height has one height only (V9-20).
+    setResizable(p.scrollHeight > window.innerHeight * 0.55)
+  }, [open, mounted])
+  const [resizable, setResizable] = useState(true)
 
   if (!mounted) return null
 
@@ -617,15 +639,21 @@ export function Sheet({
             medium height, up to grow; it is also a button, so the height can
             be changed without a gesture. Not on a dialog. */}
         <div onPointerDown={onDown} onPointerMove={onMove} onPointerUp={onUp} onPointerCancel={onUp} className="touch-none md:touch-auto">
-        <button
-          type="button"
-          data-no-drag
-          onClick={() => setDetent((d) => (d === 'large' ? 'medium' : 'large'))}
-          aria-label={detent === 'large' ? t('Make the sheet smaller') : t('Make the sheet bigger')}
-          className="tap mx-auto mt-1 flex h-6 w-16 items-center justify-center md:hidden"
-        >
-          <span aria-hidden="true" className="h-[5px] w-9 rounded-full bg-[var(--line-strong)] opacity-60" />
-        </button>
+        {resizable ? (
+          <button
+            type="button"
+            data-no-drag
+            onClick={() => setDetent((d) => (d === 'large' ? 'medium' : 'large'))}
+            aria-label={detent === 'large' ? t('Make the sheet smaller') : t('Make the sheet bigger')}
+            className="tap mx-auto mt-1 flex h-6 w-16 items-center justify-center md:hidden"
+          >
+            <span aria-hidden="true" className="h-[5px] w-9 rounded-full bg-[var(--line-strong)] opacity-60" />
+          </button>
+        ) : (
+          <span aria-hidden="true" className="mx-auto mt-1 flex h-6 w-16 items-center justify-center md:hidden">
+            <span className="h-[5px] w-9 rounded-full bg-[var(--line-strong)] opacity-60" />
+          </span>
+        )}
         <div className="flex items-center justify-between gap-3 border-b border-[var(--line)] px-5 pb-4 pt-3 md:pt-5">
           <h2 id={titleId} className="t-title-m min-w-0">
             {title}
@@ -640,7 +668,7 @@ export function Sheet({
           </button>
         </div>
         </div>
-        <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-5 pb-2 pt-5">{children}</div>
+        <div data-sheet-body className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-5 pb-2 pt-5">{children}</div>
         {footer && (
           <div
             className="border-t border-[var(--line)] px-5 pt-4"
@@ -701,12 +729,14 @@ export function Banner({
   body,
   action,
 }: {
-  tone: 'accent' | 'success' | 'warn' | 'danger'
+  tone: 'accent' | 'success' | 'warn' | 'danger' | 'neutral'
   title: string
   body?: ReactNode
   action?: ReactNode
 }) {
   const map = {
+    // Reassurance, not a warning (UX-50): calm ink and a shield.
+    neutral: { bg: 'border-[var(--line-strong)]', fg: 'text-[var(--ink)]', icon: 'shield' },
     accent: { bg: 'border-[var(--accent)]', fg: 'text-[var(--accent-text)]', icon: 'info' },
     success: { bg: 'border-[var(--success)]', fg: 'text-[var(--success-text)]', icon: 'check' },
     warn: { bg: 'border-[var(--warn)]', fg: 'text-[var(--warn)]', icon: 'info' },
@@ -792,5 +822,31 @@ export function Toast({ message, tone = 'ok', onDone }: { message: string; tone?
         {message}
       </div>
     </div>
+  )
+}
+
+/** A real link (an address on hover, open in a new tab, announced as a link)
+ *  whose plain tap still runs the app's own transition (V9-16). */
+export function TapLink({
+  to,
+  className,
+  children,
+  ...rest
+}: { to: string; className?: string; children: ReactNode } & Omit<React.AnchorHTMLAttributes<HTMLAnchorElement>, 'href'>) {
+  const nav = useNav()
+  return (
+    <a
+      {...rest}
+      href={to}
+      className={className}
+      onClick={(e) => {
+        rest.onClick?.(e)
+        if (e.defaultPrevented || e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return
+        e.preventDefault()
+        nav(to)
+      }}
+    >
+      {children}
+    </a>
   )
 }

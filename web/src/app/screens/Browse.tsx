@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
-import { Link, useNavigate, useSearchParams } from 'react-router-dom'
+import { useNav } from '../nav.ts'
+import { Link, useSearchParams } from 'react-router-dom'
 import { rating } from '../../domain/types.ts'
 import { CATEGORIES, GROUPS, categoriesIn, category, durationLabel } from '../../domain/categories.ts'
 import type { SortKey } from '../../domain/match.ts'
@@ -22,7 +23,7 @@ import { Photo, PhotoGrid, SaveButton, WhenChip } from '../components/Photo.tsx'
 import { LocationPicker } from '../components/LocationPicker.tsx'
 import { distanceKm } from '../../domain/match.ts'
 import { CapacityMap, type MapLevel } from '../components/CapacityMap.tsx'
-import { Banner, Button, Chip, EmptyState, oneDecimal, Sheet, Skeleton } from '../components/ui.tsx'
+import { Banner, Button, Chip, EmptyState, oneDecimal, Sheet, Skeleton, TapLink } from '../components/ui.tsx'
 import { dayShort, formatDistance, formatRadius, relative, time, when } from '../format.ts'
 import { plural, t } from '../../i18n.ts'
 
@@ -35,7 +36,7 @@ const SORTS: SortKey[] = ['best', 'price', 'soonest', 'nearest']
 const QUANTITIES = [10, 50, 200, 500]
 
 export function Browse() {
-  const nav = useNavigate()
+  const nav = useNav()
   const { state, send } = useCappy()
   const ME = useMe()
   const [filtersOpen, setFiltersOpen] = useState(false)
@@ -221,8 +222,8 @@ export function Browse() {
                 {queryHits.map(({ listing: l, owner: o }) => {
                   return (
                     <li key={l.id}>
-                      <button
-                        onClick={() => nav(`/listing/${l.id}`)}
+                      <TapLink
+                        to={`/listing/${l.id}`}
                         className="flex w-full items-center gap-4 py-4 text-left transition-opacity duration-[var(--dur-short)] hover:opacity-70"
                       >
                         <Photo
@@ -250,7 +251,7 @@ export function Browse() {
                           size={18}
                           className="shrink-0 text-[var(--ink-4)]"
                         />
-                      </button>
+                      </TapLink>
                     </li>
                   )
                 })}
@@ -284,7 +285,17 @@ export function Browse() {
               aside={spotlight.length > 0 ? String(spotlight.length) : undefined}
               className="mt-7"
             />
-            {spotlight.length === 0 ? (
+            {spotQ.isPending ? (
+              // Until the first answer: the rail's shape, never a false "nothing free" (V9-2).
+              <div className="space-y-3" role="status" aria-label={t('Loading')}>
+                <Skeleton className="aspect-[16/9] w-full rounded-[var(--radius-m)]" />
+                <div className="grid grid-cols-2 gap-3 md:grid-cols-3">
+                  <Skeleton className="aspect-[4/3] w-full rounded-[var(--radius-m)]" />
+                  <Skeleton className="aspect-[4/3] w-full rounded-[var(--radius-m)]" />
+                  <Skeleton className="hidden aspect-[4/3] w-full rounded-[var(--radius-m)] md:block" />
+                </div>
+              </div>
+            ) : spotlight.length === 0 ? (
               <EmptyState
                 icon="clock"
                 title={t('Nothing free nearby today')}
@@ -304,7 +315,7 @@ export function Browse() {
                     boxes gives a screen nothing to look at first. */}
                 <FeatureCard
                   spot={spotlight[0]}
-                  onOpen={() => nav(`/listing/${spotlight[0].listing.id}`)}
+                  to={`/listing/${spotlight[0].listing.id}`}
                 />
                 {spotlight.length > 1 && (
                   <ul className="rail mt-8 pb-2 md:m-0 md:mt-10 md:grid md:grid-cols-4 md:gap-6 md:p-0">
@@ -312,7 +323,7 @@ export function Browse() {
                       <li key={s.listing.id} className="md:w-auto">
                         <SpotCard
                           spot={s}
-                          onOpen={() => nav(`/listing/${s.listing.id}`)}
+                          to={`/listing/${s.listing.id}`}
                         />
                       </li>
                     ))}
@@ -389,10 +400,19 @@ export function Browse() {
                 {' · '}
                 {formatRadius(search.maxDistanceKm)}
               </Chip>
+              {/* The chosen day stays in view and comes off in one tap (UX-55). */}
+              {search.day && (
+                <Chip selected onClick={() => send({ type: 'SEARCH_CHANGED', patch: { day: null, from: null } })}>
+                  {nextDays(14).find((d) => d.value === search.day)?.label ?? search.day}
+                  {search.from !== null ? ` · ${t('from {time}', { time: time(new Date(2000, 0, 1, search.from).toISOString()) })}` : ''}
+                  <Icon name="close" size={14} strokeWidth={2.4} />
+                </Chip>
+              )}
             </div>
 
             {matches && matches.length > 0 && (
-              <div className="flex items-center justify-between gap-3 border-t border-[var(--line)] py-3">
+              // Wraps at 200 % text instead of pushing Sort off the screen.
+              <div className="flex flex-wrap items-center justify-between gap-3 border-t border-[var(--line)] py-3">
                 <p className="t-sm text-[var(--ink-3)]">
                   <span className="tnum font-semibold text-[var(--ink)]">{matches.length}</span>{' '}
                   {matches.length === 1 ? t('bookable slot') : t('bookable slots')}
@@ -402,7 +422,7 @@ export function Browse() {
                     {t('How results are ordered')}
                   </Link>
                 </p>
-                <div className="flex items-center gap-2">
+                <div className="flex max-w-full flex-wrap items-center gap-2">
                   {/* A map answers "which of these is nearest", which is only a
                       question once there are results, so it lives here, not on
                       the way in. */}
@@ -501,7 +521,7 @@ export function Browse() {
                       owner={owner}
                       match={m}
                       rank={sort === 'best' ? i : undefined}
-                      onOpen={() => nav(`/listing/${m.listingId}?slot=${m.slotId}`)}
+                      to={`/listing/${m.listingId}?slot=${m.slotId}`}
                     />
                   </li>
                 ))}
@@ -524,7 +544,7 @@ export function Browse() {
         <div className="space-y-7 pb-4">
           {/* When (UX-15): a day and a start hour, so "Saturday at 10:00" is a
               search, not a scroll through every window. */}
-          <FilterGroup label={t('When?')}>
+          <FilterGroup label={t('When?')} strip>
             <Chip selected={!search.day} onClick={() => send({ type: 'SEARCH_CHANGED', patch: { day: null, from: null } })}>
               {t('Any time')}
             </Chip>
@@ -584,7 +604,8 @@ export function Browse() {
             ))}
           </FilterGroup>
 
-          <FilterGroup label={t('Needed within')}>
+          {/* A picked day already says when; the horizon only matters without one (UX-55). */}
+          {!search.day && <FilterGroup label={t('Needed within')}>
             {HORIZONS.map((d) => (
               <Chip
                 key={d}
@@ -594,7 +615,7 @@ export function Browse() {
                 {d === 1 ? t('24 hours') : plural(d, '{n} day', '{n} days')}
               </Chip>
             ))}
-          </FilterGroup>
+          </FilterGroup>}
 
           {matches && matches.length > 0 && (
             <p className="t-sm text-[var(--ink-4)]">{t('Soonest right now is {when}.', { when: when(matches[0].match.start) })}</p>
@@ -687,11 +708,13 @@ function useSearchInUrl() {
 }
 
 /** A labelled row of chips in the filter sheet. */
-function FilterGroup({ label, children }: { label: string; children: ReactNode }) {
+function FilterGroup({ label, children, strip = false }: { label: string; children: ReactNode; strip?: boolean }) {
   return (
     <div>
       <p className="t-h4 mb-3">{label}</p>
-      <div className="flex flex-wrap gap-2">{children}</div>
+      {/* A long run of options scrolls sideways as one row rather than wrapping
+          into a wall of chips (UX-55). */}
+      <div className={strip ? 'no-scrollbar -mx-5 flex gap-2 overflow-x-auto px-5' : 'flex flex-wrap gap-2'}>{children}</div>
     </div>
   )
 }
@@ -700,7 +723,7 @@ function FilterGroup({ label, children }: { label: string; children: ReactNode }
  * The lead item. A tall plate at full width with the opening time set across
  * it, and the details below in a single line of small type.
  */
-function FeatureCard({ spot, onOpen }: { spot: Spotlight; onOpen: () => void }) {
+function FeatureCard({ spot, to }: { spot: Spotlight; to: string }) {
   return (
     // A card with a heart on it: the title is the one button, stretched over
     // the whole card, and the heart sits above it (never a button in a button).
@@ -728,9 +751,9 @@ function FeatureCard({ spot, onOpen }: { spot: Spotlight; onOpen: () => void }) 
       </Photo>
       {/* On a phone this sits under the photograph. On a page it sits beside it. */}
       <span className="mt-5 block md:mt-0 md:pb-2">
-        <button onClick={onOpen} className="t-title-user block text-balance text-left after:absolute after:inset-0 after:content-['']">
+        <TapLink to={to} className="t-title-user block text-balance text-left after:absolute after:inset-0 after:content-['']">
           {spot.listing.title}
-        </button>
+        </TapLink>
         <span className="t-sm mt-2 hidden text-[var(--ink-3)] md:block">
           {spot.listing.blurb}
         </span>
@@ -749,7 +772,7 @@ function FeatureCard({ spot, onOpen }: { spot: Spotlight; onOpen: () => void }) 
 }
 
 /** One thing that is free soon: what it is, when, and what it costs. */
-function SpotCard({ spot, onOpen }: { spot: Spotlight; onOpen: () => void }) {
+function SpotCard({ spot, to }: { spot: Spotlight; to: string }) {
   return (
     <div className="group relative w-[188px] text-left transition-opacity duration-[var(--dur-short)] hover:opacity-75 md:w-full">
       <Photo
@@ -766,12 +789,12 @@ function SpotCard({ spot, onOpen }: { spot: Spotlight; onOpen: () => void }) {
         <SaveButton id={spot.listing.id} title={spot.listing.title} />
       </Photo>
       <span className="block pt-3">
-        <button
-          onClick={onOpen}
+        <TapLink
+          to={to}
           className="line-clamp-2 block min-h-[40px] text-left text-body font-semibold leading-[1.25rem] after:absolute after:inset-0 after:content-['']"
         >
           {spot.listing.title}
-        </button>
+        </TapLink>
         <span className="mt-1.5 flex items-baseline justify-between gap-2">
           <span className="t-sm tnum min-w-0 truncate text-[var(--ink-4)]">
             {/* Trust at a glance, before anyone opens the listing. */}

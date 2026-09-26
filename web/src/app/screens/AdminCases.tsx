@@ -75,9 +75,12 @@ const reasonLabel = (c?: string) => t(REASON_CODES.find(([k]) => k === c)?.[1] ?
 export function Person({ id }: { id?: string }) {
   const p = useOwner(id)
   if (!id) return null
-  return <>{p.data?.name ?? `${id.slice(0, 8)}…`}</>
+  // While it loads, a skeleton word, never an id (V9-12); an unreadable profile says so.
+  if (p.isPending) return <span className="skeleton inline-block h-[1em] w-20 rounded-[var(--radius-xs)] align-middle" aria-label={t('Loading')} />
+  return <>{p.data?.name ?? t('Former member')}</>
 }
-const staff = (id: string, me?: string) => (id === me ? t('you') : `${t('staff')} ${id.slice(0, 8)}`)
+// Colleagues by role, never by id prefix (V9-12); the audit log names them when it can.
+const staff = (id: string, me?: string) => (id === me ? t('you') : t('another staff member'))
 
 const REFRESH = ['adminResolutions', 'adminCases', 'adminCase', 'audit']
 
@@ -114,7 +117,7 @@ function actorLabel(e: CaseView['timeline'][number], c: CaseView, me?: string): 
   if (e.by === c.requesterId) return t('renter')
   if (e.by === c.ownerId) return t('owner')
   if (e.actorKind === 'staff') return staff(e.by, me)
-  return e.actorKind === 'person' ? `${e.by.slice(0, 8)}…` : t('Cappy (automatic)')
+  return e.actorKind === 'person' ? t('someone') : t('Cappy (automatic)')
 }
 
 /** "12,00 €" typed as text → minor units; null when it is not a number. */
@@ -264,7 +267,7 @@ export function Approvals() {
           {messageOf(pending.error)}
         </p>
       ) : items.length === 0 ? (
-        <p className="t-sm text-[var(--ink-3)]">{t('Nothing waiting.')}</p>
+        <p className="t-sm py-4 text-[var(--ink-3)]">{t('Nothing waiting.')}</p>
       ) : (
         <ul className="space-y-3">
           {items.map((r) => (
@@ -594,12 +597,25 @@ export function AdminCase() {
       <SectionHead title={t('Timeline')} className="mt-7" />
       <Card className="p-5">
         <ol className="space-y-2">
-          {c.timeline.map((e, i) => (
-            <li key={i} className="t-sm text-[var(--ink-2)]">
-              <span className="tnum text-[var(--ink-4)]">{when(e.at)}</span> · {e.fromStatus ? `${statusLabel(e.fromStatus)} → ` : ''}
-              {statusLabel(e.toStatus)} · {actorLabel(e, c, me)}
-            </li>
-          ))}
+          {/* Status steps and the claims' own moments, in time order (V9-13). */}
+          {[
+            ...c.timeline.map((e) => ({
+              at: e.at,
+              text: `${e.fromStatus ? `${statusLabel(e.fromStatus)} → ` : ''}${statusLabel(e.toStatus)} · ${actorLabel(e, c, me)}`,
+            })),
+            ...c.claims.flatMap((cl) => [
+              { at: cl.createdAt, text: `${t('Late return reported: {n} minutes', { n: cl.minutesLate })} · ${t('Owner')}` },
+              ...(cl.decidedAt
+                ? [{ at: cl.decidedAt, text: `${cl.status === 'confirmed' ? t('Claim confirmed') : t('Claim rejected')} · ${staff(cl.decidedBy ?? '', me)}` }]
+                : []),
+            ]),
+          ]
+            .sort((x, y) => Date.parse(x.at) - Date.parse(y.at))
+            .map((e, i) => (
+              <li key={i} className="t-sm text-[var(--ink-2)]">
+                <span className="tnum text-[var(--ink-4)]">{when(e.at)}</span> · {e.text}
+              </li>
+            ))}
         </ol>
       </Card>
 

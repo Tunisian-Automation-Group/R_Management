@@ -1,5 +1,5 @@
 import { BrowserRouter, Navigate, Route, Routes, useLocation, useSearchParams } from 'react-router-dom'
-import { lazy, Suspense, useEffect, type ComponentType } from 'react'
+import { lazy, Suspense, useEffect, useRef, useState, type ComponentType } from 'react'
 import { QueryClientProvider } from '@tanstack/react-query'
 import { AppProvider, useCappy } from './store.tsx'
 import { APP_VERSION, queryClient, useAppConfig, useBookings, useInbox, useMeQuery, useNotices, versionBelow } from '../data/repo.ts'
@@ -27,6 +27,7 @@ const page = <K extends string>(load: () => Promise<Record<K, ComponentType>>, n
 const Help = page(() => import('./screens/Help.tsx'), 'Help')
 const Notifications = page(() => import('./screens/Notifications.tsx'), 'Notifications')
 const Inbox = page(() => import('./screens/Inbox.tsx'), 'Inbox')
+const Thread = page(() => import('./screens/Inbox.tsx'), 'Thread')
 const Earn = page(() => import('./screens/Earn.tsx'), 'Earn')
 const AddListing = page(() => import('./screens/AddListing.tsx'), 'AddListing')
 const Profile = page(() => import('./screens/Profile.tsx'), 'Profile')
@@ -150,6 +151,7 @@ function Member() {
         {t('Skip to content')}
       </a>
       <OfflineBar />
+      <RouteAnnouncer />
       <Dock badges={badges} />
       <Suspense fallback={null}>
       {needsProfile ? (
@@ -170,6 +172,7 @@ function Member() {
           <Route path="/help/:topic" element={<Help />} />
           <Route path="/notifications" element={<Notifications />} />
           <Route path="/inbox" element={<Inbox />} />
+          <Route path="/inbox/:id" element={<Thread />} />
           <Route path="/legal/:page" element={<Legal />} />
           <Route path="/account/delete" element={<AccountDeletion />} />
           <Route path="/admin" element={<Admin />} />
@@ -230,6 +233,43 @@ function StoreLinks() {
     <a href={url} className="mt-6 inline-flex rounded-[var(--radius-control)] bg-[var(--field)] px-5 py-3 font-semibold text-[var(--on-field)]">
       {t('Update now')}
     </a>
+  )
+}
+
+/** Screen readers hear where they are after every route change, and keyboard
+ *  focus starts at the new screen's heading, not the old link (UX-57). The
+ *  first load is left alone: the browser announces the page itself. */
+function RouteAnnouncer() {
+  const { pathname } = useLocation()
+  const [said, setSaid] = useState('')
+  const first = useRef(true)
+  useEffect(() => {
+    if (first.current) {
+      first.current = false
+      return
+    }
+    let frame = 0
+    let tries = 0
+    // Screens load lazily: wait for the new heading, a few frames at most.
+    const look = () => {
+      const h1 = document.querySelector<HTMLElement>('#main h1, main h1')
+      if (!h1 && tries++ < 60) {
+        frame = requestAnimationFrame(look)
+        return
+      }
+      if (h1 && !h1.closest('[role=dialog]') && !document.activeElement?.matches('input, textarea, select')) {
+        h1.tabIndex = -1
+        h1.focus({ preventScroll: true })
+      }
+      setSaid(document.title.replace(/ · Cappy$/, ''))
+    }
+    frame = requestAnimationFrame(look)
+    return () => cancelAnimationFrame(frame)
+  }, [pathname])
+  return (
+    <p role="status" aria-live="polite" className="sr-only">
+      {said}
+    </p>
   )
 }
 

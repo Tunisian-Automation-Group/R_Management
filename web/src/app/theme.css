@@ -376,7 +376,8 @@
 
 /* In dark, Bodoni only from 34 px: its hairlines break up below ("yet" read
    as "yct"). The 28 px titles take Archivo 600 there. */
-:root[data-theme='dark'] .t-h2 {
+/* The wordmark is a brand mark, not a title: it keeps its face in every theme (V9-8). */
+:root[data-theme='dark'] .t-h2:not(.wordmark) {
   font-family: var(--font-sans);
   font-variation-settings: 'wdth' 100;
   font-weight: 600;
@@ -869,6 +870,11 @@ body {
     border-radius: 2px;
   }
   *:focus:not(:focus-visible) {
+    outline: none;
+  }
+  /* A heading that receives focus on a route change is a reading position,
+     not a control: no ring (UX-57). */
+  h1[tabindex='-1']:focus {
     outline: none;
   }
 }

@@ -44,7 +44,7 @@ export const dayShort = (iso: string) => {
 }
 
 /** "today 18:00" / "Thursday 06:00" */
-export const when = (iso: string) => `${day(iso)} ${time(iso)}`
+export const when = (iso: string) => `${day(iso)}, ${time(iso)}`
 
 /** "today, 18:00 – 20:00", one date when the window does not cross midnight. */
 export function range(startIso: string, endIso: string): string {

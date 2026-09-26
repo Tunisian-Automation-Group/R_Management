@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
-import { Link, useNavigate } from 'react-router-dom'
+import { useNav } from '../nav.ts'
+import { Link } from 'react-router-dom'
 import { useQueryClient } from '@tanstack/react-query'
 import { formatMoney } from '../../domain/money.ts'
 import { PLATFORM_FEE_BPS, moved } from '../../domain/pricing.ts'
@@ -38,7 +39,7 @@ import { canOpenSettings, enablePush, isNative, openAppSettings, pushPermission,
 
 
 export function Profile() {
-  const nav = useNavigate()
+  const nav = useNav()
   const qc = useQueryClient()
   const session = useSession()
   const authReady = useAuthReady()
@@ -383,7 +384,7 @@ function EditProfile({ open, onClose, you }: { open: boolean; onClose: () => voi
 }
 
 function DeleteAccount({ open, onClose }: { open: boolean; onClose: () => void }) {
-  const nav = useNavigate()
+  const nav = useNav()
   const qc = useQueryClient()
   const toast = useToast()
   const [busy, setBusy] = useState(false)
@@ -521,7 +522,7 @@ function BlockedRow({ sub, onUnblock }: { sub: string; onUnblock: () => void }) 
 /** Every device this account is signed in on, at once (U-35): a lost phone. */
 function SignOutEverywhere() {
   const qc = useQueryClient()
-  const nav = useNavigate()
+  const nav = useNav()
   const toast = useToast()
   const [asking, setAsking] = useState(false)
   return (

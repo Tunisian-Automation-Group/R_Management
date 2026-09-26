@@ -67,37 +67,46 @@ export function Gallery({
         </span>
       )}
 
-      {/* Wide: a mosaic, the first photo large. */}
-      <div className={`hidden gap-2 md:grid ${photos.length > 1 ? 'md:grid-cols-[2fr_1fr_1fr] md:grid-rows-2' : 'md:grid-cols-1'}`}>
-        {photos.slice(0, 5).map((src, i) => (
-          <button
-            key={src + i}
-            type="button"
-            onClick={() => setOpen(i)}
-            aria-label={t('Open {what}', { what: alt(i) })}
-            className={`press-soft block w-full overflow-hidden ${i === 0 ? 'md:row-span-2 rounded-l-[var(--sheet-radius)]' : ''} ${
-              photos.length === 1 ? 'rounded-[var(--sheet-radius)]' : ''
-            } ${i === 2 ? 'rounded-tr-[var(--sheet-radius)]' : ''} ${i === 4 || (i === 2 && photos.length === 3) ? 'rounded-br-[var(--sheet-radius)]' : ''}`}
-          >
-            <Photo
-              src={src}
-              meta={meta?.[i]}
-              alt={alt(i)}
-              categoryId={categoryId}
-              aspect={i === 0 ? (photos.length > 1 ? 4 / 3 : 16 / 10) : 4 / 3}
-              priority={i === 0}
-              width={i === 0 ? 1100 : 400}
-              sizes={i === 0 ? '(min-width: 768px) 60vw, 100vw' : '20vw'}
-              className="h-full w-full"
-            />
-          </button>
-        ))}
-        {photos.length > 5 && (
-          <button type="button" onClick={() => setOpen(0)} className="glass glass-strong absolute bottom-4 right-4 rounded-[var(--radius-s)] px-3.5 py-2 text-label font-semibold">
-            {t('Show all {n} photos', { n: photos.length })}
-          </button>
-        )}
-      </div>
+      {/* Wide: a mosaic laid out for the number of photos, so no cell is ever
+          empty (V9-6): 1 full, 2 halves, 3 and 5 a large photo with a column or
+          a 2×2 beside it, 4 a large photo with three stacked. */}
+      {(() => {
+        const n = Math.min(photos.length, 5)
+        const grid =
+          n === 1 ? 'md:grid-cols-1' : n === 2 ? 'md:grid-cols-2' : n === 3 ? 'md:grid-cols-[2fr_1fr] md:grid-rows-2' : n === 4 ? 'md:grid-cols-[2fr_1fr] md:grid-rows-3' : 'md:grid-cols-[2fr_1fr_1fr] md:grid-rows-2'
+        const big = n === 3 || n === 5 ? 'md:row-span-2' : n === 4 ? 'md:row-span-3' : ''
+        const small = n === 4 ? 2 : 4 / 3
+        return (
+          <div className={`relative hidden gap-2 overflow-hidden rounded-[var(--sheet-radius)] md:grid ${grid}`}>
+            {photos.slice(0, n).map((src, i) => (
+              <button
+                key={src + i}
+                type="button"
+                onClick={() => setOpen(i)}
+                aria-label={t('Open {what}', { what: alt(i) })}
+                className={`press-soft block w-full overflow-hidden ${i === 0 ? big : ''}`}
+              >
+                <Photo
+                  src={src}
+                  meta={meta?.[i]}
+                  alt={alt(i)}
+                  categoryId={categoryId}
+                  aspect={n === 1 ? 16 / 10 : i === 0 || n === 2 ? 4 / 3 : small}
+                  priority={i === 0}
+                  width={i === 0 || n === 2 ? 1100 : 400}
+                  sizes={i === 0 || n === 2 ? '(min-width: 768px) 60vw, 100vw' : '20vw'}
+                  className="h-full w-full"
+                />
+              </button>
+            ))}
+            {photos.length > 1 && (
+              <button type="button" onClick={() => setOpen(0)} className="glass glass-strong absolute bottom-4 right-4 rounded-[var(--radius-s)] px-3.5 py-2 text-label font-semibold">
+                {t('Show all {n} photos', { n: photos.length })}
+              </button>
+            )}
+          </div>
+        )
+      })()}
       {overlay}
       {open !== null && <Viewer photos={photos} alt={alt} start={open} onClose={() => setOpen(null)} />}
     </div>

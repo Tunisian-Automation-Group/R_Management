@@ -22,13 +22,16 @@ const listeners = new Set<() => void>()
 
 const isDark = () => current === 'dark' || (current === 'system' && !!media?.matches)
 
-function apply(): void {
+function apply(tries = 0): void {
   const dark = isDark()
   const theme = dark ? 'dark' : 'light'
   document.documentElement.dataset.theme = theme
   // The browser chrome and status bar take the page colour of the theme.
+  // The stylesheet may not be there yet (the dev server injects CSS late):
+  // try again on the next frames rather than writing an empty colour (V9-10).
   const page = getComputedStyle(document.documentElement).getPropertyValue('--page').trim()
-  document.querySelector('meta[name="theme-color"]')?.setAttribute('content', page)
+  if (page) document.querySelector('meta[name="theme-color"]')?.setAttribute('content', page)
+  else if (tries < 30) requestAnimationFrame(() => apply(tries + 1))
   document.querySelector('meta[name="color-scheme"]')?.setAttribute('content', theme)
 }
 
@@ -47,7 +50,9 @@ export function setAppearance(next: Appearance): void {
  *  in 150 ms where the browser can (none under reduced motion). Returns the
  *  new choice so the caller can say it. */
 export function toggleTheme(): Appearance {
-  const next: Appearance = current === 'light' ? 'dark' : current === 'dark' ? 'system' : 'light'
+  // One tap flips what is on screen, exactly as the label says; System lives
+  // in Appearance (V9-9).
+  const next: Appearance = isDark() ? 'light' : 'dark'
   const quiet = matchMedia('(prefers-reduced-motion: reduce)').matches
   const doc = document as Document & { startViewTransition?: (fn: () => void) => unknown }
   if (doc.startViewTransition && !quiet) {

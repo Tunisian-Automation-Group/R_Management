@@ -1,4 +1,5 @@
-import { useNavigate, useSearchParams } from 'react-router-dom'
+import { useSearchParams } from 'react-router-dom'
+import { useNav } from '../nav.ts'
 import type { Booking, BookingStatus } from '../../domain/types.ts'
 import { formatMoney } from '../../domain/money.ts'
 import { moved } from '../../domain/pricing.ts'
@@ -67,7 +68,7 @@ function nextUp(all: Booking[], hosting: boolean): { booking: Booking; action: s
 const byStart = (a: Booking, b: Booking) => Date.parse(a.match.start) - Date.parse(b.match.start)
 
 export function Bookings() {
-  const nav = useNavigate()
+  const nav = useNav()
   const session = useSession()
   const authReady = useAuthReady()
   const [params, setParams] = useSearchParams()
@@ -149,6 +150,8 @@ export function Bookings() {
             alt=""
             categoryId={next.booking.requirement.category}
             aspect={1}
+            thumb
+            width={64}
             className="w-[64px] shrink-0 rounded-[var(--radius-m)]"
           />
           <div className="min-w-0 flex-1">
@@ -209,7 +212,11 @@ function BookingRow({ booking, hosting, onOpen }: { booking: Booking; hosting: b
       ? { label: t('Needs your answer'), tone: 'accent' as const }
       : hosting && booking.status === 'completed'
         ? { label: booking.outcome ? t('Rated') : t('Finished'), tone: 'neutral' as const }
-        : statusPill(booking.status, Boolean(booking.outcome))
+        : booking.noShow
+          ? { label: t('No-show'), tone: 'neutral' as const }
+          : booking.status === 'declined' && SYSTEM_DECLINES.has(booking.declineReasonCode ?? '')
+            ? { label: t('Could not go ahead'), tone: 'neutral' as const }
+            : statusPill(booking.status, Boolean(booking.outcome))
   const dim = !LIVE.includes(booking.status) && booking.status !== 'completed'
   // What it looked like when it was booked, even if the listing has changed since.
   const title = booking.listing?.title ?? t('Listing removed')
@@ -236,9 +243,16 @@ function BookingRow({ booking, hosting, onOpen }: { booking: Booking; hosting: b
           <span className={`truncate text-body font-semibold ${dim ? 'text-[var(--ink-3)]' : ''}`}>
             {title}
           </span>
-          <span className="tnum shrink-0 text-body font-bold">
-            {formatMoney(amountOf(booking, hosting), booking.currency ?? booking.match.quote.currency)}
-          </span>
+          {amountOf(booking, hosting) === null ? (
+            // Nothing stayed: say so rather than show a price nobody paid (V9-14).
+            <span className="shrink-0 text-label font-semibold text-[var(--ink-3)]">
+              {booking.charged ? t('Refunded') : t('Nothing charged')}
+            </span>
+          ) : (
+            <span className="tnum shrink-0 text-body font-bold">
+              {formatMoney(amountOf(booking, hosting)!, booking.currency ?? booking.match.quote.currency)}
+            </span>
+          )}
         </span>
         <span className="t-sm mt-0.5 block truncate text-[var(--ink-3)]">{ownerName}</span>
         <span className="t-sm tnum mt-0.5 block truncate text-[var(--ink-3)]">
@@ -254,10 +268,15 @@ function BookingRow({ booking, hosting, onOpen }: { booking: Booking; hosting: b
 
 /** The price, or once money came back (a refund, a partial settlement) what
  *  really stayed: the renter's net cost, the owner's share of it (V7-3). */
-function amountOf(b: Booking, hosting: boolean): number {
+function amountOf(b: Booking, hosting: boolean): number | null {
+  // Ended without money staying (declined, lapsed, failed, fully refunded): no price (V9-14).
+  if (ENDED_EMPTY.has(b.status) && !b.charged) return null
   if (b.charged === undefined && b.refundAmount === undefined && b.noShow !== 'renter') return hosting ? b.match.quote.ownerNet : b.match.quote.total
   const m = moved(b)
-  // Everything back (or nothing taken): the price, as for any ended booking; its status says the rest.
-  if (m.charged - m.refunded <= 0) return hosting ? b.match.quote.ownerNet : b.match.quote.total
+  if (m.charged - m.refunded <= 0) return LIVE.includes(b.status) ? (hosting ? b.match.quote.ownerNet : b.match.quote.total) : null
   return hosting ? m.ownerNet : m.charged - m.refunded
 }
+
+const ENDED_EMPTY = new Set<BookingStatus>(['declined', 'expired', 'payment_failed', 'cancelled'])
+// Declines nobody made: the listing or the booking it extended went away (V8-17).
+const SYSTEM_DECLINES = new Set(['taken_down', 'owner_removed', 'suspended', 'parent_cancelled'])

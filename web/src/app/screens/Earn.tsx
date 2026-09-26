@@ -1,5 +1,6 @@
 import { useState } from 'react'
-import { useNavigate, useSearchParams } from 'react-router-dom'
+import { useNav } from '../nav.ts'
+import { useSearchParams } from 'react-router-dom'
 import { useQueries, useQueryClient } from '@tanstack/react-query'
 import type { Booking, Listing, Owner, Slot } from '../../domain/types.ts'
 import { durationLabel } from '../../domain/categories.ts'
@@ -38,7 +39,7 @@ function serviceDates(start: string, end?: string): string {
 }
 
 export function Earn() {
-  const nav = useNavigate()
+  const nav = useNav()
   const [params] = useSearchParams()
   const qc = useQueryClient()
   const toast = useToast()
@@ -207,7 +208,7 @@ export function Earn() {
           </Card>
         ) : (
           <ul className="space-y-3">
-            {requests.map((b) => {
+            {requests.map((b, i) => {
               const who = askerOf(b)
               return (
                 <li key={b.id}>
@@ -222,7 +223,10 @@ export function Earn() {
                           <p className="t-sm text-[var(--ink-3)]">{renterRecord(who.renterRatingSum, who.renterJobs)}</p>
                         )}
                         <p className="t-sm text-[var(--ink-3)]">
-                          {t('wants {what}', { what: b.listing?.title ?? t('your listing') })} ·{' '}
+                          {b.extendsId
+                            ? t('wants to extend {what}', { what: b.listing?.title ?? t('your listing') })
+                            : t('wants {what}', { what: b.listing?.title ?? t('your listing') })}{' '}
+                          ·{' '}
                           {durationLabel(b.match.quote.hours)}
                         </p>
                       </div>
@@ -251,6 +255,9 @@ export function Earn() {
                     {/* Wraps at 200 % text rather than pushing Decline off screen. */}
                     <div className="mt-4 flex flex-wrap gap-2">
                       <Button
+                        // One filled action a view (cappy-ui §3, UX-71): the most
+                        // urgent request's Accept; the others are outlined.
+                        variant={i === 0 ? 'primary' : 'secondary'}
                         className="flex-1 md:flex-none md:px-7"
                         disabled={busy}
                         onClick={() =>
@@ -282,8 +289,9 @@ export function Earn() {
     <Screen
       title={t('Earn')}
       action={
-        // The one filled action on Earn: creation left the dock (UX-46).
-        <Button size="sm" icon="plus" to={'/earn/new'}>
+        // Creation left the dock (UX-46). It is the one filled action unless a
+        // request is waiting, then the first Accept is (UX-71).
+        <Button size="sm" icon="plus" to={'/earn/new'} variant={requests.length ? 'secondary' : 'primary'}>
           {t('List something')}
         </Button>
       }

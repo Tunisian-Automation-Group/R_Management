@@ -95,7 +95,9 @@ export function BookingDetail() {
       </Screen>
     )
   }
-  if (!authReady || booking.isPending) return <Screen back="/bookings"><DetailSkeleton /></Screen>
+  // The names are part of the page: wait for them rather than show "a buyer" (V9-12).
+  const namesPending = (booking.data?.requesterId && requester.isPending) || (booking.data && owner.isPending)
+  if (!authReady || booking.isPending || namesPending) return <Screen back="/bookings"><DetailSkeleton /></Screen>
   if (!booking.data) return <NotFound what="booking" />
 
   // Remount when the booking changes so the rating form never carries over.
@@ -330,8 +332,29 @@ function Detail({
       )
       break
     case 'awaiting_payment':
-    case 'requested':
       footer = cancelButton
+      break
+    case 'requested':
+      // While it waits, talking is the useful next step, not leaving (UX-51):
+      // Withdraw stays one tap away, quiet, behind its own confirm sheet.
+      footer = (
+        <div className="space-y-2">
+          <Button
+            block
+            size="lg"
+            onClick={() => {
+              const h = document.getElementById('messages')
+              h?.scrollIntoView({ behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth', block: 'start' })
+              h?.parentElement?.querySelector<HTMLElement>('textarea')?.focus({ preventScroll: true })
+            }}
+          >
+            {t('Message {name}', { name: first })}
+          </Button>
+          <Button block variant="quiet" disabled={!online || busy} onClick={() => setCancelling(true)}>
+            {t('Withdraw request')}
+          </Button>
+        </div>
+      )
       break
     case 'accepted':
       footer = (
@@ -530,9 +553,10 @@ function Detail({
         />
       ) : booking.status === 'requested' ? (
         <Banner
-          tone="warn"
+          tone="neutral"
           title={t('Waiting for {name}', { name: first })}
-          body={`${owner && responseTime(owner.responseMins) ? sentence(responseTime(owner.responseMins)!) : ''}${t('Your card is held, and charged only if they accept.')}`}
+          // The status header says how long it can take (UX-51).
+          body={`${owner && responseTime(owner.responseMins) ? sentence(responseTime(owner.responseMins)!) : ''}${booking.expiresAt ? sentence(t('{name} has to answer {when}', { name: first, when: relative(booking.expiresAt) })) : ''}${t('Your card is held, and charged only if they accept.')}`}
         />
       ) : booking.status === 'accepted' ? (
         <Banner
@@ -540,7 +564,9 @@ function Detail({
           title={t("Confirmed")}
           body={
             asOwner
-              ? t('{name} is coming {when}.', { name: buyer, when: range(booking.match.start, booking.match.end) })
+              ? Date.now() >= Date.parse(booking.match.start)
+                ? t('{name} was due {when}.', { name: buyer, when: range(booking.match.start, booking.match.end) })
+                : t('{name} is coming {when}.', { name: buyer, when: range(booking.match.start, booking.match.end) })
               : t('{name} is expecting you {when}.', { name: first, when: range(booking.match.start, booking.match.end) })
           }
         />
@@ -785,7 +811,10 @@ function Detail({
                 <Row label={t('You receive')} value={<span className="text-[var(--money)]">{formatMoney(money.ownerNet, cur)}</span>} strong />
               </>
             ) : (
-              <p className="t-sm tnum text-[var(--ink-4)]">{t('Includes the service fee of {fee}', { fee: formatMoney(money.fee, cur) })}</p>
+              <>
+                {money.refunded > 0 && <Row label={t('You paid')} value={formatMoney(money.charged - money.refunded, cur)} strong />}
+                <p className="t-sm tnum text-[var(--ink-4)]">{t('Includes the service fee of {fee}', { fee: formatMoney(money.fee, cur) })}</p>
+              </>
             )}
           </>
         )}

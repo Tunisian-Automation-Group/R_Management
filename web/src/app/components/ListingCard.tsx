@@ -3,7 +3,7 @@ import { isWindow, rating } from '../../domain/types.ts'
 import { durationLabel } from '../../domain/categories.ts'
 import { formatMoney } from '../../domain/money.ts'
 import { Photo } from './Photo.tsx'
-import { Stars } from './ui.tsx'
+import { Stars, TapLink } from './ui.tsx'
 import { formatDistance, range } from '../format.ts'
 import { t } from '../../i18n.ts'
 
@@ -19,22 +19,21 @@ export function ListingCard({
   owner,
   match,
   slots,
-  onOpen,
+  to,
   rank,
 }: {
   listing: Listing
   owner: Owner
   match: Match
   slots?: Slot[]
-  onOpen: () => void
+  to: string
   rank?: number
 }) {
   const stars = rating(owner)
 
   return (
-    <button
-      type="button"
-      onClick={onOpen}
+    <TapLink
+      to={to}
       className="group flex w-full items-stretch gap-4 py-5 text-left transition-opacity duration-[var(--dur-short)] hover:opacity-70"
     >
       <Photo
@@ -76,7 +75,7 @@ export function ListingCard({
                 : t('{duration} incl. setup', { duration: durationLabel(match.quote.hours) })}
             </span>
             {/* The owner's record over all their jobs, not this listing's reviews: labelled so. */}
-            <span className="inline-flex items-baseline gap-1" title={t("The owner's rating across all their jobs")}>
+            <span className="inline-flex flex-wrap items-baseline gap-1" title={t("The owner's rating across all their jobs")}>
               <span className="text-label text-[var(--ink-4)]">{t('Host')}</span>
               <Stars value={stars} count={owner.jobsDone} />
             </span>
@@ -88,6 +87,6 @@ export function ListingCard({
           </span>
         </span>
       </span>
-    </button>
+    </TapLink>
   )
 }

@@ -3,8 +3,8 @@ import { NavLink, useLocation } from 'react-router-dom'
 import { useSession } from '../../data/auth.ts'
 import { useToast } from '../store.tsx'
 import { Icon, type IconName } from './Icon.tsx'
-import { useBack } from '../nav.ts'
-import { LANGS, lang, locale, setLang, t, tTab } from '../../i18n.ts'
+import { useBack, useNav } from '../nav.ts'
+import { LANGS, lang, locale, plural, setLang, t, tTab } from '../../i18n.ts'
 import { updateLocale } from '../../data/auth.ts'
 import { setAppearance, toggleTheme, useAppearance, useDark, type Appearance } from '../theme.ts'
 
@@ -71,7 +71,7 @@ export function Dock({ badges }: { badges: Record<string, number> }) {
             own masthead above md rather than printing it twice. */}
         <NavLink
           to="/"
-          className="t-h2 hidden shrink-0 leading-none md:block"
+          className="t-h2 wordmark hidden shrink-0 leading-none md:block"
           style={{ fontSize: 26 }}
         >
           Cappy
@@ -213,11 +213,19 @@ function useLargeText(): boolean {
 }
 
 function TabItem({ tab, big }: { tab: Tab; big: boolean }) {
+  const nav = useNav()
   return (
     <li className="min-w-0 flex-1 md:flex-none">
       <NavLink
         to={tab.to}
         end={tab.to === '/'}
+        // A plain tap crossfades between tabs (UX-8, V9-3); modified clicks keep
+        // the link's own behaviour (new tab, new window).
+        onClick={(e) => {
+          if (e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return
+          e.preventDefault()
+          nav(tab.to)
+        }}
         className={({ isActive }) =>
           // The label is capped at 14 px and truncates: labels overlapped at 200 %
           // text (V4-12); the link's name stays whole for screen readers.
@@ -259,7 +267,7 @@ function TabItem({ tab, big }: { tab: Tab; big: boolean }) {
             {/* Never truncated (UX-46): the labels fit at 12 px in EN, DE and FR
                 down to 360; at 200 % text the bar shows icons only. */}
             <span className={big ? 'sr-only md:not-sr-only' : 'dock-label block whitespace-nowrap'}>{tab.label}</span>
-            {tab.badge ? <span className="sr-only">, {t('{n} needing attention', { n: tab.badge })}</span> : null}
+            {tab.badge ? <span className="sr-only">, {plural(tab.badge, '{n} needs your attention', '{n} need your attention')}</span> : null}
           </>
         )}
       </NavLink>
@@ -458,7 +466,7 @@ function SiteFooter() {
     <footer className="mt-24 hidden border-t border-[var(--line)] px-8 pb-16 pt-12 md:block">
       <div className="flex flex-wrap items-start justify-between gap-12">
         <div className="max-w-[30ch]">
-          <p className="t-h2">Cappy</p>
+          <p className="t-h2 wordmark">Cappy</p>
           <p className="t-sm mt-2 text-[var(--ink-3)]">
             {t('Buy the hours, not the thing. One capacity network: making, moving and the kit to do it with.')}
           </p>

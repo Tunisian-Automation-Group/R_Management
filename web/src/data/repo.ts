@@ -1137,7 +1137,8 @@ export type InboxItem = {
   photo?: string
   status: Booking['status']
   lastMessage: { body: string; at: string; mine: boolean }
-  unread: boolean
+  /** The server sends a count of unread messages in the thread. */
+  unread: number
 }
 export const useInbox = () => {
   const session = useSession()

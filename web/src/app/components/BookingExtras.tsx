@@ -1,5 +1,6 @@
 import { useId, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNav } from '../nav.ts'
+
 import { useQueryClient } from '@tanstack/react-query'
 import { useSession } from '../../data/auth.ts'
 import {
@@ -88,14 +89,17 @@ export function DisputeOffers({ booking, asOwner, otherName }: { booking: Bookin
         <p className="t-sm text-[var(--ink-2)]">{t('You did not agree in time, so Cappy’s staff decide now. You can still agree on an offer until then.')}</p>
       ) : (
         <p className="t-sm text-[var(--ink-2)]">
-          {t('Agree on what goes back to the renter, and it is settled at once. Otherwise Cappy decides {when}.', { when: relative(d.respondBy).replace(/\.$/, '') })}
+          {asOwner
+            ? t('Agree on what goes back to the renter, and it is settled at once. Otherwise Cappy decides {when}.', { when: relative(d.respondBy).replace(/\.$/, '') })
+            : t('Agree on what comes back to you, and it is settled at once. Otherwise Cappy decides {when}.', { when: relative(d.respondBy).replace(/\.$/, '') })}
         </p>
       )}
       {d.offer && (
         <div className="mt-3 rounded-[var(--radius-control)] bg-[var(--sunken)] p-4">
           <Row
             label={mine ? t('Your offer') : t('{name} offers', { name: otherName })}
-            value={t('{amount} back to the renter', { amount: formatMoney(d.offer.refundAmount, cur) })}
+            // Each side reads it about themselves (V9-15, as the bell does since V8-9).
+            value={asOwner ? t('{amount} back to the renter', { amount: formatMoney(d.offer.refundAmount, cur) }) : t('{amount} back to you', { amount: formatMoney(d.offer.refundAmount, cur) })}
             strong
           />
           <p className="t-sm text-[var(--ink-3)]">
@@ -114,7 +118,7 @@ export function DisputeOffers({ booking, asOwner, otherName }: { booking: Bookin
       <Sheet
         open={offering}
         onClose={() => setOffering(false)}
-        title={t('What should go back to the renter?')}
+        title={asOwner ? t('What should go back to the renter?') : t('What should come back to you?')}
         footer={
           <Button block size="lg" disabled={busy || bad || !online} onClick={() => void offer()}>
             {typed !== null && !bad ? t('Offer {amount}', { amount: formatMoney(typed, cur) }) : t('Offer')}
@@ -181,7 +185,7 @@ const EXTEND_HOURS = [1, 2, 4]
 
 /** One more stretch straight after, while the booking is on (S-12). */
 export function Extend({ booking }: { booking: Booking }) {
-  const nav = useNavigate()
+  const nav = useNav()
   const toast = useToast()
   const online = useOnline()
   const [open, setOpen] = useState(false)

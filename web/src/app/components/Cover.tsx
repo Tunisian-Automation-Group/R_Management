@@ -240,14 +240,16 @@ export function Plate({
         // drawn, with its name on top where no chip or heart covers it. It
         // says honestly "a thing of this kind", never someone else's photo.
         <div className={`relative flex h-full flex-col ${thumb ? 'items-center justify-center' : 'p-4'}`} style={{ color: 'var(--on-field-dim)' }}>
+          <span className={thumb ? '' : 'm-auto opacity-70'}>
+            <Icon name={categoryIcon(meta.icon)} size={thumb ? 20 : 44} strokeWidth={1.4} />
+          </span>
+          {/* The name sits at the bottom, clear of a back button or a heart on
+              the top corners (V9-7). */}
           {!thumb && (
             <p className="t-label" style={{ color: 'var(--on-field-dim)' }}>
               {known ? t('Nothing free this week') : meta.label}
             </p>
           )}
-          <span className={thumb ? '' : 'm-auto opacity-70'}>
-            <Icon name={categoryIcon(meta.icon)} size={thumb ? 20 : 44} strokeWidth={1.4} />
-          </span>
         </div>
       )}
 

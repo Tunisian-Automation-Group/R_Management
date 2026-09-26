@@ -1,8 +1,9 @@
 import { createContext, useContext, useMemo, useState, type CSSProperties, type ReactNode } from 'react'
+import { useNav } from '../nav.ts'
 import type { CategoryId, Iso, Slot } from '../../domain/types.ts'
 import { Plate } from './Cover.tsx'
 import { day, time } from '../format.ts'
-import { useNavigate } from 'react-router-dom'
+
 import { useSession } from '../../data/auth.ts'
 import { mediaUrl, useSaveToggle, useSaved, type PhotoMeta } from '../../data/repo.ts'
 import { messageOf, useToast } from '../store.tsx'
@@ -197,7 +198,7 @@ export function SaveButton({
   const saved = useSaved()
   const flip = useSaveToggle()
   const toast = useToast()
-  const nav = useNavigate()
+  const nav = useNav()
   // While a tap is in flight, show what it asked for; then what the server holds.
   const on =
     flip.isPending && flip.variables.id === id

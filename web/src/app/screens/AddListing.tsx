@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
+import { useNav } from '../nav.ts'
 import { drafts } from '../device.ts'
-import { Navigate, useNavigate, useParams } from 'react-router-dom'
+import { Navigate, useParams } from 'react-router-dom'
 import type { CancellationPolicy, CategoryId, Material, Slot, WeeklyRule } from '../../domain/types.ts'
 import { CATEGORIES, category, durationLabel } from '../../domain/categories.ts'
 import { formatMoney } from '../../domain/money.ts'
@@ -238,7 +239,7 @@ export function AddListing() {
 }
 
 function ListingForm({ edit }: { edit?: repo.ListingView }) {
-  const nav = useNavigate()
+  const nav = useNav()
   const { state } = useCappy()
   const toast = useToast()
   const qc = useQueryClient()

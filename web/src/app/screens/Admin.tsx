@@ -437,7 +437,7 @@ function Held() {
           {messageOf(held.error)}
         </p>
       ) : items.length === 0 ? (
-        <p className="t-sm text-[var(--ink-3)]">{t('No listings are waiting.')}</p>
+        <p className="t-sm py-4 text-[var(--ink-3)]">{t('No listings are waiting.')}</p>
       ) : (
         <ul className="space-y-3">
           {items.map((h) => (
