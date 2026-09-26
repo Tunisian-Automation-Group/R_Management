@@ -107,6 +107,9 @@ class CommonSettings(BaseSettings):
     # A list claim (Cognito groups) or a space-separated string (OAuth scopes).
     staff_claim: str = "cognito:groups"
     staff_value: str = "admin"
+    # Staff leads (H-6): the same claim holding this value as well. Leads may
+    # settle larger disputes alone and approve others' above their limit.
+    staff_lead_value: str = "admin-lead"
 
     # --- feature flags (cappy_common/flags.py, S-26) --------------------------
     # "name:percent,...". One setting for every service: the gateway hands it

@@ -56,6 +56,7 @@ CATEGORY = {
     "disputed_owner": "bookings",
     "disputed_renter": "bookings",
     "listing_idle": "bookings",
+    "dispute_offer": "bookings",
     "message": "messages",
     "paid": "payouts",
 }

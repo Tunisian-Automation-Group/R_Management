@@ -26,6 +26,8 @@ class Market(BaseModel):
     currency: str
     languages: list[str]
     units: Literal["metric", "imperial"]
+    # The main time zone (IANA): the default for listings that name none.
+    time_zone: str
     legal_entity: str
     stripe_platform: str
     tax_regime: str
@@ -36,7 +38,16 @@ class Market(BaseModel):
     id_check_above: int
     held_listing_above: int
     max_rate_per_hour: int
+    # What one staff member may refund alone when settling a dispute, by role
+    # (H-6); above it a second staff member approves (four eyes).
+    refund_limit_support: int
+    refund_limit_lead: int
+    # The most a late return's fee may be, on top of the extra time (S-12).
+    late_fee_cap: int
     notes: list[str] = []
+
+    def refund_limit(self, role: str) -> int:
+        return self.refund_limit_lead if role == "lead" else self.refund_limit_support
 
     @property
     def live(self) -> bool:
@@ -75,6 +86,17 @@ def live_market(country: str | None) -> Market:
     if not m.live:
         raise Invalid(f"Cappy is not open in {m.code} yet", code="market_not_live")
     return m
+
+
+def market_of_currency(currency: str) -> Market:
+    """The market a booking's money belongs to, when only its currency is
+    known: the live market with that currency, else any. ponytail: bookings
+    do not store the owner's country; markets sharing a currency share
+    their money limits in markets.json, so this is the same answer."""
+    same = [m for m in markets().values() if m.currency == currency.upper()]
+    if not same:
+        raise Invalid(f"no market uses {currency}", code="market_unknown")
+    return next((m for m in same if m.live), same[0])
 
 
 def public_markets() -> dict[str, dict]:

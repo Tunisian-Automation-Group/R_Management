@@ -23,6 +23,7 @@ from cappy_common.events import (
     RENTER_RATED,
     Outbox,
 )
+from cappy_common.markets import market_of_currency
 from cappy_common.models import Booking, Handover, ListingSnapshot, Match, Outcome, Requirement
 from cappy_common.pagination import decode_cursor, encode_cursor
 from cappy_common.timeutil import dt_from_iso, iso_from_datetime
@@ -95,6 +96,8 @@ def status_event(row: BookingRow, before: str | None, by: str) -> dict:
         "windowEnd": iso_from_datetime(row.window_end),
         # A request's answer-by (it lapses then): what the owner is told.
         "expiresAt": iso_from_datetime(row.expires_at) if row.expires_at else None,
+        # Times in what people are told read in the listing's zone.
+        "timeZone": (row.listing_snapshot or {}).get("timeZone") or market_of_currency(row.currency).time_zone,
     }
 
 

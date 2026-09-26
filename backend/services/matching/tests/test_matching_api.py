@@ -153,6 +153,23 @@ def test_match_for_offer_is_internal(client):
     assert view["listing"]["id"] == "l9" and view["owner"]["id"] == view["listing"]["ownerId"]
 
 
+def test_an_extension_finds_its_own_slot(client):
+    # S-12: booking asks for the time after a booking, with no slot id.
+    offer = client.get("/listings/l9/offers", params={"hours": 2}).json()[0]
+    body = {"requirement": _saw_requirement(), "listingId": "l9", **offer, "slotId": "", "extension": True}
+    r = client.post("/internal/match-for-offer", json=body, headers=INTERNAL)
+    assert r.status_code == 200, r.text
+    assert r.json()["match"]["slotId"] == offer["slotId"]
+    closed = {**body, "start": iso_from_ms(ms_from_iso(offer["start"]) + 400 * DAY_MS)}
+    closed["end"] = iso_from_ms(ms_from_iso(closed["start"]) + 2 * 3_600_000)
+    assert (
+        client.post("/internal/match-for-offer", json=closed, headers=INTERNAL).json()["error"]["code"]
+        == "not_extendable"
+    )
+    no_slot = {**body, "extension": False}
+    assert client.post("/internal/match-for-offer", json=no_slot, headers=INTERNAL).status_code == 404
+
+
 def test_match_for_offer_refuses_a_taken_window(client, fakes):
     _, bookings = fakes
     offer = client.get("/listings/l9/offers", params={"hours": 2}).json()[0]

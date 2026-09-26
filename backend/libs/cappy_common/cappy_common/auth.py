@@ -230,6 +230,13 @@ def is_staff(p: Principal, settings) -> bool:  # noqa: ANN001
     return settings.staff_value in values
 
 
+def staff_role(p: Principal, settings) -> str:  # noqa: ANN001
+    """``lead`` or ``support``: which approval limit applies (H-6)."""
+    claim = p.claims.get(settings.staff_claim)
+    values = claim if isinstance(claim, list) else str(claim or "").split()
+    return "lead" if settings.staff_lead_value in values else "support"
+
+
 async def require_admin(request: Request) -> Principal:
     """Moderators and support: the token's staff claim holds the staff value
     (Cognito: group "admin" in ``cognito:groups``; another identity provider

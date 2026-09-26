@@ -784,7 +784,7 @@ def test_anyone_can_report_and_staff_decide_with_reasons(client, app, issuer, br
     decisions = broker.of_type(MODERATION_DECISION)
     assert decisions[0].data["affectedId"] == "o1" and decisions[0].data["reporterEmail"] == "neighbour@example.com"
     assert decisions[1].data["affectedId"] is None, "nobody is told they were cleared of what they never heard of"
-    audit = client.get("/admin/audit", headers=_staff(issuer)).json()
+    audit = client.get("/admin/audit", headers=_staff(issuer)).json()["items"]
     assert [a["action"] for a in audit] == ["dismiss", "take_down"] and audit[1]["actorId"] == "staff-1"
 
 
@@ -1144,8 +1144,44 @@ def test_staff_take_downs_default_to_the_terms(client, issuer):
         headers=_staff(issuer),
     )
     assert r.status_code == 204
-    audit = client.get("/admin/audit", headers=_staff(issuer)).json()
+    audit = client.get("/admin/audit", headers=_staff(issuer)).json()["items"]
     assert audit[0]["action"] == "take_down"
+
+
+def test_other_services_staff_actions_join_the_one_audit_log(client, app, issuer):
+    # H-7: booking announces a resolution and a case read; catalog keeps both.
+    from cappy_common.events import STAFF_ACTION, Event
+    from cappy_common.ids import new_id
+    from cappy_common.timeutil import now_iso
+
+    def action(what: str, actor: str, at: str) -> Event:
+        data = {
+            "actorId": actor,
+            "action": what,
+            "targetType": "booking",
+            "targetId": "bk_1",
+            "personId": None,
+            "reason": f"{what} of bk_1",
+            "requestId": "req-42",
+            "service": "booking",
+            "at": at,
+        }
+        return Event(id=new_id("ev"), type=STAFF_ACTION, source="booking", occurred_at=now_iso(), data=data)
+
+    resolved = action("resolve_dispute", "staff-1", "2026-09-27T10:00:00Z")
+    read = action("read_case", "staff-2", "2026-09-27T10:05:00Z")
+    for e in (resolved, read, resolved):  # redelivered: logged once
+        app.state._portal.call(app.state.dispatcher.handle, e)
+    staff = _staff(issuer)
+    page = client.get("/admin/audit", params={"target": "bk_1"}, headers=staff).json()
+    assert [a["action"] for a in page["items"]] == ["read_case", "resolve_dispute"]
+    assert page["items"][1]["requestId"] == "req-42" and page["items"][1]["actorId"] == "staff-1"
+    mine = client.get("/admin/audit", params={"actor": "staff-2"}, headers=staff).json()["items"]
+    assert [a["action"] for a in mine] == ["read_case"]
+    first = client.get("/admin/audit", params={"target": "bk_1", "limit": 1}, headers=staff).json()
+    rest = client.get("/admin/audit", params={"target": "bk_1", "cursor": first["nextCursor"]}, headers=staff).json()
+    assert [a["action"] for a in first["items"] + rest["items"]] == ["read_case", "resolve_dispute"]
+    assert client.get("/admin/audit", headers=issuer.headers("o1")).status_code == 403
 
 
 def test_dsa_numbers_for_a_month(client, issuer):
@@ -1399,8 +1435,14 @@ def test_markets_decide_where_people_join_list_and_in_which_currency(client, iss
     r = client.put("/me", json={**person, "country": "FR"}, headers=h)
     assert r.status_code == 422 and r.json()["error"]["code"] == "market_not_live", "France is planned"
     assert client.put("/me", json={**person, "country": "ZZ"}, headers=h).json()["error"]["code"] == "market_unknown"
-    assert client.put("/me", json={**person, "country": "CH"}, headers=h).status_code == 200
+    wrong = client.put("/me", json={**person, "country": "CH"}, headers=h).json()["error"]
+    assert wrong["code"] == "district_not_in_country" and wrong["fields"][0]["field"] == "district"
+    swiss = {**person, "country": "CH", "district": "Zürich-Kreis 5"}
+    assert client.put("/me", json=swiss, headers=h).status_code == 200
     listing = {k: v for k, v in _window_listing().items() if k != "currency"}
+    berlin = client.post("/listings", json={"listing": listing}, headers=h)
+    assert berlin.json()["error"]["code"] == "district_not_in_country", "a Swiss owner lists in Switzerland"
+    listing = {**listing, "district": "Zürich-Kreis 5"}
     created = client.post("/listings", json={"listing": listing}, headers=h)
     assert created.status_code == 201 and created.json()["listing"]["currency"] == "CHF", "the market's currency"
     r = client.post("/listings", json={"listing": {**listing, "currency": "EUR"}}, headers=h)

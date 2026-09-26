@@ -563,6 +563,28 @@ def test_a_late_cancellation_refunds_part_and_pays_the_owner_their_share(client,
     assert broker.of_type(PAYOUT_SENT)[0].data["amount"] == 2000, "the owner's 4000/4600 of the 2300 kept"
 
 
+def test_a_dispute_settled_with_a_partial_refund_refunds_part_and_pays_the_rest(client, app, provider, broker):
+    # H-6/S-21: booking completes the dispute with refundAmount set.
+    _intent(client)
+    _status(app, "bk_1", "accepted")
+    ev = Event(
+        id=new_id("ev"),
+        type=BOOKING_STATUS_CHANGED,
+        source="booking",
+        occurred_at=now_iso(),
+        data={"bookingId": "bk_1", "from": "disputed", "to": "completed", "refundAmount": 2300},
+    )
+    assert call(app, app.state.dispatcher.handle, ev)
+    assert [op for op, _ in provider.calls] == ["intent", "capture", "refund", "transfer"]
+    call(app, app.state.relay.flush)
+    assert broker.of_type(PAYMENT_REFUNDED)[0].data["amount"] == 2300
+    assert broker.of_type(PAYOUT_SENT)[0].data["amount"] == 2000
+    state = client.get("/internal/bookings/bk_1/payment", headers=INTERNAL)
+    assert state.json()["refunded"] and state.json()["paidOut"] and state.json()["status"] == "refunded"
+    assert client.get("/internal/bookings/bk_1/payment").status_code == 403
+    assert client.get("/internal/bookings/nope/payment", headers=INTERNAL).status_code == 404
+
+
 def test_a_payout_issues_one_numbered_fee_invoice(client, app, issuer):
     _intent(client)
     _status(app, "bk_1", "accepted")

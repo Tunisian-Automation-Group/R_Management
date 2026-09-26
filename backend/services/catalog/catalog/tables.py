@@ -228,7 +228,10 @@ Index("ix_reports_status_created", ReportRow.status, ReportRow.created_at)
 
 
 class ModerationActionRow(Base):
-    """Every moderation action, by whom and why: the audit trail."""
+    """Every staff action, by whom and why: the one append-only audit log
+    (H-7). Moderation writes here directly; other services' staff actions
+    (dispute resolutions, approvals, claims, reading a case or its photos)
+    arrive as ``staff.action`` events. Nothing updates or deletes a row."""
 
     __tablename__ = "moderation_actions"
     id: Mapped[str] = mapped_column(String(40), primary_key=True)
@@ -243,10 +246,14 @@ class ModerationActionRow(Base):
     # Whom the decision is about (the listing's owner, a message's or review's
     # author), so their data export finds every decision about them.
     person_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    # The request it was done in, to find it in the logs.
+    request_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
 
 
 Index("ix_moderation_actions_at", ModerationActionRow.at)
 Index("ix_moderation_actions_person", ModerationActionRow.person_id)
+Index("ix_moderation_actions_target", ModerationActionRow.target_id, ModerationActionRow.at)
+Index("ix_moderation_actions_actor", ModerationActionRow.actor_id, ModerationActionRow.at)
 
 
 class MediaRow(Base):

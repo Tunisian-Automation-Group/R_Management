@@ -28,6 +28,22 @@ _SAFE_ID = re.compile(r"^[A-Za-z0-9._:-]{8,128}$")
 log = logging.getLogger("cappy.access")
 
 
+# The user journeys of docs/slo.md, by method and path (after any /api
+# prefix): each access line names its journey, and CloudWatch counts the good
+# and bad ones per journey from the gateway's log (T-35c).
+_JOURNEYS = (
+    ("browse", "GET", re.compile(r"^(/api)?/(search|browse/[a-z-]+|listings/[^/]+(/offers|/reviews)?)$")),
+    ("browse", "POST", re.compile(r"^(/api)?/matches$")),
+    ("book", "POST", re.compile(r"^(/api)?/bookings$")),
+    ("answer", "POST", re.compile(r"^(/api)?/bookings/[^/]+/(accept|decline)$")),
+)
+
+
+def journey(method: str | None, path: str) -> str | None:
+    """Which SLO journey a request is part of, if any."""
+    return next((name for name, m, pattern in _JOURNEYS if m == method and pattern.match(path)), None)
+
+
 class JsonFormatter(logging.Formatter):
     def __init__(self, service: str) -> None:
         super().__init__()
@@ -42,7 +58,7 @@ class JsonFormatter(logging.Formatter):
             "msg": record.getMessage(),
             "requestId": request_id.get(),
         }
-        for key in ("method", "path", "status", "durationMs", "client"):
+        for key in ("method", "path", "status", "durationMs", "client", "journey"):
             if hasattr(record, key):
                 entry[key] = getattr(record, key)
         if record.exc_info:
@@ -140,6 +156,7 @@ class RequestContextMiddleware:
                         "path": path,
                         "status": status["code"],
                         "durationMs": round((time.perf_counter() - started) * 1000, 1),
+                        **({"journey": j} if (j := journey(scope.get("method"), path)) else {}),
                     },
                 )
             request_id.reset(token)

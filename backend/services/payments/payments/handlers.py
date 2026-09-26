@@ -4,8 +4,11 @@ most one Stripe call.
     accepted                      -> capture
     declined, cancelled, expired,
     payment_failed (not captured) -> cancel the hold
-    cancelled after capture       -> refund in full
+    cancelled after capture       -> refund (all, or what the policy gives back)
     completed                     -> transfer the owner's share
+    completed with refundAmount   -> refund that part, pay the owner their
+                                     share of the rest (a dispute settled
+                                     with a partial refund, H-6 and S-21)
 
 The Stripe call happens before our row is updated. If the process dies in
 between, the event is redelivered, the call repeats with the same
@@ -92,8 +95,9 @@ def handlers(
         elif to in RELEASE and row.status in ("created", "authorised"):
             await provider.cancel(row.intent_id, row.booking_id)
             row.status = "cancelled"
-        elif to == "cancelled" and row.status == "captured":
-            # The cancellation policy decided the refund (booking/cancellation.py).
+        elif row.status == "captured" and (to == "cancelled" or (to == "completed" and d.get("refundAmount"))):
+            # The cancellation policy decided the refund (booking/cancellation.py),
+            # or a dispute was settled with part of the price going back.
             refund = d.get("refundAmount")
             refund = row.amount if refund is None else max(0, min(row.amount, int(refund)))
             if refund > 0:

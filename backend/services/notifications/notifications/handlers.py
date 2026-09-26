@@ -16,6 +16,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from cappy_common.events import (
     BOOKING_MESSAGE,
     BOOKING_STATUS_CHANGED,
+    DISPUTE_OFFER,
     LISTING_IDLE,
     MODERATION_DECISION,
     PAYOUT_SENT,
@@ -56,6 +57,12 @@ def messages(event: Event, web: str) -> list[Message]:
         return [
             (d["ownerId"], None, "listing_idle", {"title": d["title"], "link": f"{web}/earn/edit/{d['listingId']}"})
         ]
+    if event.type == DISPUTE_OFFER:
+        # S-21: the other side has 72 hours to answer an offer in a dispute.
+        link = f"{web}/bookings/{d['bookingId']}"
+        params = {"title": d.get("title") or "your booking", "link": link, "_cents": (d["refundAmount"], d["currency"])}
+        tz = {"_tz": d["timeZone"]} if d.get("timeZone") else {}
+        return [(d["to"], None, "dispute_offer", {**params, "_deadline": d.get("respondBy"), **tz})]
     if event.type != BOOKING_STATUS_CHANGED:
         return []
     params = {"title": d.get("title", "your booking"), "link": f"{web}/bookings/{d['bookingId']}"}
@@ -226,6 +233,7 @@ def handlers(directory: Directory, mailer: Mailer, web: str, pusher: Pusher | No
         REPORT_RECEIVED: notify,
         MODERATION_DECISION: notify,
         LISTING_IDLE: notify,
+        DISPUTE_OFFER: notify,
         PROFILE_DELETED: forget,
     }
 

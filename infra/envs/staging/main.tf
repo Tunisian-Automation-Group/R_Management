@@ -17,9 +17,9 @@ terraform {
 }
 
 provider "aws" {
-  region = "eu-central-1"
+  region = var.region
   default_tags {
-    tags = { app = "cappy", env = "staging", managed_by = "terraform" }
+    tags = { app = "cappy", env = "staging", cell = var.cell, managed_by = "terraform" }
   }
 }
 
@@ -30,6 +30,19 @@ provider "aws" {
   default_tags {
     tags = { app = "cappy", env = "staging", managed_by = "terraform" }
   }
+}
+
+# The cell (ADR 0013) and its region: eu in eu-central-1 today; a second
+# cell is another state (terraform init -backend-config=key=<cell>/staging/...),
+# set by the deploy workflow from the environment's CELL and AWS_REGION (M-46).
+variable "cell" {
+  type    = string
+  default = "eu"
+}
+
+variable "region" {
+  type    = string
+  default = "eu-central-1"
 }
 
 variable "image_tag" {
@@ -73,6 +86,8 @@ module "platform" {
   legal         = var.legal
 
   env          = "staging"
+  cell         = var.cell
+  region       = var.region
   image_tag    = var.image_tag
   zone_id      = var.zone_id
   alarm_email  = var.alarm_email

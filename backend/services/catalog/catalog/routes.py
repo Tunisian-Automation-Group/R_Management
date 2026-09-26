@@ -243,6 +243,20 @@ def _validate_slots(slots: list[SlotIn]) -> list[Slot]:
     return out
 
 
+async def _district_in(repo: CatalogRepository, name: str, country: str) -> None:
+    """A district that exists, in the country the person or listing is in: a
+    Swiss profile (prices in CHF) is never in a Berlin district."""
+    if not await repo.has_district(name):
+        raise Invalid(f"unknown district: {name}", fields=[{"field": "district", "message": "unknown district"}])
+    d = await repo.district(name)
+    if d.country != country:
+        raise Invalid(
+            f"{name} is in {d.country}, not {country}",
+            code="district_not_in_country",
+            fields=[{"field": "district", "message": f"pick a district in {country}"}],
+        )
+
+
 async def _validate_listing(
     request: Request, repo: CatalogRepository, raw: dict, owner_id: str, already_shown: frozenset[str] = frozenset()
 ):
@@ -272,8 +286,13 @@ async def _validate_listing(
     _check_numbers(listing, where)
     if listing.availability is not None:
         schedule.check(listing.availability)
-    if not await repo.has_district(listing.district):
-        raise Invalid(f"unknown district: {listing.district}")
+    await _district_in(repo, listing.district, where.code)
+    if listing.country and listing.country.upper() != where.code:
+        raise Invalid(
+            f"a listing of an owner in {where.code} is in {where.code}",
+            code="district_not_in_country",
+            fields=[{"field": "country", "message": f"must be {where.code}"}],
+        )
     if listing.location is not None:
         # The district is the search bucket (candidates walk districts nearest
         # first, T-10): a point far from its district would be missed by it.
@@ -355,10 +374,7 @@ async def put_me(
     """Create the caller's profile, or update its name, kind and district.
     Idempotent: calling it twice with the same body is one profile."""
     where = live_market(body.country)
-    if not await repo.has_district(body.district):
-        raise Invalid(
-            f"unknown district: {body.district}", fields=[{"field": "district", "message": "unknown district"}]
-        )
+    await _district_in(repo, body.district, where.code)
     business = body.business.normalised() if body.kind == "business" and body.business else None
     name = body.name.strip()
     owner, created = await repo.upsert_profile(

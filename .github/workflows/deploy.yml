@@ -22,7 +22,6 @@ concurrency:
   cancel-in-progress: false
 
 env:
-  AWS_REGION: eu-central-1
   ENV: ${{ inputs.env || 'staging' }}
   TAG: ${{ github.sha }}
 
@@ -33,6 +32,12 @@ jobs:
     runs-on: ubuntu-latest
     environment: ${{ inputs.env || 'staging' }}
     permissions: { contents: read, id-token: write }
+    env:
+      # The cell and its region (ADR 0013, M-46), from the environment's variables.
+      AWS_REGION: ${{ vars.AWS_REGION || 'eu-central-1' }}
+      CELL: ${{ vars.CELL || 'eu' }}
+      TF_VAR_region: ${{ vars.AWS_REGION || 'eu-central-1' }}
+      TF_VAR_cell: ${{ vars.CELL || 'eu' }}
     steps:
       - uses: actions/checkout@v5
 
@@ -69,6 +74,11 @@ jobs:
     # flag set there survives every deploy (a local apply would be undone by
     # the next push). HCL/JSON values, e.g. SWITCHES = {"bookings":true,...}.
     env:
+      # The cell and its region (ADR 0013, M-46), from the environment's variables.
+      AWS_REGION: ${{ vars.AWS_REGION || 'eu-central-1' }}
+      CELL: ${{ vars.CELL || 'eu' }}
+      TF_VAR_region: ${{ vars.AWS_REGION || 'eu-central-1' }}
+      TF_VAR_cell: ${{ vars.CELL || 'eu' }}
       TF_VAR_legal: ${{ vars.LEGAL }}
       TF_VAR_switches: ${{ vars.SWITCHES || '{"bookings":true,"payouts":true,"listings":true}' }}
       TF_VAR_feature_flags: ${{ vars.FEATURE_FLAGS }}
@@ -88,7 +98,8 @@ jobs:
 
       - name: terraform init
         working-directory: infra/envs/${{ env.ENV }}
-        run: terraform init -input=false
+        # eu keeps the first state key; another cell has its own.
+        run: terraform init -input=false $([ "$CELL" = eu ] || echo "-backend-config=key=$CELL/$ENV/terraform.tfstate")
 
       - name: Register the new migrate tasks
         working-directory: infra/envs/${{ env.ENV }}
@@ -162,6 +173,12 @@ jobs:
     runs-on: ubuntu-latest
     environment: ${{ inputs.env || 'staging' }}
     permissions: { contents: read, id-token: write }
+    env:
+      # The cell and its region (ADR 0013, M-46), from the environment's variables.
+      AWS_REGION: ${{ vars.AWS_REGION || 'eu-central-1' }}
+      CELL: ${{ vars.CELL || 'eu' }}
+      TF_VAR_region: ${{ vars.AWS_REGION || 'eu-central-1' }}
+      TF_VAR_cell: ${{ vars.CELL || 'eu' }}
     steps:
       - uses: actions/checkout@v5
 
@@ -178,7 +195,8 @@ jobs:
 
       - name: terraform init
         working-directory: infra/envs/${{ env.ENV }}
-        run: terraform init -input=false
+        # eu keeps the first state key; another cell has its own.
+        run: terraform init -input=false $([ "$CELL" = eu ] || echo "-backend-config=key=$CELL/$ENV/terraform.tfstate")
 
       - name: Publish the web app
         working-directory: infra/envs/${{ env.ENV }}

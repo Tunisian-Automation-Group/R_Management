@@ -11,6 +11,7 @@ from cappy_common.events import jittered
 
 from .repository import BookingRepository
 from .settings import Settings
+from .support import escalate_due
 
 BATCH = 100
 
@@ -44,6 +45,9 @@ async def sweep_once(app: FastAPI) -> int:
         moved += len(due)
         if len(due) < BATCH:
             break
+    # Disputes nobody settled between them in time go to staff (S-21).
+    async with app.state.db.transaction() as s:
+        moved += await escalate_due(s, datetime.now(UTC), BATCH)
     if moved:
         app.state.relay.wake()
     return moved

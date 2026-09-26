@@ -3,7 +3,7 @@ data "aws_availability_zones" "up" {
 }
 
 locals {
-  name = "cappy-${var.env}"
+  name = "cappy-${var.cell}-${var.env}"
   azs  = slice(data.aws_availability_zones.up.names, 0, var.az_count)
 }
 

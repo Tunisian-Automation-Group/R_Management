@@ -1,11 +1,45 @@
 {
  "components": {
   "schemas": {
+   "Availability": {
+    "description": "A weekly schedule (H-4): the server keeps windows open from it, eight\nweeks ahead, in the listing's own time zone, so a listing never goes\ndark because nobody added windows by hand.",
+    "properties": {
+     "timeZone": {
+      "default": "Europe/Berlin",
+      "title": "Timezone",
+      "type": "string"
+     },
+     "weekly": {
+      "items": {
+       "$ref": "#/components/schemas/WeeklyHours"
+      },
+      "maxItems": 21,
+      "minItems": 1,
+      "title": "Weekly",
+      "type": "array"
+     }
+    },
+    "required": [
+     "weekly"
+    ],
+    "title": "Availability",
+    "type": "object"
+   },
    "BatchListing": {
     "properties": {
      "active": {
       "title": "Active",
       "type": "boolean"
+     },
+     "availability": {
+      "anyOf": [
+       {
+        "$ref": "#/components/schemas/Availability"
+       },
+       {
+        "type": "null"
+       }
+      ]
      },
      "blurb": {
       "title": "Blurb",
@@ -36,6 +70,38 @@
       "title": "Category",
       "type": "string"
      },
+     "country": {
+      "anyOf": [
+       {
+        "pattern": "^[A-Z]{2}$",
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Country"
+     },
+     "currency": {
+      "default": "EUR",
+      "enum": [
+       "EUR",
+       "GBP",
+       "CHF",
+       "SEK",
+       "NOK",
+       "DKK",
+       "PLN",
+       "CZK",
+       "HUF",
+       "RON",
+       "ISK",
+       "USD",
+       "CAD"
+      ],
+      "title": "Currency",
+      "type": "string"
+     },
      "dayDiscountPct": {
       "default": 0,
       "maximum": 50.0,
@@ -59,6 +125,16 @@
      "instructions": {
       "title": "Instructions",
       "type": "string"
+     },
+     "location": {
+      "anyOf": [
+       {
+        "$ref": "#/components/schemas/Location"
+       },
+       {
+        "type": "null"
+       }
+      ]
      },
      "machine": {
       "title": "Machine",
@@ -119,6 +195,18 @@
        }
       ],
       "title": "Photos"
+     },
+     "postalCode": {
+      "anyOf": [
+       {
+        "maxLength": 12,
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Postalcode"
      },
      "ratePerHour": {
       "title": "Rateperhour",
@@ -513,6 +601,29 @@
     "title": "HTTPValidationError",
     "type": "object"
    },
+   "Location": {
+    "description": "Where a listing is (M-5). Stored exactly; answered snapped to a grid of\nabout 500 m (M-6) until a booking is accepted, like the address.",
+    "properties": {
+     "lat": {
+      "maximum": 90.0,
+      "minimum": -90.0,
+      "title": "Lat",
+      "type": "number"
+     },
+     "lng": {
+      "maximum": 180.0,
+      "minimum": -180.0,
+      "title": "Lng",
+      "type": "number"
+     }
+    },
+    "required": [
+     "lat",
+     "lng"
+    ],
+    "title": "Location",
+    "type": "object"
+   },
    "Match": {
     "properties": {
      "confidence": {
@@ -578,6 +689,11 @@
      "end": {
       "title": "End",
       "type": "string"
+     },
+     "extension": {
+      "default": false,
+      "title": "Extension",
+      "type": "boolean"
      },
      "listingId": {
       "title": "Listingid",
@@ -748,6 +864,11 @@
       ],
       "title": "Cancellationrate"
      },
+     "country": {
+      "default": "DE",
+      "title": "Country",
+      "type": "string"
+     },
      "district": {
       "title": "District",
       "type": "string"
@@ -799,8 +920,26 @@
       "type": "integer"
      },
      "responseMins": {
-      "title": "Responsemins",
-      "type": "integer"
+      "anyOf": [
+       {
+        "type": "integer"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Responsemins"
+     },
+     "responseRate": {
+      "anyOf": [
+       {
+        "type": "number"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Responserate"
      },
      "verified": {
       "title": "Verified",
@@ -817,8 +956,7 @@
      "ratingSum",
      "jobsDone",
      "onTimeJobs",
-     "joinedYear",
-     "responseMins"
+     "joinedYear"
     ],
     "title": "Owner",
     "type": "object"
@@ -828,6 +966,11 @@
      "base": {
       "title": "Base",
       "type": "integer"
+     },
+     "currency": {
+      "default": "EUR",
+      "title": "Currency",
+      "type": "string"
      },
      "discount": {
       "default": 0,
@@ -930,6 +1073,50 @@
     "title": "QuoteOut",
     "type": "object"
    },
+   "Ranking": {
+    "properties": {
+     "signals": {
+      "items": {
+       "$ref": "#/components/schemas/Signal"
+      },
+      "title": "Signals",
+      "type": "array"
+     },
+     "textSearch": {
+      "title": "Textsearch",
+      "type": "string"
+     }
+    },
+    "required": [
+     "signals",
+     "textSearch"
+    ],
+    "title": "Ranking",
+    "type": "object"
+   },
+   "Signal": {
+    "properties": {
+     "description": {
+      "title": "Description",
+      "type": "string"
+     },
+     "key": {
+      "title": "Key",
+      "type": "string"
+     },
+     "weight": {
+      "title": "Weight",
+      "type": "number"
+     }
+    },
+    "required": [
+     "key",
+     "weight",
+     "description"
+    ],
+    "title": "Signal",
+    "type": "object"
+   },
    "Spotlight": {
     "properties": {
      "distanceKm": {
@@ -1025,11 +1212,49 @@
     "title": "ValidationError",
     "type": "object"
    },
+   "WeeklyHours": {
+    "description": "Open every week on one day (1 = Monday \u2026 7 = Sunday, ISO), local time.",
+    "properties": {
+     "day": {
+      "maximum": 7.0,
+      "minimum": 1.0,
+      "title": "Day",
+      "type": "integer"
+     },
+     "end": {
+      "pattern": "^([01]\\d|2[0-3]):[0-5]\\d$|^24:00$",
+      "title": "End",
+      "type": "string"
+     },
+     "start": {
+      "pattern": "^([01]\\d|2[0-3]):[0-5]\\d$",
+      "title": "Start",
+      "type": "string"
+     }
+    },
+    "required": [
+     "day",
+     "start",
+     "end"
+    ],
+    "title": "WeeklyHours",
+    "type": "object"
+   },
    "WindowListing": {
     "properties": {
      "active": {
       "title": "Active",
       "type": "boolean"
+     },
+     "availability": {
+      "anyOf": [
+       {
+        "$ref": "#/components/schemas/Availability"
+       },
+       {
+        "type": "null"
+       }
+      ]
      },
      "blurb": {
       "title": "Blurb",
@@ -1058,6 +1283,38 @@
        "creator"
       ],
       "title": "Category",
+      "type": "string"
+     },
+     "country": {
+      "anyOf": [
+       {
+        "pattern": "^[A-Z]{2}$",
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Country"
+     },
+     "currency": {
+      "default": "EUR",
+      "enum": [
+       "EUR",
+       "GBP",
+       "CHF",
+       "SEK",
+       "NOK",
+       "DKK",
+       "PLN",
+       "CZK",
+       "HUF",
+       "RON",
+       "ISK",
+       "USD",
+       "CAD"
+      ],
+      "title": "Currency",
       "type": "string"
      },
      "dayDiscountPct": {
@@ -1092,6 +1349,16 @@
       "title": "Instructions",
       "type": "string"
      },
+     "location": {
+      "anyOf": [
+       {
+        "$ref": "#/components/schemas/Location"
+       },
+       {
+        "type": "null"
+       }
+      ]
+     },
      "maxHours": {
       "title": "Maxhours",
       "type": "number"
@@ -1122,6 +1389,18 @@
        }
       ],
       "title": "Photos"
+     },
+     "postalCode": {
+      "anyOf": [
+       {
+        "maxLength": 12,
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Postalcode"
      },
      "ratePerHour": {
       "title": "Rateperhour",
@@ -1636,6 +1915,25 @@
      }
     },
     "summary": "Quote"
+   }
+  },
+  "/ranking": {
+   "get": {
+    "description": "How results are ordered, from the weights the ranker uses (H-2).",
+    "operationId": "ranking_ranking_get",
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Ranking"
+        }
+       }
+      },
+      "description": "Successful Response"
+     }
+    },
+    "summary": "Ranking"
    }
   },
   "/review-tags": {

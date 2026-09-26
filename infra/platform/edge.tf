@@ -92,13 +92,15 @@ resource "aws_lb" "main" {
 }
 
 resource "aws_lb_target_group" "gateway" {
-  name                 = "${local.name}-gateway"
-  port                 = 8000
-  protocol             = "HTTP"
+  name = "${local.name}-gateway"
+  port = 8000
+  # Encrypted to the task too (P-11, tls.tf); the ALB does not verify it.
+  protocol             = "HTTPS"
   target_type          = "ip"
   vpc_id               = aws_vpc.main.id
   deregistration_delay = 20
   health_check {
+    protocol            = "HTTPS"
     path                = "/readyz"
     matcher             = "200"
     interval            = 10

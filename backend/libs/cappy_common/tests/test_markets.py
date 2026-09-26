@@ -4,6 +4,7 @@ the wrong currency or opens a country by accident, so the file is checked."""
 from __future__ import annotations
 
 import typing
+from zoneinfo import ZoneInfo
 
 import pytest
 
@@ -27,6 +28,8 @@ def test_every_market_is_well_formed():
         assert all(len(lang) == 2 and lang.islower() for lang in m.languages), cc
         assert 0 < m.held_listing_above < m.id_check_above < m.max_rate_per_hour, cc
         assert m.minimum_age >= 18 and m.emergency_number.isdigit(), cc
+        ZoneInfo(m.time_zone)  # a real IANA zone
+        assert 0 < m.late_fee_cap and 0 < m.refund_limit_support < m.refund_limit_lead, cc
         assert (m.cell == "na") == (cc in ("US", "CA")), cc
         if m.live:
             assert m.languages[0] in CATALOGUES, f"{cc} is live: its first language needs a catalogue"
@@ -53,3 +56,17 @@ def test_the_apps_see_no_entities_or_tax():
         "status": "planned",
         "minimumAge": 19,
     }
+
+
+def test_markets_sharing_a_currency_share_their_money_limits():
+    # A booking knows its currency, not its market (market_of_currency).
+    from cappy_common.markets import market_of_currency
+
+    for m in markets().values():
+        same = market_of_currency(m.currency)
+        assert (same.refund_limit_support, same.refund_limit_lead, same.late_fee_cap) == (
+            m.refund_limit_support,
+            m.refund_limit_lead,
+            m.late_fee_cap,
+        ), m.code
+    assert market_of_currency("eur").code in {"DE", "AT"} and market_of_currency("CHF").code == "CH"

@@ -36,6 +36,8 @@ locals {
       CORS_ORIGINS = "capacitor://localhost,https://localhost"
       # CloudFront, then the load balancer, append to X-Forwarded-For (P-34).
       TRUSTED_PROXY_HOPS = "2"
+      # HTTPS from the load balancer (P-11): a key made at start (tls.tf).
+      TLS_SELF_SIGNED = "true"
     }
     catalog = {
       MEDIA_BUCKET           = aws_s3_bucket.media.bucket
@@ -94,9 +96,27 @@ resource "aws_ecs_cluster" "main" {
     name  = "containerInsights"
     value = "enhanced"
   }
+  # An operator's shell (ECS Exec) is audited: what was typed and printed goes
+  # to its own log group, kept a year; CloudTrail records who opened it.
+  configuration {
+    execute_command_configuration {
+      logging = "OVERRIDE"
+      log_configuration {
+        cloud_watch_log_group_name = aws_cloudwatch_log_group.ecs_exec.name
+        # CloudWatch encrypts every log group at rest; true would demand a
+        # customer KMS key on this one, which buys nothing more here.
+        cloud_watch_encryption_enabled = false
+      }
+    }
+  }
   service_connect_defaults {
     namespace = aws_service_discovery_http_namespace.main.arn
   }
+}
+
+resource "aws_cloudwatch_log_group" "ecs_exec" {
+  name              = "/ecs/${local.name}/exec"
+  retention_in_days = 365
 }
 
 resource "aws_service_discovery_http_namespace" "main" {
@@ -216,7 +236,11 @@ locals {
       { Effect = "Allow", Action = "cloudfront:CreateInvalidation", Resource = aws_cloudfront_distribution.main.arn },
       local.staff_mfa_check,
     ]
-    booking  = [local.staff_mfa_check]
+    booking = [
+      local.staff_mfa_check,
+      # The staff case view finds a member by email (H-9).
+      { Effect = "Allow", Action = "cognito-idp:ListUsers", Resource = aws_cognito_user_pool.main.arn },
+    ]
     payments = []
     notifications = [
       { Effect = "Allow", Action = ["ses:SendEmail", "ses:SendRawEmail"], Resource = "*", Condition = { StringEquals = { "ses:FromAddress" = "no-reply@${var.domain}" } } },
@@ -253,8 +277,13 @@ resource "aws_iam_role_policy" "task" {
         Action   = ["sqs:ReceiveMessage", "sqs:DeleteMessage", "sqs:ChangeMessageVisibility", "sqs:GetQueueAttributes"]
         Resource = module.messaging.queue_arns[each.key]
       }] : [],
-      # ECS Exec, for an operator's shell during an incident.
-      [{ Effect = "Allow", Action = ["ssmmessages:CreateControlChannel", "ssmmessages:CreateDataChannel", "ssmmessages:OpenControlChannel", "ssmmessages:OpenDataChannel"], Resource = "*" }],
+      # ECS Exec, for an operator's shell during an incident; every session is
+      # recorded to its own log group (P-32).
+      [
+        { Effect = "Allow", Action = ["ssmmessages:CreateControlChannel", "ssmmessages:CreateDataChannel", "ssmmessages:OpenControlChannel", "ssmmessages:OpenDataChannel"], Resource = "*" },
+        { Effect = "Allow", Action = ["logs:DescribeLogGroups"], Resource = "*" },
+        { Effect = "Allow", Action = ["logs:CreateLogStream", "logs:DescribeLogStreams", "logs:PutLogEvents"], Resource = "${aws_cloudwatch_log_group.ecs_exec.arn}:*" },
+      ],
     )
   })
 }
@@ -288,7 +317,9 @@ resource "aws_ecs_task_definition" "service" {
     environment            = [for k, v in local.env[each.key] : { name = k, value = v }]
     secrets                = [for k, v in local.secrets[each.key] : { name = k, valueFrom = v }]
     healthCheck = {
-      command     = ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/healthz')"]
+      command = ["CMD", "python", "-c", each.key == "gateway"
+        ? "import ssl, urllib.request; urllib.request.urlopen('https://localhost:8000/healthz', context=ssl._create_unverified_context())"
+      : "import urllib.request; urllib.request.urlopen('http://localhost:8000/healthz')"]
       interval    = 10
       timeout     = 3
       retries     = 3
@@ -362,6 +393,16 @@ resource "aws_ecs_service" "service" {
         client_alias {
           port     = 8000
           dns_name = each.key
+        }
+        # P-11: service-to-service traffic is TLS between the Service Connect
+        # proxies, with certificates from the private CA (tls.tf). The code
+        # still says http://catalog:8000; the proxy next to it encrypts.
+        tls {
+          issuer_cert_authority {
+            aws_pca_authority_arn = aws_acmpca_certificate_authority.internal.arn
+          }
+          kms_key  = aws_kms_key.service_connect.arn
+          role_arn = aws_iam_role.service_connect_tls.arn
         }
       }
     }

@@ -19,11 +19,14 @@ For each objective, alarm when the budget burns **14.4× faster than
 sustainable over 1 h and 5 min** (2% of the monthly budget in an hour; this
 pages), or **6× over 6 h and 30 min** (this opens a ticket). The existing
 alarms are the first pieces: 5xx rate, p99 latency, queue age and dead
-letters (`infra/platform/observability.tf`). Burn-rate alarms exist for one
-API-wide objective (99.5% non-5xx, `observability.tf`); the per-journey
-objectives above, with their latency thresholds, are not alarmed separately
-yet, and queue-age alarms fire at 5 minutes for every queue (stricter than the
-15- and 10-minute SLIs). Per-journey burn alarms: task T-35c.
+letters (`infra/platform/observability.tf`). Burn-rate alarms exist for the
+API as a whole (99.5% non-5xx) and, since T-35c, for each request journey:
+browse and search (bad = a 5xx or slower than 800 ms), book and owner answers
+(bad = a 5xx). The gateway's access lines name their journey
+(`cappy_common.observability.journey`) and log metric filters count them;
+each journey pages at 14.4× over 1 h and 5 min and opens a ticket at 6× over
+6 h and 30 min. The two event journeys are alarmed on queue age at their SLI:
+payments at 15 minutes, notifications at 10 (other queues at 5).
 
 ## Error-budget policy
 

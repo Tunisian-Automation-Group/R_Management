@@ -63,20 +63,55 @@
 ## A buyer reported a problem (disputed booking)
 
 A `disputed` booking has been paid (captured) but not paid out, and it will
-not complete by itself. Read the buyer's reason (`declineReason`) and hear
-both sides. Then settle it from inside the network, with ECS Exec into any
-catalog task (booking accepts catalog's internal token, not its own; P-10):
+not complete by itself. The two sides get 72 hours to settle it themselves
+(S-21): either offers a refund amount, the other accepts, done. An offer
+nobody answers in 72 hours sends the dispute to you (`escalatedAt` on it;
+escalated disputes list first).
+
+Work a case in the admin console: `GET /api/admin/bookings?status=disputed`
+(or `?member=<id or email>`, `?booking=<id>`, `?claims=open`), then
+`GET /api/admin/bookings/<id>/case`: the timeline, the whole conversation as
+written, the hand-over photos, the payment, the dispute and what was decided.
+Opening a case is logged.
+
+Settle it with `POST /api/admin/bookings/<id>/resolve`:
+
+| `outcome` | What happens |
+|---|---|
+| `pay_owner` | Completes it; payments transfers the owner's share |
+| `refund_buyer` | Cancels it; payments refunds everything |
+| `partial` + `refundAmount` | Completes it; payments refunds that part and pays the owner their share of the rest |
+
+Give a `reasonCode` (damage, no_show, not_as_described, late_return,
+cleanliness, safety, goodwill, other) and a `note`. A refund above your limit
+(`refund_limit_support` / `refund_limit_lead` in `markets.json`, per market)
+waits as `pending_approval` for someone else: `GET /api/admin/resolutions`,
+then `POST /api/admin/resolutions/<id>/approve` (a lead, or anyone whose
+limit covers it) or `/reject`. Leads are the Cognito group `admin-lead`, on
+top of `admin`.
+
+From inside the network (ECS Exec into any catalog task; booking accepts
+catalog's internal token, not its own, P-10), the same rules with the support
+limit:
 
 ```sh
 curl -s -X POST http://booking:8000/internal/bookings/<id>/resolve \
   -H "X-Internal-Token: $INTERNAL_TOKEN" -H 'content-type: application/json' \
-  -d '{"outcome":"pay_owner","by":"<your name>"}'     # or "refund_buyer"
+  -d '{"outcome":"pay_owner","reasonCode":"other","note":"...","by":"<your name>"}'
 ```
 
-- `pay_owner` completes the booking, and payments transfers the owner's share.
-- `refund_buyer` cancels it, and payments refunds the buyer in full.
+Everything is in the booking's audit trail as `support:<name>` and in the
+staff audit log (`GET /api/admin/audit?target=<booking id>`).
 
-Both are recorded in the booking's audit trail as `support:<name>`.
+### An owner says it came back late
+
+The owner reports it within 24 hours of the end (`POST
+/api/bookings/<id>/late-return`): a claim with the extra time after 30
+minutes' grace at the listing's rate, plus a late fee of one hour's rate
+capped per market (`late_fee_cap`). Confirm or reject it with `POST
+/api/admin/claims/<id>/decide`. Nothing is charged: collecting needs a saved
+card (S-9, waiting on the insurance decision G-B1); until then settle it
+with the owner directly.
 
 ## Everyday operations
 
@@ -122,8 +157,11 @@ The console API is under `/api/admin/…`:
 | `GET /api/admin/dsa-stats?month=YYYY-MM` | The numbers a transparency report needs (Art. 15/24); the exact active-recipient count is in `docs/analytics.md` |
 | `POST /api/admin/listings/{id}/take-down` `{statement}` | Takes a listing down without a report |
 | `POST /api/admin/owners/{id}/suspend` · `/reinstate` | Suspends: their listings come down, and they cannot list or book. To also stop sign-in: `aws cognito-idp admin-disable-user` |
-| `POST /api/admin/bookings/{id}/resolve` `{outcome: pay_owner\|refund_buyer}` | Settles a dispute |
-| `GET /api/admin/audit` | Every action: who, what, why |
+| `GET /api/admin/bookings` `?status=&member=&booking=&claims=open` · `/{id}/case` | Finds and opens a case (H-9) |
+| `POST /api/admin/bookings/{id}/resolve` `{outcome: pay_owner\|refund_buyer\|partial, refundAmount?, reasonCode, note}` | Settles a dispute; above your limit it waits for approval |
+| `GET /api/admin/resolutions` · `POST /{id}/approve` · `/reject` | The second pair of eyes (H-6) |
+| `POST /api/admin/claims/{id}/decide` `{decision: confirm\|reject, note}` | An owner's late-return claim |
+| `GET /api/admin/audit` `?target=&actor=&cursor=` | Every staff action, in every service: who, what, when, why, request id (H-7) |
 
 Aim to decide safety-related notices within 24 h.
 
@@ -202,9 +240,6 @@ whether the alarms fired and whether the runbook worked.
   "load more" using the `nextCursor` the API already returns.
 - Rate limiting is per IP, done by WAF. Add per-user limits (they need shared
   state such as Redis) when metrics show abuse from signed-in accounts.
-- Cancelling an accepted booking before its time starts refunds in full; after
-  that the buyer can only dispute. Put a partial-refund policy in
-  `payments/handlers.py` if late cancellations should cost something.
 - Every service can publish any event type to the one topic. A compromised
   service could forge events; per-publisher topics (and consumers checking
   which topic a message came from) close that when the threat model needs it.

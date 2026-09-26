@@ -32,6 +32,12 @@ jobs:
       - uses: astral-sh/setup-uv@v6
         with: { enable-cache: true }
       - run: uv sync --frozen --all-packages
+      # Known vulnerabilities in what the services install (P-32): the locked
+      # third-party packages, never our own workspace.
+      - name: Dependency audit
+        run: |
+          uv export --frozen --all-packages --no-emit-workspace --no-hashes --no-dev -o /tmp/requirements.txt
+          uvx pip-audit --strict --disable-pip --no-deps -r /tmp/requirements.txt
       - run: uv run ruff check .
       - run: uv run ruff format --check .
       - name: Unit, API, Postgres and Stripe contract tests
@@ -50,6 +56,8 @@ jobs:
       - uses: actions/setup-node@v5
         with: { node-version: 22, cache: npm, cache-dependency-path: web/package-lock.json }
       - run: npm ci --ignore-scripts
+      # What ships to browsers and phones (P-32); dev tooling does not.
+      - run: npm audit --omit=dev --audit-level=high
       - run: npx tsc --noEmit -p .
       - run: npm run build
       # The budgets and invariants the app keeps (size, translations, flags,

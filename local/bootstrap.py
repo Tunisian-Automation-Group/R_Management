@@ -35,6 +35,7 @@ CONSUMERS = {
         "booking.owner_reliability",
         "moderation.person_flagged",
         "payment.identity_verified",
+        "staff.action",
     ],
     "booking": [
         "payment.authorised",
@@ -56,6 +57,7 @@ CONSUMERS = {
         "moderation.report_received",
         "moderation.decision",
         "listing.idle",
+        "booking.dispute_offer",
     ],
 }
 DEMO_PASSWORD = "Demo-pass-123!"

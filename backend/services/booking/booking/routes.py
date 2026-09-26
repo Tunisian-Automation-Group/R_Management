@@ -25,7 +25,7 @@ from sqlalchemy.exc import DBAPIError, IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from cappy_common.app import ApiRouter
-from cappy_common.auth import Principal, require_admin, require_internal, require_principal
+from cappy_common.auth import Principal, require_internal, require_principal
 from cappy_common.errors import ApiError, Conflict, Forbidden, Invalid, NotFound, RateLimited, Unavailable
 from cappy_common.idempotency import IdempotencyKey, fingerprint, remember, replayed
 from cappy_common.ids import new_id
@@ -135,6 +135,15 @@ async def create_booking(
 ) -> BookingCreated:
     """Send the same ``Idempotency-Key`` when retrying: a retry returns the
     booking the first attempt made, rather than a second booking."""
+    return await create(request, p.sub, body, idempotency_key)
+
+
+async def create(
+    request: Request, sub: str, body: CreateBookingIn, idempotency_key: str | None, *, extends: str | None = None
+) -> BookingCreated:
+    """A new booking, whichever way it is asked for. ``extends``: the booking
+    this one continues, for the same renter (S-12)."""
+    p = Principal(sub=sub)
     app = request.app
     db, outbox = app.state.db, app.state.outbox
     settings: Settings = app.state.settings
@@ -155,7 +164,12 @@ async def create_booking(
             raise RateLimited("that is a lot of booking requests for one day; try again tomorrow")
 
     view = await app.state.matching.match_for_offer(
-        body.requirement.model_dump(mode="json", by_alias=True), body.listing_id, body.slot_id, body.start, body.end
+        body.requirement.model_dump(mode="json", by_alias=True),
+        body.listing_id,
+        body.slot_id,
+        body.start,
+        body.end,
+        **({"extension": True} if extends else {}),
     )
     if view.owner.id == p.sub:
         raise Invalid("you cannot book your own listing")
@@ -197,11 +211,15 @@ async def create_booking(
             # A trader's identity, for the fee invoice (§ 14 UStG) and the renter.
             **({"ownerBusiness": view.owner.business.model_dump(by_alias=True)} if view.owner.business else {}),
             "instantBook": view.listing.instant_book,
+            # The listing's own zone (its weekly hours), else its market's main one.
+            "timeZone": (view.listing.availability.time_zone if view.listing.availability else None)
+            or market(view.owner.country).time_zone,
             "cancellationPolicy": view.listing.cancellation_policy,
             **({"photo": view.listing.photos[0]} if view.listing.photos else {}),
         },
         idempotency_key=idempotency_key,
         request_hash=fingerprint,
+        extends_id=extends,
     )
     try:
         async with db.transaction() as s:
@@ -339,6 +357,13 @@ async def _transition(
         # Nothing charged yet (a request, awaiting payment): no refund to show.
         fields["refund_amount"] = _refund(request, row, user, now)
     await repo.move(row, to, user, now, **fields)
+    if to == "disputed":
+        # S-21: the two sides get 72 hours to settle it between them first.
+        from .support import OFFER_WINDOW
+        from .tables import DisputeRow
+
+        reason = str(fields.get("decline_reason") or "")
+        repo.s.add(DisputeRow(booking_id=row.id, by=user, reason=reason, opened_at=now, respond_by=now + OFFER_WINDOW))
     return to_booking(row, user)
 
 
@@ -502,40 +527,6 @@ async def rate_renter(
     return answer
 
 
-# --- internal: matching asks what is already taken -------------------------------------------
-
-
-class ResolveIn(CamelModel):
-    outcome: str = Field(pattern="^(pay_owner|refund_buyer)$")
-    by: str = Field(min_length=1, max_length=64, description="who at support decided")
-
-
-admin = ApiRouter(prefix="/admin")
-
-
-@admin.post("/bookings/{booking_id}/resolve", response_model=Booking)
-async def resolve_as_staff(
-    booking_id: str, body: ResolveIn, repo: BookingRepository = Depends(get_repo), p: Principal = Depends(require_admin)
-) -> Booking:
-    """The same as the internal endpoint, for staff in the admin console."""
-    return await resolve(booking_id, body.model_copy(update={"by": p.sub}), repo)
-
-
-@internal.post("/bookings/{booking_id}/resolve", response_model=Booking)
-async def resolve(booking_id: str, body: ResolveIn, repo: BookingRepository = Depends(get_repo)) -> Booking:
-    """Support settles a dispute (docs/runbook.md). Paying the owner completes
-    the booking (payments transfers); refunding cancels it (payments refunds)."""
-    row = await repo.get(booking_id, lock=True)
-    if row.status != "disputed":
-        raise Conflict(f"only a disputed booking can be resolved; this one is {row.status}")
-    to = "completed" if body.outcome == "pay_owner" else "cancelled"
-    # A disputed booking was charged: refunding it gives it all back, and the
-    # booking says so (payments refunds the same full amount).
-    fields = {"refund_amount": row.amount} if to == "cancelled" else {}
-    await repo.move(row, to, f"support:{body.by}", _now(), **fields)
-    return to_booking(row, row.owner_id)
-
-
 class OpenBookings(CamelModel):
     open: int
     # When the last open booking's window ends.
@@ -596,6 +587,9 @@ class PersonExport(CamelModel):
     identity_verified: bool
     suspended: bool
     card_fingerprints: list[str]
+    # Disputes they opened and claims they made (S-12, S-21).
+    disputes: list[dict] = []
+    claims: list[dict] = []
 
 
 @internal.get("/people/{person}/export", response_model=PersonExport)
@@ -618,7 +612,33 @@ async def export_person(person: str, request: Request, repo: BookingRepository =
 
     rows = await repo.all_for(person)
     blocked = (await s.execute(select(BlockRow.blocked_id).where(BlockRow.blocker_id == person))).scalars()
+    from .tables import ClaimRow, DisputeRow
+
+    disputes = (await s.execute(select(DisputeRow).where(DisputeRow.by == person))).scalars()
+    claims = (await s.execute(select(ClaimRow).where(ClaimRow.by == person))).scalars()
     return PersonExport(
+        disputes=[
+            {
+                "bookingId": d.booking_id,
+                "reason": d.reason,
+                "openedAt": iso_from_datetime(d.opened_at),
+                "offerAmount": d.offer_amount if d.offer_by == person else None,
+            }
+            for d in disputes
+        ],
+        claims=[
+            {
+                "bookingId": c.booking_id,
+                "kind": c.kind,
+                "minutesLate": c.minutes_late,
+                "amount": c.amount,
+                "currency": c.currency,
+                "note": c.note,
+                "status": c.status,
+                "at": iso_from_datetime(c.created_at),
+            }
+            for c in claims
+        ],
         bookings=[to_booking(r, person) for r in rows],
         blocked=list(blocked),
         identity_verified=await s.get(VerifiedRow, person) is not None,

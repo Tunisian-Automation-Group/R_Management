@@ -297,6 +297,86 @@
       "country": "PT",
       "lat": 38.75,
       "lng": -9.2
+    },
+    {
+      "name": "Neubau",
+      "city": "Wien",
+      "metro": "Wien",
+      "country": "AT",
+      "lat": 48.202,
+      "lng": 16.349
+    },
+    {
+      "name": "Lend",
+      "city": "Graz",
+      "metro": "Graz",
+      "country": "AT",
+      "lat": 47.077,
+      "lng": 15.428
+    },
+    {
+      "name": "Urfahr",
+      "city": "Linz",
+      "metro": "Linz",
+      "country": "AT",
+      "lat": 48.316,
+      "lng": 14.287
+    },
+    {
+      "name": "Salzburg-Altstadt",
+      "city": "Salzburg",
+      "metro": "Salzburg",
+      "country": "AT",
+      "lat": 47.799,
+      "lng": 13.044
+    },
+    {
+      "name": "Wilten",
+      "city": "Innsbruck",
+      "metro": "Innsbruck",
+      "country": "AT",
+      "lat": 47.256,
+      "lng": 11.394
+    },
+    {
+      "name": "Zürich-Kreis 5",
+      "city": "Zürich",
+      "metro": "Zürich",
+      "country": "CH",
+      "lat": 47.388,
+      "lng": 8.52
+    },
+    {
+      "name": "Plainpalais",
+      "city": "Genève",
+      "metro": "Genève",
+      "country": "CH",
+      "lat": 46.197,
+      "lng": 6.141
+    },
+    {
+      "name": "Kleinbasel",
+      "city": "Basel",
+      "metro": "Basel",
+      "country": "CH",
+      "lat": 47.565,
+      "lng": 7.598
+    },
+    {
+      "name": "Länggasse",
+      "city": "Bern",
+      "metro": "Bern",
+      "country": "CH",
+      "lat": 46.957,
+      "lng": 7.431
+    },
+    {
+      "name": "Flon",
+      "city": "Lausanne",
+      "metro": "Lausanne",
+      "country": "CH",
+      "lat": 46.521,
+      "lng": 6.629
     }
   ],
   "owners": [
@@ -1425,6 +1505,34 @@
         "registerNumber": "NIPC 676922242",
         "vatId": "PT111008994"
       }
+    },
+    {
+      "id": "ch1",
+      "name": "Lea Brunner",
+      "initials": "LB",
+      "kind": "person",
+      "district": "Zürich-Kreis 5",
+      "country": "CH",
+      "verified": true,
+      "ratingSum": 0,
+      "jobsDone": 0,
+      "onTimeJobs": 0,
+      "joinedYear": 2025,
+      "responseMins": 25
+    },
+    {
+      "id": "at1",
+      "name": "Jakob Huber",
+      "initials": "JH",
+      "kind": "person",
+      "district": "Neubau",
+      "country": "AT",
+      "verified": true,
+      "ratingSum": 0,
+      "jobsDone": 0,
+      "onTimeJobs": 0,
+      "joinedYear": 2026,
+      "responseMins": 40
     }
   ],
   "listings": [
@@ -3736,6 +3844,51 @@
         "https://images.unsplash.com/photo-1611273426858-450d8e3c9fce?w=900&q=70&auto=format&fit=crop",
         "https://images.unsplash.com/photo-1581092160562-40aa08e78837?w=900&q=70&auto=format&fit=crop"
       ]
+    },
+    {
+      "id": "ch-l1",
+      "ownerId": "ch1",
+      "category": "workshop",
+      "mode": "window",
+      "title": "Makita track saw with 1.5 m rail",
+      "blurb": "Straight cuts in panels, with a dust bag.",
+      "district": "Zürich-Kreis 5",
+      "ratePerHour": 900,
+      "currency": "CHF",
+      "minHours": 2,
+      "maxHours": 8,
+      "extraFee": 0,
+      "extraLabel": "No extras",
+      "instructions": "Collect from the courtyard workshop; ring Brunner.",
+      "rules": [
+        "Back the same day"
+      ],
+      "active": true,
+      "photos": [
+        "https://images.unsplash.com/photo-1621905251189-08b45d6a269e?w=900&q=70&auto=format&fit=crop"
+      ]
+    },
+    {
+      "id": "at-l1",
+      "ownerId": "at1",
+      "category": "workshop",
+      "mode": "window",
+      "title": "Bosch cordless drill set",
+      "blurb": "Two batteries, bits and a case.",
+      "district": "Neubau",
+      "ratePerHour": 300,
+      "minHours": 2,
+      "maxHours": 8,
+      "extraFee": 0,
+      "extraLabel": "No extras",
+      "instructions": "Pick up at the door, Huber on the bell.",
+      "rules": [
+        "Charge the batteries before returning"
+      ],
+      "active": true,
+      "photos": [
+        "https://images.unsplash.com/photo-1517420704952-d9f39e95b43e?w=900&q=70&auto=format&fit=crop"
+      ]
     }
   ],
   "slots": [
@@ -5488,6 +5641,34 @@
       "startHour": 0,
       "endHour": 1440,
       "hoursUsable": 1440
+    },
+    {
+      "id": "w251",
+      "listingId": "ch-l1",
+      "startHour": 41,
+      "endHour": 49,
+      "hoursUsable": 8
+    },
+    {
+      "id": "w252",
+      "listingId": "ch-l1",
+      "startHour": 89,
+      "endHour": 97,
+      "hoursUsable": 8
+    },
+    {
+      "id": "w253",
+      "listingId": "at-l1",
+      "startHour": 41,
+      "endHour": 49,
+      "hoursUsable": 8
+    },
+    {
+      "id": "w254",
+      "listingId": "at-l1",
+      "startHour": 113,
+      "endHour": 121,
+      "hoursUsable": 8
     }
   ],
   "reviews": [
@@ -9635,6 +9816,8 @@
     "f-l7": "Avenue Salvador Allende 11, 69120 Vaulx-en-Velin",
     "n-l7": "Johan van Hasseltweg 80, 1022 WZ Amsterdam",
     "p-l6": "Rua Morais Soares 12, 1900-341 Lisbon",
-    "p-l5": "Rua do Açúcar 33, 1950-010 Lisbon"
+    "p-l5": "Rua do Açúcar 33, 1950-010 Lisbon",
+    "ch-l1": "Josefstrasse 12, 8005 Zürich",
+    "at-l1": "Neubaugasse 7, 1070 Wien"
   }
 }

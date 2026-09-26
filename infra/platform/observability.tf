@@ -88,16 +88,18 @@ resource "aws_cloudwatch_metric_alarm" "dlq" {
 }
 
 resource "aws_cloudwatch_metric_alarm" "queue_age" {
-  for_each            = module.messaging.queue_names
-  alarm_name          = "${local.name}-${each.key}-queue-age"
-  alarm_description   = "${each.key} is falling behind on events"
-  namespace           = "AWS/SQS"
-  metric_name         = "ApproximateAgeOfOldestMessage"
-  dimensions          = { QueueName = each.value }
-  statistic           = "Maximum"
-  period              = 60
-  evaluation_periods  = 5
-  threshold           = 300
+  for_each           = module.messaging.queue_names
+  alarm_name         = "${local.name}-${each.key}-queue-age"
+  alarm_description  = "${each.key} is falling behind on events"
+  namespace          = "AWS/SQS"
+  metric_name        = "ApproximateAgeOfOldestMessage"
+  dimensions         = { QueueName = each.value }
+  statistic          = "Maximum"
+  period             = 60
+  evaluation_periods = 5
+  # docs/slo.md: money moves within 15 minutes, mail within 10; the other
+  # consumers get 5 (nothing user-facing waits on them longer).
+  threshold           = lookup({ payments = 900, notifications = 600 }, each.key, 300)
   comparison_operator = "GreaterThanThreshold"
   treat_missing_data  = "notBreaching"
   alarm_actions       = local.alarm_actions
@@ -247,5 +249,99 @@ resource "aws_cloudwatch_composite_alarm" "burn_ticket" {
   alarm_name        = "${local.name}-slo-burning"
   alarm_description = "The API is spending its monthly error budget 6x too fast. Look today."
   alarm_rule        = "ALARM(${aws_cloudwatch_metric_alarm.burn["ticket_long"].alarm_name}) AND ALARM(${aws_cloudwatch_metric_alarm.burn["ticket_short"].alarm_name})"
+  alarm_actions     = local.alarm_actions
+}
+
+# --- per-journey error budgets (docs/slo.md, T-35c) ----------------------------------
+# The gateway's access lines name their journey (cappy_common.observability
+# .journey). Two counts per journey: every request, and the bad ones (a 5xx,
+# or for browsing also slower than 800 ms). The same windows and factors as
+# the API-wide burn alarms above.
+
+locals {
+  journeys = {
+    browse = { budget = 0.005, bad = "($.status >= 500 || $.durationMs > 800)" }
+    book   = { budget = 0.001, bad = "$.status >= 500" }
+    answer = { budget = 0.001, bad = "$.status >= 500" }
+  }
+  journey_burns = {
+    for pair in setproduct(keys(local.journeys), keys(local.burn_windows)) :
+    "${pair[0]}-${pair[1]}" => { journey = pair[0], window = pair[1] }
+  }
+}
+
+resource "aws_cloudwatch_log_metric_filter" "journey_requests" {
+  for_each       = local.journeys
+  name           = "${local.name}-journey-${each.key}"
+  log_group_name = aws_cloudwatch_log_group.service["gateway"].name
+  pattern        = "{ $.journey = \"${each.key}\" }"
+  metric_transformation {
+    name          = "JourneyRequests-${each.key}"
+    namespace     = "Cappy/${var.env}"
+    value         = "1"
+    default_value = "0"
+  }
+}
+
+resource "aws_cloudwatch_log_metric_filter" "journey_bad" {
+  for_each       = local.journeys
+  name           = "${local.name}-journey-${each.key}-bad"
+  log_group_name = aws_cloudwatch_log_group.service["gateway"].name
+  pattern        = "{ $.journey = \"${each.key}\" && ${each.value.bad} }"
+  metric_transformation {
+    name          = "JourneyBad-${each.key}"
+    namespace     = "Cappy/${var.env}"
+    value         = "1"
+    default_value = "0"
+  }
+}
+
+resource "aws_cloudwatch_metric_alarm" "journey_burn" {
+  for_each            = local.journey_burns
+  alarm_name          = "${local.name}-slo-${each.value.journey}-${each.value.window}"
+  comparison_operator = "GreaterThanThreshold"
+  threshold           = 100 * local.journeys[each.value.journey].budget * local.burn_windows[each.value.window].factor
+  evaluation_periods  = 1
+  treat_missing_data  = "notBreaching"
+
+  metric_query {
+    id          = "rate"
+    expression  = "100 * bad / MAX([bad, requests])"
+    return_data = true
+  }
+  metric_query {
+    id = "bad"
+    metric {
+      namespace   = "Cappy/${var.env}"
+      metric_name = "JourneyBad-${each.value.journey}"
+      period      = local.burn_windows[each.value.window].seconds
+      stat        = "Sum"
+    }
+  }
+  metric_query {
+    id = "requests"
+    metric {
+      namespace   = "Cappy/${var.env}"
+      metric_name = "JourneyRequests-${each.value.journey}"
+      period      = local.burn_windows[each.value.window].seconds
+      stat        = "Sum"
+    }
+  }
+}
+
+resource "aws_cloudwatch_composite_alarm" "journey_page" {
+  for_each          = local.journeys
+  alarm_name        = "${local.name}-slo-${each.key}-burning-fast"
+  alarm_description = "The ${each.key} journey is spending its error budget 14x too fast (docs/slo.md). Page."
+  alarm_rule        = "ALARM(${aws_cloudwatch_metric_alarm.journey_burn["${each.key}-page_long"].alarm_name}) AND ALARM(${aws_cloudwatch_metric_alarm.journey_burn["${each.key}-page_short"].alarm_name})"
+  alarm_actions     = local.alarm_actions
+  ok_actions        = local.alarm_actions
+}
+
+resource "aws_cloudwatch_composite_alarm" "journey_ticket" {
+  for_each          = local.journeys
+  alarm_name        = "${local.name}-slo-${each.key}-burning"
+  alarm_description = "The ${each.key} journey is spending its error budget 6x too fast (docs/slo.md). Look today."
+  alarm_rule        = "ALARM(${aws_cloudwatch_metric_alarm.journey_burn["${each.key}-ticket_long"].alarm_name}) AND ALARM(${aws_cloudwatch_metric_alarm.journey_burn["${each.key}-ticket_short"].alarm_name})"
   alarm_actions     = local.alarm_actions
 }

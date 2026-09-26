@@ -126,9 +126,13 @@ class MatchesIn(CamelModel):
 class MatchForOfferIn(CamelModel):
     requirement: Requirement
     listing_id: str
+    # Empty for an extension: whichever idle slot holds the window.
     slot_id: str
     start: Iso
     end: Iso
+    # The time straight after a booking, for its renter (S-12): they are
+    # already there, so no lead time for an answer applies.
+    extension: bool = False
 
 
 class QuoteIn(CamelModel):
@@ -273,13 +277,22 @@ async def match_for_offer_route(body: MatchForOfferIn, request: Request) -> Matc
     if not listing.active:
         raise NotFound(f"listing {listing.id} is not taking bookings")
 
-    slot = next((s for s in world.slots if s.id == body.slot_id), None)
-    if not slot:
-        raise NotFound(f"slot {body.slot_id} not found on listing {listing.id}")
     start, end = ms_from_iso(body.start), ms_from_iso(body.end)
-    if not (ms_from_iso(slot.start) <= start < end <= ms_from_iso(slot.end)):
-        raise Invalid("the requested window does not sit inside that idle slot")
-    if start < ms_from_iso(_earliest_start(request)):
+    inside = lambda s: ms_from_iso(s.start) <= start < end <= ms_from_iso(s.end)  # noqa: E731
+    if body.extension and not body.slot_id:
+        slot = next((s for s in world.slots if inside(s)), None)
+        if not slot:
+            raise Conflict("the listing is not open straight after this booking", code="not_extendable")
+    else:
+        slot = next((s for s in world.slots if s.id == body.slot_id), None)
+        if not slot:
+            raise NotFound(f"slot {body.slot_id} not found on listing {listing.id}")
+        if not inside(slot):
+            raise Invalid("the requested window does not sit inside that idle slot")
+    if body.extension:
+        if start < ms_from_iso(now_iso()):
+            raise Invalid("an extension starts where the booking ends, which is past")
+    elif start < ms_from_iso(_earliest_start(request)):
         raise Invalid("that window starts too soon for the owner to answer; pick a later one")
     hours = hours_for(req, listing)
     if hours is not None and abs((end - start) / HOUR_MS - hours) > 0.01:

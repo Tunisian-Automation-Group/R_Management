@@ -89,6 +89,15 @@ REGISTER: dict[str, Entry] = {
         "the audit trail of status changes (who, as an id, and when) that disputes need; the export has each"
         " booking's current status and dates",
     ),
+    "booking.booking_disputes": Entry("DisputeRow", "redact", True),
+    "booking.booking_claims": Entry("ClaimRow", "redact", True),
+    "booking.booking_resolutions": Entry(
+        "ResolutionRow",
+        "keep",
+        False,
+        "how a dispute was settled and by which staff member (accountability, H-6); the export has each"
+        " booking's outcome and refund",
+    ),
     "booking.idempotency_keys": Entry("IDEMPOTENCY", "delete", False, _KEYS),
     "booking.revoked_sessions": Entry("revoked", "keep", False, _SESSIONS),
     # --- payments ---

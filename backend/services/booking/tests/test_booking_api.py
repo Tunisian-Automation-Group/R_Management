@@ -40,12 +40,13 @@ class FakeMatching(Matching):
         self.listing = next(l for l in w.listings if l.id == "l9")
         self.owner = next(o for o in w.owners if o.id == self.listing.owner_id)
 
-    async def match_for_offer(self, requirement, listing_id, slot_id, start, end) -> MatchView:  # noqa: ANN001
+    async def match_for_offer(self, requirement, listing_id, slot_id, start, end, *, extension=False) -> MatchView:  # noqa: ANN001
+        self.extension = extension
         q = Quote(hours=2, base=4000, extra=0, extra_label="", total=4600, platform_fee=600, owner_net=4000)
         m = Match(
             listing_id=listing_id,
             owner_id=self.owner.id,
-            slot_id=slot_id,
+            slot_id=slot_id or "w8",
             start=start,
             end=end,
             score=1,
@@ -74,6 +75,9 @@ class FakePayments(Payments):
         self.started.append(booking_id)
         self.currencies = [*getattr(self, "currencies", []), currency]
         return PaymentStart(client_secret=f"pi_{booking_id}_secret", intent_id=f"pi_{booking_id}")
+
+    async def state(self, booking_id):  # noqa: ANN001
+        return {"bookingId": booking_id, "status": "captured"} if booking_id in self.started else None
 
 
 class FakeCatalog:
@@ -405,7 +409,8 @@ def test_once_the_time_has_started_the_buyer_disputes_rather_than_cancels(client
     # Support settles it; the owner's payout follows from `completed`.
     body = {"outcome": "pay_owner", "by": "agent-7"}
     assert client.post(f"/internal/bookings/{bid}/resolve", json=body).status_code == 403
-    assert client.post(f"/internal/bookings/{bid}/resolve", json=body, headers=INTERNAL).json()["status"] == "completed"
+    settled = client.post(f"/internal/bookings/{bid}/resolve", json=body, headers=INTERNAL).json()
+    assert settled["booking"]["status"] == "completed" and settled["resolution"]["status"] == "done"
     assert client.post(f"/internal/bookings/{bid}/resolve", json=body, headers=INTERNAL).status_code == 409
 
 
@@ -608,7 +613,10 @@ def test_staff_can_resolve_a_dispute_from_the_admin_console(client, app, issuer)
     body = {"outcome": "refund_buyer", "by": "ignored"}
     assert client.post(f"/admin/bookings/{bid}/resolve", json=body, headers=issuer.headers(BUYER)).status_code == 403
     staff = {"Authorization": f"Bearer {issuer.token('staff-1', **{'cognito:groups': ['admin']})}"}
-    assert client.post(f"/admin/bookings/{bid}/resolve", json=body, headers=staff).json()["status"] == "cancelled"
+    assert (
+        client.post(f"/admin/bookings/{bid}/resolve", json=body, headers=staff).json()["booking"]["status"]
+        == "cancelled"
+    )
 
 
 def test_check_in_and_check_out_photos_are_kept_as_evidence(client, app, issuer):

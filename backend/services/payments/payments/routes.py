@@ -17,8 +17,9 @@ from cappy_common.db import insert_or_ignore
 from cappy_common.errors import Conflict, Invalid, NotFound, Unavailable
 from cappy_common.events import IDENTITY_VERIFIED, PAYMENT_AUTHORISED, PAYOUTS_READY
 from cappy_common.markets import markets
-from cappy_common.models import CamelModel
+from cappy_common.models import CamelModel, Iso
 from cappy_common.runtime import Tx
+from cappy_common.timeutil import iso_from_datetime
 
 from .identity import IdentityResult, stripe_result
 from .provider import FAKE_ACCOUNT_PREFIX, Provider
@@ -339,6 +340,39 @@ async def _identity_result(request: Request, session: AsyncSession, result: Iden
 async def identity_status(session: AsyncSession = Tx, p: Principal = Depends(require_principal)) -> IdentityOut:
     row = await session.get(IdentityRow, p.sub)
     return IdentityOut(status=row.status if row else "none")
+
+
+class PaymentState(CamelModel):
+    booking_id: str
+    status: str
+    amount: int
+    owner_net: int
+    currency: str
+    captured: bool
+    refunded: bool
+    paid_out: bool
+    chargeback_at: Iso | None = None
+    updated_at: Iso
+
+
+@internal.get("/bookings/{booking_id}/payment", response_model=PaymentState)
+async def payment_state(booking_id: str, session: AsyncSession = Tx) -> PaymentState:
+    """For the staff case view (H-9): where the money of a booking stands."""
+    row = await session.get(PaymentRow, booking_id)
+    if row is None:
+        raise NotFound(f"no payment for booking {booking_id}")
+    return PaymentState(
+        booking_id=row.booking_id,
+        status=row.status,
+        amount=row.amount,
+        owner_net=row.owner_net,
+        currency=row.currency,
+        captured=row.charge_id is not None,
+        refunded=row.refund_id is not None,
+        paid_out=row.transfer_id is not None,
+        chargeback_at=iso_from_datetime(row.chargeback_at) if row.chargeback_at else None,
+        updated_at=iso_from_datetime(row.updated_at),
+    )
 
 
 # --- internal: a person's data export --------------------------------------------------------

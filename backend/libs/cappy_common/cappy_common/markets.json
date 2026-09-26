@@ -10,6 +10,7 @@
         "en"
       ],
       "units": "metric",
+      "time_zone": "Europe/Vienna",
       "legal_entity": "cappy-gmbh",
       "stripe_platform": "de",
       "tax_regime": "eu-vat",
@@ -18,7 +19,10 @@
       "consumer_law": "eu",
       "id_check_above": 30000,
       "held_listing_above": 10000,
-      "max_rate_per_hour": 1000000
+      "max_rate_per_hour": 1000000,
+      "refund_limit_support": 25000,
+      "refund_limit_lead": 250000,
+      "late_fee_cap": 5000
     },
     "BE": {
       "cell": "eu",
@@ -31,6 +35,7 @@
         "en"
       ],
       "units": "metric",
+      "time_zone": "Europe/Brussels",
       "legal_entity": "cappy-gmbh",
       "stripe_platform": "de",
       "tax_regime": "eu-vat",
@@ -40,6 +45,9 @@
       "id_check_above": 30000,
       "held_listing_above": 10000,
       "max_rate_per_hour": 1000000,
+      "refund_limit_support": 25000,
+      "refund_limit_lead": 250000,
+      "late_fee_cap": 5000,
       "notes": [
         "thresholds converted from the euro values; confirm before launch"
       ]
@@ -53,6 +61,7 @@
         "en"
       ],
       "units": "metric",
+      "time_zone": "Europe/Sofia",
       "legal_entity": "cappy-gmbh",
       "stripe_platform": "de",
       "tax_regime": "eu-vat",
@@ -62,6 +71,9 @@
       "id_check_above": 30000,
       "held_listing_above": 10000,
       "max_rate_per_hour": 1000000,
+      "refund_limit_support": 25000,
+      "refund_limit_lead": 250000,
+      "late_fee_cap": 5000,
       "notes": [
         "thresholds converted from the euro values; confirm before launch"
       ]
@@ -75,6 +87,7 @@
         "fr"
       ],
       "units": "metric",
+      "time_zone": "America/Toronto",
       "legal_entity": "cappy-na",
       "stripe_platform": "de",
       "tax_regime": "ca-gst-hst",
@@ -84,9 +97,13 @@
       "id_check_above": 45000,
       "held_listing_above": 15000,
       "max_rate_per_hour": 1500000,
+      "refund_limit_support": 37500,
+      "refund_limit_lead": 375000,
+      "late_fee_cap": 7500,
       "notes": [
         "ponytail: the North America entity and Stripe platform are M-1 (counsel/owner); starts on the DE platform per ADR 0013",
-        "age of majority is 19 in BC, NB, NL, NS, NT, NU and YT: 19 nationwide until provinces are modelled (counsel); Québec needs French first (Bill 96)"
+        "age of majority is 19 in BC, NB, NL, NS, NT, NU and YT: 19 nationwide until provinces are modelled (counsel); Québec needs French first (Bill 96)",
+        "time_zone is the default when a listing names none; several zones: a listing's own availability zone wins"
       ]
     },
     "CH": {
@@ -100,6 +117,7 @@
         "en"
       ],
       "units": "metric",
+      "time_zone": "Europe/Zurich",
       "legal_entity": "cappy-gmbh",
       "stripe_platform": "de",
       "tax_regime": "ch-vat",
@@ -108,7 +126,10 @@
       "consumer_law": "ch",
       "id_check_above": 28000,
       "held_listing_above": 9500,
-      "max_rate_per_hour": 950000
+      "max_rate_per_hour": 950000,
+      "refund_limit_support": 23300,
+      "refund_limit_lead": 233300,
+      "late_fee_cap": 4700
     },
     "CY": {
       "cell": "eu",
@@ -119,6 +140,7 @@
         "en"
       ],
       "units": "metric",
+      "time_zone": "Asia/Nicosia",
       "legal_entity": "cappy-gmbh",
       "stripe_platform": "de",
       "tax_regime": "eu-vat",
@@ -128,6 +150,9 @@
       "id_check_above": 30000,
       "held_listing_above": 10000,
       "max_rate_per_hour": 1000000,
+      "refund_limit_support": 25000,
+      "refund_limit_lead": 250000,
+      "late_fee_cap": 5000,
       "notes": [
         "thresholds converted from the euro values; confirm before launch"
       ]
@@ -141,6 +166,7 @@
         "en"
       ],
       "units": "metric",
+      "time_zone": "Europe/Prague",
       "legal_entity": "cappy-gmbh",
       "stripe_platform": "de",
       "tax_regime": "eu-vat",
@@ -150,6 +176,9 @@
       "id_check_above": 750000,
       "held_listing_above": 250000,
       "max_rate_per_hour": 25000000,
+      "refund_limit_support": 625000,
+      "refund_limit_lead": 6250000,
+      "late_fee_cap": 125000,
       "notes": [
         "thresholds converted from the euro values; confirm before launch"
       ]
@@ -163,6 +192,7 @@
         "en"
       ],
       "units": "metric",
+      "time_zone": "Europe/Berlin",
       "legal_entity": "cappy-gmbh",
       "stripe_platform": "de",
       "tax_regime": "de-vat",
@@ -171,7 +201,10 @@
       "consumer_law": "eu",
       "id_check_above": 30000,
       "held_listing_above": 10000,
-      "max_rate_per_hour": 1000000
+      "max_rate_per_hour": 1000000,
+      "refund_limit_support": 25000,
+      "refund_limit_lead": 250000,
+      "late_fee_cap": 5000
     },
     "DK": {
       "cell": "eu",
@@ -182,6 +215,7 @@
         "en"
       ],
       "units": "metric",
+      "time_zone": "Europe/Copenhagen",
       "legal_entity": "cappy-gmbh",
       "stripe_platform": "de",
       "tax_regime": "eu-vat",
@@ -191,6 +225,9 @@
       "id_check_above": 220000,
       "held_listing_above": 74000,
       "max_rate_per_hour": 7400000,
+      "refund_limit_support": 183300,
+      "refund_limit_lead": 1833300,
+      "late_fee_cap": 36700,
       "notes": [
         "thresholds converted from the euro values; confirm before launch"
       ]
@@ -204,6 +241,7 @@
         "en"
       ],
       "units": "metric",
+      "time_zone": "Europe/Tallinn",
       "legal_entity": "cappy-gmbh",
       "stripe_platform": "de",
       "tax_regime": "eu-vat",
@@ -213,6 +251,9 @@
       "id_check_above": 30000,
       "held_listing_above": 10000,
       "max_rate_per_hour": 1000000,
+      "refund_limit_support": 25000,
+      "refund_limit_lead": 250000,
+      "late_fee_cap": 5000,
       "notes": [
         "thresholds converted from the euro values; confirm before launch"
       ]
@@ -226,6 +267,7 @@
         "en"
       ],
       "units": "metric",
+      "time_zone": "Europe/Madrid",
       "legal_entity": "cappy-gmbh",
       "stripe_platform": "de",
       "tax_regime": "eu-vat",
@@ -235,6 +277,9 @@
       "id_check_above": 30000,
       "held_listing_above": 10000,
       "max_rate_per_hour": 1000000,
+      "refund_limit_support": 25000,
+      "refund_limit_lead": 250000,
+      "late_fee_cap": 5000,
       "notes": [
         "thresholds converted from the euro values; confirm before launch"
       ]
@@ -249,6 +294,7 @@
         "en"
       ],
       "units": "metric",
+      "time_zone": "Europe/Helsinki",
       "legal_entity": "cappy-gmbh",
       "stripe_platform": "de",
       "tax_regime": "eu-vat",
@@ -258,6 +304,9 @@
       "id_check_above": 30000,
       "held_listing_above": 10000,
       "max_rate_per_hour": 1000000,
+      "refund_limit_support": 25000,
+      "refund_limit_lead": 250000,
+      "late_fee_cap": 5000,
       "notes": [
         "thresholds converted from the euro values; confirm before launch"
       ]
@@ -271,6 +320,7 @@
         "en"
       ],
       "units": "metric",
+      "time_zone": "Europe/Paris",
       "legal_entity": "cappy-gmbh",
       "stripe_platform": "de",
       "tax_regime": "eu-vat",
@@ -280,6 +330,9 @@
       "id_check_above": 30000,
       "held_listing_above": 10000,
       "max_rate_per_hour": 1000000,
+      "refund_limit_support": 25000,
+      "refund_limit_lead": 250000,
+      "late_fee_cap": 5000,
       "notes": [
         "thresholds converted from the euro values; confirm before launch"
       ]
@@ -292,6 +345,7 @@
         "en"
       ],
       "units": "imperial",
+      "time_zone": "Europe/London",
       "legal_entity": "cappy-gmbh",
       "stripe_platform": "de",
       "tax_regime": "uk-vat",
@@ -301,6 +355,9 @@
       "id_check_above": 26000,
       "held_listing_above": 8500,
       "max_rate_per_hour": 850000,
+      "refund_limit_support": 21700,
+      "refund_limit_lead": 216700,
+      "late_fee_cap": 4300,
       "notes": [
         "UK VAT has no threshold for a non-UK business (counsel)",
         "thresholds converted from the euro values; confirm before launch"
@@ -315,6 +372,7 @@
         "en"
       ],
       "units": "metric",
+      "time_zone": "Europe/Athens",
       "legal_entity": "cappy-gmbh",
       "stripe_platform": "de",
       "tax_regime": "eu-vat",
@@ -324,6 +382,9 @@
       "id_check_above": 30000,
       "held_listing_above": 10000,
       "max_rate_per_hour": 1000000,
+      "refund_limit_support": 25000,
+      "refund_limit_lead": 250000,
+      "late_fee_cap": 5000,
       "notes": [
         "thresholds converted from the euro values; confirm before launch"
       ]
@@ -337,6 +398,7 @@
         "en"
       ],
       "units": "metric",
+      "time_zone": "Europe/Zagreb",
       "legal_entity": "cappy-gmbh",
       "stripe_platform": "de",
       "tax_regime": "eu-vat",
@@ -346,6 +408,9 @@
       "id_check_above": 30000,
       "held_listing_above": 10000,
       "max_rate_per_hour": 1000000,
+      "refund_limit_support": 25000,
+      "refund_limit_lead": 250000,
+      "late_fee_cap": 5000,
       "notes": [
         "thresholds converted from the euro values; confirm before launch"
       ]
@@ -359,6 +424,7 @@
         "en"
       ],
       "units": "metric",
+      "time_zone": "Europe/Budapest",
       "legal_entity": "cappy-gmbh",
       "stripe_platform": "de",
       "tax_regime": "eu-vat",
@@ -368,6 +434,9 @@
       "id_check_above": 12000000,
       "held_listing_above": 3900000,
       "max_rate_per_hour": 390000000,
+      "refund_limit_support": 10000000,
+      "refund_limit_lead": 100000000,
+      "late_fee_cap": 2000000,
       "notes": [
         "thresholds converted from the euro values; confirm before launch"
       ]
@@ -380,6 +449,7 @@
         "en"
       ],
       "units": "metric",
+      "time_zone": "Europe/Dublin",
       "legal_entity": "cappy-gmbh",
       "stripe_platform": "de",
       "tax_regime": "eu-vat",
@@ -389,6 +459,9 @@
       "id_check_above": 30000,
       "held_listing_above": 10000,
       "max_rate_per_hour": 1000000,
+      "refund_limit_support": 25000,
+      "refund_limit_lead": 250000,
+      "late_fee_cap": 5000,
       "notes": [
         "thresholds converted from the euro values; confirm before launch"
       ]
@@ -402,6 +475,7 @@
         "en"
       ],
       "units": "metric",
+      "time_zone": "Atlantic/Reykjavik",
       "legal_entity": "cappy-gmbh",
       "stripe_platform": "de",
       "tax_regime": "is-vat",
@@ -411,6 +485,9 @@
       "id_check_above": 4500000,
       "held_listing_above": 1500000,
       "max_rate_per_hour": 150000000,
+      "refund_limit_support": 3750000,
+      "refund_limit_lead": 37500000,
+      "late_fee_cap": 750000,
       "notes": [
         "thresholds converted from the euro values; confirm before launch",
         "ISK in Stripe's two-decimal form (whole kronur x 100), like every amount here"
@@ -425,6 +502,7 @@
         "en"
       ],
       "units": "metric",
+      "time_zone": "Europe/Rome",
       "legal_entity": "cappy-gmbh",
       "stripe_platform": "de",
       "tax_regime": "eu-vat",
@@ -434,6 +512,9 @@
       "id_check_above": 30000,
       "held_listing_above": 10000,
       "max_rate_per_hour": 1000000,
+      "refund_limit_support": 25000,
+      "refund_limit_lead": 250000,
+      "late_fee_cap": 5000,
       "notes": [
         "thresholds converted from the euro values; confirm before launch"
       ]
@@ -447,6 +528,7 @@
         "en"
       ],
       "units": "metric",
+      "time_zone": "Europe/Vaduz",
       "legal_entity": "cappy-gmbh",
       "stripe_platform": "de",
       "tax_regime": "ch-vat",
@@ -456,6 +538,9 @@
       "id_check_above": 28000,
       "held_listing_above": 9500,
       "max_rate_per_hour": 950000,
+      "refund_limit_support": 23300,
+      "refund_limit_lead": 233300,
+      "late_fee_cap": 4700,
       "notes": [
         "thresholds converted from the euro values; confirm before launch"
       ]
@@ -469,6 +554,7 @@
         "en"
       ],
       "units": "metric",
+      "time_zone": "Europe/Vilnius",
       "legal_entity": "cappy-gmbh",
       "stripe_platform": "de",
       "tax_regime": "eu-vat",
@@ -478,6 +564,9 @@
       "id_check_above": 30000,
       "held_listing_above": 10000,
       "max_rate_per_hour": 1000000,
+      "refund_limit_support": 25000,
+      "refund_limit_lead": 250000,
+      "late_fee_cap": 5000,
       "notes": [
         "thresholds converted from the euro values; confirm before launch"
       ]
@@ -492,6 +581,7 @@
         "en"
       ],
       "units": "metric",
+      "time_zone": "Europe/Luxembourg",
       "legal_entity": "cappy-gmbh",
       "stripe_platform": "de",
       "tax_regime": "eu-vat",
@@ -501,6 +591,9 @@
       "id_check_above": 30000,
       "held_listing_above": 10000,
       "max_rate_per_hour": 1000000,
+      "refund_limit_support": 25000,
+      "refund_limit_lead": 250000,
+      "late_fee_cap": 5000,
       "notes": [
         "thresholds converted from the euro values; confirm before launch"
       ]
@@ -514,6 +607,7 @@
         "en"
       ],
       "units": "metric",
+      "time_zone": "Europe/Riga",
       "legal_entity": "cappy-gmbh",
       "stripe_platform": "de",
       "tax_regime": "eu-vat",
@@ -523,6 +617,9 @@
       "id_check_above": 30000,
       "held_listing_above": 10000,
       "max_rate_per_hour": 1000000,
+      "refund_limit_support": 25000,
+      "refund_limit_lead": 250000,
+      "late_fee_cap": 5000,
       "notes": [
         "thresholds converted from the euro values; confirm before launch"
       ]
@@ -535,6 +632,7 @@
         "en"
       ],
       "units": "metric",
+      "time_zone": "Europe/Malta",
       "legal_entity": "cappy-gmbh",
       "stripe_platform": "de",
       "tax_regime": "eu-vat",
@@ -544,6 +642,9 @@
       "id_check_above": 30000,
       "held_listing_above": 10000,
       "max_rate_per_hour": 1000000,
+      "refund_limit_support": 25000,
+      "refund_limit_lead": 250000,
+      "late_fee_cap": 5000,
       "notes": [
         "thresholds converted from the euro values; confirm before launch"
       ]
@@ -557,6 +658,7 @@
         "en"
       ],
       "units": "metric",
+      "time_zone": "Europe/Amsterdam",
       "legal_entity": "cappy-gmbh",
       "stripe_platform": "de",
       "tax_regime": "eu-vat",
@@ -566,6 +668,9 @@
       "id_check_above": 30000,
       "held_listing_above": 10000,
       "max_rate_per_hour": 1000000,
+      "refund_limit_support": 25000,
+      "refund_limit_lead": 250000,
+      "late_fee_cap": 5000,
       "notes": [
         "thresholds converted from the euro values; confirm before launch"
       ]
@@ -579,6 +684,7 @@
         "en"
       ],
       "units": "metric",
+      "time_zone": "Europe/Oslo",
       "legal_entity": "cappy-gmbh",
       "stripe_platform": "de",
       "tax_regime": "no-vat",
@@ -588,6 +694,9 @@
       "id_check_above": 340000,
       "held_listing_above": 120000,
       "max_rate_per_hour": 12000000,
+      "refund_limit_support": 283300,
+      "refund_limit_lead": 2833300,
+      "late_fee_cap": 56700,
       "notes": [
         "thresholds converted from the euro values; confirm before launch"
       ]
@@ -601,6 +710,7 @@
         "en"
       ],
       "units": "metric",
+      "time_zone": "Europe/Warsaw",
       "legal_entity": "cappy-gmbh",
       "stripe_platform": "de",
       "tax_regime": "eu-vat",
@@ -610,6 +720,9 @@
       "id_check_above": 130000,
       "held_listing_above": 43000,
       "max_rate_per_hour": 4300000,
+      "refund_limit_support": 108300,
+      "refund_limit_lead": 1083300,
+      "late_fee_cap": 21700,
       "notes": [
         "thresholds converted from the euro values; confirm before launch"
       ]
@@ -623,6 +736,7 @@
         "en"
       ],
       "units": "metric",
+      "time_zone": "Europe/Lisbon",
       "legal_entity": "cappy-gmbh",
       "stripe_platform": "de",
       "tax_regime": "eu-vat",
@@ -632,6 +746,9 @@
       "id_check_above": 30000,
       "held_listing_above": 10000,
       "max_rate_per_hour": 1000000,
+      "refund_limit_support": 25000,
+      "refund_limit_lead": 250000,
+      "late_fee_cap": 5000,
       "notes": [
         "thresholds converted from the euro values; confirm before launch"
       ]
@@ -645,6 +762,7 @@
         "en"
       ],
       "units": "metric",
+      "time_zone": "Europe/Bucharest",
       "legal_entity": "cappy-gmbh",
       "stripe_platform": "de",
       "tax_regime": "eu-vat",
@@ -654,6 +772,9 @@
       "id_check_above": 150000,
       "held_listing_above": 50000,
       "max_rate_per_hour": 5000000,
+      "refund_limit_support": 125000,
+      "refund_limit_lead": 1250000,
+      "late_fee_cap": 25000,
       "notes": [
         "thresholds converted from the euro values; confirm before launch"
       ]
@@ -667,6 +788,7 @@
         "en"
       ],
       "units": "metric",
+      "time_zone": "Europe/Stockholm",
       "legal_entity": "cappy-gmbh",
       "stripe_platform": "de",
       "tax_regime": "eu-vat",
@@ -676,6 +798,9 @@
       "id_check_above": 340000,
       "held_listing_above": 120000,
       "max_rate_per_hour": 12000000,
+      "refund_limit_support": 283300,
+      "refund_limit_lead": 2833300,
+      "late_fee_cap": 56700,
       "notes": [
         "thresholds converted from the euro values; confirm before launch"
       ]
@@ -689,6 +814,7 @@
         "en"
       ],
       "units": "metric",
+      "time_zone": "Europe/Ljubljana",
       "legal_entity": "cappy-gmbh",
       "stripe_platform": "de",
       "tax_regime": "eu-vat",
@@ -698,6 +824,9 @@
       "id_check_above": 30000,
       "held_listing_above": 10000,
       "max_rate_per_hour": 1000000,
+      "refund_limit_support": 25000,
+      "refund_limit_lead": 250000,
+      "late_fee_cap": 5000,
       "notes": [
         "thresholds converted from the euro values; confirm before launch"
       ]
@@ -711,6 +840,7 @@
         "en"
       ],
       "units": "metric",
+      "time_zone": "Europe/Bratislava",
       "legal_entity": "cappy-gmbh",
       "stripe_platform": "de",
       "tax_regime": "eu-vat",
@@ -720,6 +850,9 @@
       "id_check_above": 30000,
       "held_listing_above": 10000,
       "max_rate_per_hour": 1000000,
+      "refund_limit_support": 25000,
+      "refund_limit_lead": 250000,
+      "late_fee_cap": 5000,
       "notes": [
         "thresholds converted from the euro values; confirm before launch"
       ]
@@ -732,6 +865,7 @@
         "en"
       ],
       "units": "imperial",
+      "time_zone": "America/New_York",
       "legal_entity": "cappy-na",
       "stripe_platform": "de",
       "tax_regime": "us-sales-tax",
@@ -741,9 +875,13 @@
       "id_check_above": 33000,
       "held_listing_above": 11000,
       "max_rate_per_hour": 1100000,
+      "refund_limit_support": 27500,
+      "refund_limit_lead": 275000,
+      "late_fee_cap": 5500,
       "notes": [
         "ponytail: the North America entity and Stripe platform are M-1 (counsel/owner); starts on the DE platform per ADR 0013",
-        "age of majority is 19 in AL and NE and 21 in MS: a per-state check before launch (counsel)"
+        "age of majority is 19 in AL and NE and 21 in MS: a per-state check before launch (counsel)",
+        "time_zone is the default when a listing names none; several zones: a listing's own availability zone wins"
       ]
     }
   }

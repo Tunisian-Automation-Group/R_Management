@@ -20,10 +20,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from cappy_common.app import ApiRouter
 from cappy_common.auth import Principal, optional_principal, require_admin
 from cappy_common.errors import ApiError, Conflict, Invalid, NotFound, RateLimited
-from cappy_common.events import MODERATION_DECISION, OWNER_SUSPENDED, REPORT_RECEIVED
+from cappy_common.events import MODERATION_DECISION, OWNER_SUSPENDED, REPORT_RECEIVED, Event
 from cappy_common.idempotency import IdempotencyKey, fingerprint, remember, replayed
 from cappy_common.ids import new_id
 from cappy_common.models import CamelModel, Iso
+from cappy_common.observability import request_id
 from cappy_common.pagination import Page, clamp_limit, decode_cursor, encode_cursor
 from cappy_common.runtime import Tx
 from cappy_common.timeutil import dt_from_iso, iso_from_datetime
@@ -313,6 +314,7 @@ async def _record(
             statement_of_reasons=reasons,
             at=datetime.now(UTC),
             person_id=person,
+            request_id=request_id.get(),
         )
     )
 
@@ -417,6 +419,8 @@ class AuditEntry(CamelModel):
     report_id: str | None = None
     statement: str
     at: Iso
+    person_id: str | None = None
+    request_id: str | None = None
 
 
 @admin.post("/listings/{listing_id}/take-down", status_code=status.HTTP_204_NO_CONTENT)
@@ -481,24 +485,74 @@ async def reinstate(
     await _outbox(request).add(session, OWNER_REINSTATED, {"ownerId": owner_id})
 
 
-@admin.get("/audit", response_model=list[AuditEntry])
+@admin.get("/audit", response_model=Page[AuditEntry])
 async def audit(
-    limit: int | None = None, session: AsyncSession = Tx, _: Principal = Depends(require_admin)
-) -> list[AuditEntry]:
-    q = select(ModerationActionRow).order_by(ModerationActionRow.at.desc()).limit(clamp_limit(limit))
-    return [
-        AuditEntry(
-            id=r.id,
-            actor_id=r.actor_id,
-            action=r.action,
-            target_type=r.target_type,
-            target_id=r.target_id,
-            report_id=r.report_id,
-            statement=r.statement,
-            at=iso_from_datetime(r.at),
+    target: str | None = Query(default=None, max_length=64),
+    actor: str | None = Query(default=None, max_length=64),
+    cursor: str | None = None,
+    limit: int | None = None,
+    session: AsyncSession = Tx,
+    _: Principal = Depends(require_admin),
+) -> Page[AuditEntry]:
+    """Every staff action, newest first (H-7): moderation decisions, dispute
+    resolutions and approvals, claims, and staff reading a case or its
+    photos. ``target``: a booking, listing, owner, review or message id."""
+    q = select(ModerationActionRow)
+    if target:
+        q = q.where(ModerationActionRow.target_id == target)
+    if actor:
+        q = q.where(ModerationActionRow.actor_id == actor)
+    key = decode_cursor(cursor)
+    if key:
+        at = dt_from_iso(key["at"])
+        q = q.where(
+            or_(ModerationActionRow.at < at, and_(ModerationActionRow.at == at, ModerationActionRow.id < key["id"]))
         )
-        for r in (await session.execute(q)).scalars()
-    ]
+    n = clamp_limit(limit)
+    rows = list(
+        (
+            await session.execute(q.order_by(ModerationActionRow.at.desc(), ModerationActionRow.id.desc()).limit(n + 1))
+        ).scalars()
+    )
+    more, rows = len(rows) > n, rows[:n]
+    return Page(
+        items=[
+            AuditEntry(
+                id=r.id,
+                actor_id=r.actor_id,
+                action=r.action,
+                target_type=r.target_type,
+                target_id=r.target_id,
+                report_id=r.report_id,
+                statement=r.statement,
+                at=iso_from_datetime(r.at),
+                person_id=r.person_id,
+                request_id=r.request_id,
+            )
+            for r in rows
+        ],
+        next_cursor=encode_cursor({"at": rows[-1].at.isoformat(), "id": rows[-1].id}) if more else None,
+    )
+
+
+async def on_staff_action(session: AsyncSession, event: Event) -> None:
+    """Another service's staff action joins the audit log, once per event."""
+    from cappy_common.db import insert_or_ignore
+
+    d = event.data
+    await insert_or_ignore(
+        session,
+        ModerationActionRow,
+        id="sa_" + event.id.split("_", 1)[-1][:36],
+        actor_id=d["actorId"],
+        action=d["action"][:20],
+        target_type=d["targetType"][:10],
+        target_id=d["targetId"][:64],
+        statement=(d.get("reason") or d["action"])[:2000],
+        at=dt_from_iso(d["at"]) if d.get("at") else datetime.now(UTC),
+        person_id=d.get("personId"),
+        request_id=(d.get("requestId") or None) and d["requestId"][:64],
+    )
 
 
 class HeldListing(CamelModel):

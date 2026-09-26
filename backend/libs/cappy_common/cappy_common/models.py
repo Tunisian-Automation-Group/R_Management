@@ -382,6 +382,8 @@ class ListingSnapshot(CamelModel):
     cancellation_policy: str = "flexible"
     # Who the renter contracted with, when the owner is a trader (§ 5b UWG).
     owner_business: Business | None = None
+    # Where the listing is (IANA): times in emails and the app read in it.
+    time_zone: str | None = None
 
 
 class MatchView(CamelModel):

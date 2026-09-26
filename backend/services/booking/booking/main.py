@@ -9,12 +9,15 @@ from cappy_common.auth import TokenVerifier
 from cappy_common.runtime import Runtime
 
 from . import repository
-from .clients import Catalog, HttpCatalog, HttpMatching, HttpPayments, Matching, Payments
+from .clients import Catalog, CognitoPeople, HttpCatalog, HttpMatching, HttpPayments, Matching, Payments, People
 from .handlers import handlers
 from .jobs import sweep
 from .messages import router as messages_router
-from .routes import admin, internal, router
+from .routes import internal, router
 from .settings import Settings
+from .support import admin
+from .support import internal as support_internal
+from .support import router as support_router
 from .tables import Base
 
 
@@ -24,6 +27,7 @@ def build_app(
     matching: Matching | None = None,
     payments: Payments | None = None,
     catalog: Catalog | None = None,
+    people: People | None = None,
     verifier: TokenVerifier | None = None,
 ) -> FastAPI:
     token = settings.internal_token.get_secret_value()
@@ -40,9 +44,12 @@ def build_app(
     app.state.matching = matching or HttpMatching(settings.matching_url, token)
     app.state.payments = payments or HttpPayments(settings.payments_url, token)
     app.state.catalog = catalog or HttpCatalog(settings.catalog_url, token)
+    app.state.people = people or CognitoPeople(settings)
     app.include_router(router)
     app.include_router(messages_router)
+    app.include_router(support_router)
     app.include_router(internal)
+    app.include_router(support_internal)
     app.include_router(admin)
     return app
 

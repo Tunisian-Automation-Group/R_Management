@@ -4,10 +4,10 @@
 locals {
   db_services = ["catalog", "booking", "payments", "notifications"]
   consumers = {
-    catalog       = ["booking.rated", "payment.payouts_ready", "booking.renter_rated", "booking.owner_reliability", "moderation.person_flagged", "payment.identity_verified"]
+    catalog       = ["booking.rated", "payment.payouts_ready", "booking.renter_rated", "booking.owner_reliability", "moderation.person_flagged", "payment.identity_verified", "staff.action"]
     booking       = ["payment.authorised", "payment.failed", "listing.changed", "moderation.owner_suspended", "payment.identity_verified", "profile.deleted", "person.signed_out", "moderation.owner_reinstated"]
     payments      = ["booking.status_changed", "profile.deleted", "person.signed_out"]
-    notifications = ["booking.status_changed", "payment.payout_sent", "profile.deleted", "person.signed_out", "booking.message", "moderation.report_received", "moderation.decision", "listing.idle"]
+    notifications = ["booking.status_changed", "payment.payout_sent", "profile.deleted", "person.signed_out", "booking.message", "moderation.report_received", "moderation.decision", "listing.idle", "booking.dispute_offer"]
   }
 }
 
@@ -107,7 +107,7 @@ resource "aws_secretsmanager_secret" "db_url" {
 resource "aws_secretsmanager_secret_version" "db_url" {
   for_each      = toset(local.db_services)
   secret_id     = aws_secretsmanager_secret.db_url[each.key].id
-  secret_string = "postgresql+asyncpg://${each.key}:${random_password.db_service[each.key].result}@${aws_rds_cluster.main.endpoint}:5432/${each.key}?ssl=require"
+  secret_string = "postgresql+asyncpg://${each.key}:${random_password.db_service[each.key].result}@${aws_rds_cluster.main.endpoint}:5432/${each.key}?ssl=verify-full"
 }
 
 # The reader endpoint, for services whose public reads can lag a few ms.
@@ -123,7 +123,7 @@ resource "aws_secretsmanager_secret" "db_read_url" {
 resource "aws_secretsmanager_secret_version" "db_read_url" {
   for_each      = toset(local.read_services)
   secret_id     = aws_secretsmanager_secret.db_read_url[each.key].id
-  secret_string = "postgresql+asyncpg://${each.key}:${random_password.db_service[each.key].result}@${aws_rds_cluster.main.reader_endpoint}:5432/${each.key}?ssl=require"
+  secret_string = "postgresql+asyncpg://${each.key}:${random_password.db_service[each.key].result}@${aws_rds_cluster.main.reader_endpoint}:5432/${each.key}?ssl=verify-full"
 }
 
 resource "aws_secretsmanager_secret" "db_admin_url" {
@@ -132,7 +132,7 @@ resource "aws_secretsmanager_secret" "db_admin_url" {
 
 resource "aws_secretsmanager_secret_version" "db_admin_url" {
   secret_id     = aws_secretsmanager_secret.db_admin_url.id
-  secret_string = "postgresql+asyncpg://cappy_admin:${random_password.db_admin.result}@${aws_rds_cluster.main.endpoint}:5432/cappy?ssl=require"
+  secret_string = "postgresql+asyncpg://cappy_admin:${random_password.db_admin.result}@${aws_rds_cluster.main.endpoint}:5432/cappy?ssl=verify-full"
 }
 
 # Who may call whom on /internal/* (P-10): the call graph, nothing more. Each

@@ -18,6 +18,7 @@ expected = {
         "booking.owner_reliability",
         "moderation.person_flagged",
         "payment.identity_verified",
+        "staff.action",
     },
     "booking": {
         "payment.authorised",
@@ -39,6 +40,7 @@ expected = {
         "moderation.report_received",
         "moderation.decision",
         "listing.idle",
+        "booking.dispute_offer",
     },
 }
 # Every type anyone subscribes to, plus one nobody does (it must reach no queue).

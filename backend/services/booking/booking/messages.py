@@ -301,15 +301,26 @@ async def evidence(
     booking_id: str, request: Request, session: AsyncSession = Tx, p: Principal = Depends(require_principal)
 ) -> list[Evidence]:
     """The two sides' hand-over photos, as links that work for a few minutes
-    (P-27). Staff (with MFA) see them too, to decide disputes."""
-    from .tables import EvidenceRow
-
+    (P-27). Staff (with MFA) see them too, to decide disputes; that read is
+    in the staff audit log (H-7)."""
     try:
         await BookingRepository(session, request.app.state.outbox).visible(booking_id, p.sub)
     except NotFound:
         if not is_staff(p, request.app.state.settings):
             raise
         await require_admin(request)
+        from .support import audit
+
+        await audit(
+            session, request.app.state.outbox, p.sub, "read_evidence", "booking", booking_id, "hand-over photos"
+        )
+        request.app.state.relay.wake()
+    return await evidence_views(request, session, booking_id)
+
+
+async def evidence_views(request: Request, session: AsyncSession, booking_id: str) -> list[Evidence]:
+    from .tables import EvidenceRow
+
     rows = (
         await session.execute(select(EvidenceRow).where(EvidenceRow.booking_id == booking_id).order_by(EvidenceRow.at))
     ).scalars()

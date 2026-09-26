@@ -76,6 +76,9 @@ class BookingRow(Base):
     # Stripe's fingerprint of the card that paid (the same card, whoever
     # holds it): links a new account to a suspended one (S-17).
     card_fingerprint: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    # An extension of another booking by the same renter (S-12): the time
+    # straight after it, booked as its own booking.
+    extends_id: Mapped[str | None] = mapped_column(String(40), nullable=True)
 
     __table_args__ = (
         UniqueConstraint("requester_id", "idempotency_key", name="uq_bookings_requester_idempotency"),
@@ -155,6 +158,66 @@ class TransitionRow(Base):
     at: Mapped[datetime] = mapped_column(UtcDateTime)
 
 
+class DisputeRow(Base):
+    """A dispute's own state (S-21): who opened it and why, and the offer on
+    the table. Each offer gives the other side 72 hours to answer; when a
+    deadline passes with no agreement the dispute goes to staff."""
+
+    __tablename__ = "booking_disputes"
+    booking_id: Mapped[str] = mapped_column(String(40), ForeignKey("bookings.id", ondelete="CASCADE"), primary_key=True)
+    by: Mapped[str] = mapped_column(String(64))
+    reason: Mapped[str] = mapped_column(String(500))
+    opened_at: Mapped[datetime] = mapped_column(UtcDateTime)
+    respond_by: Mapped[datetime] = mapped_column(UtcDateTime, index=True)
+    escalated_at: Mapped[datetime | None] = mapped_column(UtcDateTime, nullable=True)
+    # A refund to the renter, in minor units, that one side offered.
+    offer_amount: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    offer_by: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    offer_at: Mapped[datetime | None] = mapped_column(UtcDateTime, nullable=True)
+
+
+class ResolutionRow(Base):
+    """How a dispute was settled (H-6): by staff, or by the two sides agreeing
+    (``by`` "agreement:<who accepted>"). Above the staff member's limit it
+    waits for a second one (``pending_approval``)."""
+
+    __tablename__ = "booking_resolutions"
+    id: Mapped[str] = mapped_column(String(40), primary_key=True)
+    booking_id: Mapped[str] = mapped_column(String(40), ForeignKey("bookings.id", ondelete="CASCADE"), index=True)
+    outcome: Mapped[str] = mapped_column(String(12))
+    refund_amount: Mapped[int] = mapped_column(Integer)
+    reason_code: Mapped[str] = mapped_column(String(40))
+    note: Mapped[str] = mapped_column(String(1000))
+    by: Mapped[str] = mapped_column(String(64))
+    role: Mapped[str] = mapped_column(String(10))
+    status: Mapped[str] = mapped_column(String(20))
+    approved_by: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(UtcDateTime)
+    decided_at: Mapped[datetime | None] = mapped_column(UtcDateTime, nullable=True)
+
+
+class ClaimRow(Base):
+    """An owner's claim after a booking (S-12: a late return), for staff to
+    confirm. Nothing is charged automatically: that needs a saved card (S-9)."""
+
+    __tablename__ = "booking_claims"
+    id: Mapped[str] = mapped_column(String(40), primary_key=True)
+    booking_id: Mapped[str] = mapped_column(String(40), ForeignKey("bookings.id", ondelete="CASCADE"), index=True)
+    kind: Mapped[str] = mapped_column(String(20))
+    by: Mapped[str] = mapped_column(String(64))
+    minutes_late: Mapped[int] = mapped_column(Integer)
+    amount: Mapped[int] = mapped_column(Integer)
+    currency: Mapped[str] = mapped_column(String(3))
+    note: Mapped[str | None] = mapped_column(String(1000), nullable=True)
+    status: Mapped[str] = mapped_column(String(12))
+    created_at: Mapped[datetime] = mapped_column(UtcDateTime)
+    decided_by: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    decided_at: Mapped[datetime | None] = mapped_column(UtcDateTime, nullable=True)
+    decision_note: Mapped[str | None] = mapped_column(String(1000), nullable=True)
+
+    __table_args__ = (UniqueConstraint("booking_id", "kind", name="uq_booking_claims_booking_kind"),)
+
+
 Index("ix_bookings_requester_created", BookingRow.requester_id, BookingRow.created_at)
 Index("ix_bookings_owner_created", BookingRow.owner_id, BookingRow.created_at)
 # Busy intervals: holding bookings on a listing in a time range.
@@ -163,3 +226,4 @@ Index("ix_bookings_listing_window", BookingRow.listing_id, BookingRow.window_sta
 Index("ix_bookings_status_expires", BookingRow.status, BookingRow.expires_at)
 Index("ix_bookings_status_window_end", BookingRow.status, BookingRow.window_end)
 Index("ix_bookings_card_fingerprint", BookingRow.card_fingerprint)
+Index("ix_bookings_status_updated", BookingRow.status, BookingRow.updated_at)

@@ -63,6 +63,13 @@ async def redact_bookings(session: AsyncSession, person: str) -> None:
             if not suspended:
                 row.card_fingerprint = None
     await session.execute(update(EvidenceRow).where(EvidenceRow.by == person).values(photos=[], note=None))
+    # Their words in a dispute and in a claim go; amounts and outcomes stay
+    # (what was paid and refunded is accounting).
+    from .tables import ClaimRow, DisputeRow
+
+    gone = "[removed: the account was deleted]"
+    await session.execute(update(DisputeRow).where(DisputeRow.by == person).values(reason=gone))
+    await session.execute(update(ClaimRow).where(ClaimRow.by == person).values(note=None))
 
 
 def handlers(settings: Settings) -> dict[str, Handler]:

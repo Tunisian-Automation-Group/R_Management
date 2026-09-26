@@ -11,6 +11,7 @@ from cappy_common.events import (
     PAYOUTS_READY,
     PERSON_FLAGGED,
     RENTER_RATED,
+    STAFF_ACTION,
 )
 from cappy_common.runtime import Runtime
 
@@ -39,6 +40,7 @@ HANDLERS = {
     OWNER_RELIABILITY: on_owner_reliability,
     PERSON_FLAGGED: on_person_flagged,
     IDENTITY_VERIFIED: on_identity_verified,
+    STAFF_ACTION: moderation.on_staff_action,
 }
 
 

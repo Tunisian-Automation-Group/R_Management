@@ -508,3 +508,15 @@ async def test_old_revocations_and_rate_hits_are_pruned():
         assert (await s.execute(select(revoked.c.sub))).scalars().all() == ["new"], "a live revocation stays"
         assert len((await s.execute(select(hits.c.id))).all()) == 1
     await db.dispose()
+
+
+def test_access_lines_name_their_slo_journey():
+    # T-35c: CloudWatch counts good and bad requests per journey from these.
+    from cappy_common.observability import journey
+
+    assert journey("GET", "/api/search") == journey("POST", "/api/matches") == "browse"
+    assert journey("GET", "/api/listings/l9") == journey("GET", "/api/listings/l9/offers") == "browse"
+    assert journey("POST", "/api/bookings") == "book"
+    assert journey("POST", "/api/bookings/bk_1/accept") == journey("POST", "/bookings/bk_1/decline") == "answer"
+    assert journey("GET", "/api/bookings") is None and journey("POST", "/api/bookings/bk_1/messages") is None
+    assert journey("DELETE", "/api/listings/l9") is None

@@ -12,6 +12,18 @@ variable "region" {
   default = "eu-central-1"
 }
 
+# ADR 0013: a cell is a full copy of the stack for a group of markets
+# (markets.json "cell"). Every name carries it, so two cells can share an
+# account without their IAM roles, buckets or us-east-1 WAF colliding (M-46).
+variable "cell" {
+  type    = string
+  default = "eu"
+  validation {
+    condition     = contains(["eu", "na"], var.cell)
+    error_message = "cell must be eu or na (markets.json)"
+  }
+}
+
 variable "domain" {
   description = "The public domain the app is served on, e.g. cappy.app or staging.cappy.app"
   type        = string

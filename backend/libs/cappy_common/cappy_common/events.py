@@ -85,6 +85,11 @@ PERSON_FLAGGED = "moderation.person_flagged"
 # A live listing has no free window in the next seven days (H-4): its owner
 # hears of it, at most once a week.
 LISTING_IDLE = "listing.idle"
+# Something a staff member did or looked at (H-7): catalog keeps the one
+# append-only audit log of them all.
+STAFF_ACTION = "staff.action"
+# One side of a dispute offered the other a refund amount to settle it (S-21).
+DISPUTE_OFFER = "booking.dispute_offer"
 
 ALL_TYPES = frozenset(
     {
@@ -110,6 +115,8 @@ ALL_TYPES = frozenset(
         OWNER_RELIABILITY,
         PERSON_FLAGGED,
         LISTING_IDLE,
+        STAFF_ACTION,
+        DISPUTE_OFFER,
     }
 )
 

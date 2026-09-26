@@ -57,6 +57,17 @@
       "title": "Id",
       "type": "string"
      },
+     "personId": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Personid"
+     },
      "reportId": {
       "anyOf": [
        {
@@ -67,6 +78,17 @@
        }
       ],
       "title": "Reportid"
+     },
+     "requestId": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Requestid"
      },
      "statement": {
       "title": "Statement",
@@ -93,11 +115,45 @@
     "title": "AuditEntry",
     "type": "object"
    },
+   "Availability": {
+    "description": "A weekly schedule (H-4): the server keeps windows open from it, eight\nweeks ahead, in the listing's own time zone, so a listing never goes\ndark because nobody added windows by hand.",
+    "properties": {
+     "timeZone": {
+      "default": "Europe/Berlin",
+      "title": "Timezone",
+      "type": "string"
+     },
+     "weekly": {
+      "items": {
+       "$ref": "#/components/schemas/WeeklyHours"
+      },
+      "maxItems": 21,
+      "minItems": 1,
+      "title": "Weekly",
+      "type": "array"
+     }
+    },
+    "required": [
+     "weekly"
+    ],
+    "title": "Availability",
+    "type": "object"
+   },
    "BatchListing": {
     "properties": {
      "active": {
       "title": "Active",
       "type": "boolean"
+     },
+     "availability": {
+      "anyOf": [
+       {
+        "$ref": "#/components/schemas/Availability"
+       },
+       {
+        "type": "null"
+       }
+      ]
      },
      "blurb": {
       "title": "Blurb",
@@ -128,6 +184,38 @@
       "title": "Category",
       "type": "string"
      },
+     "country": {
+      "anyOf": [
+       {
+        "pattern": "^[A-Z]{2}$",
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Country"
+     },
+     "currency": {
+      "default": "EUR",
+      "enum": [
+       "EUR",
+       "GBP",
+       "CHF",
+       "SEK",
+       "NOK",
+       "DKK",
+       "PLN",
+       "CZK",
+       "HUF",
+       "RON",
+       "ISK",
+       "USD",
+       "CAD"
+      ],
+      "title": "Currency",
+      "type": "string"
+     },
      "dayDiscountPct": {
       "default": 0,
       "maximum": 50.0,
@@ -151,6 +239,16 @@
      "instructions": {
       "title": "Instructions",
       "type": "string"
+     },
+     "location": {
+      "anyOf": [
+       {
+        "$ref": "#/components/schemas/Location"
+       },
+       {
+        "type": "null"
+       }
+      ]
      },
      "machine": {
       "title": "Machine",
@@ -211,6 +309,18 @@
        }
       ],
       "title": "Photos"
+     },
+     "postalCode": {
+      "anyOf": [
+       {
+        "maxLength": 12,
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Postalcode"
      },
      "ratePerHour": {
       "title": "Rateperhour",
@@ -522,7 +632,7 @@
    "DecisionIn": {
     "properties": {
      "action": {
-      "pattern": "^(dismiss|take_down|suspend)$",
+      "pattern": "^(dismiss|take_down|suspend|remove_content)$",
       "title": "Action",
       "type": "string"
      },
@@ -718,6 +828,27 @@
      "instructions": {
       "title": "Instructions",
       "type": "string"
+     },
+     "location": {
+      "anyOf": [
+       {
+        "$ref": "#/components/schemas/Location"
+       },
+       {
+        "type": "null"
+       }
+      ]
+     },
+     "postalCode": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Postalcode"
      }
     },
     "required": [
@@ -936,6 +1067,29 @@
     "title": "ListingView",
     "type": "object"
    },
+   "Location": {
+    "description": "Where a listing is (M-5). Stored exactly; answered snapped to a grid of\nabout 500 m (M-6) until a booking is accepted, like the address.",
+    "properties": {
+     "lat": {
+      "maximum": 90.0,
+      "minimum": -90.0,
+      "title": "Lat",
+      "type": "number"
+     },
+     "lng": {
+      "maximum": 180.0,
+      "minimum": -180.0,
+      "title": "Lng",
+      "type": "number"
+     }
+    },
+    "required": [
+     "lat",
+     "lng"
+    ],
+    "title": "Location",
+    "type": "object"
+   },
    "Me": {
     "properties": {
      "homeDistrict": {
@@ -1004,6 +1158,11 @@
       ],
       "title": "Cancellationrate"
      },
+     "country": {
+      "default": "DE",
+      "title": "Country",
+      "type": "string"
+     },
      "district": {
       "title": "District",
       "type": "string"
@@ -1055,8 +1214,26 @@
       "type": "integer"
      },
      "responseMins": {
-      "title": "Responsemins",
-      "type": "integer"
+      "anyOf": [
+       {
+        "type": "integer"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Responsemins"
+     },
+     "responseRate": {
+      "anyOf": [
+       {
+        "type": "number"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Responserate"
      },
      "verified": {
       "title": "Verified",
@@ -1073,10 +1250,36 @@
      "ratingSum",
      "jobsDone",
      "onTimeJobs",
-     "joinedYear",
-     "responseMins"
+     "joinedYear"
     ],
     "title": "Owner",
+    "type": "object"
+   },
+   "Page_AuditEntry_": {
+    "properties": {
+     "items": {
+      "items": {
+       "$ref": "#/components/schemas/AuditEntry"
+      },
+      "title": "Items",
+      "type": "array"
+     },
+     "nextCursor": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Nextcursor"
+     }
+    },
+    "required": [
+     "items"
+    ],
+    "title": "Page[AuditEntry]",
     "type": "object"
    },
    "Page_ListingView_": {
@@ -1182,6 +1385,12 @@
         "type": "null"
        }
       ]
+     },
+     "country": {
+      "default": "DE",
+      "pattern": "^[A-Z]{2}$",
+      "title": "Country",
+      "type": "string"
      },
      "district": {
       "maxLength": 80,
@@ -1643,11 +1852,49 @@
     "title": "ValidationError",
     "type": "object"
    },
+   "WeeklyHours": {
+    "description": "Open every week on one day (1 = Monday \u2026 7 = Sunday, ISO), local time.",
+    "properties": {
+     "day": {
+      "maximum": 7.0,
+      "minimum": 1.0,
+      "title": "Day",
+      "type": "integer"
+     },
+     "end": {
+      "pattern": "^([01]\\d|2[0-3]):[0-5]\\d$|^24:00$",
+      "title": "End",
+      "type": "string"
+     },
+     "start": {
+      "pattern": "^([01]\\d|2[0-3]):[0-5]\\d$",
+      "title": "Start",
+      "type": "string"
+     }
+    },
+    "required": [
+     "day",
+     "start",
+     "end"
+    ],
+    "title": "WeeklyHours",
+    "type": "object"
+   },
    "WindowListing": {
     "properties": {
      "active": {
       "title": "Active",
       "type": "boolean"
+     },
+     "availability": {
+      "anyOf": [
+       {
+        "$ref": "#/components/schemas/Availability"
+       },
+       {
+        "type": "null"
+       }
+      ]
      },
      "blurb": {
       "title": "Blurb",
@@ -1676,6 +1923,38 @@
        "creator"
       ],
       "title": "Category",
+      "type": "string"
+     },
+     "country": {
+      "anyOf": [
+       {
+        "pattern": "^[A-Z]{2}$",
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Country"
+     },
+     "currency": {
+      "default": "EUR",
+      "enum": [
+       "EUR",
+       "GBP",
+       "CHF",
+       "SEK",
+       "NOK",
+       "DKK",
+       "PLN",
+       "CZK",
+       "HUF",
+       "RON",
+       "ISK",
+       "USD",
+       "CAD"
+      ],
+      "title": "Currency",
       "type": "string"
      },
      "dayDiscountPct": {
@@ -1710,6 +1989,16 @@
       "title": "Instructions",
       "type": "string"
      },
+     "location": {
+      "anyOf": [
+       {
+        "$ref": "#/components/schemas/Location"
+       },
+       {
+        "type": "null"
+       }
+      ]
+     },
      "maxHours": {
       "title": "Maxhours",
       "type": "number"
@@ -1740,6 +2029,18 @@
        }
       ],
       "title": "Photos"
+     },
+     "postalCode": {
+      "anyOf": [
+       {
+        "maxLength": 12,
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Postalcode"
      },
      "ratePerHour": {
       "title": "Rateperhour",
@@ -1855,8 +2156,59 @@
  "paths": {
   "/admin/audit": {
    "get": {
+    "description": "Every staff action, newest first (H-7): moderation decisions, dispute\nresolutions and approvals, claims, and staff reading a case or its\nphotos. ``target``: a booking, listing, owner, review or message id.",
     "operationId": "audit_admin_audit_get",
     "parameters": [
+     {
+      "in": "query",
+      "name": "target",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "maxLength": 64,
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "Target"
+      }
+     },
+     {
+      "in": "query",
+      "name": "actor",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "maxLength": 64,
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "Actor"
+      }
+     },
+     {
+      "in": "query",
+      "name": "cursor",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "Cursor"
+      }
+     },
      {
       "in": "query",
       "name": "limit",
@@ -1879,11 +2231,7 @@
       "content": {
        "application/json": {
         "schema": {
-         "items": {
-          "$ref": "#/components/schemas/AuditEntry"
-         },
-         "title": "Response Audit Admin Audit Get",
-         "type": "array"
+         "$ref": "#/components/schemas/Page_AuditEntry_"
         }
        }
       },
@@ -2496,7 +2844,7 @@
   },
   "/internal/media/evidence": {
    "post": {
-    "description": "Booking keeps these as check-in/out evidence: they must be the person's\nown uploads, and they are never swept as unused.",
+    "description": "Booking keeps these as check-in/out evidence: they must be the person's\nown private uploads (``POST /uploads?purpose=evidence``), and they are\nnever swept as unused.",
     "operationId": "keep_evidence_internal_media_evidence_post",
     "requestBody": {
      "content": {
@@ -2524,45 +2872,6 @@
      }
     },
     "summary": "Keep Evidence"
-   }
-  },
-  "/internal/owners/{owner_id}": {
-   "get": {
-    "operationId": "internal_owner_internal_owners__owner_id__get",
-    "parameters": [
-     {
-      "in": "path",
-      "name": "owner_id",
-      "required": true,
-      "schema": {
-       "title": "Owner Id",
-       "type": "string"
-      }
-     }
-    ],
-    "responses": {
-     "200": {
-      "content": {
-       "application/json": {
-        "schema": {
-         "$ref": "#/components/schemas/Owner"
-        }
-       }
-      },
-      "description": "Successful Response"
-     },
-     "422": {
-      "content": {
-       "application/json": {
-        "schema": {
-         "$ref": "#/components/schemas/HTTPValidationError"
-        }
-       }
-      },
-      "description": "Validation Error"
-     }
-    },
-    "summary": "Internal Owner"
    }
   },
   "/listings": {
@@ -3032,7 +3341,7 @@
   },
   "/me": {
    "delete": {
-    "description": "Delete my account's data (App Store and GDPR). Refused while a booking is\nstill open on either side: those have to finish or be cancelled first. The\napp then deletes the sign-in itself (Cognito DeleteUser). Bookings and\npayments are kept as the law requires; they hold no personal data.",
+    "description": "Delete my account (App Store 5.1.1(v), GDPR Art. 17). Refused while a\nbooking is open on either side or a payout is pending: those finish first.\n``profile.deleted`` then reaches every service: each erases what it holds\n(the register in cappy_common/privacy.py), notifications deletes the\nsign-in (Cognito AdminDeleteUser), and every token issued before now stops\nworking. What the law keeps (bookings, payments and invoices for\naccounting) stays, with the person's names, contact details, hand-over\ndetails and free text redacted (docs/retention.md).",
     "operationId": "delete_me_me_delete",
     "responses": {
      "204": {
@@ -3098,7 +3407,7 @@
   },
   "/me/export": {
    "get": {
-    "description": "A copy of everything held about me, as one JSON file.",
+    "description": "A copy of everything held about me, as one JSON file. A few a day: each\nasks four services for everything they hold (P-12).",
     "operationId": "export_me_me_export_get",
     "responses": {
      "200": {
@@ -3173,6 +3482,18 @@
      }
     },
     "summary": "My Listings"
+   }
+  },
+  "/me/sign-out-everywhere": {
+   "post": {
+    "description": "A lost phone: every session of theirs ends. Here at once; the other\nservices within seconds (person.signed_out); notifications then revokes\nevery refresh token in Cognito and forgets their devices.",
+    "operationId": "sign_out_everywhere_me_sign_out_everywhere_post",
+    "responses": {
+     "204": {
+      "description": "Successful Response"
+     }
+    },
+    "summary": "Sign Out Everywhere"
    }
   },
   "/owners/{owner_id}": {
@@ -3502,8 +3823,21 @@
   },
   "/uploads": {
    "post": {
-    "description": "One photograph in, its URL out, to go in a listing's ``photos``.",
+    "description": "One photograph in, its URL out, to go in a listing's ``photos``. With\n``purpose=evidence`` (hand-over photos) it is stored privately and the\nanswer's ``url`` is a reference (``evidence:<name>``) for the booking's\nevidence, never a public link (P-27).",
     "operationId": "upload_uploads_post",
+    "parameters": [
+     {
+      "in": "query",
+      "name": "purpose",
+      "required": false,
+      "schema": {
+       "default": "listing",
+       "pattern": "^(listing|evidence)$",
+       "title": "Purpose",
+       "type": "string"
+      }
+     }
+    ],
     "requestBody": {
      "content": {
       "multipart/form-data": {

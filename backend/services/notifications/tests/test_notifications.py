@@ -489,6 +489,35 @@ def test_an_idle_listing_tells_its_owner_where_to_add_time():
         assert "Plunge saw" in subject and params["link"] in text
 
 
+def test_an_offer_in_a_dispute_reaches_the_other_side_with_its_deadline():
+    from notifications.handlers import messages
+    from notifications.texts import render
+
+    from cappy_common.events import DISPUTE_OFFER, Event
+
+    ev = Event(
+        id="ev2",
+        type=DISPUTE_OFFER,
+        source="booking",
+        occurred_at="2026-09-27T10:00:00Z",
+        data={
+            "bookingId": "bk_1",
+            "to": "o1",
+            "by": "buyer",
+            "title": "Plunge saw",
+            "refundAmount": 2000,
+            "currency": "EUR",
+            "respondBy": "2026-09-30T10:00:00Z",
+        },
+    )
+    [(sub, _, key, params)] = messages(ev, "https://cappy.test")
+    assert (sub, key) == ("o1", "dispute_offer")
+    for lang, amount in (("en", "20.00"), ("de", "20,00"), ("fr", "20,00")):
+        subject, text = render(key, lang, **params)
+        assert "Plunge saw" in subject and "{" not in text and "https://cappy.test/bookings/bk_1" in text, lang
+        assert amount in text and "€" in text and "30" in text, (lang, text)
+
+
 def test_times_follow_the_readers_clock():
     """24 h in German, French and European English; 12 h without a leading
     zero where English readers use it (V4-19)."""

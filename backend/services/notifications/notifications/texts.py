@@ -33,6 +33,10 @@ TEXTS: dict[str, dict[str, tuple[str, str]]] = {
             "{title} has no free time in the next seven days, so nobody can book it. Add opening hours or windows to keep it bookable.\n\n{link}",
         ),
         "message": ("New message: {title}", "Open the conversation\n\n{link}"),
+        "dispute_offer": (
+            "An offer to settle: {title}",
+            "The other side offers to settle the problem with {title}: {amount} back to the renter. Accept it, or make another offer, by {deadline}; after that we decide.\n\n{link}",
+        ),
         "payment_failed": (
             "Payment failed: {title}",
             "The card could not be charged, so the booking of {title} is off. Nothing was taken.\n\n{link}",
@@ -102,6 +106,10 @@ TEXTS: dict[str, dict[str, tuple[str, str]]] = {
             "{title} hat in den nächsten sieben Tagen keine freie Zeit, deshalb kann es niemand buchen. Füge Öffnungszeiten oder Zeitfenster hinzu, damit es buchbar bleibt.\n\n{link}",
         ),
         "message": ("Neue Nachricht: {title}", "Zum Gespräch\n\n{link}"),
+        "dispute_offer": (
+            "Ein Einigungsangebot: {title}",
+            "Die andere Seite schlägt vor, das Problem mit {title} so zu lösen: {amount} zurück an die mietende Person. Nimm es an oder mach ein anderes Angebot, bis {deadline}; danach entscheiden wir.\n\n{link}",
+        ),
         "payment_failed": (
             "Zahlung fehlgeschlagen: {title}",
             "Die Karte konnte nicht belastet werden, deshalb findet die Buchung von {title} nicht statt. Es wurde nichts abgebucht.\n\n{link}",
@@ -171,6 +179,10 @@ TEXTS: dict[str, dict[str, tuple[str, str]]] = {
             "{title} n’a aucun créneau libre dans les sept prochains jours : personne ne peut le réserver. Ajoutez des horaires d’ouverture ou des créneaux pour qu’il reste réservable.\n\n{link}",
         ),
         "message": ("Nouveau message : {title}", "Ouvrir la conversation\n\n{link}"),
+        "dispute_offer": (
+            "Une offre de règlement : {title}",
+            "L’autre partie propose de régler le problème concernant {title} : {amount} remboursés au locataire. Acceptez-la ou faites une autre offre avant {deadline} ; ensuite, c’est nous qui décidons.\n\n{link}",
+        ),
         "payment_failed": (
             "Paiement refusé : {title}",
             "La carte n’a pas pu être débitée, la réservation de {title} n’a donc pas lieu. Rien n’a été prélevé.\n\n{link}",
