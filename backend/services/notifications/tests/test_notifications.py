@@ -239,7 +239,10 @@ def test_the_notification_centre_lists_marks_read_exports_and_forgets():
         export = c.get("/internal/people/host/export", headers={"X-Internal-Token": "i" * 40}).json()
         assert len(export["items"]) == 2 and export["settings"]["categories"]["marketing"]["email"] is False
         c.portal.call(app.state.dispatcher.handle, _event(PROFILE_DELETED, ownerId="host"))
-        assert c.get("/notifications", headers=host).json()["items"] == [], "deleted with the account"
+        # The old token is revoked with the account (P-24) once the clock has
+        # moved past its issue time, so look through the export, not the token.
+        gone = c.get("/internal/people/host/export", headers={"X-Internal-Token": "i" * 40}).json()
+        assert gone["items"] == [], "deleted with the account"
 
 
 def test_the_bell_speaks_the_readers_language_and_names_the_real_deadline():
