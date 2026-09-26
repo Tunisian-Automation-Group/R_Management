@@ -1,4 +1,4 @@
-import { useEffect, useRef, type ReactNode } from 'react'
+import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { NavLink } from 'react-router-dom'
 import { useSession } from '../../data/auth.ts'
 import { Icon, type IconName } from './Icon.tsx'
@@ -118,7 +118,21 @@ export function Dock({ badges }: { badges: Record<string, number> }) {
   )
 }
 
+/** Large text (200 %, Dynamic Type): four labels do not fit a phone's dock, so
+ *  it shows icons and keeps the names for screen readers (V5-28). */
+function useLargeText(): boolean {
+  const read = () => typeof document !== 'undefined' && parseFloat(getComputedStyle(document.documentElement).fontSize) >= 24
+  const [big, setBig] = useState(read)
+  useEffect(() => {
+    const on = () => setBig(read())
+    window.addEventListener('resize', on)
+    return () => window.removeEventListener('resize', on)
+  }, [])
+  return big
+}
+
 function TabItem({ tab }: { tab: Tab }) {
+  const big = useLargeText()
   return (
     <li className="min-w-0 flex-1 md:flex-none">
       <NavLink
@@ -129,7 +143,7 @@ function TabItem({ tab }: { tab: Tab }) {
           // overlapped at 200 % text (V4-12); the link's name stays whole for screen readers.
           `relative flex h-full min-h-[56px] min-w-0 flex-col items-center justify-center gap-[3px] text-[min(0.6562rem,14px)]
            transition-colors duration-[160ms]
-           md:min-h-0 md:flex-row md:gap-2 md:rounded-full md:px-3.5 md:py-2 md:text-[0.875rem]
+           md:min-h-0 md:flex-row md:gap-3 md:rounded-full md:px-3.5 md:py-2 md:text-[0.875rem]
            ${
              isActive
                ? 'font-semibold text-[var(--ink)]'
@@ -153,13 +167,14 @@ function TabItem({ tab }: { tab: Tab }) {
               {tab.badge ? (
                 <span
                   aria-hidden="true"
-                  className="tnum absolute -right-2 -top-1 grid h-[15px] min-w-[15px] place-items-center rounded-[2px] bg-[var(--accent)] px-1 text-[0.5938rem] font-bold text-[var(--on-accent)]"
+                  // On the icon's corner, clear of the label beside it on a desktop (V5-29).
+                  className="tnum absolute -right-2 -top-1 grid h-[15px] min-w-[15px] place-items-center rounded-[2px] bg-[var(--accent)] px-1 text-[0.5938rem] font-bold text-[var(--on-accent)] md:-right-1.5 md:-top-2"
                 >
                   {tab.badge}
                 </span>
               ) : null}
             </span>
-            <span className="block max-w-full truncate px-0.5">{tab.label}</span>
+            <span className={big ? 'sr-only md:not-sr-only' : 'block max-w-full truncate px-0.5'}>{tab.label}</span>
             {tab.badge ? <span className="sr-only">, {t('{n} needing attention', { n: tab.badge })}</span> : null}
           </>
         )}

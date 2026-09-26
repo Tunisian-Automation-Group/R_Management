@@ -95,7 +95,7 @@ export function AccountDeletion() {
               <li>Choisissez <em>Supprimer le compte</em> et confirmez.</li>
             </ol>
             <p>
-              Votre profil est anonymisé, vos annonces sont retirées immédiatement et votre identifiant de connexion est
+              Votre profil est anonymisé, vos annonces et vos photos sont supprimées immédiatement et votre identifiant de connexion est
               supprimé. Si une réservation est encore en cours, terminez-la ou annulez-la d’abord. Les réservations et les
               paiements sont conservés sans votre nom aussi longtemps que le droit fiscal et commercial l’exige (jusqu’à dix
               ans en Allemagne). Avant la suppression, vous pouvez télécharger une copie de vos données sous{' '}
@@ -115,7 +115,7 @@ export function AccountDeletion() {
               <li>Wähle <em>Konto löschen</em> und bestätige.</li>
             </ol>
             <p>
-              Dein Profil wird anonymisiert, deine Inserate werden sofort entfernt, deine Anmeldung wird gelöscht.
+              Dein Profil wird anonymisiert, deine Inserate und Fotos werden sofort entfernt, deine Anmeldung wird gelöscht.
               Solange eine Buchung noch offen ist, schließe sie zuerst ab oder storniere sie. Buchungen und Zahlungen
               bewahren wir ohne deinen Namen so lange auf, wie Steuer- und Handelsrecht es verlangen (in Deutschland
               bis zu zehn Jahre). Vorher kannst du unter <em>Du → Deine Daten</em> eine Kopie deiner Daten herunterladen.
@@ -131,7 +131,7 @@ export function AccountDeletion() {
               <li>Choose <em>Delete account</em> and confirm.</li>
             </ol>
             <p>
-              Your profile is anonymised, your listings are taken down at once and your sign-in is deleted. If a booking
+              Your profile is anonymised, your listings and photos are removed at once and your sign-in is deleted. If a booking
               is still open, finish or cancel it first. Bookings and payments are kept without your name for as long as
               tax and commercial law requires (up to ten years in Germany). Before deleting, you can download a copy of
               your data under <em>You → Your data</em>.

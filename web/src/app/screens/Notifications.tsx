@@ -89,7 +89,7 @@ export function Notifications() {
                     {n.title}
                     {!n.read && <span className="sr-only"> ({t('unread')})</span>}
                   </span>
-                  <span className="t-sm mt-0.5 block text-[var(--ink-3)]">{n.body}</span>
+                  <span className="t-sm mt-0.5 block whitespace-pre-line text-[var(--ink-3)]">{n.body}</span>
                   <span className="t-sm mt-1 block text-[var(--ink-4)]">{ago(n.at)}</span>
                 </span>
               </button>

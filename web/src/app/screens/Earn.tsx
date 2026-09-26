@@ -14,7 +14,7 @@ import { CapacityBar } from '../components/CapacityBar.tsx'
 import { Photo } from '../components/Photo.tsx'
 import { Icon } from '../components/Icon.tsx'
 import { Avatar, Banner, Button, Card, Chip, EmptyState, oneDecimal, Pill, Sheet, Skeleton } from '../components/ui.tsx'
-import { ago, range, relative, renterRecord } from '../format.ts'
+import { ago, holdText, percent, range, relative, renterRecord } from '../format.ts'
 import { locale, plural, t } from '../../i18n.ts'
 
 export const DECLINE_REASONS = [
@@ -54,6 +54,7 @@ export function Earn() {
 
   const mine = listingsQ.data?.items.map((v) => v.listing) ?? []
   const held = new Set((listingsQ.data?.items ?? []).filter((v) => v.held).map((v) => v.listing.id))
+  const holdOf = (id: string) => listingsQ.data?.items.find((v) => v.listing.id === id)?.holdReason
   const invoices = repo.useInvoices()
   const active = mine.filter((l) => l.active)
   // Each listing's upcoming windows come with it, for the idle-hours figures.
@@ -68,6 +69,8 @@ export function Earn() {
     (b) => [...HELD, 'completed'].includes(b.status) && Date.parse(b.match.start) < weekEnd() && Date.parse(b.match.end) > Date.now(),
   )
   const comingUp = inbound.filter((b) => HELD.includes(b.status)).sort(byStart)
+  // A reported problem, visible where the owner looks for money (V5-30).
+  const underReview = inbound.filter((b) => b.status === 'disputed').sort(byStart)
   const soldFor = (listingId: string) =>
     soldThisWeek.filter((b) => b.match.listingId === listingId).reduce((n, b) => n + b.match.quote.hours, 0)
   // Who is asking: their public profile, for the name and initials.
@@ -84,7 +87,8 @@ export function Earn() {
   const freeFor = (id: string) => Math.max(0, idleHours(thisWeek(slotsFor(id))) - soldFor(id))
   let hoursIdle = 0
   let unsold = 0
-  for (const l of active) {
+  // Held listings nobody can book yet are not idle money (V5-30).
+  for (const l of active.filter((x) => !held.has(x.id))) {
     const h = freeFor(l.id)
     hoursIdle += h
     unsold += h * l.ratePerHour
@@ -312,6 +316,28 @@ export function Earn() {
 
       {requests.length === 0 && requestsSection}
 
+      {underReview.length > 0 && (
+        <section>
+          <SectionHead title={t('Under review')} aside={`${underReview.length}`} className="mt-7" />
+          <ul className="ruled border-t border-[var(--line)]">
+            {underReview.map((b) => (
+              <li key={b.id}>
+                <button
+                  onClick={() => nav(`/bookings/${b.id}`)}
+                  className="flex w-full items-center gap-4 py-3.5 text-left transition-opacity duration-[160ms] hover:opacity-70"
+                >
+                  <span className="min-w-0 flex-1">
+                    <span className="block truncate text-[0.9375rem] font-semibold">{b.listing?.title ?? t('Your listing')}</span>
+                    <span className="t-sm tnum block truncate text-[var(--ink-3)]">{range(b.match.start, b.match.end)}</span>
+                  </span>
+                  <Pill tone="warn">{t('Payout on hold')}</Pill>
+                </button>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
+
       {/* ------------------------------------------------------ coming up */}
       {comingUp.length > 0 && (
         <section>
@@ -362,12 +388,15 @@ export function Earn() {
                         {l.active ? t('{h} h free this week', { h: Math.round(h) }) : t('Paused')}
                       </p>
                     </div>
-                    {held.has(l.id) ? (
+                    {holdOf(l.id) ? (
+                      <Pill tone="warn">{t('Not live')}</Pill>
+                    ) : held.has(l.id) ? (
                       <Pill tone="warn">{t('Waiting for a quick check')}</Pill>
                     ) : (
                       !l.active && <Pill tone="warn">{t('Paused')}</Pill>
                     )}
                   </div>
+                  {holdOf(l.id) && <p className="t-sm mt-2 text-[var(--warn)]">{holdText(holdOf(l.id)!)}</p>}
 
                   {l.active && week.length > 0 && (
                     <div className="mt-4">
@@ -454,7 +483,7 @@ export function Earn() {
                 <p className="text-[0.9688rem] font-semibold">{you.name}</p>
                 <p className="t-sm tnum text-[var(--ink-3)]">
                   {plural(you.jobsDone, '{n} booking', '{n} bookings')} ·{' '}
-                  {t('{pct} % on time', { pct: Math.round((you.onTimeJobs / Math.max(1, you.jobsDone)) * 100) })}
+                  {t('{pct} on time', { pct: percent(you.onTimeJobs / Math.max(1, you.jobsDone)) })}
                 </p>
               </div>
               <span className="tnum text-[1.1875rem] font-bold">

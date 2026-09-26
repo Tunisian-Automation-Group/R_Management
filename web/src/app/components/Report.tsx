@@ -58,7 +58,8 @@ export function ReportButton({
   const toast = useToast()
   const id = useId()
   const [open, setOpen] = useState(false)
-  const [reason, setReason] = useState<ReportReason>('fraud')
+  // No reason chosen for them: a preselected "fraud" became the reason of many reports (V5-32).
+  const [reason, setReason] = useState<ReportReason | ''>('')
   const [details, setDetails] = useState('')
   const [email, setEmail] = useState('')
   const [goodFaith, setGoodFaith] = useState(false)
@@ -81,7 +82,7 @@ export function ReportButton({
       const report = {
         targetType,
         targetId,
-        reason,
+        reason: reason as ReportReason,
         details: details.trim(),
         email: session ? undefined : email.trim(),
         goodFaith: true as const,
@@ -149,7 +150,7 @@ export function ReportButton({
               </Button>
             </div>
           ) : (
-            <Button block size="lg" disabled={busy || tooShort || needsEmail || !goodFaith || noTarget} onClick={() => void submit()}>
+            <Button block size="lg" disabled={busy || !reason || tooShort || needsEmail || !goodFaith || noTarget} onClick={() => void submit()}>
               {t('Send report')}
             </Button>
           )
@@ -184,6 +185,9 @@ export function ReportButton({
             )}
             <Field label={t('What is wrong?')} htmlFor={`${id}-reason`}>
               <Select id={`${id}-reason`} value={reason} onChange={(e) => setReason(e.target.value as ReportReason)}>
+                <option value="" disabled>
+                  {t('Choose a reason')}
+                </option>
                 {REPORT_REASONS.map(([value, label]) => (
                   <option key={value} value={value}>
                     {t(label)}

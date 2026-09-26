@@ -9,13 +9,13 @@ import {
   getHeldListings,
   getAdminReports,
   reinstateOwner,
-  resolveDispute,
   suspendOwner,
   takeDownListing,
-  useAudit,
+  useOwner,
   REPORT_REASONS,
   type Decision,
   type Grounds,
+  type HeldListing,
   type Report,
 } from '../../data/repo.ts'
 import { formatMoney } from '../../domain/money.ts'
@@ -24,7 +24,9 @@ import { Screen, SectionHead } from '../components/AppShell.tsx'
 import { SignedOut } from '../components/SignedOut.tsx'
 import { Button, Card, Check, EmptyState, Field, Input, Segmented, Sheet, Textarea } from '../components/ui.tsx'
 import { ago } from '../format.ts'
-import { t } from '../../i18n.ts'
+import { plural, t } from '../../i18n.ts'
+import { Approvals, AuditLog, Cases } from './AdminCases.tsx'
+import { holdText } from '../format.ts'
 
 type Status = Report['status']
 type Action = Decision
@@ -146,10 +148,12 @@ function Console() {
         <TotpSetup onDone={() => void probe.refetch()} />
       ) : (
         <>
+          <Cases />
+          <Approvals />
           <Queue />
           <Held />
           <Actions />
-          <Audit />
+          <AuditLog />
         </>
       )}
     </Screen>
@@ -415,22 +419,7 @@ function Held() {
         <ul className="space-y-3">
           {items.map((h) => (
             <li key={h.id}>
-              <Card className="flex flex-wrap items-center gap-3 p-4">
-                <div className="min-w-0 flex-1">
-                  <p className="text-[0.9375rem] font-semibold">
-                    <Link className="underline" to={`/listing/${h.id}`}>
-                      {h.title}
-                    </Link>
-                  </p>
-                  <p className="t-sm text-[var(--ink-4)]">
-                    {/* ponytail: the held list carries no currency yet; EUR until M-3. */}
-                    {t('{price} / hour', { price: formatMoney(h.ratePerHour, 'EUR') })} · {h.ownerId} · {ago(h.heldAt)}
-                  </p>
-                </div>
-                <Button size="sm" disabled={busy === h.id} onClick={() => void approve(h.id)}>
-                  {busy === h.id ? t('One moment…') : t('Approve')}
-                </Button>
-              </Card>
+              <HeldCard h={h} busy={busy === h.id} onApprove={() => void approve(h.id)} />
             </li>
           ))}
         </ul>
@@ -439,13 +428,42 @@ function Held() {
   )
 }
 
-type Direct = 'take_down' | 'suspend' | 'reinstate' | 'pay_owner' | 'refund_buyer'
+/** A held listing with who is behind it: its owner's name and record (V5-4).
+ *  ponytail: title and price only; the listing page is not open to staff while
+ *  it is held (catalog listing_detail), so no photos or text until the server allows it. */
+function HeldCard({ h, busy, onApprove }: { h: HeldListing; busy: boolean; onApprove: () => void }) {
+  const owner = useOwner(h.ownerId)
+  return (
+    <Card className="flex flex-wrap items-center gap-3 p-4">
+      <div className="min-w-0 flex-1">
+        <p className="text-[0.9375rem] font-semibold">{h.title}</p>
+        <p className="t-sm text-[var(--ink-4)]">
+          {t('{price} / hour', { price: formatMoney(h.ratePerHour, h.currency) })} · {ago(h.heldAt)}
+        </p>
+        <p className="t-sm text-[var(--ink-3)]">
+          {owner.data
+            ? `${owner.data.name} · ${owner.data.jobsDone ? plural(owner.data.jobsDone, '{n} job done', '{n} jobs done') : t('New on Cappy')} · ${t('since {year}', { year: owner.data.joinedYear })}`
+            : h.ownerId}
+        </p>
+      </div>
+      {/* Held for where it is (V5-1): only moving it to an open market releases it. */}
+      {h.holdReason ? (
+        <p className="t-sm w-full text-[var(--warn)]">{holdText(h.holdReason)}</p>
+      ) : (
+        <Button size="sm" disabled={busy} onClick={onApprove}>
+          {busy ? t('One moment…') : t('Approve')}
+        </Button>
+      )}
+    </Card>
+  )
+}
+
+// Money decisions on disputes live on the case page now, with a reason (H-6, V5-8).
+type Direct = 'take_down' | 'suspend' | 'reinstate'
 const DIRECT: Record<Direct, { label: string; target: string; needsWhy: boolean }> = {
   take_down: { label: 'Take a listing down', target: 'Listing id', needsWhy: true },
   suspend: { label: 'Suspend an owner', target: 'Owner id', needsWhy: true },
   reinstate: { label: 'Reinstate an owner', target: 'Owner id', needsWhy: true },
-  pay_owner: { label: 'Resolve dispute: pay the owner', target: 'Booking id', needsWhy: false },
-  refund_buyer: { label: 'Resolve dispute: refund the buyer', target: 'Booking id', needsWhy: false },
 }
 
 function Actions() {
@@ -466,8 +484,7 @@ function Actions() {
     try {
       if (kind === 'take_down') await takeDownListing(to, why, clean(grounds))
       else if (kind === 'suspend') await suspendOwner(to, why, clean(grounds))
-      else if (kind === 'reinstate') await reinstateOwner(to, why)
-      else await resolveDispute(to, kind)
+      else await reinstateOwner(to, why)
       toast(t('Done'))
       setTarget('')
       setStatement('')
@@ -501,38 +518,6 @@ function Actions() {
         <Button disabled={busy || !ready} onClick={() => void run()}>
           {t(spec.label)}
         </Button>
-      </Card>
-    </section>
-  )
-}
-
-function Audit() {
-  const audit = useAudit()
-  const me = useSession()?.sub
-  // ponytail: staff are named by the start of their id until the audit log carries a name or email.
-  const who = (id: string) => (id === me ? t('you') : `${t('staff')} ${id.slice(0, 8)}`)
-  return (
-    <section>
-      <SectionHead title={t('Audit log')} className="mt-7" />
-      <Card className="p-5">
-        {(audit.data ?? []).length === 0 ? (
-          <p className="t-sm text-[var(--ink-3)]">{t('No actions yet.')}</p>
-        ) : (
-          <ul className="space-y-3">
-            {audit.data!.map((a) => (
-              <li key={a.id} className="border-b border-[var(--line)] pb-3 last:border-0 last:pb-0">
-                <p className="text-[0.9062rem] font-semibold">
-                  {doneLabel(a.action)} · {targetLabel(a.targetType)} <span className="tnum text-[var(--ink-3)]">{a.targetId}</span>
-                </p>
-                <p className="t-sm text-[var(--ink-4)]">
-                  {t('by {who}', { who: who(a.actorId) })} · {ago(a.at)}
-                  {a.reportId ? ` · ${t('report {id}', { id: a.reportId })}` : ''}
-                </p>
-                <p className="t-sm mt-1 text-[var(--ink-2)]">{a.statement}</p>
-              </li>
-            ))}
-          </ul>
-        )}
       </Card>
     </section>
   )

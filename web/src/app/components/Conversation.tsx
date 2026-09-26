@@ -45,12 +45,13 @@ function Bubble({ m, otherName, closed }: { m: Message; otherName: string; close
           {t('Keep payments on Cappy: money paid outside it is not protected, and asking for it breaks our rules.')}
         </p>
       )}
-      <p className="t-sm mt-1 flex items-center gap-1 text-[var(--ink-4)]">
+      {/* A div: the report button carries a sheet, which may not sit inside a <p> (V5-15). */}
+      <div className="t-sm mt-1 flex items-center gap-1 text-[var(--ink-4)]">
         {m.mine ? t('You') : otherName} · {ago(m.at)}
         {!m.mine && (
           <ReportButton targetType="message" targetId={m.id} compact offerBlock={{ sub: m.senderId, name: otherName }} />
         )}
-      </p>
+      </div>
     </li>
   )
 }
@@ -58,11 +59,14 @@ function Bubble({ m, otherName, closed }: { m: Message; otherName: string; close
 /** Messages between the two sides of one booking. */
 export function Conversation({
   bookingId,
+  status,
   otherName,
   accepted,
   closed = false,
 }: {
   bookingId: string
+  /** The booking's status: a change reads the thread again (masking follows it, V5-5). */
+  status?: string
   otherName: string
   /** Before acceptance the server masks phone numbers, emails and links. */
   accepted: boolean
@@ -72,7 +76,7 @@ export function Conversation({
   const id = useId()
   const qc = useQueryClient()
   const toast = useToast()
-  const messages = useMessages(bookingId)
+  const messages = useMessages(bookingId, status)
   // Kept across a session expiring mid-sentence (U-10); one key per message (U-6).
   const [draft, setDraftState] = useState(() => drafts.get(`msg.${bookingId}`) ?? '')
   const setDraft = (v: string) => {

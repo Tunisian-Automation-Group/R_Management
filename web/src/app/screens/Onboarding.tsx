@@ -43,9 +43,11 @@ export function Onboarding() {
   const names = Object.keys(inCountry).sort()
   const where = (names.includes(district) && district) || (names.includes(state.search.district) ? state.search.district : names[0]) || ''
 
+  const [tried, setTried] = useState(false)
   const submit = async (e: FormEvent) => {
     e.preventDefault()
-    // Every problem at once, each under its own field (V4-20).
+    setTried(true)
+    // Every problem at once, each under its own field (V4-20), marked invalid too (V5-11).
     const biz = kind === 'business' ? businessErrors(business) : {}
     setBizErrors(biz)
     const problems = [
@@ -81,10 +83,11 @@ export function Onboarding() {
   return (
     <Screen eyebrow={t('Almost there')} title={t('Tell people who you are')} sub={t('Shown on your listings, bookings and reviews.')}>
       <form onSubmit={submit} className="space-y-5" noValidate>
-        <Field label={t('Your name')} htmlFor="o-name">
+        <Field label={t('Your name')} htmlFor="o-name" error={tried && name.trim().length < 2 ? t('Tell people what to call you.') : undefined}>
           <Input
             id="o-name"
             autoComplete="name"
+            invalid={tried && name.trim().length < 2}
             value={name}
             onChange={(e) => setName(e.target.value)}
             placeholder="Mara Lindqvist"

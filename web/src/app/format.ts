@@ -32,8 +32,8 @@ export function day(iso: string): string {
   if (i === 0) return t('today')
   if (i === 1) return t('tomorrow')
   // A weekday alone leaves the reader to work out which one (V3-19): "Wed 30 Sep".
-  if (i > 1 && i < 7) return new Date(iso).toLocaleDateString(locale(), { weekday: 'short', day: 'numeric', month: 'short' })
-  return new Date(iso).toLocaleDateString(locale(), { day: 'numeric', month: 'short' })
+  // Also after the first week: "Oct 3" beside "Tue, Sep 29" read as a different kind of date (V5-32).
+  return new Date(iso).toLocaleDateString(locale(), { weekday: 'short', day: 'numeric', month: 'short' })
 }
 
 export const dayShort = (iso: string) => {
@@ -92,9 +92,13 @@ export const responseTime = (mins: number | null | undefined): string | null =>
       ? t('Replies in ~{n} min', { n: Math.max(1, Math.round(mins)) })
       : t('Replies in ~{n} h', { n: Math.round(mins / 60) })
 
-/** "Answers 95 % of requests", with the time when both are known. */
+/** A share in the reader's format: "95%" (en), "95 %" (de, fr) (V5-17). */
+export const percent = (share: number, loc: string = locale()) =>
+  new Intl.NumberFormat(loc, { style: 'percent', maximumFractionDigits: 0 }).format(share)
+
+/** "Answers 95% of requests", with the time when both are known. */
 export const responseRate = (rate: number | null | undefined): string | null =>
-  rate == null ? null : t('Answers {pct} % of requests', { pct: Math.round(rate * 100) })
+  rate == null ? null : t('Answers {pct} of requests', { pct: percent(rate) })
 
 /** Where distance is read in miles: the US and the UK (GOAL 16). Everyone else, km. */
 const MILES = new Set(['US', 'GB', 'LR', 'MM'])
@@ -134,17 +138,26 @@ export function policyText(p: string | undefined): string {
   return t('Full refund until the booked time starts.')
 }
 
+/** Why a listing waits, when it is not a price check (V5-1). */
+export const holdText = (reason: 'market_not_live' | 'district_not_in_country'): string =>
+  reason === 'market_not_live'
+    ? t('Not live: Cappy is not open in that country yet. Move it to a place in an open market to publish it.')
+    : t('Not live: the place is not in your country. Move it to a district in your own country to publish it.')
+
 /** A renter's record from owners' ratings: "4.8 from 5 bookings" or "New renter". */
 export function renterRecord(sum: number | undefined, jobs: number | undefined): string {
   if (!jobs) return t('New renter')
-  return t('Renter {stars} from {n} bookings', { stars: ((sum ?? 0) / jobs).toFixed(1), n: jobs })
+  // One decimal in the reader's format ("4,0" in German), and the plural their language uses (V5-17).
+  const stars = ((sum ?? 0) / jobs).toLocaleString(locale(), { minimumFractionDigits: 1, maximumFractionDigits: 1 })
+  const one = new Intl.PluralRules(locale()).select(jobs) === 'one'
+  return t(one ? 'Renter {stars} from {n} booking' : 'Renter {stars} from {n} bookings', { stars, n: jobs })
 }
 
 /** S-18: shown only when the owner has cancelled or missed some (the server
  *  leaves the rate out under 5 accepted bookings). */
 export function cancelRate(rate: number | undefined): string | null {
   if (!rate) return null
-  return t('Cancelled {pct} % of confirmed bookings in the last year', { pct: Math.max(1, Math.round(rate * 100)) })
+  return t('Cancelled {pct} of confirmed bookings in the last year', { pct: percent(Math.max(0.01, rate)) })
 }
 
 /** "Sa", "So", "Di", "Do": one letter could not tell Saturday from Sunday (V3-16). */

@@ -9,7 +9,8 @@ const BOOKING_LEAD_MS = 2 * 3_600_000
 const DAY = 86_400_000
 
 type Props = {
-  slots: Slot[]
+  /** Undefined when the caller does not know the windows: then the plate claims nothing (V5-10). */
+  slots?: Slot[]
   categoryId: CategoryId
   /** The window being bought or sold. Its day is inked in the week strip. */
   highlight?: { start: Iso; end: Iso } | null
@@ -46,7 +47,7 @@ const HH = { format: (d: Date) => d.toLocaleTimeString(locale(), { hour: '2-digi
  * image that had failed to load.
  */
 export function Plate({
-  slots,
+  slots: given,
   categoryId,
   highlight = null,
   aspect = 4 / 3,
@@ -57,6 +58,8 @@ export function Plate({
   children,
 }: Props) {
   const meta = category(categoryId)
+  const slots = given ?? []
+  const known = given !== undefined
   const thumb = detail === 'thumb'
   const labelled = detail === 'full'
 
@@ -135,7 +138,9 @@ export function Plate({
               time: HH.format(when),
               hours: Math.round(total),
             })
-          : t('{category}. Nothing free this week.', { category: meta.label })
+          : known
+            ? t('{category}. Nothing free this week.', { category: meta.label })
+            : meta.label
       }
     >
       {/* The field lifts towards the top left, the way a printed ink panel
@@ -222,7 +227,7 @@ export function Plate({
       ) : (
         <div className={`relative flex h-full items-end ${thumb ? 'p-2' : 'p-4'}`}>
           <p className="text-[0.8125rem] font-medium" style={{ color: 'var(--on-field-dim)' }}>
-            {thumb ? '' : t('Nothing free this week')}
+            {thumb ? '' : known ? t('Nothing free this week') : meta.label}
           </p>
         </div>
       )}

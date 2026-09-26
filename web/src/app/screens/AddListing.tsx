@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { drafts } from '../device.ts'
 import { Navigate, useNavigate, useParams } from 'react-router-dom'
 import type { CancellationPolicy, CategoryId, Material, Slot, WeeklyRule } from '../../domain/types.ts'
-import { CATEGORIES, category } from '../../domain/categories.ts'
+import { CATEGORIES, category, durationLabel } from '../../domain/categories.ts'
 import { formatMoney } from '../../domain/money.ts'
 import { messageOf, useCappy, useToast } from '../store.tsx'
 import { useSession } from '../../data/auth.ts'
@@ -25,7 +25,7 @@ import {
 } from '../components/ui.tsx'
 import { DistrictSelect } from '../components/DistrictSelect.tsx'
 import { NotFound } from './NotFound.tsx'
-import { POLICIES, clockTime, policyName, policyText, range } from '../format.ts'
+import { POLICIES, clockTime, percent, policyName, policyText, range, sentence } from '../format.ts'
 import { lang, locale, plural, t } from '../../i18n.ts'
 
 const MATERIALS: Material[] = [
@@ -269,6 +269,13 @@ function ListingForm({ edit }: { edit?: repo.ListingView }) {
   const [title, setTitle] = useState(init('title', was?.title ?? ''))
   const [blurb, setBlurb] = useState(init('blurb', was?.blurb ?? ''))
   const [district, setDistrict] = useState(init('district', was?.district ?? (state.search.district || 'Kreuzberg')))
+  // Only places in the owner's own country (V5-2): the server refuses the rest
+  // (district_not_in_country), and a listing is priced in its market's currency.
+  const localDistricts = Object.fromEntries(Object.entries(districts.data ?? {}).filter(([, d]) => d.country === market.country))
+  const firstLocal = Object.keys(localDistricts).sort()[0]
+  useEffect(() => {
+    if (districts.data && firstLocal && !localDistricts[district]) setDistrict(firstLocal)
+  }, [districts.data, firstLocal, district]) // eslint-disable-line react-hooks/exhaustive-deps
   const [address, setAddress] = useState(init('address', edit?.address ?? ''))
   const [rate, setRate] = useState(init('rate', was?.ratePerHour ?? 400))
   const [extraFee, setExtraFee] = useState(init('extraFee', wasWindow?.extraFee ?? 0))
@@ -280,6 +287,8 @@ function ListingForm({ edit }: { edit?: repo.ListingView }) {
   const [machine, setMachine] = useState(init('machine', wasBatch?.machine ?? ''))
   const [materials, setMaterials] = useState<Material[]>(init('materials', wasBatch?.materials ?? []))
   const [unitsPerHour, setUnitsPerHour] = useState(init('unitsPerHour', wasBatch?.unitsPerHour ?? 10))
+  // The most one booking takes (two pallet spaces on a van); empty means no cap (V5-22).
+  const [maxQuantity, setMaxQuantity] = useState<string>(init('maxQuantity', wasBatch?.maxQuantity ? String(wasBatch.maxQuantity) : ''))
   const [setupFee, setSetupFee] = useState(init('setupFee', wasBatch?.setupFee ?? 1500))
   const [setupHours, setSetupHours] = useState(init('setupHours', wasBatch?.setupHours ?? 1))
   const [dims, setDims] = useState(init('dims', wasBatch?.maxDims ?? { x: 300, y: 300, z: 300 }))
@@ -293,6 +302,9 @@ function ListingForm({ edit }: { edit?: repo.ListingView }) {
   const [stopSchedule, setStopSchedule] = useState<boolean>(init('stopSchedule', false))
   const [postalCode, setPostalCode] = useState<string>(init('postalCode', was?.postalCode ?? ''))
   const [keptSlots, setKeptSlots] = useState<Slot[]>(init('keptSlots', edit?.slots ?? []))
+  // A weekly schedule makes dozens of windows: the first few, then all on request (V5-32).
+  // ponytail: the slot answer does not say which the schedule made; hide those when it does.
+  const [allSlots, setAllSlots] = useState(false)
   const [instructions, setInstructions] = useState(init('instructions', was?.instructions ?? ''))
   const [instantBook, setInstantBook] = useState(init('instantBook', was?.instantBook ?? false))
   const [policy, setPolicy] = useState<CancellationPolicy>(init('policy', was?.cancellationPolicy ?? 'flexible'))
@@ -313,7 +325,7 @@ function ListingForm({ edit }: { edit?: repo.ListingView }) {
   const form = {
     categoryId, title, blurb, district, address, rate, extraFee, extraLabel, minHours, maxHours, machine, materials,
     unitsPerHour, setupFee, setupHours, dims, availability, custom, keptSlots, instructions, instantBook, policy,
-    dayPct, weekPct, rules, photos: photos.flatMap((p) => (p.url ? [p.url] : [])), weekRows, stopSchedule, postalCode,
+    dayPct, weekPct, rules, photos: photos.flatMap((p) => (p.url ? [p.url] : [])), weekRows, stopSchedule, postalCode, maxQuantity,
   }
   const formJson = JSON.stringify(form)
   // Written only once something changed, so an untouched edit never shadows the listing.
@@ -512,6 +524,7 @@ function ListingForm({ edit }: { edit?: repo.ListingView }) {
           setupHours,
           ratePerHour: rate,
           setupFee,
+          ...(Number(maxQuantity) >= 1 ? { maxQuantity: Math.floor(Number(maxQuantity)) } : {}),
         }
       : {
           ...shared,
@@ -705,7 +718,7 @@ function ListingForm({ edit }: { edit?: repo.ListingView }) {
                   {pending && (
                     <span className="absolute inset-0 grid place-items-center text-[0.75rem] font-semibold text-[var(--ink-2)]">
                       <span role="status">
-                        {p.progress ? t('Uploading… {pct} %', { pct: Math.round(p.progress * 100) }) : t('Uploading…')}
+                        {p.progress ? t('Uploading… {pct}', { pct: percent(p.progress) }) : t('Uploading…')}
                       </span>
                       <span
                         aria-hidden
@@ -801,7 +814,8 @@ function ListingForm({ edit }: { edit?: repo.ListingView }) {
 
         {isBatch && (
           <>
-            <Field label={t('Machine')} error={errorFor('machine')} htmlFor="f-machine">
+            {/* Freight runs on a vehicle, counted in pallets (V5-22). */}
+            <Field label={categoryId === 'freight' ? t('Vehicle') : t('Machine')} error={errorFor('machine')} htmlFor="f-machine">
               <Input
                 id="f-machine"
                 value={machine}
@@ -833,7 +847,7 @@ function ListingForm({ edit }: { edit?: repo.ListingView }) {
             )}
 
             <Field
-              label={t('Parts per hour')}
+              label={categoryId === 'freight' ? t('Pallets loaded per hour') : t('Parts per hour')}
               hint={t('Roughly, once it is set up. This is what turns a quantity into a delivery date.')}
               htmlFor="f-throughput"
             >
@@ -844,6 +858,14 @@ function ListingForm({ edit }: { edit?: repo.ListingView }) {
                 value={unitsPerHour}
                 onChange={(e) => setUnitsPerHour(Math.max(0.1, Number(e.target.value) || 0.1))}
               />
+            </Field>
+
+            <Field
+              label={t('Most per booking (optional)')}
+              hint={categoryId === 'freight' ? t('How many pallet spaces you have free, say 2.') : t('Leave empty if there is no limit.')}
+              htmlFor="f-max-qty"
+            >
+              <Input id="f-max-qty" inputMode="numeric" className="tnum" value={maxQuantity} onChange={(e) => setMaxQuantity(e.target.value.replace(/\D/g, '').slice(0, 6))} />
             </Field>
 
             <Field label={t('Setup time')} hint={t('Hours to get a job going, before the first part.')} htmlFor="f-setup-hours">
@@ -878,7 +900,7 @@ function ListingForm({ edit }: { edit?: repo.ListingView }) {
         <Field label={t('Where is it?')} htmlFor="f-district">
           <DistrictSelect
             id="f-district"
-            districts={districts.data ?? {}}
+            districts={localDistricts}
             value={district}
             onChange={(e) => setDistrict(e.target.value)}
           />
@@ -1032,7 +1054,8 @@ function ListingForm({ edit }: { edit?: repo.ListingView }) {
             <p className="t-sm tnum mt-1 text-[var(--ink-3)]">
               {stopSchedule
                 ? t('The windows it made are removed. Windows you added by date stay.')
-                : `${rulesToRows(was.availability.weekly).map(rowLabel).join(' · ')}. ${t('Cappy keeps the next 8 weeks open for you ({tz}).', { tz: was.availability.timeZone })}`}
+                : // A list that ends in an abbreviation ("ven.") gets no second full stop (V5-19).
+                  `${sentence(rulesToRows(was.availability.weekly).map(rowLabel).join(' · '))}${t('Cappy keeps the next 8 weeks open for you ({tz}).', { tz: was.availability.timeZone })}`}
             </p>
             <Button size="sm" variant="secondary" className="mt-3" onClick={() => setStopSchedule((v) => !v)}>
               {stopSchedule ? t('Keep the weekly schedule') : t('Stop repeating')}
@@ -1046,7 +1069,7 @@ function ListingForm({ edit }: { edit?: repo.ListingView }) {
               <p className="t-sm text-[var(--ink-3)]">{t('None coming up.')}</p>
             ) : (
               <ul className="ruled border-t border-[var(--line)]">
-                {keptSlots.map((s) => (
+                {(allSlots ? keptSlots : keptSlots.slice(0, 6)).map((s) => (
                   <li key={s.id} className="flex items-center justify-between gap-3 py-2.5">
                     <span className="t-sm tnum">{range(s.start, s.end)}</span>
                     <Button
@@ -1059,6 +1082,13 @@ function ListingForm({ edit }: { edit?: repo.ListingView }) {
                     </Button>
                   </li>
                 ))}
+                {!allSlots && keptSlots.length > 6 && (
+                  <li className="py-2.5">
+                    <Button size="sm" variant="secondary" onClick={() => setAllSlots(true)}>
+                      {t('Show all {n}', { n: keptSlots.length })}
+                    </Button>
+                  </li>
+                )}
               </ul>
             )}
           </Field>
@@ -1296,16 +1326,21 @@ function ListingForm({ edit }: { edit?: repo.ListingView }) {
             )}
           </p>
           <p className="t-sm mt-1.5 text-[var(--ink-2)]">
+            {/* Plural and percent in the reader's language: never "de 1 heures", "15 %" in English (V5-17). */}
             {isBatch
-              ? t('for a four-hour run, after the 15 % Cappy fee.')
-              : t('for a {n}-hour booking, after the 15 % Cappy fee.', { n: minHours })}
+              ? t('for a four-hour run, after the {pct} Cappy fee.', { pct: percent(0.15) })
+              : t('for a booking of {duration}, after the {pct} Cappy fee.', { duration: durationLabel(minHours), pct: percent(0.15) })}
           </p>
         </Card>
 
         <Banner
           tone="warn"
           title={t('Paid through Cappy')}
-          body={t('Buyers pay by card when you accept. Your share goes to your bank once the booking is done; set up payouts under Earn.')}
+          body={
+            instantBook
+              ? t('Buyers pay by card when they book: instant book confirms at once. Your share goes to your bank once the booking is done; set up payouts under Earn.')
+              : t('Buyers pay by card when you accept. Your share goes to your bank once the booking is done; set up payouts under Earn.')
+          }
         />
       </div>
     </Screen>

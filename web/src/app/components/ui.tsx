@@ -10,7 +10,7 @@ import {
 } from 'react'
 import { Link } from 'react-router-dom'
 import { Icon, type IconName } from './Icon.tsx'
-import { sheetOpened } from '../sheets.ts'
+import { anySheetOpen, sheetOpened } from '../sheets.ts'
 import { locale, t } from '../../i18n.ts'
 import { currencySymbol, minorPerMajor } from '../../domain/money.ts'
 
@@ -605,7 +605,7 @@ export function Banner({
 }: {
   tone: 'accent' | 'success' | 'warn' | 'danger'
   title: string
-  body?: string
+  body?: ReactNode
   action?: ReactNode
 }) {
   const map = {
@@ -624,7 +624,7 @@ export function Banner({
       />
       <div className="min-w-0">
         <p className={`text-[0.9062rem] font-semibold ${map.fg}`}>{title}</p>
-        {body && <p className="mt-1 text-[0.8438rem] leading-[1.1875rem] text-[var(--ink-2)]">{body}</p>}
+        {body && <div className="mt-1 text-[0.8438rem] leading-[1.1875rem] text-[var(--ink-2)]">{body}</div>}
         {action && <div className="mt-3">{action}</div>}
       </div>
     </div>
@@ -668,12 +668,17 @@ export function Toast({ message, tone = 'ok', onDone }: { message: string; tone?
     const t = setTimeout(() => done.current(), tone === 'error' ? 6000 : 2800)
     return () => clearTimeout(t)
   }, [message, tone])
+  const [overSheet] = useState(anySheetOpen)
   return (
     <div
       role={tone === 'error' ? 'alert' : 'status'}
       aria-live={tone === 'error' ? 'assertive' : 'polite'}
       className="anim-pop safe-x pointer-events-none fixed inset-x-0 z-[60] flex justify-center"
-      style={{ bottom: 'calc(var(--dock-h) + var(--footer-h, 0px) + var(--safe-bottom-md) + 20px)' }}
+      style={
+        overSheet
+          ? { top: 'calc(var(--safe-top, 0px) + 12px)' }
+          : { bottom: 'calc(var(--dock-h) + var(--footer-h, 0px) + var(--safe-bottom-md) + 20px)' }
+      }
     >
       <div className="flex items-center gap-2.5 rounded-[var(--radius-control)] bg-[var(--field)] py-3 pl-3.5 pr-5 text-[0.875rem] font-semibold text-[var(--on-field)]">
         {tone === 'error' ? (

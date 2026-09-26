@@ -16,3 +16,6 @@ export function closeTopSheet(): boolean {
   close?.()
   return Boolean(close)
 }
+
+/** Whether any sheet is open: a toast then shows at the top, not over its fields (V5-32). */
+export const anySheetOpen = () => open.length > 0

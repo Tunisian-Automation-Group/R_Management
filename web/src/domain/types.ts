@@ -189,6 +189,8 @@ export type BatchListing = ListingBase & {
   setupHours: number
   ratePerHour: Cents
   setupFee: Cents
+  /** The most one booking takes (two pallet spaces on a van); absent means no cap. */
+  maxQuantity?: number
 }
 
 export type Listing = WindowListing | BatchListing

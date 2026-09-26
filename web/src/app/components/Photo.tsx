@@ -24,7 +24,7 @@ import { t } from '../../i18n.ts'
 export function Photo({
   src,
   alt,
-  slots = [],
+  slots,
   categoryId,
   aspect = 4 / 3,
   className = '',

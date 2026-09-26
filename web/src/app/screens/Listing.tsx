@@ -46,9 +46,9 @@ import {
   oneDecimal,
   Stars,
 } from '../components/ui.tsx'
-import { cancelRate, day, formatDistance, policyInForce, policyName, policyText, range, relative, responseRate, responseTime, time } from '../format.ts'
+import { cancelRate, day, formatDistance, percent, policyInForce, policyName, policyText, range, relative, responseRate, responseTime, time } from '../format.ts'
 import { useOnline } from '../components/Offline.tsx'
-import { locale, t } from '../../i18n.ts'
+import { t } from '../../i18n.ts'
 
 /** Stripe's card form, fetched only when a payment starts (S-15, V3-1). */
 const PayStep = lazy(() => import('../components/PayStep.tsx').then((m) => ({ default: m.PayStep })))
@@ -116,6 +116,9 @@ export function Listing() {
     if (fitted.current || maxFit === null || !detail.data) return
     fitted.current = true
     if (maxFit > 0 && quantity > maxFit && !params.get('quantity')) setQuantity(maxFit)
+    // Never above what the owner takes per booking (V5-22).
+    const most = detail.data.listing.mode === 'batch' ? detail.data.listing.maxQuantity : undefined
+    if (most && quantity > most) setQuantity(most)
   }, [maxFit, detail.data, quantity, params])
 
   // Distances are measured from wherever this person searches from.
@@ -182,6 +185,18 @@ export function Listing() {
   const stars = rating(owner)
   const mine = owner.id === ME
   const first = owner.name.split(' ')[0]
+  // Instant book has no "owner accepts" moment: the address comes with the confirmation (V5-21).
+  const addressNote = listing.instantBook
+    ? t('Approximate area. The exact address is shared once the booking is confirmed.')
+    : t('Approximate area. The exact address is shared once the owner accepts.')
+  // Batch sizes this listing can take (V5-22): never more than the longest free
+  // window holds, and always the size already picked.
+  const cap = !isWindow(listing) ? listing.maxQuantity : undefined
+  const room = Math.min(maxFit ?? Infinity, cap ?? Infinity)
+  const quantities = [...new Set([1, ...QUANTITY_STEPS.filter((q) => q <= room), ...(Number.isFinite(room) && room > 0 ? [room] : []), Math.min(quantity, room)])]
+    .filter((q) => q > 0)
+    .sort((a, b) => a - b)
+  const freight = listing.category === 'freight'
 
   const byDay = offers.reduce<Record<string, Offer[]>>((acc, o) => {
     const k = day(o.start)
@@ -358,10 +373,10 @@ export function Listing() {
         <p className="t-lede mt-2.5 text-[var(--ink-3)]">{listing.blurb}</p>
         <div className="mt-4 flex flex-wrap items-center gap-x-4 gap-y-2 text-[0.875rem] text-[var(--ink-3)]">
           {/* Approximate for everyone but the owner (M-6): the exact place comes with the booking. */}
-          <span className="tnum inline-flex items-center gap-1.5" title={mine ? undefined : t('Approximate area. The exact address is shared once the owner accepts.')}>
+          <span className="tnum inline-flex items-center gap-1.5" title={mine ? undefined : addressNote}>
             <Icon name="pin" size={15} className="text-[var(--ink-4)]" />
             {listing.district}{km !== null ? ` · ${formatDistance(km)}` : ''}
-            {!mine && <span className="sr-only">{t('Approximate area. The exact address is shared once the owner accepts.')}</span>}
+            {!mine && <span className="sr-only">{addressNote}</span>}
           </span>
           <span className="tnum">{formatMoney(listing.ratePerHour, cur)} / {t('hour')}</span>
           {/* This listing's reviews; the owner's overall record is on their card below. */}
@@ -478,7 +493,7 @@ export function Listing() {
                   {durationLabel(h)}
                 </Chip>
               ))
-          : QUANTITY_STEPS.map((q) => (
+          : quantities.map((q) => (
               <Chip
                 key={q}
                 selected={quantity === q}
@@ -493,7 +508,9 @@ export function Listing() {
       </div>
       {!isWindow(listing) && needed !== null && (
         <p className="t-sm mt-3 text-[var(--ink-4)]">
-          {t('{n} {unit} is about {duration} on this machine, including {setup} of setup.', { n: quantity, unit: meta.unitNoun ?? '', duration: durationLabel(needed), setup: durationLabel(listing.setupHours) })}
+          {freight
+            ? t('{n} {unit} take about {duration}, including {setup} to load.', { n: quantity, unit: meta.unitNoun ?? '', duration: durationLabel(needed), setup: durationLabel(listing.setupHours) })
+            : t('{n} {unit} is about {duration} on this machine, including {setup} of setup.', { n: quantity, unit: meta.unitNoun ?? '', duration: durationLabel(needed), setup: durationLabel(listing.setupHours) })}
         </p>
       )}
 
@@ -550,7 +567,8 @@ export function Listing() {
                 ))}
               </div>
               <div className="mt-4 flex flex-wrap gap-2">
-                {times.slice(0, 12).map((o) => (
+                {/* Every start, not the first twelve: 18:00 must be bookable too (V5-9). */}
+                {times.map((o) => (
                   <Chip
                     key={o.start}
                     selected={selected?.start === o.start}
@@ -575,7 +593,10 @@ export function Listing() {
               label={`${formatMoney(listing.ratePerHour, cur)}/h × ${durationLabel(quote.hours)}`}
               value={formatMoney(quote.base, cur)}
             />
-            {quote.extra > 0 && <Row label={quote.extraLabel} value={formatMoney(quote.extra, cur)} />}
+            {/* The server's label (the category's setupLabel: freight is "Loading"), in the reader's language (V5-18, V5-22). */}
+            {quote.extra > 0 && (
+              <Row label={t(quote.extraLabel)} value={formatMoney(quote.extra, cur)} />
+            )}
             <div className="my-2 border-t border-[var(--line)]" />
             {(quote.discount ?? 0) > 0 && (
               <Row
@@ -588,10 +609,10 @@ export function Listing() {
             <p className="t-sm mt-3 border-t border-[var(--line)] pt-3 text-[var(--ink-4)]">
               {t(
                 listing.instantBook
-                  ? 'Includes the {pct} % Cappy fee of {fee}. {name} receives {net}. Instant book: paid by card when you book, confirmed at once.'
-                  : 'Includes the {pct} % Cappy fee of {fee}. {name} receives {net}. Paid by card when {name} accepts; if they decline, the hold is released.',
+                  ? 'Includes the {pct} Cappy fee of {fee}. {name} receives {net}. Instant book: paid by card when you book, confirmed at once.'
+                  : 'Includes the {pct} Cappy fee of {fee}. {name} receives {net}. Paid by card when {name} accepts; if they decline, the hold is released.',
                 {
-                  pct: (PLATFORM_FEE_BPS / 100).toLocaleString(locale()),
+                  pct: percent(PLATFORM_FEE_BPS / 10_000),
                   fee: formatMoney(quote.platformFee, cur),
                   net: formatMoney(quote.ownerNet, cur),
                   name: first,
@@ -704,7 +725,7 @@ export function Listing() {
                 }
               />
               <Row label={t('Where')} value={`${listing.district}${km !== null ? ` · ${formatDistance(km)}` : ''}`} />
-              <p className="t-sm text-[var(--ink-4)]">{t('Approximate area. The exact address is shared once the owner accepts.')}</p>
+              <p className="t-sm text-[var(--ink-4)]">{addressNote}</p>
               <div className="my-2 border-t border-[var(--line)]" />
               <Row label={t('You pay')} value={formatMoney(quote.total, cur)} strong />
               <Row
@@ -727,9 +748,7 @@ export function Listing() {
                 body={t('Your card is held for the total. {name} has to accept first; if they decline or do not answer, the hold is released.', { name: first })}
               />
             )}
-            <p className="t-sm text-[var(--ink-3)]">
-              {t('Cancellation')}: {policyText(policy)}
-            </p>
+            <p className="t-sm text-[var(--ink-3)]">{t('Cancellation: {policy}', { policy: policyText(policy) })}</p>
             <TraderNote business={owner.business} />
           </div>
         )}

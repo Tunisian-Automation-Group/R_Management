@@ -1,6 +1,6 @@
 // Display helpers for matches. The ranking itself runs on the server.
 import type { Owner } from './types.ts'
-import { plural, t } from '../i18n.ts'
+import { locale, plural, t } from '../i18n.ts'
 
 const EARTH_KM = 6371
 const toRad = (d: number) => (d * Math.PI) / 180
@@ -15,8 +15,8 @@ export function distanceKm(a: { lat: number; lng: number }, b: { lat: number; ln
 
 export function trackRecord(o: Owner): string {
   if (o.jobsDone === 0) return t('New on Cappy')
-  const pct = Math.round((o.onTimeJobs / o.jobsDone) * 100)
-  return `${plural(o.jobsDone, '{n} booking', '{n} bookings')} · ${t('{pct} % on time', { pct })}`
+  const pct = new Intl.NumberFormat(locale(), { style: 'percent', maximumFractionDigits: 0 }).format(o.onTimeJobs / o.jobsDone)
+  return `${plural(o.jobsDone, '{n} booking', '{n} bookings')} · ${t('{pct} on time', { pct })}`
 }
 
 /** How the server can order results. */

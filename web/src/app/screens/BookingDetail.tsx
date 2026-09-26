@@ -33,6 +33,7 @@ import { TraderNote } from '../components/BusinessFields.tsx'
 import { Conversation } from '../components/Conversation.tsx'
 import { EvidencePanel } from '../components/Evidence.tsx'
 import { ReportButton } from '../components/Report.tsx'
+import { DisputeDecided, DisputeOffers, Extend, LateReturn } from '../components/BookingExtras.tsx'
 import { DECLINE_REASONS } from './Earn.tsx'
 import { messageOf, useToast } from '../store.tsx'
 import { Screen } from '../components/AppShell.tsx'
@@ -40,19 +41,19 @@ import { Photo } from '../components/Photo.tsx'
 import { Icon } from '../components/Icon.tsx'
 import { Avatar, Banner, Button, Card, Chip, Field, Row, Sheet, Stars, Textarea } from '../components/ui.tsx'
 import { REVIEW_TAGS } from '../../domain/reviews.ts'
-import { formatDistance, range, relative, renterRecord, responseTime, sentence } from '../format.ts'
+import { formatDistance, percent, range, relative, renterRecord, responseTime, sentence } from '../format.ts'
 import { useOnline } from '../components/Offline.tsx'
 import { supportHref } from './Help.tsx'
-import { locale, plural, t } from '../../i18n.ts'
+import { plural, t } from '../../i18n.ts'
 
 /** Stripe's card form, fetched only when a payment starts (S-15, V3-1). */
 const PayStep = lazy(() => import('../components/PayStep.tsx').then((m) => ({ default: m.PayStep })))
 
-const STEPS: { id: BookingStatus; label: string; note: string; ownerNote: string }[] = [
-  { id: 'requested', label: 'Requested', note: 'Waiting for the owner to accept', ownerNote: 'Waiting for your answer' },
-  { id: 'accepted', label: 'Confirmed', note: 'The window is held for you', ownerNote: 'The window is held for them' },
-  { id: 'active', label: 'In progress', note: 'You have it now', ownerNote: 'They have it now' },
-  { id: 'completed', label: 'Finished', note: 'Handed back', ownerNote: 'Handed back; your payout is on its way' },
+const STEPS: { id: BookingStatus; label: string; note: string; ownerNote: string; pastNote: string }[] = [
+  { id: 'requested', label: 'Requested', note: 'Waiting for the owner to accept', ownerNote: 'Waiting for your answer', pastNote: 'Request sent' },
+  { id: 'accepted', label: 'Confirmed', note: 'The window is held for you', ownerNote: 'The window is held for them', pastNote: 'Accepted' },
+  { id: 'active', label: 'In progress', note: 'You have it now', ownerNote: 'They have it now', pastNote: 'Handed over' },
+  { id: 'completed', label: 'Finished', note: 'Handed back', ownerNote: 'Handed back; your payout is on its way', pastNote: 'Handed back' },
 ]
 
 const DEAD: BookingStatus[] = ['declined', 'cancelled', 'expired', 'payment_failed']
@@ -194,8 +195,9 @@ function Detail({
   const done = async (write: () => Promise<unknown>, message?: string) => {
     setBusy(true)
     try {
-      await write()
-      if (message) toast(message)
+      const said = await write()
+      const text = typeof said === 'string' ? said : message
+      if (text) toast(text)
     } catch (err) {
       toast(messageOf(err), 'error')
     } finally {
@@ -207,15 +209,25 @@ function Detail({
     }
   }
   const act = (action: BookingAction, message?: string) => done(() => actOnBooking(booking.id, action), message)
+  // Blind reviews (V5-6): what is said depends on whether the other side has
+  // rated already, which the answer shows (their rating is visible once published).
   const rate = (outcome: Outcome) =>
     done(async () => {
-      await keyed(outcome, (key) => rateBooking(booking.id, outcome, key))
+      const b = await keyed(outcome, (key) => rateBooking(booking.id, outcome, key))
       // The owner's record and the listing's reviews change a moment later.
       void qc.invalidateQueries({ queryKey: ['listing', booking.match.listingId] })
       void qc.invalidateQueries({ queryKey: ['reviews', booking.match.listingId] })
-    }, t('Review posted on {title}', { title }))
+      return b.renterRating != null
+        ? t('Review posted on {title}', { title })
+        : t('Thanks. {name} will see it once they have rated too.', { name: first })
+    })
   const rateTheRenter = (quality: number) =>
-    done(() => keyed({ quality }, (key) => rateRenter(booking.id, quality, key)), t('Thanks. {name} will see it once they have rated too.', { name: buyer }))
+    done(async () => {
+      const b = await keyed({ quality }, (key) => rateRenter(booking.id, quality, key))
+      return b.outcome
+        ? t('Thanks. Both ratings are published now.')
+        : t('Thanks. {name} will see it once they have rated too.', { name: buyer })
+    })
 
   // For the buyer, cancelling before the start is also their right of
   // withdrawal (EU consumer law), so the button says so.
@@ -321,6 +333,15 @@ function Detail({
         </div>
       )
       break
+    case 'disputed':
+    case 'owner:disputed':
+      // Still held while it is sorted out: no "browse" as the main action (V5-32).
+      footer = (
+        <Button block size="lg" variant="secondary" onClick={() => (location.href = supportHref(booking.id))}>
+          {t('Get help with this booking')}
+        </Button>
+      )
+      break
     case 'completed':
       // A finished booking that went well is the likeliest next booking there is.
       footer = booking.outcome ? (
@@ -380,14 +401,22 @@ function Detail({
         <Banner
           tone="danger"
           title={asOwner ? t('You declined this request') : t('{name} could not take this one', { name: first })}
-          body={`${booking.declineReason ? t(booking.declineReason) : t('No reason given.')} ${t('The hold on the card is released; nothing was charged.')}`}
+          body={
+            <>
+              <span className="block">{booking.declineReason ? t('Reason: {reason}.', { reason: t(booking.declineReason) }) : t('No reason given.')}</span>
+              <span className="block">{t('The hold on the card is released; nothing was charged.')}</span>
+            </>
+          }
           action={
-            <Button size="sm" variant="secondary" to={'/'}>
-              {t('Find another')}
-            </Button>
+            asOwner ? undefined : (
+              <Button size="sm" variant="secondary" to={'/'}>
+                {t('Find another')}
+              </Button>
+            )
           }
         />
       ) : booking.status === 'disputed' ? (
+        <>
         <Banner
           tone="warn"
           title={t('Under review')}
@@ -397,6 +426,8 @@ function Detail({
               : t('You reported a problem. The payment is on hold while Cappy looks into it; we will be in touch.')
           }
         />
+        <DisputeOffers booking={booking} asOwner={asOwner} otherName={asOwner ? buyer : first} />
+        </>
       ) : booking.status === 'cancelled' && booking.noShow ? (
         <Banner
           tone="warn"
@@ -411,10 +442,17 @@ function Detail({
           }
           body={
             booking.noShow === 'owner'
-              ? t('The renter gets everything back{amount}. A no-show counts against the owner.', {
-                  amount: booking.refundAmount ? ` (${formatMoney(booking.refundAmount, cur)})` : '',
-                })
-              : t('Nothing is refunded for a missed booking; the owner is paid. If this is wrong, get help with this booking.')
+              ? asOwner
+                ? t('{name} gets everything back{amount}, and a no-show counts against you. If this is wrong, get help with this booking.', {
+                    name: buyer,
+                    amount: booking.refundAmount ? ` (${formatMoney(booking.refundAmount, cur)})` : '',
+                  })
+                : t('You get everything back{amount}. A no-show counts against the owner.', {
+                    amount: booking.refundAmount ? ` (${formatMoney(booking.refundAmount, cur)})` : '',
+                  })
+              : asOwner
+                ? t('You are paid for the missed booking. {name} can contest it with Cappy.', { name: buyer })
+                : t('Nothing is refunded for a missed booking; the owner is paid. If this is wrong, get help with this booking.')
           }
         />
       ) : booking.status === 'cancelled' ? (
@@ -476,6 +514,9 @@ function Detail({
         />
       ) : null}
 
+      {/* A report that was decided says how (V5-7): upheld or not, and the money. */}
+      {(booking.status === 'completed' || booking.status === 'cancelled') && <DisputeDecided booking={booking} asOwner={asOwner} />}
+
       {payNow && payment.data && payments.data?.publishableKey && (
         <div className="mt-4">
           <Suspense fallback={null}>
@@ -525,7 +566,9 @@ function Detail({
                   <p className="t-sm text-[var(--ink-3)]">
                     {step.id === 'requested' && booking.listing?.instantBook
                       ? t('Instant book: confirmed as soon as the card was held')
-                      : t(asOwner ? step.ownerNote : step.note)}
+                      : i < stepIndex
+                        ? t(step.pastNote)
+                        : t(asOwner ? step.ownerNote : step.note)}
                   </p>
                 </div>
               </li>
@@ -536,7 +579,7 @@ function Detail({
 
       {/* Handover detail only appears once there is something to hand over:
           the address is shared with the buyer when the owner accepts. */}
-      {(booking.status === 'accepted' || booking.status === 'active') && (booking.handover || listing) && (
+      {(booking.status === 'accepted' || booking.status === 'active' || booking.status === 'disputed') && (booking.handover || listing) && (
         <Card className="p-5">
           <h2 className="t-label mb-2.5">{t('Getting in')}</h2>
           {booking.handover?.address && (
@@ -589,6 +632,7 @@ function Detail({
       {booking.status !== 'awaiting_payment' && (
         <Conversation
           bookingId={booking.id}
+          status={booking.status}
           otherName={asOwner ? buyer : first}
           accepted={['accepted', 'active', 'completed', 'disputed'].includes(booking.status)}
           // Also a completed booking once its 14-day review window has passed (booking/messages.py).
@@ -622,10 +666,14 @@ function Detail({
           prompt={evidencePrompt}
           onPromptClosed={() => {
             setEvidencePrompt(null)
-            requestAnimationFrame(() => evidenceRef.current?.focus({ preventScroll: false }))
+            // After the sheet has handed focus back to its opener, which may be gone (V5-14).
+            setTimeout(() => evidenceRef.current?.focus({ preventScroll: false }), 60)
           }}
         />
       </div>
+
+      {!asOwner && <Extend booking={booking} />}
+      {asOwner && <LateReturn booking={booking} renterName={buyer} />}
 
       <Card className="mt-3 flex flex-wrap items-center justify-between gap-3 p-5">
         <p className="t-sm text-[var(--ink-3)]">{t('Something not right? Tell us, and we see this booking with it.')}</p>
@@ -670,7 +718,7 @@ function Detail({
           <>
             <Row label={t('Total')} value={formatMoney(quote.total, cur)} strong />
             <Row
-              label={`${t('Cappy fee')} · ${(PLATFORM_FEE_BPS / 100).toLocaleString(locale())} %`}
+              label={`${t('Cappy fee')} · ${percent(PLATFORM_FEE_BPS / 10_000)}`}
               value={formatMoney(quote.platformFee, cur)}
               tone="muted"
             />

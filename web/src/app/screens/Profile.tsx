@@ -32,8 +32,8 @@ import { LanguageSwitch, Screen, SectionHead } from '../components/AppShell.tsx'
 import { Icon } from '../components/Icon.tsx'
 import { Photo, SaveButton } from '../components/Photo.tsx'
 import { Avatar, Button, Card, Field, Input, Row, Segmented, Sheet, Skeleton } from '../components/ui.tsx'
-import { locale, t } from '../../i18n.ts'
-import { day } from '../format.ts'
+import { t } from '../../i18n.ts'
+import { day, percent } from '../format.ts'
 import { canOpenSettings, enablePush, isNative, openAppSettings, pushPermission, type PushPermission } from '../../native.ts'
 
 const TAKEN = ['accepted', 'active', 'completed']
@@ -228,7 +228,7 @@ export function Profile() {
             {t('Capacity is idle most of the time. Cappy sells those hours: a printer free overnight, a PA rig between gigs, a mill with a gap between contracts. You buy the outcome, not the machine, and one engine matches every job to whoever can actually run it.')}
           </p>
           <div className="mt-4 border-t border-[var(--line)] pt-4">
-            <Row label={t('Cappy fee')} value={t('{pct} % of the booking', { pct: (PLATFORM_FEE_BPS / 100).toLocaleString(locale()) })} />
+            <Row label={t('Cappy fee')} value={t('{pct} of the booking', { pct: percent(PLATFORM_FEE_BPS / 10_000) })} />
             <Row label={t('Paid by')} value={t('Taken from the total, not added on top')} />
             <Row label={t('Payment')} value={t('By card, held until the host accepts')} />
           </div>
@@ -334,7 +334,7 @@ function EditProfile({ open, onClose, you }: { open: boolean; onClose: () => voi
     >
       <div className="space-y-5 pb-3">
         <Field label={t('Your name')} htmlFor="p-name" error={error ?? undefined}>
-          <Input id="p-name" autoComplete="name" value={name} onChange={(e) => setName(e.target.value)} />
+          <Input id="p-name" autoComplete="name" value={name} invalid={Boolean(error)} onChange={(e) => setName(e.target.value)} />
         </Field>
         <Field label={t('You are')}>
           <Segmented<'person' | 'business'>
@@ -431,6 +431,8 @@ function DeleteAccount({ open, onClose }: { open: boolean; onClose: () => void }
         <ul className="list-disc space-y-1.5 pl-5">
           <li>{t('Your sign-in, profile and saved listings are deleted.')}</li>
           <li>{t('Your listings are taken down, and your name is removed from reviews you wrote.')}</li>
+          {/* True since D-1: the photos go too (FL-12). */}
+          <li>{t('Your photos are deleted, including the hand-over photos you took.')}</li>
           <li>{t('Past bookings, payments and invoices are kept without your name for up to ten years, because tax law requires records of them.')}</li>
         </ul>
         <p>{t('Bookings still open (requested, confirmed or in progress) have to finish or be cancelled first.')}</p>

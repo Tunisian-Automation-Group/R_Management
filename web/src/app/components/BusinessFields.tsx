@@ -83,7 +83,8 @@ export function BusinessFields({
       <Field label={t('Company register number (optional)')} hint={t('The number in your company or trade register, if you have one.')} htmlFor={`${id}-reg`}>
         <Input id={`${id}-reg`} value={value.registerNumber ?? ''} onChange={set('registerNumber')} />
       </Field>
-      <Field label={t('VAT / tax ID (optional)')} hint={t('Your VAT number, or your country’s business tax number.')} htmlFor={`${id}-vat`} error={errors.vatId}>
+      {/* Only a VAT ID: the server checks it as one (V5-11). A small business without one leaves it empty. */}
+      <Field label={t('VAT ID (optional)')} hint={t('Your EU VAT number, for example DE123456789. No VAT ID, say as a small business? Leave it empty.')} htmlFor={`${id}-vat`} error={errors.vatId}>
         <Input id={`${id}-vat`} value={value.vatId ?? ''} onChange={set('vatId')} autoCapitalize="characters" invalid={Boolean(errors.vatId)} />
       </Field>
     </div>
@@ -101,7 +102,7 @@ export function TraderNote({ business }: { business?: Business }) {
       <p className="mt-1">
         {business.address}
         {business.registerNumber && ` · ${business.registerNumber}`}
-        {business.vatId && ` · ${t('VAT / tax ID')} ${business.vatId}`}
+        {business.vatId && ` · ${t('VAT ID')} ${business.vatId}`}
       </p>
     </div>
   )

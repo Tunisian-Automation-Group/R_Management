@@ -15,7 +15,7 @@ const VALUES: { icon: IconName; title: string; body: string }[] = [
   {
     icon: 'wallet',
     title: 'Earn from what stands idle',
-    body: 'List a machine, a room or a vehicle for the hours it is free. You approve every booking and are paid after it.',
+    body: 'List a machine, a room or a vehicle for the hours it is free. Approve each request, or let people book instantly, and be paid after it.',
   },
   {
     icon: 'shield',

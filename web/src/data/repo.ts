@@ -82,6 +82,17 @@ const CODE_TEXT: Record<string, () => string> = {
   location_outside_district: () => t('That place is too far from the district you picked. Pick the district it is in.'),
   country_unsupported: () => t('Payouts are not available in that country yet.'),
   conversation_closed: () => t('This booking is closed, so no new messages can be sent.'),
+  district_not_in_country: () => t('Pick a district in your own country.'),
+  four_eyes: () => t('A second staff member has to approve a refund you proposed.'),
+  needs_lead: () => t('This refund is above your limit: a lead has to approve it.'),
+  approval_pending: () => t('A refund for this booking is already waiting for approval.'),
+  invalid_refund: () => t('That refund amount does not fit this booking.'),
+  own_offer: () => t('That is your own offer: the other side accepts it.'),
+  offer_changed: () => t('The offer changed a moment ago. Look at the new one.'),
+  not_extendable: () => t('The time straight after is not free, or the booking is not on any more.'),
+  within_grace: () => t('The first 30 minutes are free, so there is nothing to report.'),
+  claim_window: () => t('Late returns are reported within 24 hours after the end.'),
+  claim_exists: () => t('A late return is already reported for this booking.'),
 }
 
 async function send(method: string, path: string, body?: unknown, headers?: Record<string, string>): Promise<Response> {
@@ -204,7 +215,10 @@ export type ListingView = {
   address?: string
   /** Waiting for a quick staff check before anyone else can see it. */
   held?: boolean
+  /** Held because of where it is, not its price: it waits until moved to an open market. */
+  holdReason?: HoldReason
 }
+export type HoldReason = 'market_not_live' | 'district_not_in_country'
 export type ListingDetail = {
   listing: Listing
   owner: Owner
@@ -437,7 +451,13 @@ export function useMarkets(): { all: Record<string, Market>; live: string[] } {
 export function useMarket(country?: string): Market & { country: string } {
   const { all } = useMarkets()
   const me = useMeQuery().data?.owner?.country
-  const code = [country, me, deviceRegion(), 'DE'].find((c): c is string => Boolean(c && all[c])) ?? 'DE'
+  // The device's region only when Cappy is open there: a German reader with an
+  // en-US browser is told 112, not 911 (V5-12).
+  const device = deviceRegion()
+  const code =
+    [country, me, all[device]?.status === 'live' ? device : undefined].find((c): c is string => Boolean(c && all[c])) ??
+    Object.keys(all).find((c) => all[c].status === 'live') ??
+    'DE'
   return { country: code, ...(all[code] ?? HOME_MARKET) }
 }
 
@@ -739,9 +759,11 @@ export type Message = {
 export const HIDDEN_CONTACT = '[shared once the booking is accepted]'
 
 /** The conversation on a booking, oldest first, polled while it is on screen. */
-export const useMessages = (bookingId: string) =>
+export const useMessages = (bookingId: string, status?: string) =>
   useQuery({
-    queryKey: ['messages', bookingId],
+    // Keyed by the booking's status too: accepting unmasks contact details, cancelling
+    // masks them again, so every transition reads the thread afresh (V5-5).
+    queryKey: ['messages', bookingId, status],
     // ponytail: the newest 100 only; page with nextCursor when conversations get longer.
     queryFn: () => get<Page<Message>>(`/bookings/${bookingId}/messages${qs({ limit: 100 })}`),
     refetchInterval: 5000,
@@ -824,10 +846,12 @@ export type AuditEntry = {
   reportId?: string
   statement: string
   at: string
+  personId?: string
+  requestId?: string
 }
 export const getAdminReports = (status: Report['status'], cursor?: string) =>
   get<Page<Report>>(`/admin/reports${qs({ status, cursor })}`)
-export type HeldListing = { id: string; ownerId: string; title: string; category: string; ratePerHour: number; heldAt: string }
+export type HeldListing = { id: string; ownerId: string; title: string; category: string; ratePerHour: number; heldAt: string; currency?: string; holdReason?: HoldReason }
 /** New owners' expensive listings waiting for a look, oldest first (FL-5). */
 export const getHeldListings = () => get<HeldListing[]>('/admin/listings/held')
 export const approveListing = (id: string) => post<void>(`/admin/listings/${id}/approve`)
@@ -838,10 +862,142 @@ export const takeDownListing = (id: string, statement: string, g: Grounds) =>
   post<void>(`/admin/listings/${id}/take-down`, { statement, ...g })
 export const suspendOwner = (id: string, statement: string, g: Grounds) => post<void>(`/admin/owners/${id}/suspend`, { statement, ...g })
 export const reinstateOwner = (id: string, statement: string) => post<void>(`/admin/owners/${id}/reinstate`, { statement })
-export const resolveDispute = (id: string, outcome: 'pay_owner' | 'refund_buyer') =>
-  post<Booking>(`/admin/bookings/${id}/resolve`, { outcome, by: 'console' })
-export const useAudit = () => useQuery({ queryKey: ['audit'], queryFn: () => get<AuditEntry[]>(`/admin/audit${qs({ limit: 100 })}`) })
 
+// Disputes, resolutions and claims (H-6, H-9, S-12, S-21): the shapes in TASKS "Batch H-staff".
+export type ResolveOutcome = 'pay_owner' | 'refund_buyer' | 'partial'
+export const REASON_CODES = [
+  ['damage', 'Damage'],
+  ['no_show', 'No-show'],
+  ['not_as_described', 'Not as described'],
+  ['late_return', 'Late return'],
+  ['cleanliness', 'Cleanliness'],
+  ['safety', 'Safety'],
+  ['goodwill', 'Goodwill'],
+  ['other', 'Other'],
+] as const
+export type ReasonCode = (typeof REASON_CODES)[number][0]
+export type Resolution = {
+  id: string
+  bookingId: string
+  outcome: ResolveOutcome
+  refundAmount?: number
+  currency: string
+  reasonCode?: ReasonCode
+  note?: string
+  by: string
+  role: 'support' | 'lead' | 'parties'
+  status: 'done' | 'pending_approval' | 'rejected'
+  approvedBy?: string
+  createdAt: string
+  decidedAt?: string
+}
+export type Dispute = {
+  bookingId: string
+  openedBy: string
+  reason: string
+  openedAt: string
+  respondBy: string
+  escalatedAt?: string
+  offer?: { refundAmount: number; by: string; at: string }
+  currency: string
+  amount: number
+}
+export type Claim = {
+  id: string
+  bookingId: string
+  kind: 'late_return'
+  by: string
+  minutesLate: number
+  amount: number
+  currency: string
+  note?: string
+  status: 'open' | 'confirmed' | 'rejected'
+  createdAt: string
+  decidedBy?: string
+  decidedAt?: string
+  decisionNote?: string
+}
+export type Resolved = { resolution: Resolution; booking: Booking }
+export type CaseRow = {
+  id: string
+  status: Booking['status']
+  title: string
+  requesterId: string
+  ownerId: string
+  amount: number
+  currency: string
+  windowStart: string
+  windowEnd: string
+  updatedAt: string
+  dispute?: Dispute
+  pendingApproval: boolean
+  openClaims: number
+}
+export type CaseFilters = { status?: string; member?: string; booking?: string; claims?: 'open' }
+export type CaseView = {
+  booking: Booking
+  requesterId: string
+  ownerId: string
+  timeline: { fromStatus?: string; toStatus: string; by: string; at: string }[]
+  messages: { id: string; senderId: string; body: string; at: string; flagged?: boolean }[]
+  evidence: Evidence[]
+  payment?: {
+    bookingId: string
+    status: string
+    amount: number
+    ownerNet: number
+    currency: string
+    captured: number
+    refunded: number
+    paidOut: number
+    chargebackAt?: string
+    updatedAt: string
+  }
+  dispute?: Dispute
+  resolutions: Resolution[]
+  claims: Claim[]
+}
+export const getCases = (f: CaseFilters, cursor?: string) => get<Page<CaseRow>>(`/admin/bookings${qs({ ...f, cursor })}`)
+export const getCase = (id: string) => get<CaseView>(`/admin/bookings/${encodeURIComponent(id)}/case`)
+export const resolveDispute = (
+  id: string,
+  body: { outcome: ResolveOutcome; refundAmount?: number; reasonCode: ReasonCode; note: string },
+  key?: string,
+) => post<Resolved>(`/admin/bookings/${id}/resolve`, body, idem(key))
+export const getPendingResolutions = () => get<Resolution[]>('/admin/resolutions?status=pending_approval')
+export const approveResolution = (id: string, note: string, key?: string) =>
+  post<Resolved>(`/admin/resolutions/${id}/approve`, { note }, idem(key))
+export const rejectResolution = (id: string, note: string) => post<Resolution>(`/admin/resolutions/${id}/reject`, { note })
+export const decideClaim = (id: string, decision: 'confirm' | 'reject', note: string) =>
+  post<Claim>(`/admin/claims/${id}/decide`, { decision, note })
+export const getAudit = (f: { target?: string; actor?: string }, cursor?: string) =>
+  get<Page<AuditEntry>>(`/admin/audit${qs({ ...f, cursor, limit: 50 })}`)
+
+/** A 404 read as "none", for things a booking may simply not have. */
+const orNull = <T,>(p: Promise<T>) =>
+  p.catch((e: unknown) => {
+    if (e instanceof ApiError && e.status === 404) return null
+    throw e
+  })
+/** The dispute on a booking, if there is one: open (offers, the 72 h clock) or decided. */
+export const useDispute = (bookingId: string, enabled: boolean) =>
+  useQuery({
+    queryKey: ['dispute', bookingId],
+    queryFn: () => orNull(get<Dispute>(`/bookings/${bookingId}/dispute`)),
+    enabled,
+    // The other side may make or accept an offer while this page is open.
+    refetchInterval: 15_000,
+  })
+export const offerRefund = (bookingId: string, refundAmount: number) =>
+  post<Dispute>(`/bookings/${bookingId}/dispute/offer`, { refundAmount })
+export const acceptOffer = (bookingId: string, refundAmount: number, key?: string) =>
+  post<Resolved>(`/bookings/${bookingId}/dispute/accept`, { refundAmount }, idem(key))
+export const useClaims = (bookingId: string, enabled: boolean) =>
+  useQuery({ queryKey: ['claims', bookingId], queryFn: () => get<Claim[]>(`/bookings/${bookingId}/claims`), enabled })
+export const reportLateReturn = (bookingId: string, minutesLate: number, note?: string) =>
+  post<Claim>(`/bookings/${bookingId}/late-return`, { minutesLate, note: note || undefined })
+export const extendBooking = (bookingId: string, hours: number, key?: string) =>
+  post<BookingCreated>(`/bookings/${bookingId}/extend`, { hours }, idem(key))
 
 // --- notification centre (U-22), sign-out everywhere (U-35) -----------------------------------
 

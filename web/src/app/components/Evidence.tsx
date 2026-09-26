@@ -4,7 +4,7 @@ import type { BookingStatus } from '../../domain/types.ts'
 import { addEvidence, mediaUrl, uploadPhoto, useAttemptKey, useEvidence, type EvidenceStage } from '../../data/repo.ts'
 import { shrink } from '../photos.ts'
 import { messageOf, useMe, useToast } from '../store.tsx'
-import { ago, when } from '../format.ts'
+import { ago, percent, when } from '../format.ts'
 import { Button, Card, Field, Sheet, Textarea } from './ui.tsx'
 import { plural, t } from '../../i18n.ts'
 import { Icon } from './Icon.tsx'
@@ -12,7 +12,8 @@ import { Icon } from './Icon.tsx'
 // Mirrors booking/messages.py: when each kind of photo can be added.
 const CAN: Record<EvidenceStage, BookingStatus[]> = {
   check_in: ['accepted', 'active'],
-  check_out: ['active', 'completed', 'disputed'],
+  // Not after completion: the thing is back, the photos would prove nothing (V5-32).
+  check_out: ['active', 'disputed'],
 }
 const LABELS: Record<EvidenceStage, string> = { check_in: 'Check-in photos', check_out: 'Check-out photos' }
 const ADD: Record<EvidenceStage, string> = { check_in: 'Add check-in photos', check_out: 'Add check-out photos' }
@@ -178,7 +179,7 @@ export function EvidencePanel({
           <div className="space-y-2">
             <Button block size="lg" disabled={busy || files.length === 0} onClick={() => void save()}>
               {sending
-                ? t('Uploading {n} of {total} · {pct} %', { n: sending.n, total: files.length, pct: Math.round(sending.share * 100) })
+                ? t('Uploading {n} of {total} · {pct}', { n: sending.n, total: files.length, pct: percent(sending.share) })
                 : busy
                   ? t('Uploading…')
                   : files.length
