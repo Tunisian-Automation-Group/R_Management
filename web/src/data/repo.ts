@@ -77,6 +77,7 @@ export class ApiError extends Error {
 /** Codes the server sends that the reader should see in their language, not
  *  the server's English (M-2, M-5, M-9). */
 const CODE_TEXT: Record<string, () => string> = {
+  report_target_unknown: () => t('We could not find that. Paste its link from the app.'),
   market_not_live: () => t('Cappy is not open in that country yet.'),
   market_unknown: () => t('Cappy does not serve that country.'),
   currency_not_in_market: () => t('Listings in your country are priced in its own currency.'),
@@ -238,6 +239,9 @@ export type ListingView = {
   holdReason?: HoldReason
 }
 export type HoldReason = 'market_not_live' | 'district_not_in_country'
+/** One of a listing's photos, parallel to `listing.photos` (U-40): the widths
+ *  it exists at and a colour to show while it loads. Demo photos have none. */
+export type PhotoMeta = { url: string; w?: number; h?: number; color?: string; widths: number[] }
 export type ListingDetail = {
   listing: Listing
   owner: Owner
@@ -245,6 +249,7 @@ export type ListingDetail = {
   slots: Slot[]
   reviews: ReviewSummary
   saved?: boolean
+  photoMeta?: PhotoMeta[]
 }
 export type Spotlight = {
   listing: Listing
@@ -604,7 +609,22 @@ export async function actOnBooking(id: string, action: BookingAction): Promise<B
     throw err
   }
 }
-export const declineBooking = (id: string, reason: string) => post<Booking>(`/bookings/${id}/decline`, { reason })
+/** Why a booking was declined or ended, by the server's code (V8-3): the
+ *  English is the catalogue key, so every reader gets their language. */
+export const REASON_TEXT: Record<string, string> = {
+  already_promised: 'Already promised it to someone',
+  need_it_myself: 'Turns out I need it then',
+  needs_repair: 'It needs a repair first',
+  short_notice: 'Too short notice for me',
+  taken_down: 'The listing was taken down by Cappy',
+  owner_removed: 'The listing was removed by its owner',
+  suspended: 'The account was suspended',
+  parent_cancelled: 'The booking it extends was cancelled',
+}
+const CODE_OF = Object.fromEntries(Object.entries(REASON_TEXT).map(([c, text]) => [text, c]))
+/** A chip goes as its code, a person's own words as written. */
+export const declineBooking = (id: string, reason: string) =>
+  post<Booking>(`/bookings/${id}/decline`, CODE_OF[reason] ? { reasonCode: CODE_OF[reason] } : { reason })
 export const disputeBooking = (id: string, reason: string) => post<Booking>(`/bookings/${id}/dispute`, { reason })
 /** The card step for a booking still awaiting payment (404 once there is nothing to pay). */
 export const getBookingPayment = (id: string) => get<PaymentStart>(`/bookings/${id}/payment`)
@@ -887,7 +907,7 @@ export type AuditEntry = {
   personId?: string
   requestId?: string
   /** Booking actions (V6-9): what the machine line used to say, as data. */
-  details?: { bookingId?: string; listingTitle?: string; currency?: string; amount?: number; outcome?: ResolveOutcome; reasonCode?: ReasonCode; resolutionId?: string; claimKind?: string; claimId?: string }
+  details?: { bookingId?: string; listingTitle?: string; currency?: string; amount?: number; outcome?: ResolveOutcome; reasonCode?: ReasonCode; resolutionId?: string; claimKind?: string; claimId?: string; targetLabel?: string; personName?: string; noteCode?: 'from_record' | 'not_supported' }
 }
 export const getAdminReports = (status: Report['status'], cursor?: string) =>
   get<Page<Report>>(`/admin/reports${qs({ status, cursor })}`)
@@ -1037,7 +1057,7 @@ export const rejectResolution = (id: string, note: string) => post<Resolution>(`
 /** The proposer takes back their own pending proposal; the case can be decided again. */
 export const withdrawResolution = (id: string) => post<Resolution>(`/admin/resolutions/${id}/withdraw`, {})
 export const decideClaim = (id: string, decision: 'confirm' | 'reject', note: string) =>
-  post<Claim>(`/admin/claims/${id}/decide`, { decision, note })
+  post<Claim>(`/admin/claims/${id}/decide`, { decision, noteCode: note })
 export const getAudit = (f: { target?: string; actor?: string }, cursor?: string) =>
   get<Page<AuditEntry>>(`/admin/audit${qs({ ...f, cursor, limit: 50 })}`)
 
@@ -1108,3 +1128,26 @@ export const useNoticeSettings = () => {
 export const saveNoticeSettings = (s: NoticeSettings) => put<NoticeSettings>('/notifications/settings', s)
 export const markNoticesRead = (ids?: string[]) => post<void>('/notifications/read', ids ? { ids } : {})
 export const signOutEverywhere = () => post<void>('/me/sign-out-everywhere')
+
+/** One conversation in the Inbox, across both sides (UX-12, server read receipts). */
+export type InboxItem = {
+  bookingId: string
+  otherName?: string
+  listingTitle: string
+  photo?: string
+  status: Booking['status']
+  lastMessage: { body: string; at: string; mine: boolean }
+  unread: boolean
+}
+export const useInbox = () => {
+  const session = useSession()
+  return useQuery({
+    queryKey: ['inbox', session?.sub],
+    // ponytail: the first 50 threads; "older" with `next` when someone has more.
+    queryFn: () => get<{ items: InboxItem[]; next?: string; unread: number }>(`/inbox${qs({ limit: 50 })}`),
+    enabled: Boolean(session),
+    refetchInterval: 30_000,
+    refetchOnWindowFocus: true,
+  })
+}
+export const markInboxRead = (bookingId: string) => post<void>(`/inbox/${bookingId}/read`)

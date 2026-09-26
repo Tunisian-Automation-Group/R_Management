@@ -119,7 +119,11 @@ export function Plate({
     figure === 'hours' && hoursFree >= 1
       ? `${Math.round(hoursFree)}h`
       : when
-        ? HH.format(when)
+        ? // A thumbnail has no caption line: it carries the day itself when
+          // the start is not today (V8-7).
+          thumb && when.toDateString() !== new Date().toDateString()
+          ? `${weekday2(when)} ${HH.format(when)}`
+          : HH.format(when)
         : null
   const dayWord =
     when === null

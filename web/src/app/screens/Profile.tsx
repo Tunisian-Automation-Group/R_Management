@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { useQueryClient } from '@tanstack/react-query'
 import { formatMoney } from '../../domain/money.ts'
-import { PLATFORM_FEE_BPS } from '../../domain/pricing.ts'
+import { PLATFORM_FEE_BPS, moved } from '../../domain/pricing.ts'
 import {
   ApiError,
   deleteMe,
@@ -36,7 +36,6 @@ import { t } from '../../i18n.ts'
 import { day, percent } from '../format.ts'
 import { canOpenSettings, enablePush, isNative, openAppSettings, pushPermission, type PushPermission } from '../../native.ts'
 
-const TAKEN = ['accepted', 'active', 'completed']
 
 export function Profile() {
   const nav = useNavigate()
@@ -71,13 +70,15 @@ export function Profile() {
   }
 
   const you = me.data.owner
-  const spent = (asGuest.data?.items ?? [])
-    .filter((b) => TAKEN.includes(b.status))
-    .reduce((n, b) => n + b.match.quote.total, 0)
-  // Paid out means completed; accepted and active bookings are still to come.
+  // What really moved, after refunds and no-shows: the server's reckoning (V8-2).
+  const spent = (asGuest.data?.items ?? []).reduce((n, b) => {
+    const m = moved(b)
+    return n + m.charged - m.refunded
+  }, 0)
+  // Paid out means done: completed, or a renter no-show that paid the owner.
   const earned = (asHost.data?.items ?? [])
-    .filter((b) => b.status === 'completed')
-    .reduce((n, b) => n + b.match.quote.ownerNet, 0)
+    .filter((b) => b.status === 'completed' || b.status === 'cancelled')
+    .reduce((n, b) => n + moved(b).ownerNet, 0)
   // ponytail: one currency per person, their market's (ADR 0013); sums never mix currencies until then.
   const currency = asHost.data?.items[0]?.currency ?? asGuest.data?.items[0]?.currency
   const shortlist = saved.data?.items ?? []

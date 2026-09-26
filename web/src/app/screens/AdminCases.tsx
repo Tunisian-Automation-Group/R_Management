@@ -440,6 +440,8 @@ function auditText(a: AuditEntry): string {
     d.amount ? formatMoney(d.amount, d.currency ?? 'EUR') : '',
     d.reasonCode ? reasonLabel(d.reasonCode) : '',
     d.claimKind === 'late_return' ? t('Late return') : '',
+    // The claim's statement by code, in the reader's language (V8-11).
+    d.noteCode === 'from_record' ? t('Confirmed from the booking record') : d.noteCode === 'not_supported' ? t('Not supported by the booking record') : '',
   ].filter(Boolean)
   const head = parts.join(' · ')
   return a.statement ? (head ? `${head}. ${a.statement}` : a.statement) : head
@@ -465,12 +467,13 @@ function AuditLine({ a, me }: { a: AuditEntry; me?: string }) {
     <li className="border-b border-[var(--line)] pb-3 last:border-0 last:pb-0">
       <p className="text-body font-semibold">
         {t(ACTION_LABEL[a.action] ?? a.action)} · {t(TARGET_LABEL[a.targetType] ?? a.targetType)}{' '}
+        {/* Names and titles as the server knows them now, never a raw id (V8-11). */}
         {bookingLink ? (
-          <Link className="tnum underline" to={bookingLink}>
-            {a.targetId}
+          <Link className="underline" to={bookingLink}>
+            {a.details?.listingTitle ?? a.details?.targetLabel ?? t('this booking')}
           </Link>
         ) : (
-          <span className="tnum text-[var(--ink-3)]">{a.targetId}</span>
+          <span className="text-[var(--ink-3)]">{a.details?.targetLabel ?? a.details?.personName ?? t('(no longer here)')}</span>
         )}
       </p>
       <p className="t-sm text-[var(--ink-4)]">
@@ -740,7 +743,8 @@ function Claims({ claims, bookingId }: { claims: Claim[]; bookingId: string }) {
   const decide = async (c: Claim, decision: 'confirm' | 'reject') => {
     setBusy(c.id)
     try {
-      await decideClaim(c.id, decision, decision === 'confirm' ? t('Confirmed from the booking record') : t('Not supported by the booking record'))
+      // A code, so every reader gets the statement in their language (V8-11).
+      await decideClaim(c.id, decision, decision === 'confirm' ? 'from_record' : 'not_supported')
       toast(decision === 'confirm' ? t('Claim confirmed') : t('Claim rejected'))
     } catch (err) {
       toast(messageOf(err), 'error')
@@ -773,7 +777,10 @@ function Claims({ claims, bookingId }: { claims: Claim[]; bookingId: string }) {
             )}
           </div>
         ))}
-        <p className="t-sm text-[var(--ink-4)]">{t('Confirming records the claim; nothing is charged to the renter yet.')}</p>
+        {/* The hint is for deciding; once decided it would read as if pending (V8-15). */}
+        {claims.some((c) => c.status === 'open') && (
+          <p className="t-sm text-[var(--ink-4)]">{t('Confirming records the claim; nothing is charged to the renter yet.')}</p>
+        )}
       </Card>
     </>
   )

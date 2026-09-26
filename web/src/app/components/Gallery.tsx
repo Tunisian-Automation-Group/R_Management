@@ -5,12 +5,13 @@ import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from 
 import type { CategoryId, Slot } from '../../domain/types.ts'
 import { Photo } from './Photo.tsx'
 import { Icon } from './Icon.tsx'
-import { mediaUrl } from '../../data/repo.ts'
+import { mediaUrl, type PhotoMeta } from '../../data/repo.ts'
 import { sheetOpened } from '../sheets.ts'
 import { t } from '../../i18n.ts'
 
 export function Gallery({
   photos,
+  meta,
   title,
   slots,
   categoryId,
@@ -18,6 +19,8 @@ export function Gallery({
   style,
 }: {
   photos: string[]
+  /** Parallel to photos: renditions and colours (U-40). */
+  meta?: PhotoMeta[]
   title: string
   slots?: Slot[]
   categoryId: CategoryId
@@ -54,7 +57,7 @@ export function Gallery({
       >
         {photos.map((src, i) => (
           <button key={src + i} type="button" onClick={() => setOpen(i)} className="w-full shrink-0 snap-start" aria-label={t('Open {what}', { what: alt(i) })}>
-            <Photo src={src} alt={alt(i)} categoryId={categoryId} aspect={4 / 3} priority={i === 0} width={800} sizes="100vw" className="w-full" />
+            <Photo src={src} meta={meta?.[i]} alt={alt(i)} categoryId={categoryId} aspect={4 / 3} priority={i === 0} width={800} sizes="100vw" className="w-full" />
           </button>
         ))}
       </div>
@@ -78,6 +81,7 @@ export function Gallery({
           >
             <Photo
               src={src}
+              meta={meta?.[i]}
               alt={alt(i)}
               categoryId={categoryId}
               aspect={i === 0 ? (photos.length > 1 ? 4 / 3 : 16 / 10) : 4 / 3}

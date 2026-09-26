@@ -317,6 +317,7 @@ export type Booking = {
   requesterId?: string
   /** Set when the owner declines, so the buyer is told why rather than just refused. */
   declineReason?: string
+  declineReasonCode?: string
   outcome?: Outcome
   /** What the listing looked like when it was booked: enough to draw the card
    *  even if the listing has since changed or gone. */

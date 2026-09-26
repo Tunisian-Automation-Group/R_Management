@@ -22,8 +22,8 @@ const ARTICLES: Record<string, Article> = {
       ],
       de: [
         'Mit Cappy buchst du die Stunden von Dingen, die anderen gehören: eine Werkstatt, einen Transporter, einen 3D-Drucker, ein Studio. Du zahlst für die Zeit, die du nutzt, nicht fürs Besitzen.',
-        'Suche nach dem, was du brauchst, und wann. Jedes Inserat zeigt vor der Anfrage den Preis für deine Stunden, die Bilanz des Anbieters und die Stornobedingungen.',
-        'Der Anbieter hat 24 Stunden, um eine Anfrage anzunehmen, außer das Inserat ist sofort buchbar. Nichts beginnt früher als in 2 Stunden, damit der Anbieter immer Zeit zum Antworten hat.',
+        'Suche nach dem, was du brauchst, und wann. Jedes Inserat zeigt vor der Anfrage den Preis für deine Stunden, die Bilanz der vermietenden Person und die Stornobedingungen.',
+        'Die vermietende Person hat 24 Stunden, um eine Anfrage anzunehmen, außer das Inserat ist sofort buchbar. Nichts beginnt früher als in 2 Stunden, damit sie immer Zeit zum Antworten hat.',
       ],
       fr: [
         'Cappy vous permet de réserver les heures de choses qui appartiennent à d’autres\u00a0: un atelier, une camionnette, une imprimante 3D, un studio. Vous payez le temps que vous utilisez, pas la propriété.',
@@ -41,9 +41,9 @@ const ARTICLES: Record<string, Article> = {
         'Each booking shows its full price, with Cappy’s fee inside it. Owners get an invoice for Cappy’s fee under Earn → Invoices.',
       ],
       de: [
-        'Mit deiner Buchung wird der Gesamtbetrag inklusive Gebühr auf deiner Karte reserviert. Bei Sofortbuchung wird sofort abgebucht; sonst erst, wenn der Anbieter annimmt. Lehnt er ab oder antwortet nicht, wird die Reservierung aufgehoben.',
+        'Mit deiner Buchung wird der Gesamtbetrag inklusive Gebühr auf deiner Karte reserviert. Bei Sofortbuchung wird sofort abgebucht; sonst erst, wenn die vermietende Person annimmt. Lehnt sie ab oder antwortet nicht, wird die Reservierung aufgehoben.',
         'Bezahle immer über Cappy. Eine Zahlung auf anderem Weg ist nicht geschützt: keine Erstattung, kein Widerspruch, keine Bewertung. Wer dich bittet, außerhalb von Cappy zu zahlen, sollte gemeldet werden.',
-        'Jede Buchung zeigt ihren vollen Preis, die Gebühr von Cappy ist darin enthalten. Anbieter bekommen unter Verdienen → Rechnungen eine Rechnung über die Gebühr von Cappy.',
+        'Jede Buchung zeigt ihren vollen Preis, die Gebühr von Cappy ist darin enthalten. Vermietende Personen bekommen unter Verdienen → Rechnungen eine Rechnung über die Gebühr von Cappy.',
       ],
       fr: [
         'Lorsque vous réservez, le montant total, frais compris, est bloqué sur votre carte. En réservation instantanée, il est débité aussitôt\u00a0; sinon, il ne l’est que lorsque le propriétaire accepte, et s’il refuse ou ne répond pas, le blocage est levé.',
@@ -82,7 +82,7 @@ const ARTICLES: Record<string, Article> = {
       ],
       de: [
         'Inseriere unter Verdienen: was es ist, wo, den Stundenpreis und wann es frei ist, als wöchentliches Muster oder mit genauen Daten. Du entscheidest über jede Anfrage, außer du schaltest Sofortbuchung ein.',
-        'Auszahlungen laufen über Stripe auf dein Bankkonto. Richte sie einmal unter Verdienen ein; ausgezahlt wird nach jeder abgeschlossenen Buchung. Die Gebühr von Cappy steckt im Preis, den der Mieter zahlt.',
+        'Auszahlungen laufen über Stripe auf dein Bankkonto. Richte sie einmal unter Verdienen ein; ausgezahlt wird nach jeder abgeschlossenen Buchung. Die Gebühr von Cappy steckt im Preis, den die mietende Person zahlt.',
         'Eine unbeantwortete Anfrage verfällt nach 24 Stunden. Sobald du einige beantwortet hast, zeigt dein Inserat, wie schnell du meist antwortest.',
       ],
       fr: [
@@ -122,7 +122,7 @@ const ARTICLES: Record<string, Article> = {
       ],
       de: [
         'Schreib zuerst der anderen Seite in der Buchung. Meist ist es ein Missverständnis über Zeiten oder Zugang.',
-        'Lässt es sich nicht klären, melde in der Buchung ein Problem. Die Zahlung wird gehalten, die Buchung schließt nicht von selbst ab, und ein Mensch bei Cappy entscheidet, ob der Anbieter bezahlt oder dir erstattet wird.',
+        'Lässt es sich nicht klären, melde in der Buchung ein Problem. Die Zahlung wird gehalten, die Buchung schließt nicht von selbst ab, und ein Mensch bei Cappy entscheidet, ob die vermietende Person bezahlt oder dir erstattet wird.',
         'Fühlst du dich unsicher, geh und ruf zuerst den Notruf ({emergency}).',
       ],
       fr: [
@@ -163,7 +163,7 @@ const ARTICLES: Record<string, Article> = {
         'Reviews are published together, once both have rated or 14 days after the booking, so nobody rates in reply to the other.',
       ],
       de: [
-        'Nach einer abgeschlossenen Buchung bewerten sich beide Seiten: Der Mieter bewertet das Inserat, der Anbieter den Mieter.',
+        'Nach einer abgeschlossenen Buchung bewerten sich beide Seiten: Die mietende Person bewertet das Inserat, die vermietende Person die mietende.',
         'Bewertungen erscheinen gemeinsam, sobald beide bewertet haben oder 14 Tage nach der Buchung, damit niemand als Antwort auf den anderen bewertet.',
       ],
       fr: [

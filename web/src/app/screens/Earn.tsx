@@ -3,6 +3,7 @@ import { useNavigate, useSearchParams } from 'react-router-dom'
 import { useQueries, useQueryClient } from '@tanstack/react-query'
 import type { Booking, Listing, Owner, Slot } from '../../domain/types.ts'
 import { durationLabel } from '../../domain/categories.ts'
+import { moved } from '../../domain/pricing.ts'
 import { idleHours } from '../../domain/availability.ts'
 import { formatMoney } from '../../domain/money.ts'
 import * as repo from '../../data/repo.ts'
@@ -73,6 +74,20 @@ export function Earn() {
   const underReview = inbound.filter((b) => b.status === 'disputed').sort(byStart)
   const soldFor = (listingId: string) =>
     soldThisWeek.filter((b) => b.match.listingId === listingId).reduce((n, b) => n + b.match.quote.hours, 0)
+  // The windows less what is sold or asked for: what the plate may announce
+  // as the next free start (V8-7). The raw windows named a sold 19:00.
+  const freeSlotsFor = (id: string): Slot[] => {
+    const taken = inbound
+      .filter((b) => b.match.listingId === id && ['awaiting_payment', 'requested', ...HELD, 'completed', 'disputed'].includes(b.status))
+      .map((b) => [Date.parse(b.match.start), Date.parse(b.match.end)] as const)
+    return slotsFor(id).flatMap((sl) => {
+      let parts = [[Date.parse(sl.start), Date.parse(sl.end)]]
+      for (const [a, b] of taken) {
+        parts = parts.flatMap(([x, y]) => (b <= x || a >= y ? [[x, y]] : [[x, a], [b, y]].filter(([p, q]) => q > p)))
+      }
+      return parts.map(([x, y]) => ({ ...sl, start: new Date(x).toISOString(), end: new Date(y).toISOString() }))
+    })
+  }
   // Who is asking: their public profile, for the name and initials.
   const askers = useQueries({
     queries: requests.map((b) => ({
@@ -95,7 +110,10 @@ export function Earn() {
   }
   const sold = soldThisWeek.reduce((n, b) => n + b.match.quote.hours, 0)
   // Earned means paid out: completed. Accepted and active are still to come.
-  const earned = inbound.filter((b) => b.status === 'completed').reduce((n, b) => n + b.match.quote.ownerNet, 0)
+  // What really reached the owner, after refunds and no-shows: the server's reckoning (V8-2).
+  const earned = inbound
+    .filter((b) => b.status === 'completed' || b.status === 'cancelled')
+    .reduce((n, b) => n + moved(b).ownerNet, 0)
   const upcoming = comingUp.reduce((n, b) => n + b.match.quote.ownerNet, 0)
   // ponytail: one currency per owner, their listings' market's (ADR 0013: a person lives in one cell).
   const currency = active[0]?.currency ?? inbound[0]?.currency
@@ -235,7 +253,7 @@ export function Earn() {
                         className="flex-1 md:flex-none md:px-7"
                         disabled={busy}
                         onClick={() =>
-                          void write(() => repo.actOnBooking(b.id, 'accept'), t('Accepted. They have the details now'))
+                          void write(() => repo.actOnBooking(b.id, 'accept'), t('Accepted. {name} has been told', { name: askerOf(b)?.name.split(' ')[0] ?? t('The buyer') }))
                         }
                       >
                         {t('Accept')}
@@ -375,7 +393,7 @@ export function Earn() {
                     <Photo
                       src={l.photos?.[0]}
                       alt={l.title}
-                      slots={week}
+                      slots={thisWeek(freeSlotsFor(l.id))}
                       categoryId={l.category}
                       aspect={1}
                       thumb

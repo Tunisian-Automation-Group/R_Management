@@ -13,14 +13,23 @@ const reduced = () => window.matchMedia('(prefers-reduced-motion: reduce)').matc
 
 /** Run a state change as a view transition, so screens crossfade and a tapped
  *  cover morphs into the next screen's hero instead of hard-cutting. */
-export function transition(update: () => void): void {
+export function transition(update: () => void, kind: 'push' | 'pop' | 'tab' = 'tab'): void {
   const doc = document as Doc
   if (!doc.startViewTransition || reduced()) {
     update()
     return
   }
-  doc.startViewTransition(() => flushSync(update))
+  // Which way the screen moves on a phone (UX-8): the CSS reads it.
+  document.documentElement.dataset.nav = kind
+  doc.startViewTransition(() => flushSync(update)).finished.finally(() => {
+    delete document.documentElement.dataset.nav
+  })
 }
+
+// The dock's destinations: moving between them is a crossfade, not a push.
+const TABS = new Set(['/', '/bookings', '/inbox', '/earn', '/profile'])
+const kindOf = (to: string | number): 'push' | 'pop' | 'tab' =>
+  typeof to === 'number' ? (to < 0 ? 'pop' : 'push') : TABS.has(to.split(/[?#]/)[0]) ? 'tab' : 'push'
 
 export function useNav() {
   const nav = useNavigate()
@@ -29,7 +38,7 @@ export function useNav() {
       transition(() => {
         if (typeof to === 'number') nav(to)
         else nav(to, { replace: opts?.replace })
-      })
+      }, kindOf(to))
     },
     [nav],
   )

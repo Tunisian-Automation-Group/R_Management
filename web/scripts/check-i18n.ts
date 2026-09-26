@@ -23,7 +23,7 @@ failed ||= typo.length > 0
 // One word for each side, the same as the server's emails
 // (test_texts_every_kind.py): "vermietende / mietende Person",
 // "le propriétaire" / "la personne locataire".
-const offTerms = { de: /mietende[n]? Seite/, fr: /personne propriétaire|qui loue|\b(?:le|au|du|un) locataire\b/i }
+const offTerms = { de: /mietende[n]? Seite|\bAnbieter|\bMieter(?:in|innen|n|s)?\b/, fr: /personne propriétaire|qui loue|\b(?:le|au|du|un) locataire\b/i }
 for (const [name, cat] of [['de', DE], ['fr', FR]] as const) {
   const off = Object.entries(cat).filter(([, tr]) => offTerms[name].test(tr))
   for (const [en, tr] of off) console.error(`${name}: name the two sides the agreed way:\n  en: ${en}\n  ${name}: ${tr}`)
@@ -83,6 +83,14 @@ for (const u of untranslated) console.error(`no translation: ${u}`)
   const bad = texts.filter((s) => /[^\u00a0]:(?=[ \t\r\n]|$)|[^\u202f;?!][;?!]/.test(prose(s)))
   for (const s of bad) console.error(`fr (Legal.tsx): typography (U+00A0 before ":", U+202F before ; ? !):\n  ${s.trim()}`)
   if (bad.length) failed = true
+}
+// The German written straight into the help and legal pages keeps the same
+// words (V8-8): those words are German, so the whole file can be searched.
+for (const page of ['Help.tsx', 'Legal.tsx']) {
+  const src = readFileSync(new URL(`../src/app/screens/${page}`, import.meta.url).pathname, 'utf8')
+  const hits = src.split('\n').flatMap((line, i) => (offTerms.de.test(line) ? [`${page}:${i + 1}`] : []))
+  for (const h of hits) console.error(`de: name the two sides the agreed way: ${h}`)
+  failed ||= hits.length > 0
 }
 if (failed || onlyDe.length || onlyFr.length || untranslated.size) process.exit(1)
 console.log(`i18n: ${Object.keys(DE).length} German and ${Object.keys(FR).length} French entries, same keys, placeholders match`)

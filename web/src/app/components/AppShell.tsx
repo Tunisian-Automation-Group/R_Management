@@ -45,9 +45,8 @@ export function Dock({ badges }: { badges: Record<string, number> }) {
   const tabs: Tab[] = [
     { to: '/', label: t('Explore'), icon: 'search' },
     { to: '/bookings', label: t('Bookings'), icon: 'ticket', badge: badges['/bookings'] },
-    // Conversations across bookings (UX-12). ponytail: no unread badge here
-    // until the server says what is unread (GET /api/inbox).
-    { to: '/inbox', label: t('Inbox'), icon: 'chat' },
+    // Conversations across bookings, unread counted by the server (UX-12).
+    { to: '/inbox', label: t('Inbox'), icon: 'chat', badge: badges['/inbox'] },
     { to: '/earn', label: t('Earn'), icon: 'wallet', badge: badges['/earn'] },
     { to: '/profile', label: t('You'), icon: 'user', badge: badges['/notifications'] },
   ]

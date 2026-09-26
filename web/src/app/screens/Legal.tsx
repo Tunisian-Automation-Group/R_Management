@@ -326,7 +326,7 @@ const SIGNAL: Record<string, Record<L3, [string, string]>> = {
   },
   trust: {
     en: ['Trust', 'The owner’s ratings and reliability. Owners who cancel confirmed bookings or do not show up rank lower.'],
-    de: ['Vertrauen', 'Bewertungen und Zuverlässigkeit des Anbieters. Wer bestätigte Buchungen storniert oder nicht erscheint, steht weiter unten.'],
+    de: ['Vertrauen', 'Bewertungen und Zuverlässigkeit der vermietenden Person. Wer bestätigte Buchungen storniert oder nicht erscheint, steht weiter unten.'],
     fr: ['Confiance', 'Les évaluations et la fiabilité du propriétaire. Ceux qui annulent des réservations confirmées ou ne se présentent pas sont classés plus bas.'],
   },
   soon: {
@@ -354,8 +354,8 @@ function Ranking() {
     de: {
       intro: 'Suchst du in einer Kategorie, sortiert Cappy die Ergebnisse nach diesen Kriterien, jeweils mit dem angegebenen Gewicht:',
       words: 'Eine Suche nach Wörtern zeigt die passenden Inserate, die neuesten zuerst.',
-      trust: 'Der Vertrauenswert eines Anbieters sinkt um bis zur Hälfte, im Verhältnis zum Anteil der bestätigten Buchungen der letzten 12 Monate, die er storniert oder versäumt hat (gezählt ab fünf Buchungen). Dieser Anteil steht bei seinen Inseraten.',
-      rest: 'Du kannst nach Preis, Entfernung oder frühestem Termin umsortieren. Eine bessere Position kann niemand kaufen: Cappy hat kein bezahltes Ranking und keine Werbung in den Ergebnissen. Inserate von Anbietern, die noch keine Auszahlungen empfangen können, und nach unseren AGB entfernte Inserate erscheinen nicht.',
+      trust: 'Der Vertrauenswert einer vermietenden Person sinkt um bis zur Hälfte, im Verhältnis zum Anteil der bestätigten Buchungen der letzten 12 Monate, die sie storniert oder versäumt hat (gezählt ab fünf Buchungen). Dieser Anteil steht bei ihren Inseraten.',
+      rest: 'Du kannst nach Preis, Entfernung oder frühestem Termin umsortieren. Eine bessere Position kann niemand kaufen: Cappy hat kein bezahltes Ranking und keine Werbung in den Ergebnissen. Inserate von vermietenden Personen, die noch keine Auszahlungen empfangen können, und nach unseren AGB entfernte Inserate erscheinen nicht.',
     },
     fr: {
       intro: 'Lorsque vous cherchez dans une catégorie, Cappy classe les résultats selon ces critères, chacun avec le poids indiqué\u00a0:',
@@ -440,7 +440,7 @@ function AccessibilityDe() {
       <p>Teilweise vereinbar. Das ist unsere eigene Bewertung, noch keine unabhängige Prüfung. Bekannt ist:</p>
       <ul className="list-disc space-y-1 pl-5">
         <li>Verschieben und Zoomen der Karte unter Entdecken braucht Maus oder Touch; die Liste zeigt dieselben Inserate.</li>
-        <li>Fotos, die Anbieter hochladen, tragen den Titel des Inserats als Beschreibung, keine Bildbeschreibung.</li>
+        <li>Fotos, die vermietende Personen hochladen, tragen den Titel des Inserats als Beschreibung, keine Bildbeschreibung.</li>
         <li>Sehr große Schriftgrößen sind in den Apps noch nicht auf jedem Bildschirm geprüft.</li>
       </ul>
       <H>Wie der Dienst funktioniert</H>
@@ -556,14 +556,14 @@ function WithdrawalDe() {
   return (
     <>
       <p>
-        Das gilt, wenn du als Verbraucher bei einem Anbieter buchst, der Unternehmer ist (auf der Karte als
+        Das gilt, wenn du als Verbraucher bei einer vermietenden Person buchst, die Unternehmer ist (auf der Karte als
         „Unternehmen“ gekennzeichnet). Buchungen bei Privatpersonen haben kein gesetzliches Widerrufsrecht; du kannst sie
         nach unseren AGB aber vor Beginn stornieren und bekommst alles zurück.
       </p>
       <H>Widerrufsbelehrung</H>
       <p>
         <strong>Widerrufsrecht.</strong> Du hast das Recht, binnen vierzehn Tagen ohne Angabe von Gründen diesen Vertrag
-        zu widerrufen. Die Widerrufsfrist beträgt vierzehn Tage ab dem Tag des Vertragsschlusses (wenn der Anbieter deine
+        zu widerrufen. Die Widerrufsfrist beträgt vierzehn Tage ab dem Tag des Vertragsschlusses (wenn die vermietende Person deine
         Buchung annimmt). Um dein Widerrufsrecht auszuüben, tippe bei der Buchung auf „Von dieser Buchung zurücktreten“
         oder informiere uns (Kontakt: {contactAddr()}) mittels einer eindeutigen Erklärung, zum Beispiel per E-Mail,
         über deinen Entschluss, diesen Vertrag zu widerrufen. Du kannst dafür das unten stehende Muster-Widerrufsformular
@@ -644,7 +644,7 @@ function PrivacyDe() {
       <H>Wer die Daten für uns verarbeitet</H>
       <ul className="list-disc space-y-2 pl-5">
         <li>Amazon Web Services EMEA (Hosting, Anmeldung mit Amazon Cognito, E-Mail mit Amazon SES) in der EU (Frankfurt, eu-central-1).</li>
-        <li>Stripe Payments Europe (Kartenzahlungen, Auszahlungen an Anbieter, Identitätsprüfung), als eigenständig Verantwortlicher für Zahlungsdaten.</li>
+        <li>Stripe Payments Europe (Kartenzahlungen, Auszahlungen an vermietende Personen, Identitätsprüfung), als eigenständig Verantwortlicher für Zahlungsdaten.</li>
         <li>Apple und Google, wenn du Push-Mitteilungen in der App erlaubst.</li>
       </ul>
       <p>Wir verkaufen deine Daten nicht und nutzen sie nicht für Werbung.</p>
@@ -670,8 +670,8 @@ function TermsDe() {
     <>
       <H>Was Cappy ist</H>
       <p>
-        Cappy bringt Anbieter ungenutzter Kapazität (Maschinen, Werkstätten, Fahrzeuge, Flächen) mit Menschen zusammen, die
-        sie für eine Weile nutzen wollen. Der Mietvertrag kommt zwischen Anbieter und Buchendem zustande; Cappy betreibt
+        Cappy bringt Menschen mit ungenutzter Kapazität (Maschinen, Werkstätten, Fahrzeuge, Flächen) mit Menschen zusammen, die
+        sie für eine Weile nutzen wollen. Der Mietvertrag kommt zwischen vermietender und mietender Person zustande; Cappy betreibt
         die Plattform und wickelt die Zahlung ab. Betreiber von Cappy ist {operatorName()}.
       </p>
       <H>Konten</H>
@@ -681,25 +681,25 @@ function TermsDe() {
       </p>
       <H>Inserieren</H>
       <p>
-        Anbieter beschreiben ihr Angebot wahrheitsgemäß, inserieren nur, was sie vermieten dürfen, halten es sicher
+        Vermietende Personen beschreiben ihr Angebot wahrheitsgemäß, inserieren nur, was sie vermieten dürfen, halten es sicher
         nutzbar und sind zu den angegebenen Zeiten da (oder stellen es bereit). Bezahlt wird nur über Cappy; Zahlungen
         außerhalb der Plattform zu verlangen, ist nicht erlaubt.
       </p>
       <H>Buchen und Bezahlen</H>
       <ul className="list-disc space-y-2 pl-5">
         <li>Wenn du eine Buchung anfragst, wird der Preis auf deiner Karte reserviert, nicht belastet.</li>
-        <li>Belastet wird die Karte, wenn der Anbieter annimmt, bei einer Sofortbuchung sofort. Lehnt er ab oder antwortet nicht rechtzeitig, wird die Reservierung aufgehoben.</li>
-        <li>Der Anbieter wird bezahlt, wenn die Buchung abgeschlossen ist. Cappy behält eine Gebühr von {FEE_DE}; sie ist im angezeigten Preis enthalten.</li>
+        <li>Belastet wird die Karte, wenn die vermietende Person annimmt, bei einer Sofortbuchung sofort. Lehnt sie ab oder antwortet nicht rechtzeitig, wird die Reservierung aufgehoben.</li>
+        <li>Die vermietende Person wird bezahlt, wenn die Buchung abgeschlossen ist. Cappy behält eine Gebühr von {FEE_DE}; sie ist im angezeigten Preis enthalten.</li>
       </ul>
       <H>Stornieren und Probleme</H>
       <p>
         Beide Seiten können stornieren, bevor die gebuchte Zeit beginnt; der Buchende bekommt dann alles zurück. Hat sie
-        begonnen, kann der Buchende stattdessen ein Problem melden: Die Auszahlung an den Anbieter wird zurückgehalten,
+        begonnen, kann die mietende Person stattdessen ein Problem melden: Die Auszahlung an die vermietende Person wird zurückgehalten,
         während Cappy den Fall prüft und über Erstattung oder Auszahlung entscheidet. Gesetzliche Rechte bleiben unberührt.
       </p>
       <H>Widerrufsrecht</H>
       <p>
-        Buchst du als Verbraucher bei einem Anbieter, der Unternehmer ist, hast du ein gesetzliches Widerrufsrecht. Die
+        Buchst du als Verbraucher bei einer vermietenden Person, die Unternehmer ist, hast du ein gesetzliches Widerrufsrecht. Die
         Einzelheiten und das Muster-Widerrufsformular findest du unter <NavLink to="/legal/withdrawal" className="underline">Widerruf</NavLink>.
         Buchungen bei Privatpersonen haben kein gesetzliches Widerrufsrecht; vor Beginn kannst du sie trotzdem nach diesen
         AGB stornieren und bekommst alles zurück.
@@ -713,7 +713,7 @@ function TermsDe() {
       </p>
       <H>Haftung</H>
       <p>
-        Anbieter sind verantwortlich für das, was sie vermieten, Buchende für die Nutzung. Cappy haftet unbeschränkt bei
+        Vermietende Personen sind verantwortlich für das, was sie vermieten, mietende für die Nutzung. Cappy haftet unbeschränkt bei
         Vorsatz und grober Fahrlässigkeit sowie bei Verletzung von Leben, Körper oder Gesundheit; im Übrigen nur bei
         Verletzung wesentlicher Vertragspflichten, begrenzt auf den vertragstypischen, vorhersehbaren Schaden.
       </p>

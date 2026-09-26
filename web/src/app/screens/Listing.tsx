@@ -314,6 +314,7 @@ export function Listing({ preview }: { preview?: { detail: ListingDetail; banner
       hero={
         <Gallery
           photos={listing.photos ?? []}
+          meta={detail.data.photoMeta}
           title={listing.title}
           slots={slots}
           categoryId={listing.category}
@@ -324,7 +325,7 @@ export function Listing({ preview }: { preview?: { detail: ListingDetail; banner
             className="absolute left-20 right-5 flex flex-wrap items-center justify-end gap-2"
             style={{ top: 'calc(var(--safe-top) + 14px)' }}
           >
-            <span className="glass glass-dark min-w-0 max-w-full truncate rounded-full px-3 py-1 text-label font-semibold">
+            <span className="glass glass-dark max-w-full rounded-[var(--radius-card)] px-3 py-1 text-center text-label font-semibold">
               {meta.label}
             </span>
             <WhenBadge
@@ -344,6 +345,60 @@ export function Listing({ preview }: { preview?: { detail: ListingDetail; banner
           <div className="flex flex-wrap items-center gap-x-4 gap-y-2 md:block">
             <div className="min-w-[10rem] flex-1">
               <p className="t-label hidden md:block">{t('Your booking')}</p>
+              {/* On a desktop the box itself carries the choice (UX-20): Day,
+                  Start, Duration as native selects, the same state as the chips. */}
+              {isWindow(listing) && Object.keys(byDay).length > 0 && (
+                <div className="mt-3 hidden gap-2 md:grid md:grid-cols-2">
+                  <label className="t-label col-span-2 block">
+                    {t('Day')}
+                    <select
+                      className="mt-1 min-h-[40px] w-full rounded-[var(--radius-control)] border border-[var(--line)] bg-transparent px-3 text-body text-[var(--ink)]"
+                      value={selected ? day(selected.start) : ''}
+                      onChange={(e) => {
+                        setDayPick(e.target.value)
+                        setPicked(byDay[e.target.value]?.[0] ?? null)
+                      }}
+                    >
+                      {Object.keys(byDay).slice(0, 14).map((d) => (
+                        <option key={d} value={d}>
+                          {d}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <label className="t-label block">
+                    {t('Starts')}
+                    <select
+                      className="mt-1 tnum min-h-[40px] w-full rounded-[var(--radius-control)] border border-[var(--line)] bg-transparent px-3 text-body text-[var(--ink)]"
+                      value={selected?.start ?? ''}
+                      onChange={(e) => setPicked(offers.find((o) => o.start === e.target.value) ?? null)}
+                    >
+                      {(selected ? byDay[day(selected.start)] ?? [] : []).map((o) => (
+                        <option key={o.start} value={o.start}>
+                          {time(o.start)}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <label className="t-label block">
+                    {t('Duration')}
+                    <select
+                      className="mt-1 min-h-[40px] w-full rounded-[var(--radius-control)] border border-[var(--line)] bg-transparent px-3 text-body text-[var(--ink)]"
+                      value={hours}
+                      onChange={(e) => {
+                        setHours(Number(e.target.value))
+                        setPicked(null)
+                      }}
+                    >
+                      {Array.from({ length: Math.min(listing.maxHours, 24) - listing.minHours + 1 }, (_, i) => listing.minHours + i).map((h) => (
+                        <option key={h} value={h}>
+                          {durationLabel(h)}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                </div>
+              )}
               <p className="tnum text-title-s font-bold leading-tight md:mt-2 md:text-title-l">
                 {quote ? formatMoney(quote.total, cur) : '—'}
               </p>
@@ -515,7 +570,7 @@ export function Listing({ preview }: { preview?: { detail: ListingDetail; banner
         <>
         {/* --------------------------------------------------------- amount */}
         <SectionHead
-          title={isWindow(listing) ? t('How long do you need it?') : t('How many {unit}?', { unit: meta.unitNoun ?? '' })}
+          title={preview ? t('Durations it takes') : isWindow(listing) ? t('How long do you need it?') : t('How many {unit}?', { unit: meta.unitNoun ?? '' })}
           className="mt-7"
         />
         <div className="flex flex-wrap gap-2">
@@ -558,7 +613,8 @@ export function Listing({ preview }: { preview?: { detail: ListingDetail; banner
         )}
 
         {/* ----------------------------------------------------- start time */}
-        <SectionHead title={t('Pick a start')} className="mt-7" />
+        {/* Staff are not booking: the view names what is there (V8-13). */}
+        <SectionHead title={preview ? t('Start times') : t('Pick a start')} className="mt-7" />
         {offers.length === 0 ? (
           <Card className="p-1">
             <EmptyState
@@ -657,7 +713,7 @@ export function Listing({ preview }: { preview?: { detail: ListingDetail; banner
       {/* ---------------------------------------------------------- reviews */}
       <section id="reviews">
         <SectionHead title={t('What people say')} className="mt-7" />
-        <Reviews reviews={reviews.data?.items ?? []} summary={info.reviews} ownerFirstName={first} ownerJobs={owner.jobsDone} />
+        <Reviews reviews={reviews.data?.items ?? []} summary={info.reviews} ownerFirstName={first} ownerJobs={owner.jobsDone} staff={Boolean(preview)} />
       </section>
 
       <SectionHead title={t('House rules')} className="mt-7" />

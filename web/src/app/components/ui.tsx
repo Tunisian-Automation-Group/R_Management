@@ -456,7 +456,7 @@ export function Segmented<T extends string>({
             role="tab"
             aria-selected={on}
             onClick={() => onChange(o.value)}
-            className={`tap relative z-[1] min-h-[44px] flex-1 px-3 text-body ${TR}
+            className={`tap relative z-[1] min-h-[44px] min-w-0 flex-1 px-1.5 text-body [hyphens:auto] [overflow-wrap:anywhere] ${TR}
               ${on ? 'font-semibold text-[var(--ink)]' : 'font-medium text-[var(--ink-4)] hover:text-[var(--ink-2)]'}`}
           >
             {o.label}

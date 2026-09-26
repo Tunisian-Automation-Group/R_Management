@@ -13,7 +13,8 @@
     "check:a11y": "node scripts/check-a11y.ts",
     "check:attempt": "node scripts/check-attempt.ts",
     "check:money": "node scripts/check-money.ts",
-    "check:tokens": "node scripts/check-tokens.ts"
+    "check:tokens": "node scripts/check-tokens.ts",
+    "check:contrast": "node scripts/check-contrast.ts"
   },
   "dependencies": {
     "@capacitor/android": "^8.5.2",

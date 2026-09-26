@@ -1,7 +1,6 @@
 import { useEffect, useId, useRef, useState, type ReactNode } from 'react'
-import { markSeen } from '../seen.ts'
 import { useQueryClient } from '@tanstack/react-query'
-import { ApiError, HIDDEN_CONTACT, sendMessage, unblockPerson, useAttemptKey, useBlocks, useMessages, type Message } from '../../data/repo.ts'
+import { ApiError, HIDDEN_CONTACT, markInboxRead, sendMessage, unblockPerson, useAttemptKey, useBlocks, useMessages, type Message } from '../../data/repo.ts'
 import { messageOf, useToast } from '../store.tsx'
 import { ago } from '../format.ts'
 import { Button, Card, Textarea } from './ui.tsx'
@@ -113,9 +112,9 @@ export function Conversation({
   useEffect(() => {
     const el = list.current
     if (el) el.scrollTop = el.scrollHeight
-    // Read here: the Inbox drops its unread dot (UX-12).
+    // Read here: the server's receipt drops the Inbox's dot on every device (UX-12).
     const last = items[items.length - 1]
-    if (last) markSeen(bookingId, last.at)
+    if (last && !last.mine) void markInboxRead(bookingId).then(() => qc.invalidateQueries({ queryKey: ['inbox'] }), () => undefined)
   }, [items.length, bookingId])
 
   const send = async () => {

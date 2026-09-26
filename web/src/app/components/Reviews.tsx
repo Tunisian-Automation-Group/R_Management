@@ -38,11 +38,14 @@ export function Reviews({
   summary,
   ownerFirstName,
   ownerJobs = 0,
+  staff = false,
 }: {
   reviews: Review[]
   /** The server's summary over every review, when the list is only a page. */
   summary?: ReviewSummary
   ownerFirstName: string
+  /** A staff view: say what is there, never invite them to book (V8-13). */
+  staff?: boolean
   /** Bookings the owner has done on any listing: "new here" only when none. */
   ownerJobs?: number
 }) {
@@ -56,7 +59,9 @@ export function Reviews({
       <div className="rounded-[var(--radius-card)] border border-dashed border-[var(--line-strong)] p-5">
         <p className="text-body font-semibold">{t('No reviews of this listing yet')}</p>
         <p className="t-sm mt-1 text-[var(--ink-3)]">
-          {ownerJobs > 0
+          {staff
+            ? t('{name} has {n} bookings behind them.', { name: ownerFirstName, n: ownerJobs })
+            : ownerJobs > 0
             ? t(
                 ownerJobs === 1
                   ? '{name} has {n} booking behind them on other listings. Whoever books this one first writes its first review.'

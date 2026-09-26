@@ -321,7 +321,7 @@ export function Browse() {
                 {!allSpots && spotlight.length > 9 && (
                   <div className="mt-6">
                     <Button variant="secondary" onClick={() => setAllSpots(true)}>
-                      {t('Show all {n} free today', { n: spotlight.length })}
+                      {t('Show all {n}', { n: spotlight.length })}
                     </Button>
                   </div>
                 )}

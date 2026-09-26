@@ -2,7 +2,7 @@ import { BrowserRouter, Navigate, Route, Routes, useLocation, useSearchParams } 
 import { lazy, Suspense, useEffect, type ComponentType } from 'react'
 import { QueryClientProvider } from '@tanstack/react-query'
 import { AppProvider, useCappy } from './store.tsx'
-import { APP_VERSION, queryClient, useAppConfig, useBookings, useMeQuery, useNotices, versionBelow } from '../data/repo.ts'
+import { APP_VERSION, queryClient, useAppConfig, useBookings, useInbox, useMeQuery, useNotices, versionBelow } from '../data/repo.ts'
 import { accessToken, useAuthReady, useSession } from '../data/auth.ts'
 import { enablePush } from '../native.ts'
 import { device } from './device.ts'
@@ -112,6 +112,7 @@ function Member() {
   const hosting = useBookings('owner')
   const booked = useBookings('requester')
   const notices = useNotices()
+  const inbox = useInbox()
 
   // Searches start where this person is, until they pick somewhere else.
   const home = me.data?.homeDistrict
@@ -125,6 +126,7 @@ function Member() {
     '/bookings': booked.data?.items.filter((b) => b.status === 'completed' && !b.outcome).length ?? 0,
     // On a phone the bell lives on the You tab; on a desktop, in the header.
     '/notifications': notices.data?.unread ?? 0,
+    '/inbox': inbox.data?.unread ?? 0,
   }
 
   // Already allowed on this device: keep the push token current. Asking waits

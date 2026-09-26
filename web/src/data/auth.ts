@@ -131,7 +131,19 @@ export function refresh(): Promise<boolean> {
     } catch (err) {
       // Offline is not signed out: keep the refresh token for next time.
       offlineAtRefresh = err instanceof AuthError && err.code === 'offline'
-      if (!offlineAtRefresh) forget()
+      if (offlineAtRefresh) return false
+      // Another tab signed in meanwhile and stored a newer token: this tab's
+      // stale token failing must not wipe it (V8-22). Use the new one.
+      const now = readRefresh()
+      if (now && now !== stored) {
+        try {
+          adopt(await provider.refresh(now))
+          return true
+        } catch {
+          if (readRefresh() !== now) return false
+        }
+      }
+      forget()
       return false
     }
   })().finally(() => {

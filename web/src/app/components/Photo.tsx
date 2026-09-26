@@ -4,7 +4,7 @@ import { Plate } from './Cover.tsx'
 import { day, time } from '../format.ts'
 import { useNavigate } from 'react-router-dom'
 import { useSession } from '../../data/auth.ts'
-import { mediaUrl, useSaveToggle, useSaved } from '../../data/repo.ts'
+import { mediaUrl, useSaveToggle, useSaved, type PhotoMeta } from '../../data/repo.ts'
 import { messageOf, useToast } from '../store.tsx'
 import { Icon } from './Icon.tsx'
 import { t } from '../../i18n.ts'
@@ -12,7 +12,9 @@ import { t } from '../../i18n.ts'
 /** Widths for the browser to choose from (UX-3), where the host can make
  *  them. ponytail: only resizing CDNs that take `w=`; our own media needs the
  *  400/800/1600 renditions from the media service first (U-40). */
-function srcSetOf(src: string): string | undefined {
+function srcSetOf(src: string, meta?: PhotoMeta): string | undefined {
+  // Our own uploads: the media service's renditions, <hash>-<w>.webp (U-40).
+  if (meta?.widths.length) return meta.widths.map((w) => `${mediaUrl(src.replace(/\.webp$/, `-${w}.webp`))} ${w}w`).join(', ')
   if (!/^https:\/\/images\.unsplash\.com\//.test(src)) return undefined
   const at = (w: number) => `${src.replace(/([?&])w=\d+/, `$1w=${w}`)} ${w}w`
   return [400, 800, 1600].map(at).join(', ')
@@ -51,6 +53,7 @@ export function Photo({
   className = '',
   style,
   priority = false,
+  meta,
   children,
   thumb = false,
   claim,
@@ -58,6 +61,8 @@ export function Photo({
   sizes,
 }: {
   /** A small square in a list: the fallback drawing drops its words. */
+  /** The upload's renditions and colour, from the listing detail (U-40). */
+  meta?: PhotoMeta
   thumb?: boolean
   /** Inside a PhotoGrid: who is showing this picture (the listing id). */
   claim?: string
@@ -99,11 +104,12 @@ export function Photo({
   return (
     <span
       className={`relative block overflow-hidden bg-[var(--sunken)] ${className}`}
-      style={{ aspectRatio: String(aspect), ...style }}
+      // The photo's own colour while it loads, not a grey box (UX-3).
+      style={{ aspectRatio: String(aspect), ...(meta?.color ? { backgroundColor: meta.color } : {}), ...style }}
     >
       <img
         src={mediaUrl(src)}
-        srcSet={srcSetOf(src)}
+        srcSet={srcSetOf(src, meta)}
         sizes={sizes ?? (thumb ? '64px' : '(min-width: 768px) 50vw, 100vw')}
         width={width ?? 800}
         height={Math.round((width ?? 800) / aspect)}

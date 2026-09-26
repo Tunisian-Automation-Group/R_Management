@@ -84,7 +84,7 @@
   --ink: #18211a;
   --ink-2: #39423a;
   --ink-3: #5a6157;
-  --ink-4: #6e756a; /* the floor for small text, 4.6:1 on white */
+  --ink-4: #646b60; /* the floor for small text: 5.3:1 on white, 4.7:1 on sunken (check:contrast) */
   /* Focus is its own role, blue ink, so a focused crimson button or a focused
      error never reads as more of the same (UX-6). */
   --focus: #2d6479;
@@ -353,6 +353,16 @@ body {
    of everything else, which is what makes a screen read as cheap. This one
    spans 11px to 68px. Display sizes are Bodoni at high optical size; anything
    that labels, measures or instructs is Archivo. */
+
+/* A long German or French word never pushes a heading off the screen at large
+   text (V8-6): hyphenate by the document's lang, break as a last resort. */
+.t-display,
+.t-h1,
+.t-h2,
+.t-title-user {
+  hyphens: auto;
+  overflow-wrap: anywhere;
+}
 
 .t-display {
   font-family: var(--font-display);
@@ -997,6 +1007,34 @@ input[type='range'] {
 ::view-transition-group(dock),
 ::view-transition-group(chrome) {
   animation-duration: 0ms;
+}
+/* On phones a detail pushes in from the side and pops back out (UX-8); tabs
+   keep the crossfade above. Exits run shorter than entries. */
+@media (max-width: 767px) {
+  :root[data-nav='push']::view-transition-new(root) {
+    animation: cappy-push-in var(--dur-medium) var(--ease-decelerate) both;
+  }
+  :root[data-nav='push']::view-transition-old(root) {
+    animation: cappy-push-out var(--dur-short) var(--ease-accelerate) both;
+  }
+  :root[data-nav='pop']::view-transition-new(root) {
+    animation: cappy-pop-in var(--dur-medium) var(--ease-decelerate) both;
+  }
+  :root[data-nav='pop']::view-transition-old(root) {
+    animation: cappy-pop-out var(--dur-short) var(--ease-accelerate) both;
+  }
+}
+@keyframes cappy-push-in {
+  from { transform: translateX(28%); opacity: 0; }
+}
+@keyframes cappy-push-out {
+  to { transform: translateX(-12%); opacity: 0; }
+}
+@keyframes cappy-pop-in {
+  from { transform: translateX(-12%); opacity: 0; }
+}
+@keyframes cappy-pop-out {
+  to { transform: translateX(28%); opacity: 0; }
 }
 
 /* Reduced motion (UX-8, Apple HIG): nothing slides, scales or springs, but

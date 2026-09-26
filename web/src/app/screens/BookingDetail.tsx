@@ -21,6 +21,9 @@ import {
   rateBooking,
   rateRenter,
   reportNoShow,
+  unblockPerson,
+  useBlocks,
+  REASON_TEXT,
   useCancellationQuote,
   useBooking,
   useListing,
@@ -69,6 +72,10 @@ const SYSTEM_DECLINE: Record<string, string> = {
   'The account was suspended': 'Cappy stopped this request',
 }
 
+/** The reason in the reader's words: by code when the server gives one (V8-3). */
+const reasonText = (b: { declineReason?: string; declineReasonCode?: string }) =>
+  b.declineReasonCode && REASON_TEXT[b.declineReasonCode] ? t(REASON_TEXT[b.declineReasonCode]) : b.declineReason ? t(b.declineReason) : undefined
+
 export function BookingDetail() {
   const { id } = useParams()
   const session = useSession()
@@ -114,6 +121,7 @@ function Detail({
   owner?: Owner
   requester?: Owner
 }) {
+  const blocks = useBlocks()
   const qc = useQueryClient()
   const toast = useToast()
 
@@ -418,12 +426,12 @@ function Detail({
           tone="danger"
           title={
             // Declined by the system, not the owner: say what happened (V7-14).
-            (booking.declineReason && SYSTEM_DECLINE[booking.declineReason] && t(SYSTEM_DECLINE[booking.declineReason])) ||
+            (() => { const k = (booking.declineReasonCode && REASON_TEXT[booking.declineReasonCode]) || booking.declineReason; return k && SYSTEM_DECLINE[k] ? t(SYSTEM_DECLINE[k]) : null })() ||
             (asOwner ? t('You declined this request') : t('{name} could not take this one', { name: first }))
           }
           body={
             <>
-              <span className="block">{booking.declineReason ? t('Reason: {reason}.', { reason: t(booking.declineReason) }) : t('No reason given.')}</span>
+              <span className="block">{reasonText(booking) ? t('Reason: {reason}.', { reason: reasonText(booking)! }) : t('No reason given.')}</span>
               <span className="block">{t('The hold on the card is released; nothing was charged.')}</span>
             </>
           }
@@ -480,13 +488,17 @@ function Detail({
           tone="warn"
           title={t('This booking was cancelled')}
           body={
-            booking.refundAmount
+            <>
+            {/* A cancellation the system made says why, as the mails do (V8-5). */}
+            {reasonText(booking) && <span className="block">{t('Reason: {reason}.', { reason: reasonText(booking)! })}</span>}
+            {booking.refundAmount
               ? t('{amount} is refunded to the card.', { amount: formatMoney(booking.refundAmount, cur) })
               : // No refund means nothing was charged: it ended before the owner
                 // accepted, which is when the card is charged (FL-8).
                 asOwner
                 ? t('Nothing was charged, and the window is free again.')
-                : t('The hold on your card is released; nothing was charged.')
+                : t('The hold on your card is released; nothing was charged.')}
+            </>
           }
         />
       ) : booking.status === 'expired' ? (
@@ -650,9 +662,16 @@ function Detail({
           </div>
           <div className="mt-3 flex flex-wrap gap-1 border-t border-[var(--line)] pt-3">
             <ReportButton targetType="owner" targetId={other.id} />
-            <Button variant="quiet" icon="close" onClick={() => setBlocking(true)}>
-              {t('Block')}
-            </Button>
+            {/* One button, the one that applies (V8-16). */}
+            {blocks.data?.includes(other.id) ? (
+              <Button variant="quiet" onClick={() => void done(() => unblockPerson(other.id), t('Unblocked'))}>
+                {t('Unblock')}
+              </Button>
+            ) : (
+              <Button variant="quiet" icon="close" onClick={() => setBlocking(true)}>
+                {t('Block')}
+              </Button>
+            )}
           </div>
         </Card>
       )}
@@ -737,7 +756,21 @@ function Detail({
           }
         />
         <div className="my-2 border-t border-[var(--line)]" />
-        {money.charged === 0 ? (
+        {money.charged === 0 && ['awaiting_payment', 'requested'].includes(booking.status) ? (
+          // Held, not charged yet: the price as agreed, and when it becomes a charge (V8-1).
+          <>
+            <Row label={t('Total')} value={formatMoney(quote.total, cur)} strong />
+            {asOwner ? (
+              <>
+                <Row label={`${t('Service fee')} · ${percent(PLATFORM_FEE_BPS / 10_000)}`} value={`−${formatMoney(quote.platformFee, cur)}`} tone="muted" />
+                <Row label={t('You receive')} value={<span className="text-[var(--money)]">{formatMoney(quote.ownerNet, cur)}</span>} strong />
+                <p className="t-sm text-[var(--ink-4)]">{t('Their card is held and charged when you accept.')}</p>
+              </>
+            ) : (
+              <p className="t-sm text-[var(--ink-4)]">{t('Held on your card, charged when {name} accepts.', { name: first })}</p>
+            )}
+          </>
+        ) : money.charged === 0 ? (
           <Row label={t('Charged')} value={t('Nothing: hold released')} strong />
         ) : money.refunded >= money.charged ? (
           <Row label={t('Refunded')} value={formatMoney(money.refunded, cur)} strong />

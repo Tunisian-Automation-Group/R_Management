@@ -87,7 +87,11 @@ function Form({ bookingId, onPaid }: { bookingId: string; onPaid: () => void }) 
           <Icon name="shield" size={15} strokeWidth={2.2} className="text-[var(--success)]" />
           {t('Card details go to Stripe, never to Cappy')}
         </p>
-        <PaymentElement />
+        {/* Apple Pay and Google Pay appear in the Payment Element where the
+            device and domain allow (UX-24). ponytail: the separate Express
+            Checkout Element (one tap above the form) when conversion data asks;
+            Apple Pay needs the domain registered in Stripe first (runbook). */}
+        <PaymentElement options={{ wallets: { applePay: 'auto', googlePay: 'auto' }, layout: 'tabs' }} />
       </div>
       {error && <Banner tone="danger" title={t('Payment not authorised')} body={error} />}
       {/* The click that binds the buyer: §312j BGB wants it to say so. */}
