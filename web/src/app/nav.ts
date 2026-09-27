@@ -34,10 +34,10 @@ const kindOf = (to: string | number): 'push' | 'pop' | 'tab' =>
 export function useNav() {
   const nav = useNavigate()
   return useCallback(
-    (to: string | number, opts?: { replace?: boolean }) => {
+    (to: string | number, opts?: { replace?: boolean; state?: unknown }) => {
       transition(() => {
         if (typeof to === 'number') nav(to)
-        else nav(to, { replace: opts?.replace })
+        else nav(to, { replace: opts?.replace, state: opts?.state })
       }, kindOf(to))
     },
     [nav],

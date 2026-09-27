@@ -1484,4 +1484,7 @@ export const FR: Record<string, string> = {
   "Rent": "Louer",
   "Rent tools, vans and workshops by the hour, from people nearby.": "Louez outils, camionnettes et ateliers à l’heure, auprès de gens près de chez vous.",
   "Yesterday": "Hier",
+  "Add to calendar": "Ajouter au calendrier",
+  "with {name}": "avec {name}",
+  "All set. {name} knows you are coming.": "C’est réservé. {name} sait que vous venez.",
 }

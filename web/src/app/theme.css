@@ -279,6 +279,8 @@
   --glass-edge-lit: rgba(255, 255, 255, 0.9);
   --glass-edge-shade: rgba(24, 33, 26, 0.1);
   --glass-edge-lit-dark: rgba(255, 255, 255, 0.34);
+  /* The one light that crosses the booking ticket (VD-15). */
+  --ticket-sweep: rgba(255, 255, 255, 0.16);
   --glass-edge-shade-dark: rgba(255, 255, 255, 0.04);
   /* The inner top highlight and the press illumination. */
   --glass-specular: rgba(255, 255, 255, 0.6);
@@ -1653,4 +1655,72 @@ select {
   opacity: 1;
   transform: none;
   pointer-events: auto;
+}
+
+/* The booking-confirmed ticket (VD-15, §2.8): 1.4 s, transforms and opacity
+   only. The ticket rises on the bouncy spring, one light sweep crosses it, the
+   actions follow 60 ms apart. Reduce Motion: a 100 ms fade, the light still. */
+.ticket-scrim::backdrop {
+  background: var(--field);
+}
+.ticket-scrim .t-lede {
+  color: var(--on-field);
+}
+.t-ticket-time {
+  font-size: min(2.75rem, 12vw);
+  line-height: 1.1;
+  font-variation-settings: 'wdth' 112;
+}
+.ticket {
+  position: relative;
+  animation: cappy-ticket 580ms var(--spring-bouncy) 120ms backwards;
+}
+.ticket::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(120deg, transparent 30%, var(--ticket-sweep) 50%, transparent 70%);
+  transform: translateX(-100%);
+  animation: cappy-sweep 500ms var(--ease-standard) 700ms forwards;
+  pointer-events: none;
+}
+.ticket-perf {
+  height: 0;
+  margin: 0 16px;
+  border-top: 2px dashed var(--on-field-dim);
+  opacity: 0.4;
+}
+.ticket-step {
+  animation: cappy-pop var(--dur-medium) var(--ease-decelerate) 900ms backwards;
+}
+div > .ticket-step:nth-child(1) {
+  animation-delay: 960ms;
+}
+div > .ticket-step:nth-child(2) {
+  animation-delay: 1020ms;
+}
+div > .ticket-step:nth-child(3) {
+  animation-delay: 1080ms;
+}
+@keyframes cappy-ticket {
+  from {
+    opacity: 0;
+    transform: translateY(48px) scale(0.9);
+  }
+}
+@keyframes cappy-sweep {
+  to {
+    transform: translateX(100%);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .ticket,
+  .ticket-step {
+    animation: cappy-fade var(--dur-instant) linear backwards;
+  }
+  .ticket::after {
+    animation: none;
+    transform: none;
+    background: linear-gradient(160deg, var(--ticket-sweep), transparent 42%);
+  }
 }

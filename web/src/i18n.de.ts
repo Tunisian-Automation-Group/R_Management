@@ -1480,4 +1480,7 @@ export const DE: Record<string, string> = {
   "Rent": "Mieten",
   "Rent tools, vans and workshops by the hour, from people nearby.": "Miete Werkzeug, Transporter und Werkstätten stundenweise, bei Leuten in deiner Nähe.",
   "Yesterday": "Gestern",
+  "Add to calendar": "Zum Kalender hinzufügen",
+  "with {name}": "mit {name}",
+  "All set. {name} knows you are coming.": "Alles klar. {name} weiß, dass du kommst.",
 }

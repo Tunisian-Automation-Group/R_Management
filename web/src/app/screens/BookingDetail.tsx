@@ -1,5 +1,5 @@
 import { lazy, Suspense, useEffect, useRef, useState, type ReactNode } from 'react'
-import { Link, useParams } from 'react-router-dom'
+import { Link, useLocation, useNavigate, useParams } from 'react-router-dom'
 import { useAuthReady, useSession } from '../../data/auth.ts'
 import { SignedOut } from '../components/SignedOut.tsx'
 import { NotFound } from './NotFound.tsx'
@@ -41,6 +41,7 @@ import { DECLINE_REASONS } from './Earn.tsx'
 import { messageOf, useToast } from '../store.tsx'
 import { Screen } from '../components/AppShell.tsx'
 import { Photo } from '../components/Photo.tsx'
+import { Ticket } from '../components/Ticket.tsx'
 import { Icon } from '../components/Icon.tsx'
 import { Avatar, Banner, Button, Card, Chip, DetailSkeleton, Field, Row, Sheet, Stars, Textarea } from '../components/ui.tsx'
 import { REVIEW_TAGS } from '../../domain/reviews.ts'
@@ -158,6 +159,16 @@ function Detail({
       attempt.settle(err)
       throw err
     }
+  }
+
+  // Arrived straight from sending it (VD-15): the ticket, once. Dropping the
+  // state on close means a reload or Back never plays it again.
+  const loc = useLocation()
+  const nav = useNavigate()
+  const [ticket, setTicket] = useState(() => Boolean((loc.state as { fresh?: boolean } | null)?.fresh))
+  const closeTicket = () => {
+    setTicket(false)
+    nav(loc.pathname, { replace: true, state: null })
   }
 
   const { quote } = booking.match
@@ -1202,6 +1213,20 @@ function Detail({
               })}
         </p>
       </Sheet>
+      {ticket && !asOwner && (
+        <Ticket
+          booking={booking}
+          title={title}
+          instant={Boolean(booking.listing?.instantBook ?? listing?.instantBook)}
+          ownerName={first}
+          responseMins={owner?.responseMins}
+          onDone={closeTicket}
+          onMessage={() => {
+            closeTicket()
+            requestAnimationFrame(() => document.getElementById('messages')?.scrollIntoView({ block: 'start' }))
+          }}
+        />
+      )}
     </Screen>
   )
 }

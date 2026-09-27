@@ -243,12 +243,12 @@ export function Listing({ preview }: { preview?: { detail: ListingDetail; banner
   }
 
   const sent = (bookingId: string) => {
-    toast(listing?.instantBook ? t('Booked') : t('Request sent to {name}', { name: first }))
+    // The ticket on the booking says it now (VD-15), not a toast.
     askForPush('request')
     void qc.invalidateQueries({ queryKey: ['bookings'] })
     setConfirming(false)
     startOver()
-    nav(`/bookings/${bookingId}`, { replace: true })
+    nav(`/bookings/${bookingId}`, { replace: true, state: { fresh: true } })
   }
 
   const book = async () => {
