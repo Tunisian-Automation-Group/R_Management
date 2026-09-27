@@ -3,14 +3,16 @@
 // so a thread read on the phone is read on the desktop too. A thread opens on
 // its booking, where the booking card sits above the chat.
 import { useState } from 'react'
-import { useParams } from 'react-router-dom'
+import { Link, useParams } from 'react-router-dom'
+import { formatMoney } from '../../domain/money.ts'
 
 import { HIDDEN_CONTACT, useBooking, useBookings, useInbox, useOwner, type InboxItem } from '../../data/repo.ts'
 import type { Booking } from '../../domain/types.ts'
 import { Screen } from '../components/AppShell.tsx'
 import { Conversation } from '../components/Conversation.tsx'
 import { Photo } from '../components/Photo.tsx'
-import { Avatar, Button, Card, DetailSkeleton, EmptyState, Pill, Segmented, Skeleton, TapLink } from '../components/ui.tsx'
+import { Icon } from '../components/Icon.tsx'
+import { Avatar, Button, DetailSkeleton, EmptyState, Pill, Segmented, Skeleton, TapLink } from '../components/ui.tsx'
 import { ago, range } from '../format.ts'
 import { statusPill } from './Bookings.tsx'
 import { t } from '../../i18n.ts'
@@ -32,6 +34,7 @@ export function Inbox() {
   return (
     <Screen title={t('Inbox')}>
       <Segmented
+        glass
         label={t('Inbox')}
         value={tab}
         onChange={setTab}
@@ -83,12 +86,13 @@ function ThreadRow({ item }: { item: InboxItem }) {
   return (
     <li>
       <TapLink to={`/inbox/${item.bookingId}`} className="press-soft flex w-full items-center gap-3.5 py-4 text-left">
-        {item.photo || category ? (
-          // No photo: the listing's category plate, never a grey box.
-          <Photo src={item.photo} alt="" categoryId={category ?? 'workshop'} aspect={1} thumb width={52} className="w-[52px] shrink-0 rounded-[var(--radius-m)]" />
-        ) : (
-          <Avatar initials={initialsOf(item.otherName ?? t('Your renter'))} size={52} />
-        )}
+        {/* Who first, then what (VD-19): the person, with the listing tucked at their shoulder. */}
+        <span className="relative shrink-0">
+          <Avatar initials={initialsOf(item.otherName ?? t('Your renter'))} size={48} />
+          <span className="absolute -bottom-2 -right-2 block w-6 overflow-hidden rounded-[var(--radius-xs)] ring-2 ring-[var(--page)]">
+            <Photo src={item.photo} alt="" categoryId={category ?? 'workshop'} aspect={1} thumb width={24} className="w-6" />
+          </span>
+        </span>
         <span className="min-w-0 flex-1">
           <span className="flex items-baseline justify-between gap-3">
             <span className={`[overflow-wrap:anywhere] text-body ${item.unread ? 'font-bold' : 'font-semibold'}`}>{item.otherName ?? t('Your renter')}</span>
@@ -154,22 +158,23 @@ export function Thread() {
   const dead = ['declined', 'cancelled', 'expired', 'payment_failed'].includes(b.status)
   return (
     <Screen back="/inbox" title={name} docTitle={t('Messages with {name}', { name })}>
-      <Card className="flex flex-wrap items-center gap-4 p-4">
-        <Photo src={b.listing?.photo} alt="" categoryId={b.requirement.category} aspect={1} thumb width={56} className="w-[56px] shrink-0 rounded-[var(--radius-m)]" />
+      {/* The booking this is about, pinned as a small plate (VD-19): the hour
+          in ice as on the ticket, the money on it, one way into the booking. */}
+      <Link
+        to={`/bookings/${b.id}`}
+        aria-label={`${t('Open the booking')}: ${b.listing?.title ?? t('Listing removed')}`}
+        className="press-soft plate-lit on-plate sticky top-[calc(var(--safe-top)+8px)] z-20 flex items-center gap-3 rounded-[var(--radius-plate)] p-3 shadow-[var(--shadow-plate)]"
+      >
+        <Photo src={b.listing?.photo} alt="" categoryId={b.requirement.category} aspect={1} thumb width={48} className="w-12 shrink-0 rounded-[var(--radius-m)]" />
         <div className="min-w-0 flex-1">
           <p className="[overflow-wrap:anywhere] text-body font-semibold">{b.listing?.title ?? t('Listing removed')}</p>
-          <p className="t-sm tnum [overflow-wrap:anywhere] text-[var(--ink-3)]">{range(b.match.start, b.match.end)}</p>
-          <span className="mt-1.5 block">
-            <Pill tone={pill.tone}>{pill.label}</Pill>
-          </span>
+          <p className="t-sm tnum [overflow-wrap:anywhere] font-semibold text-[var(--idle)]">{range(b.match.start, b.match.end)}</p>
+          <p className="t-sm tnum text-[var(--ink-3)]">
+            {pill.label} · {formatMoney(b.match.quote.total, b.currency ?? b.match.quote.currency)}
+          </p>
         </div>
-        {/* Under the booking on a phone, so the title keeps its width. */}
-        <div className="w-full md:w-auto">
-          <Button size="sm" variant="secondary" block to={`/bookings/${b.id}`}>
-            {t('Open the booking')}
-          </Button>
-        </div>
-      </Card>
+        <Icon name="chevron-right" size={20} className="shrink-0 text-[var(--ink-3)]" />
+      </Link>
       <Conversation
         bookingId={b.id}
         status={b.status}

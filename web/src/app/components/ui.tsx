@@ -428,13 +428,42 @@ export function Segmented<T extends string>({
   value,
   onChange,
   label,
+  glass = false,
 }: {
   options: { value: T; label: string }[]
   value: T
   onChange: (v: T) => void
   label: string
+  /** A glass capsule with a droplet on the chosen segment (VD-19), for a
+   *  screen's one filter, rather than the travelling rule of a tab set. */
+  glass?: boolean
 }) {
   const index = Math.max(0, options.findIndex((o) => o.value === value))
+  if (glass)
+    return (
+      <div role="tablist" aria-label={label} className="glass relative flex w-full rounded-[var(--radius-capsule)] p-1">
+        <span
+          aria-hidden="true"
+          className="pointer-events-none absolute inset-y-1 left-1 rounded-[var(--radius-capsule)] bg-[var(--dock-active)] shadow-[var(--shadow-1)] transition-transform duration-[var(--dur-snappy)] ease-[var(--spring-snappy)]"
+          style={{ width: `calc((100% - 8px) / ${options.length})`, transform: `translateX(${index * 100}%)` }}
+        />
+        {options.map((o) => {
+          const on = o.value === value
+          return (
+            <button
+              key={o.value}
+              role="tab"
+              aria-selected={on}
+              onClick={() => onChange(o.value)}
+              className={`tap relative z-[1] min-h-[40px] min-w-0 flex-1 rounded-[var(--radius-capsule)] px-2 text-body [hyphens:manual] [overflow-wrap:anywhere] ${TR}
+                ${on ? 'font-semibold text-[var(--dock-active-ink)]' : 'font-medium text-[var(--ink-2)] hover:text-[var(--ink)]'}`}
+            >
+              {o.label}
+            </button>
+          )
+        })}
+      </div>
+    )
   return (
     <div
       role="tablist"
