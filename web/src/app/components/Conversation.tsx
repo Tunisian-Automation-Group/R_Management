@@ -1,8 +1,8 @@
-import { useEffect, useId, useRef, useState, type ReactNode } from 'react'
+import { Fragment, useEffect, useId, useRef, useState, type ReactNode } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import { ApiError, HIDDEN_CONTACT, markInboxRead, sendMessage, unblockPerson, useAttemptKey, useBlocks, useMessages, type Message } from '../../data/repo.ts'
 import { messageOf, useToast } from '../store.tsx'
-import { ago } from '../format.ts'
+import { ago, dayShort } from '../format.ts'
 import { Button, Card, Textarea } from './ui.tsx'
 import { ReportButton } from './Report.tsx'
 import { t } from '../../i18n.ts'
@@ -62,6 +62,23 @@ function Bubble({ m, otherName, closed, last }: { m: Message; otherName: string;
       )}
     </li>
   )
+}
+
+/** Sets --kb to the height the on-screen keyboard covers, so sticky things sit above it. */
+function useKeyboardInset() {
+  useEffect(() => {
+    const vv = window.visualViewport
+    if (!vv) return
+    const root = document.documentElement.style
+    const set = () => root.setProperty('--kb', `${Math.max(0, innerHeight - vv.height - vv.offsetTop)}px`)
+    vv.addEventListener('resize', set)
+    vv.addEventListener('scroll', set)
+    return () => {
+      vv.removeEventListener('resize', set)
+      vv.removeEventListener('scroll', set)
+      root.removeProperty('--kb')
+    }
+  }, [])
 }
 
 /** Messages between the two sides of one booking. */
@@ -125,6 +142,8 @@ export function Conversation({
     if (last && !last.mine) void markInboxRead(bookingId).then(() => qc.invalidateQueries({ queryKey: ['inbox'] }), () => undefined)
   }, [items.length, bookingId])
 
+  useKeyboardInset()
+
   const send = async () => {
     const text = draft.trim()
     if (!text) return
@@ -168,9 +187,19 @@ export function Conversation({
         )
       ) : (
         <ul ref={list} className="max-h-[360px] space-y-3 overflow-y-auto overscroll-contain py-2" aria-live="polite">
-          {items.map((m, i) => (
-            <Bubble key={m.id} m={m} otherName={otherName} closed={closed} last={items[i + 1]?.mine !== m.mine} />
-          ))}
+          {items.map((m, i) => {
+            // A quiet day line where the day changes (iMessage, WhatsApp); a run ends there too.
+            const d = dayShort(m.at)
+            const next = items[i + 1]
+            return (
+              <Fragment key={m.id}>
+                {(i === 0 || dayShort(items[i - 1].at) !== d) && (
+                  <li role="separator" className="t-sm py-1 text-center font-medium text-[var(--ink-4)]">{d}</li>
+                )}
+                <Bubble m={m} otherName={otherName} closed={closed} last={next?.mine !== m.mine || dayShort(next.at) !== d} />
+              </Fragment>
+            )
+          })}
         </ul>
       )}
       {closed ? (
@@ -218,7 +247,9 @@ export function Conversation({
           </div>
         )}
         <form
-          className="mt-3 flex items-end gap-2"
+          // Stays in reach while the thread is long, and above the on-screen
+          // keyboard: --kb is the part of the layout viewport it covers.
+          className="sticky bottom-[max(var(--kb,0px),calc(var(--dock-h)+var(--footer-h,0px)+16px))] z-10 -mx-5 mt-3 flex items-end gap-2 bg-[var(--surface)] px-5 py-2"
           onSubmit={(e) => {
             e.preventDefault()
             void send()

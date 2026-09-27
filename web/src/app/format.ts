@@ -40,6 +40,7 @@ export const dayShort = (iso: string) => {
   const i = dayIndex(iso)
   if (i === 0) return t('Today')
   if (i === 1) return t('Tomorrow')
+  if (i === -1) return t('Yesterday')
   return new Date(iso).toLocaleDateString(locale(), { weekday: 'short', day: 'numeric', month: 'short' })
 }
 

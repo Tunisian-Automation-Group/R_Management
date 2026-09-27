@@ -1483,4 +1483,5 @@ export const FR: Record<string, string> = {
   "Most tools, vans and rooms sit unused most of the time. On Cappy you rent them by the hour from people nearby, and earn from yours when you do not need them.": "La plupart des outils, camionnettes et locaux restent inutilisés la plupart du temps. Sur Cappy, vous les louez à l’heure auprès de gens près de chez vous – et gagnez avec les vôtres quand vous n’en avez pas besoin.",
   "Rent": "Louer",
   "Rent tools, vans and workshops by the hour, from people nearby.": "Louez outils, camionnettes et ateliers à l’heure, auprès de gens près de chez vous.",
+  "Yesterday": "Hier",
 }
