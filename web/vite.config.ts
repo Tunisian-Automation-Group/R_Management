@@ -11,9 +11,13 @@ import { releaseProblems } from './release.ts'
 // phone hitting the LAN address alike, and no CORS is involved.
 const backend = process.env.VITE_API_PROXY ?? 'http://localhost:8000'
 // /media too: listing photos are served by the backend at the same origin.
+// cognito-local listens on the Mac only; proxying it here lets a phone on the
+// same Wi-Fi sign in through this dev server (set VITE_COGNITO_ENDPOINT=/cognito).
+const cognito = process.env.VITE_COGNITO_PROXY ?? 'http://localhost:9229'
 const proxy = {
   '/api': { target: backend, changeOrigin: true },
   '/media': { target: backend, changeOrigin: true },
+  '/cognito': { target: cognito, changeOrigin: true, rewrite: (path: string) => path.replace(/^\/cognito/, '') || '/' },
 }
 
 /**
