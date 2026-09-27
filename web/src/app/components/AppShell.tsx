@@ -321,7 +321,9 @@ export function Screen({
         // page by 480 px (VD-9), as Apple Music and Airbnb tint a detail page.
         ...(wash ? { backgroundImage: `linear-gradient(to bottom, color-mix(in srgb, ${wash} 22%, var(--page)), var(--page) 480px)` } : {}),
         paddingTop: 'var(--header-h)',
-        paddingBottom: `calc(var(--dock-h) + ${footer ? 96 : 16}px)`,
+        // J-20/J-21: the page ends 16 px above whatever is fixed at the bottom,
+        // the sticky bar measured (it grows at 200 % and in DE/FR) plus its 8 px lift.
+        paddingBottom: footer ? 'calc(var(--dock-h) + var(--footer-h, 96px) + 24px)' : 'calc(var(--dock-h) + 16px)',
       }}
     >
       {/* 560px is a phone column. 1120px is a page. The old 760px was neither,
@@ -646,10 +648,12 @@ export function SectionHead({
 }) {
   return (
     <div
-      className={`flex items-baseline justify-between gap-4 pb-3 pt-6 ${className}`}
+      // J-19: the row wraps, so a long aside goes under the title rather than
+      // squeezing it to a letter per line.
+      className={`flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1 pb-3 pt-6 ${className}`}
     >
-      <h2 className="t-h3 min-w-0">{title}</h2>
-      {aside && <span className="tnum shrink-0 text-label text-[var(--ink-4)]">{aside}</span>}
+      <h2 className="t-h3 min-w-0 max-w-full shrink-0">{title}</h2>
+      {aside && <span className="tnum min-w-0 [overflow-wrap:anywhere] text-label text-[var(--ink-4)]">{aside}</span>}
     </div>
   )
 }

@@ -44,6 +44,16 @@ export function Browse() {
   const ME = useMe()
   const [filtersOpen, setFiltersOpen] = useState(false)
   const [showMap, setShowMap] = useState(false)
+  const [edgeSentinel, setEdgeSentinel] = useState<HTMLSpanElement | null>(null)
+  const [stuck, setStuck] = useState(false)
+  useEffect(() => {
+    const el = edgeSentinel
+    if (!el) return
+    // Stuck once the line just above the search has scrolled past its stick point.
+    const io = new IntersectionObserver(([e]) => setStuck(!e.isIntersecting && e.boundingClientRect.top < 0), { rootMargin: '-64px 0px 0px 0px' })
+    io.observe(el)
+    return () => io.disconnect()
+  }, [edgeSentinel])
   // The sort is part of the address like the rest of the search.
   const [urlParams, setUrlParams] = useSearchParams()
   const sort: SortKey = SORTS.find((k) => k === urlParams.get('sort')) ?? 'best'
@@ -144,7 +154,11 @@ export function Browse() {
       </header>
       <h1 className="t-h2 mt-5 max-w-[20ch] text-balance md:mt-4 md:max-w-none">{t('Rent what you need, by the hour')}</h1>
       {/* ------------------------------------------------------------- search */}
+      {/* J-17: the fade behind the search paints only once it is stuck; at rest
+          it painted page colour over the headline above it. */}
+      <span ref={setEdgeSentinel} aria-hidden="true" className="block h-px" />
       <div
+        data-stuck={stuck ? '' : undefined}
         className="scroll-edge isolate sticky z-20 pb-3 pt-4"
         style={{ top: 'calc(env(safe-area-inset-top) + 8px)', marginInline: -20, paddingInline: 20 }}
       >
@@ -223,7 +237,7 @@ export function Browse() {
                   <>
                     {plural(queryHits.length, '{n} match', '{n} matches')}
                     {' · '}
-                    <Link to="/legal/ranking" className="underline underline-offset-2">
+                    <Link to="/legal/ranking" className="inline-flex min-h-[44px] items-center underline underline-offset-2">
                       {t('How results are ordered')}
                     </Link>
                   </>
@@ -422,7 +436,7 @@ export function Browse() {
                   {matches.length === 1 ? t('bookable slot') : t('bookable slots')}
                   {/* P2B Art. 5: how results are ordered, one tap from the results (H-3). */}
                   {' · '}
-                  <Link to="/legal/ranking" className="underline underline-offset-2">
+                  <Link to="/legal/ranking" className="inline-flex min-h-[44px] items-center underline underline-offset-2">
                     {t('How results are ordered')}
                   </Link>
                 </p>

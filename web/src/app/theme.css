@@ -1078,6 +1078,9 @@ th {
      colour at the top to nothing a little below the pane, and sits behind the
      pane's own children, so what you see through the glass is page rather than
      whatever happened to scroll under it. */
+  .scroll-edge:not([data-stuck])::before {
+    display: none;
+  }
   .scroll-edge::before {
     content: '';
     position: absolute;

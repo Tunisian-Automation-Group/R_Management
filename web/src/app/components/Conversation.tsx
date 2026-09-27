@@ -65,10 +65,10 @@ function Bubble({ m, otherName, closed, last }: { m: Message; otherName: string;
 }
 
 /** Sets --kb to the height the on-screen keyboard covers, so sticky things sit above it. */
-function useKeyboardInset() {
+function useKeyboardInset(on: boolean) {
   useEffect(() => {
     const vv = window.visualViewport
-    if (!vv) return
+    if (!vv || !on) return
     const root = document.documentElement.style
     const set = () => root.setProperty('--kb', `${Math.max(0, innerHeight - vv.height - vv.offsetTop)}px`)
     vv.addEventListener('resize', set)
@@ -78,7 +78,7 @@ function useKeyboardInset() {
       vv.removeEventListener('scroll', set)
       root.removeProperty('--kb')
     }
-  }, [])
+  }, [on])
 }
 
 /** Messages between the two sides of one booking. */
@@ -89,6 +89,7 @@ export function Conversation({
   otherId,
   accepted,
   closed = false,
+  fill = false,
 }: {
   bookingId: string
   /** The booking's status: a change reads the thread again (masking follows it, V5-5). */
@@ -100,6 +101,9 @@ export function Conversation({
   accepted: boolean
   /** Declined, cancelled, lapsed: the conversation stays readable, nothing more is sent. */
   closed?: boolean
+  /** The thread screen (J-18): the page scrolls the conversation and the
+   *  composer sits flush on the bottom, above the keyboard and home indicator. */
+  fill?: boolean
 }) {
   const id = useId()
   const qc = useQueryClient()
@@ -136,13 +140,14 @@ export function Conversation({
   // scrollIntoView scrolled the whole booking page 477 px down on open (UX-25).
   useEffect(() => {
     const el = list.current
-    if (el) el.scrollTop = el.scrollHeight
+    if (fill) scrollTo({ top: document.documentElement.scrollHeight })
+    else if (el) el.scrollTop = el.scrollHeight
     // Read here: the server's receipt drops the Inbox's dot on every device (UX-12).
     const last = items[items.length - 1]
     if (last && !last.mine) void markInboxRead(bookingId).then(() => qc.invalidateQueries({ queryKey: ['inbox'] }), () => undefined)
   }, [items.length, bookingId])
 
-  useKeyboardInset()
+  useKeyboardInset(fill)
 
   const send = async () => {
     const text = draft.trim()
@@ -186,7 +191,7 @@ export function Conversation({
           <p className="t-sm py-3 text-[var(--ink-3)]">{t('No messages yet. Say hello, and ask about the hand-over or anything else.')}</p>
         )
       ) : (
-        <ul ref={list} className="max-h-[360px] space-y-3 overflow-y-auto overscroll-contain py-2" aria-live="polite">
+        <ul ref={list} className={`space-y-3 py-2 ${fill ? '' : 'max-h-[360px] overflow-y-auto overscroll-contain'}`} aria-live="polite">
           {items.map((m, i) => {
             // A quiet day line where the day changes (iMessage, WhatsApp); a run ends there too.
             const d = dayShort(m.at)
@@ -247,9 +252,14 @@ export function Conversation({
           </div>
         )}
         <form
-          // Stays in reach while the thread is long, and above the on-screen
-          // keyboard: --kb is the part of the layout viewport it covers.
-          className="sticky bottom-[max(var(--kb,0px),calc(var(--dock-h)+var(--footer-h,0px)+16px))] z-10 -mx-5 mt-3 flex items-end gap-2 bg-[var(--surface)] px-5 py-2"
+          // On the thread it stays in reach, flush on the bottom and above the
+          // keyboard (--kb, the part of the layout viewport it covers); the
+          // field takes its own line at large text rather than breaking words.
+          className={`mt-3 flex flex-wrap items-end gap-2 ${
+            fill
+              ? 'sticky bottom-[var(--kb,0px)] z-10 -mx-5 -mb-5 border-t border-[var(--line)] bg-[var(--surface)] px-5 pt-3 pb-[max(12px,env(safe-area-inset-bottom))]'
+              : ''
+          }`}
           onSubmit={(e) => {
             e.preventDefault()
             void send()
@@ -262,6 +272,7 @@ export function Conversation({
             id={`${id}-msg`}
             rows={2}
             maxLength={2000}
+            className="min-w-[min(100%,12rem)] flex-1"
             value={draft}
             placeholder={t('Write to {name}', { name: otherName })}
             onChange={(e) => setDraft(e.target.value)}

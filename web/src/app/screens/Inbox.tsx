@@ -8,7 +8,7 @@ import { formatMoney } from '../../domain/money.ts'
 
 import { HIDDEN_CONTACT, useBooking, useBookings, useInbox, useOwner, type InboxItem } from '../../data/repo.ts'
 import type { Booking } from '../../domain/types.ts'
-import { Screen } from '../components/AppShell.tsx'
+import { Screen, useLargeText } from '../components/AppShell.tsx'
 import { Conversation } from '../components/Conversation.tsx'
 import { Photo } from '../components/Photo.tsx'
 import { Icon } from '../components/Icon.tsx'
@@ -150,6 +150,8 @@ export function Thread() {
   const b = booking.data
   const asOwner = Boolean(b?.requesterId)
   const other = useOwner(asOwner ? b?.requesterId : b?.match.ownerId)
+  // At large text the pinned booking would take half the screen: it scrolls away instead.
+  const big = useLargeText()
   if (booking.isPending || other.isPending) return <Screen back="/inbox"><DetailSkeleton /></Screen>
   if (!b) return <Screen back="/inbox" title={t('Inbox')}><EmptyState icon="chat" title={t('This conversation is gone')} body={t('The booking it belonged to no longer exists.')} /></Screen>
   const name = other.data?.name ?? (asOwner ? t('Your renter') : b.listing?.ownerName ?? '')
@@ -163,7 +165,7 @@ export function Thread() {
       <Link
         to={`/bookings/${b.id}`}
         aria-label={`${t('Open the booking')}: ${b.listing?.title ?? t('Listing removed')}`}
-        className="press-soft plate-lit on-plate sticky top-[calc(var(--safe-top)+8px)] z-20 flex items-center gap-3 rounded-[var(--radius-plate)] p-3 shadow-[var(--shadow-plate)]"
+        className={`press-soft plate-lit on-plate ${big ? '' : 'sticky top-[calc(var(--safe-top)+8px)] z-20'} flex items-center gap-3 rounded-[var(--radius-plate)] p-3 shadow-[var(--shadow-plate)]`}
       >
         <Photo src={b.listing?.photo} alt="" categoryId={b.requirement.category} aspect={1} thumb width={48} className="w-12 shrink-0 rounded-[var(--radius-m)]" />
         <div className="min-w-0 flex-1">
@@ -176,6 +178,7 @@ export function Thread() {
         <Icon name="chevron-right" size={20} className="shrink-0 text-[var(--ink-3)]" />
       </Link>
       <Conversation
+        fill
         bookingId={b.id}
         status={b.status}
         otherName={name}
