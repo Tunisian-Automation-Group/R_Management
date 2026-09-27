@@ -105,7 +105,7 @@ for (const [name, t] of Object.entries(themes)) {
   if (name === 'light') fills.push(['glass-tint (lite)', lite['glass-tint']])
   for (const [fill, value] of fills)
     for (const backdrop of ['#000000', '#ffffff'])
-      for (const fg of ['ink', 'ink-2']) check(name, fg, t[fg], fill, value, backdrop, 4.5)
+      for (const fg of ['ink', 'ink-2', 'dock-ink']) check(name, fg, t[fg], fill, value, backdrop, 4.5)
   for (const backdrop of ['#ffffff']) {
     check(name, 'white icon', '#ffffff', 'glass-tint-media', t['glass-tint-media'], backdrop, 3)
     check(name, 'white text', '#ffffff', 'glass-tint-media-text', t['glass-tint-media-text'], backdrop, 4.5)

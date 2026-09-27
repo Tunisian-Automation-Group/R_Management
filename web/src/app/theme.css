@@ -231,7 +231,9 @@
   --dock-offset: max(8px, calc(env(safe-area-inset-bottom, 0px) - 12px));
   --dock-droplet-w: 64px;
   --dock-droplet-h: 52px;
-  --dock-ink: var(--ink-3);
+  /* ink-2, not ink-3: rows pass under the glass now, and the labels hold
+     4.5:1 over black or white behind it (check:contrast). */
+  --dock-ink: var(--ink-2);
   /* The crimson tint deep enough to read against the bar (1.5:1). */
   /* A neutral glass droplet, the icon in ink (cappy-ui §4, J-10): crimson is
      the one action colour, never the navigation's. */
@@ -463,9 +465,9 @@
 
 /* The phone dock (VD-6, ADR 0014): a floating glass capsule, 64 tall, inset
    16 from the sides and max(8, safe-bottom − 12) from the bottom. The active
-   tab sits on a droplet that slides between tabs on the snappy spring. On a
-   scroll down it contracts (labels fade, the capsule tucks in); any scroll up,
-   the top, a tap or focus brings it back. Transform and opacity only.
+   tab sits on a droplet that slides between tabs on the snappy spring. It
+   never collapses or hides on scroll (owner, 2026-09-27): content passes
+   under the glass and ends 16 px above it.
    Unlayered, so it wins over the glass pane it is on the desktop. */
 @media (max-width: 767px) {
   .dock {
@@ -473,36 +475,6 @@
     right: max(16px, env(safe-area-inset-right, 0px));
     bottom: var(--dock-offset);
     border-radius: 999px;
-    transform-origin: 50% 100%;
-    transition: transform var(--dur-long) var(--spring-snappy);
-  }
-  .dock-label {
-    transition: opacity var(--dur-short) var(--ease-standard);
-  }
-  /* Scrolled down (J-10): the capsule tucks into the active tab and a round
-     search button, centred, as the iOS 26 tab bar minimises. */
-  .dock[data-scrolled='away'] {
-    left: 50%;
-    right: auto;
-    transform: translateX(-50%);
-    transition-duration: var(--dur-medium);
-  }
-  .dock[data-scrolled='away'] li:not(:has(a[aria-current])):not(.dock-search),
-  .dock[data-scrolled='away'] .dock-droplet,
-  .dock[data-scrolled='away'] .dock-label {
-    display: none;
-  }
-  .dock[data-scrolled='away'] li > a[aria-current] {
-    min-width: var(--dock-droplet-w);
-  }
-  .dock[data-scrolled='away'] li > a[aria-current] > span:first-child {
-    background: var(--dock-active);
-  }
-  .dock-search {
-    display: none;
-  }
-  .dock[data-scrolled='away'] .dock-search {
-    display: grid;
   }
   /* The droplet: one element for the whole bar, moved by transform to the
      active slot, a little wider mid-flight (gel), a lit rim like all glass. */
@@ -528,12 +500,6 @@
   }
 }
 @media (prefers-reduced-motion: reduce) {
-  .dock[data-scrolled='away'] {
-    transform: none;
-  }
-  .dock[data-scrolled='away'] .dock-label {
-    opacity: 1;
-  }
   .dock-droplet {
     transition: none;
   }

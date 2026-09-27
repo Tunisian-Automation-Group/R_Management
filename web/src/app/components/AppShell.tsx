@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type ReactNode, type RefObject } from 'react'
+import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { NavLink, useLocation } from 'react-router-dom'
 import { useSession } from '../../data/auth.ts'
 import { useToast } from '../store.tsx'
@@ -38,15 +38,12 @@ const DETAIL = /^\/(listing\/|bookings\/[^/]+|earn\/(new|edit)|inbox\/[^/]+|admi
 export { useLargeText }
 export function Dock({ badges }: { badges: Record<string, number> }) {
   const big = useLargeText()
-  const go = useNav()
   const path = useLocation().pathname
   const detail = DETAIL.test(path)
   useEffect(() => {
     // The sticky bars, the offline bar and toasts measure from --dock-h.
     document.documentElement.dataset.dock = detail ? 'hidden' : 'shown'
   }, [detail])
-  const nav = useRef<HTMLElement>(null)
-  useHideOnScroll(nav, detail)
   const tabs: Tab[] = [
     { to: '/', label: t('Explore'), icon: 'search' },
     { to: '/bookings', label: tTab('Bookings'), icon: 'ticket', badge: badges['/bookings'] },
@@ -61,7 +58,6 @@ export function Dock({ badges }: { badges: Record<string, number> }) {
 
   return (
     <nav
-      ref={nav}
       aria-label={t('Main')}
       className={`glass dock fixed z-40 ${detail ? 'max-md:hidden' : ''}
         md:inset-x-0 md:top-0 md:h-[var(--header-h)] md:rounded-none md:shadow-[var(--glass-shadow-raised)]`}
@@ -95,23 +91,6 @@ export function Dock({ badges }: { badges: Record<string, number> }) {
           {tabs.map((tab) => (
             <TabItem key={tab.to} tab={tab} big={big} />
           ))}
-          {/* Shown only while the dock is tucked away: search, one tap (J-10). */}
-          <li className="dock-search place-items-center px-1 md:hidden">
-            <button
-              type="button"
-              aria-label={t('Search listings')}
-              onClick={() => {
-                go('/')
-                requestAnimationFrame(() => {
-                  scrollTo({ top: 0, behavior: 'smooth' })
-                  document.querySelector<HTMLInputElement>('input[type=search]')?.focus({ preventScroll: true })
-                })
-              }}
-              className="grid h-12 w-12 place-items-center rounded-full bg-[var(--dock-active)] text-[var(--ink)]"
-            >
-              <Icon name="search" size={22} strokeWidth={2} />
-            </button>
-          </li>
         </ul>
 
         <ThemeToggle className="hidden md:grid" />
@@ -167,51 +146,6 @@ export function ThemeToggle({ className = '' }: { className?: string }) {
       <Icon name={dark ? 'sun' : 'moon'} size={20} strokeWidth={1.8} />
     </button>
   )
-}
-
-/** Hide on scroll (UX-46, iOS 26's minimise simplified): after 48 px of
- *  scrolling down, past the first screen, the bar slides away; any scroll up
- *  of 8 px, the top of the page, or focus inside it brings it back. CSS keeps
- *  it in place under reduced motion. */
-function useHideOnScroll(nav: RefObject<HTMLElement | null>, detail: boolean) {
-  useEffect(() => {
-    const el = nav.current
-    if (!el || detail) return
-    let anchor = scrollY
-    let away = false
-    const set = (next: boolean) => {
-      if (next === away) return
-      away = next
-      el.dataset.scrolled = next ? 'away' : ''
-    }
-    const onScroll = () => {
-      const y = scrollY
-      if (y <= 0) {
-        set(false)
-        anchor = 0
-      } else if (y > anchor) {
-        // Going down: hide once 48 px past where the downward run began, and
-        // never within the first screen height.
-        if (away) anchor = y
-        else if (y - anchor >= 48 && y > 64) {
-          set(true)
-          anchor = y
-        }
-      } else if (!away) anchor = y
-      else if (anchor - y >= 8) {
-        set(false)
-        anchor = y
-      }
-    }
-    const onFocus = () => set(false)
-    addEventListener('scroll', onScroll, { passive: true })
-    el.addEventListener('focusin', onFocus)
-    return () => {
-      removeEventListener('scroll', onScroll)
-      el.removeEventListener('focusin', onFocus)
-      set(false)
-    }
-  }, [nav, detail])
 }
 
 /** Large text (200 %, Dynamic Type): four labels do not fit a phone's dock, so
