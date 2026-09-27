@@ -90,3 +90,77 @@ if (typeof document !== 'undefined') {
     listeners.forEach((fn) => fn())
   })
 }
+
+// Glass effects (VD-5): Full or Reduced, per device. Unset means automatic:
+// theme-init.js decides before the first paint, and the first real scroll is
+// timed once; if more than a fifth of its frames take over 20 ms, this device
+// gets the lite glass from then on.
+export type Glass = 'auto' | 'full' | 'lite'
+const GLASS = 'cappy.glass.v1'
+const glassListeners = new Set<() => void>()
+
+function readGlass(): Glass {
+  try {
+    const v = localStorage.getItem(GLASS)
+    return v === 'full' || v === 'lite' ? v : 'auto'
+  } catch {
+    return 'auto'
+  }
+}
+let glass: Glass = readGlass()
+
+export function setGlass(next: Glass): void {
+  glass = next
+  try {
+    if (next === 'auto') localStorage.removeItem(GLASS)
+    else localStorage.setItem(GLASS, next)
+  } catch {
+    // Not remembered; still applied for this visit.
+  }
+  let mode: string = next
+  if (next === 'auto') {
+    try {
+      mode = localStorage.getItem('cappy.glass.auto') === 'lite' ? 'lite' : 'full'
+    } catch {
+      mode = 'full'
+    }
+  }
+  document.documentElement.dataset.glass = mode
+  glassListeners.forEach((fn) => fn())
+}
+
+export function useGlass(): Glass {
+  return useSyncExternalStore(
+    (fn) => {
+      glassListeners.add(fn)
+      return () => glassListeners.delete(fn)
+    },
+    () => glass,
+  )
+}
+
+function probeFirstScroll(): void {
+  if (glass !== 'auto' || document.documentElement.dataset.glass === 'lite') return
+  const start = () => {
+    removeEventListener('scroll', start)
+    const frames: number[] = []
+    let last = performance.now()
+    const tick = (now: number) => {
+      frames.push(now - last)
+      last = now
+      if (frames.length < 60) requestAnimationFrame(tick)
+      else if (frames.filter((d) => d > 20).length > frames.length / 5 && document.visibilityState === 'visible') {
+        try {
+          localStorage.setItem('cappy.glass.auto', 'lite')
+        } catch {
+          // Only this visit, then.
+        }
+        document.documentElement.dataset.glass = 'lite'
+      }
+    }
+    requestAnimationFrame(tick)
+  }
+  addEventListener('scroll', start, { passive: true })
+}
+
+if (typeof document !== 'undefined') probeFirstScroll()

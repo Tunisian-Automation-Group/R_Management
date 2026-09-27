@@ -6,7 +6,7 @@ import { Icon, type IconName } from './Icon.tsx'
 import { useBack, useNav } from '../nav.ts'
 import { LANGS, lang, locale, plural, setLang, t, tTab } from '../../i18n.ts'
 import { updateLocale } from '../../data/auth.ts'
-import { setAppearance, toggleTheme, useAppearance, useDark, type Appearance } from '../theme.ts'
+import { setAppearance, setGlass, toggleTheme, useAppearance, useDark, useGlass, type Appearance } from '../theme.ts'
 
 type Tab = { to: string; label: string; icon: IconName; badge?: number }
 
@@ -427,8 +427,10 @@ export function Screen({
           }}
         >
           <div
-            className="glass-strong mx-auto max-w-[560px] rounded-[var(--radius-l)] px-4 py-3
-              shadow-[var(--glass-shadow-raised)]"
+            // A floating glass capsule (VD-9): inset from the edges, the hour and
+            // the total on the left, the one action on the right.
+            className="glass-strong mx-3 max-w-[560px] rounded-[var(--radius-xl)] py-2.5 pl-5 pr-2.5
+              shadow-[var(--glass-shadow-raised)] sm:mx-auto"
           >
             {footer}
           </div>
@@ -526,7 +528,7 @@ function BackButton({ onClick, floating }: { onClick: () => void; floating?: boo
       className={`grid h-10 w-10 place-items-center rounded-full transition-all duration-[var(--dur-short)]
         ${
           floating
-            ? 'glass glass-dark absolute left-4 z-10 hover:brightness-110 md:left-12 md:mt-6'
+            ? 'glass-media glass-lens absolute left-4 z-10 h-11 w-11 text-[var(--on-field)] hover:brightness-110 md:left-12 md:mt-6'
             : '-ml-2.5 text-[var(--ink)] hover:bg-[var(--sunken)]'
         }`}
       style={floating ? { top: 'calc(var(--safe-top) + 12px)' } : undefined}
@@ -567,19 +569,56 @@ export function LanguageSwitch() {
 /** System, Light or Dark (UX-36), stored on this device. */
 export function AppearanceSwitch() {
   const current = useAppearance()
-  const options: { value: Appearance; label: string }[] = [
-    { value: 'light', label: t('Light') },
-    { value: 'dark', label: t('Dark') },
-    { value: 'system', label: t('System') },
-  ]
   return (
-    <div role="group" aria-label={t('Appearance')} className="inline-flex max-w-full flex-wrap rounded-[var(--radius-l)] border border-[var(--line)] p-0.5">
+    <Segmented
+      label={t('Appearance')}
+      current={current}
+      onPick={setAppearance}
+      options={[
+        { value: 'light', label: t('Light') },
+        { value: 'dark', label: t('Dark') },
+        { value: 'system', label: t('System') },
+      ]}
+    />
+  )
+}
+
+/** Glass effects (VD-5): Automatic decides per device; Reduced turns the blur off. */
+export function GlassSwitch() {
+  const current = useGlass()
+  return (
+    <Segmented
+      label={t('Glass effects')}
+      current={current}
+      onPick={setGlass}
+      options={[
+        { value: 'auto', label: t('Automatic') },
+        { value: 'full', label: t('Full') },
+        { value: 'lite', label: t('Reduced') },
+      ]}
+    />
+  )
+}
+
+function Segmented<V extends string>({
+  label,
+  current,
+  onPick,
+  options,
+}: {
+  label: string
+  current: V
+  onPick: (v: V) => void
+  options: { value: V; label: string }[]
+}) {
+  return (
+    <div role="group" aria-label={label} className="inline-flex max-w-full flex-wrap rounded-[var(--radius-l)] border border-[var(--line)] p-0.5">
       {options.map((o) => (
         <button
           key={o.value}
           type="button"
           aria-pressed={current === o.value}
-          onClick={() => setAppearance(o.value)}
+          onClick={() => onPick(o.value)}
           className={`rounded-full px-3 py-1.5 text-label font-semibold transition-colors duration-[var(--dur-short)] ${
             current === o.value ? 'bg-[var(--segment-on)] text-[var(--on-segment)]' : 'text-[var(--ink-3)] hover:text-[var(--ink)]'
           }`}
@@ -591,7 +630,8 @@ export function AppearanceSwitch() {
   )
 }
 
-/** A section heading with a rule above it, and room for a figure on the right. */
+/** A section heading, and room for a figure on the right. Space, not a black
+ *  rule, separates sections now (VD-8): 24 above plus the section gap. */
 export function SectionHead({
   title,
   aside,
@@ -603,7 +643,7 @@ export function SectionHead({
 }) {
   return (
     <div
-      className={`flex items-baseline justify-between gap-4 border-t border-[var(--ink)] pb-3 pt-3 ${className}`}
+      className={`flex items-baseline justify-between gap-4 pb-3 pt-6 ${className}`}
     >
       <h2 className="t-h3 min-w-0">{title}</h2>
       {aside && <span className="tnum shrink-0 text-label text-[var(--ink-4)]">{aside}</span>}

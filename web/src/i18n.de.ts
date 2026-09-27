@@ -1445,4 +1445,13 @@ export const DE: Record<string, string> = {
   "Open the booking": "Buchung öffnen",
   "Request · {amount} held": "Zahlungspflichtig anfragen · {amount}",
   "Card, on the next step": "Karte, im nächsten Schritt",
+  "Glass effects": "Glaseffekte",
+  "Automatic": "Automatisch",
+  "Full": "Voll",
+  "Reduced": "Reduziert",
+  "Reduced turns the frosted glass off, for older phones or if you prefer plain surfaces.": "Reduziert schaltet das Milchglas aus, für ältere Handys oder wenn du schlichte Flächen magst.",
+  "Rent what you need, by the hour": "Miete, was du brauchst – stundenweise",
+  "Drill, van, 3D printer, studio…": "Bohrmaschine, Transporter, 3D-Drucker, Studio …",
+  "Free today near you": "Heute frei in deiner Nähe",
+  "All categories": "Alle Kategorien",
 }

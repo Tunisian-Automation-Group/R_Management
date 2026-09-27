@@ -29,7 +29,7 @@ import { CountrySelect } from '../components/CountrySelect.tsx'
 import { DistrictSelect } from '../components/DistrictSelect.tsx'
 import { accessToken, deleteAccount, endSession, signOut, useAuthReady, useSession } from '../../data/auth.ts'
 import { SignedOut } from '../components/SignedOut.tsx'
-import { AppearanceSwitch, LanguageSwitch, Screen, SectionHead, ThemeToggle } from '../components/AppShell.tsx'
+import { AppearanceSwitch, GlassSwitch, LanguageSwitch, Screen, SectionHead, ThemeToggle } from '../components/AppShell.tsx'
 import { Icon } from '../components/Icon.tsx'
 import { Photo, SaveButton } from '../components/Photo.tsx'
 import { Avatar, Button, Card, Field, Input, Row, Segmented, Sheet, Skeleton } from '../components/ui.tsx'
@@ -113,6 +113,11 @@ export function Profile() {
             <p className="t-label mb-2">{t('Appearance')}</p>
             <AppearanceSwitch />
             <p className="t-sm mt-3 text-[var(--ink-3)]">{t('Light is the default. System follows your phone or computer. Saved on this device only.')}</p>
+          </div>
+          <div>
+            <p className="t-label mb-2">{t('Glass effects')}</p>
+            <GlassSwitch />
+            <p className="t-sm mt-3 text-[var(--ink-3)]">{t('Reduced turns the frosted glass off, for older phones or if you prefer plain surfaces.')}</p>
           </div>
           <div>
             <p className="t-label mb-2">{t('Language')}</p>

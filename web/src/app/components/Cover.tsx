@@ -138,7 +138,7 @@ export function Plate({
 
   return (
     <div
-      className={`plate relative isolate overflow-hidden bg-[var(--field)] ${className}`}
+      className={`plate plate-lit isolate overflow-hidden ${className}`}
       style={{ aspectRatio: String(aspect), ...style }}
       role="img"
       aria-label={
@@ -154,22 +154,9 @@ export function Plate({
             : meta.label
       }
     >
-      {/* The field lifts towards the top left, the way a printed ink panel
-          catches light, and carries the same lit rim as every glass surface in
-          the app so a plate and the dock read as one material family. */}
-      <span
-        aria-hidden="true"
-        className="absolute inset-0 bg-[radial-gradient(120%_90%_at_18%_0%,rgba(255,255,255,0.13),transparent_62%)]"
-      />
-      <span
-        aria-hidden="true"
-        className="pointer-events-none absolute inset-0 rounded-[inherit]"
-        style={{
-          boxShadow:
-            'inset 0 1px 0 rgba(255,255,255,0.16), inset 0 0 0 1px rgba(255,255,255,0.06)',
-        }}
-      />
-
+      {/* The lit plate material (VD-11): the green lit from the top left,
+          the glass's 1 px lit rim and a film grain, from `.plate-lit`, so a
+          plate and the dock read as one material family. */}
       {when ? (
         <div className={`plate-body relative flex h-full flex-col ${thumb ? 'p-2' : 'p-5'}`}>
           <p className={`t-label ${labelled ? '' : 'hidden'}`} style={{ color: 'var(--on-field-dim)' }}>

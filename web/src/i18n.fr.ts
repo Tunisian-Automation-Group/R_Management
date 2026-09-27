@@ -1449,4 +1449,13 @@ export const FR: Record<string, string> = {
   "Open the booking": "Ouvrir la réservation",
   "Request · {amount} held": "Demander · {amount} bloqués",
   "Card, on the next step": "Carte, à l’étape suivante",
+  "Glass effects": "Effets de verre",
+  "Automatic": "Automatique",
+  "Full": "Complet",
+  "Reduced": "Réduit",
+  "Reduced turns the frosted glass off, for older phones or if you prefer plain surfaces.": "Réduit désactive le verre dépoli, pour les téléphones plus anciens ou si vous préférez des surfaces unies.",
+  "Rent what you need, by the hour": "Louez ce qu’il vous faut, à l’heure",
+  "Drill, van, 3D printer, studio…": "Perceuse, camionnette, imprimante 3D, studio…",
+  "Free today near you": "Libre aujourd’hui près de chez vous",
+  "All categories": "Toutes les catégories",
 }

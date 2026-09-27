@@ -25,7 +25,10 @@ export function LocationPicker({
   onPick,
   districts = [],
   onPickDistrict,
+  onPlate = false,
 }: {
+  /** On the lit plate (Explore's band): a glass capsule in the plate's ink. */
+  onPlate?: boolean
   /** What the trigger reads, "Kreuzberg, Berlin". */
   label: string
   /** The metro currently searched. */
@@ -174,16 +177,19 @@ export function LocationPicker({
         onClick={() => setOpen((o) => !o)}
         aria-haspopup="dialog"
         aria-expanded={open}
-        className="inline-flex min-h-[44px] items-center gap-1.5 rounded-full px-3 text-label font-medium
-          text-[var(--ink-2)] transition-colors duration-[var(--dur-short)] hover:bg-[var(--sunken)] hover:text-[var(--ink)]"
+        className={`inline-flex min-h-[44px] items-center gap-1.5 rounded-full px-3 text-label font-medium transition-colors duration-[var(--dur-short)] ${
+          onPlate
+            ? 'glass glass-dark text-[var(--on-field)]'
+            : 'text-[var(--ink-2)] hover:bg-[var(--sunken)] hover:text-[var(--ink)]'
+        }`}
       >
-        <Icon name="pin" size={15} strokeWidth={1.9} className="text-[var(--ink-3)]" />
+        <Icon name="pin" size={15} strokeWidth={1.9} className={onPlate ? '' : 'text-[var(--ink-3)]'} />
         <span>{label}</span>
         <Icon
           name="chevron-down"
           size={14}
           strokeWidth={2.2}
-          className={`text-[var(--ink-4)] transition-transform duration-[var(--dur-short)] ${open ? 'rotate-180' : ''}`}
+          className={`${onPlate ? 'opacity-70' : 'text-[var(--ink-4)]'} transition-transform duration-[var(--dur-short)] ${open ? 'rotate-180' : ''}`}
         />
       </button>
 

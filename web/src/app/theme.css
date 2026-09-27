@@ -226,7 +226,7 @@
   --dock-ink: var(--ink-3);
   /* The crimson tint deep enough to read against the bar (1.5:1). */
   --dock-active: #ecc4c9;
-  --dock-active-ink: var(--accent-text);
+  --dock-active-ink: var(--accent-active); /* 6.5:1 on the pink droplet; accent-text was 4.41 */
   /* Fixed pixels, as an iOS tab bar: the bar does not grow with text size; at
      200 % it drops its labels instead (useLargeText), so 5 × 56 always fits. */
   --dock-pill-w: 56px;
@@ -276,6 +276,9 @@
   --glass-shadow-raised: 0 18px 44px -12px rgba(24, 33, 26, 0.3), 0 2px 6px rgba(24, 33, 26, 0.12);
   /* Heavier when content is under the glass (Apple's adaptive shadow). */
   --glass-shadow-over: 0 10px 30px -6px rgba(24, 33, 26, 0.26), 0 1px 3px rgba(24, 33, 26, 0.14);
+  /* Media glass with the blur taken away (no backdrop-filter, Reduce
+     Transparency): dark enough that white text on it stays above 4.5:1. */
+  --glass-solid-media: rgba(16, 20, 17, 0.78);
 
   /* The lit plate (VD-11): the green lit from the top left (the glass rim's
      135° light), a 1 px lit top edge, and a faint film grain over it. */
@@ -385,7 +388,7 @@
   /* Smoked glass: the silhouette drawn by light, not by a border. */
   --glass-sat: 140%;
   --glass-bright: 0.92;
-  --glass-tint: rgba(31, 40, 33, 0.72);
+  --glass-tint: rgba(31, 40, 33, 0.8); /* .72 gave ink-2 4.05:1 over a white photo */
   --glass-tint-thin: rgba(31, 40, 33, 0.62);
   --glass-tint-strong: rgba(47, 56, 48, 0.86);
   --glass-edge-lit: rgba(238, 240, 234, 0.22);
@@ -569,14 +572,28 @@ body {
   letter-spacing: -0.02em;
   font-weight: 500;
 }
-/* 28 px, the smallest size Bodoni is allowed (UX-4): below it the hairlines
-   break up and "€3.40" reads as "C3.10". */
+/* Bodoni is for moments only, at 34 px and up (ADR 0014); a 28 px section
+   title is Archivo at the large title's width. */
 .t-h2 {
-  font-family: var(--font-display);
-  font-variation-settings: 'opsz' 48;
+  font-family: var(--font-sans);
+  font-variation-settings: 'wdth' 112;
   font-size: 1.75rem;
-  line-height: 1.14;
-  letter-spacing: -0.015em;
+  line-height: 2rem;
+  letter-spacing: -0.02em;
+  font-weight: 700;
+}
+/* In dark, Bodoni's hairlines need 44 px to hold (cappy-ui §3). */
+:root[data-theme='dark'] .t-h1 {
+  font-size: 2.75rem;
+  line-height: 1;
+}
+/* The wordmark: the brand's own setting of its name, not a heading. */
+.t-wordmark {
+  font-family: var(--font-display);
+  font-variation-settings: 'opsz' 72;
+  font-size: 1.75rem;
+  line-height: 1;
+  letter-spacing: -0.02em;
   font-weight: 500;
 }
 /* Archivo from here down. These label the machinery. */
@@ -783,6 +800,83 @@ body {
     -webkit-mask: radial-gradient(closest-side, transparent calc(100% - 6px), #000);
     mask: radial-gradient(closest-side, transparent calc(100% - 6px), #000);
     opacity: 1;
+  }
+
+  /* ---------------------------------------------------------- fallbacks
+     Written once (ADR 0014); components never branch on them.
+     1. No backdrop-filter: the same shape, solid and readable.
+     2. Reduce Transparency (the media query in Chromium; the shells set
+        data-transparency='reduce' because WKWebView does not expose it) and
+        Increase Contrast: solid, a contrasting 1.5 px rim, no sheen.
+     3. Low power (data-glass='lite', from theme-init.js): blur off, fills near
+        opaque, no lens ring. The shape and the rim stay, so it still reads as
+        the same material. */
+  @supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+    .glass,
+    .glass-thin,
+    .glass-strong {
+      background: var(--elevated);
+    }
+    .glass-media,
+    .glass-media-text {
+      background: var(--glass-solid-media);
+    }
+  }
+  :root[data-transparency='reduce'] :is(.glass, .glass-thin, .glass-strong, .glass-dark),
+  :root[data-contrast='more'] :is(.glass, .glass-thin, .glass-strong, .glass-dark) {
+    background: var(--elevated);
+    color: var(--ink);
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+  }
+  :root[data-transparency='reduce'] :is(.glass-media, .glass-media-text),
+  :root[data-contrast='more'] :is(.glass-media, .glass-media-text) {
+    background: var(--glass-solid-media);
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+  }
+  :root[data-transparency='reduce'] :is(.glass, .glass-thin, .glass-strong)::before,
+  :root[data-contrast='more'] :is(.glass, .glass-thin, .glass-strong)::before {
+    padding: 1.5px;
+    background: var(--line-strong);
+  }
+  :root[data-transparency='reduce'] :is(.glass, .glass-strong, .glass-lens)::after,
+  :root[data-contrast='more'] :is(.glass, .glass-strong, .glass-lens)::after {
+    display: none;
+  }
+  @media (prefers-reduced-transparency: reduce) {
+    :is(.glass, .glass-thin, .glass-strong, .glass-dark) {
+      background: var(--elevated);
+      color: var(--ink);
+      -webkit-backdrop-filter: none;
+      backdrop-filter: none;
+    }
+    :is(.glass-media, .glass-media-text) {
+      background: var(--glass-solid-media);
+      -webkit-backdrop-filter: none;
+      backdrop-filter: none;
+    }
+    :is(.glass, .glass-strong, .glass-lens)::after {
+      display: none;
+    }
+  }
+  @media (prefers-contrast: more) {
+    :is(.glass, .glass-thin, .glass-strong, .glass-dark) {
+      background: var(--elevated);
+      color: var(--ink);
+      -webkit-backdrop-filter: none;
+      backdrop-filter: none;
+    }
+    :is(.glass, .glass-thin, .glass-strong)::before {
+      padding: 1.5px;
+      background: var(--line-strong);
+    }
+    :is(.glass, .glass-strong, .glass-lens)::after {
+      display: none;
+    }
+  }
+  :root[data-glass='lite'] .glass-lens::after {
+    display: none;
   }
 
   /* The lit plate (VD-11): the brand's material, lit from the top left, a lit
@@ -1453,5 +1547,42 @@ select {
   .dock-label {
     font-variation-settings: 'wdth' 100;
     letter-spacing: normal;
+  }
+}
+
+/* Low power (VD-5, ADR 0014): set before the first paint by theme-init.js
+   from Save-Data, a small device or a slow first scroll, or chosen in You →
+   Preferences. Blur costs the most on a mid-range Android GPU, so it goes;
+   the fills rise so text on them keeps its contrast without it. */
+:root[data-glass='lite'] {
+  --glass-frost-thin: 0px;
+  --glass-frost: 0px;
+  --glass-frost-strong: 0px;
+  --glass-tint: rgba(251, 250, 247, 0.96);
+  --glass-tint-thin: rgba(251, 250, 247, 0.94);
+  --glass-tint-strong: rgba(251, 250, 247, 0.98);
+  --glass-tint-media: rgba(16, 20, 17, 0.72);
+  --glass-tint-media-text: rgba(16, 20, 17, 0.78);
+}
+:root[data-glass='lite'][data-theme='dark'] {
+  --glass-tint: rgba(31, 40, 33, 0.96);
+  --glass-tint-thin: rgba(31, 40, 33, 0.94);
+  --glass-tint-strong: rgba(47, 56, 48, 0.98);
+}
+
+/* A card answers a press (VD-17): it gives a little on the snappy spring.
+   The link is stretched over the card, so :has() lets the photo react. */
+.group:has(a:active) .press-card {
+  transform: scale(0.97);
+}
+.press-card {
+  transition: transform var(--dur-snappy) var(--spring-snappy);
+}
+@media (hover: hover) {
+  .group:hover .press-card img {
+    transform: scale(1.03);
+  }
+  .press-card img {
+    transition: transform var(--dur-long) var(--ease-standard), opacity var(--dur-long) var(--ease-standard);
   }
 }

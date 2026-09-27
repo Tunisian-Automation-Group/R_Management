@@ -326,7 +326,7 @@ export function Listing({ preview }: { preview?: { detail: ListingDetail; banner
             className="absolute left-20 right-5 flex flex-wrap items-center justify-end gap-2"
             style={{ top: 'calc(var(--safe-top) + 14px)' }}
           >
-            <span className="glass glass-dark max-w-full rounded-[var(--radius-card)] px-3 py-1 text-center text-label font-semibold">
+            <span className="glass-media-text max-w-full rounded-full px-3 py-1.5 text-center text-label font-semibold">
               {meta.label}
             </span>
             <WhenBadge
@@ -452,6 +452,11 @@ export function Listing({ preview }: { preview?: { detail: ListingDetail; banner
       <header className="-mt-1">
         <h1 className="t-title-user text-balance">{listing.title}</h1>
         <p className="t-lede mt-2.5 text-[var(--ink-3)]">{listing.blurb}</p>
+        {/* The price as the one hero figure on the screen (VD-9). */}
+        <p className="mt-5 flex flex-wrap items-baseline gap-x-2">
+          <span className="t-figure-hero">{formatMoney(listing.ratePerHour, cur)}</span>
+          <span className="text-body text-[var(--ink-3)]">/ {t('hour')}</span>
+        </p>
         <div className="mt-4 flex flex-wrap items-center gap-x-4 gap-y-2 text-body text-[var(--ink-3)]">
           {/* Approximate for everyone but the owner (M-6): the exact place comes with the booking. */}
           <span className="tnum inline-flex items-center gap-1.5" title={mine ? undefined : addressNote}>
@@ -459,7 +464,6 @@ export function Listing({ preview }: { preview?: { detail: ListingDetail; banner
             {listing.district}{km !== null ? ` · ${formatDistance(km)}` : ''}
             {!mine && <span className="sr-only">{addressNote}</span>}
           </span>
-          <span className="tnum">{formatMoney(listing.ratePerHour, cur)} / {t('hour')}</span>
           {/* This listing's reviews; the owner's overall record is on their card below. */}
           <a
             href="#reviews"
