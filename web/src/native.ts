@@ -181,11 +181,14 @@ export async function pushSignedOut(access: string): Promise<void> {
 }
 
 /** A file handed to the share sheet (the data export), where downloads don't exist. */
-export async function shareFile(name: string, text: string): Promise<boolean> {
+export async function shareFile(name: string, data: string, base64 = false): Promise<boolean> {
   if (!isNative) return false
   const { Filesystem, Directory, Encoding } = await import('@capacitor/filesystem')
   const { Share } = await import('@capacitor/share')
-  const written = await Filesystem.writeFile({ path: name, data: text, directory: Directory.Cache, encoding: Encoding.UTF8 })
+  // base64: binary (a PDF), which Filesystem takes without an encoding.
+  const written = await Filesystem.writeFile(
+    base64 ? { path: name, data, directory: Directory.Cache } : { path: name, data, directory: Directory.Cache, encoding: Encoding.UTF8 },
+  )
   await Share.share({ title: name, url: written.uri })
   return true
 }

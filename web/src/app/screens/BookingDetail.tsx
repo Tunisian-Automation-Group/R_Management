@@ -31,6 +31,7 @@ import {
   usePaymentsConfig,
   useMarket,
   type BookingAction,
+  openReceipt,
 } from '../../data/repo.ts'
 import { TraderNote } from '../components/BusinessFields.tsx'
 import { Conversation } from '../components/Conversation.tsx'
@@ -825,6 +826,13 @@ function Detail({
               <>
                 {money.refunded > 0 && <Row label={t('You paid')} value={formatMoney(money.charged - money.refunded, cur)} strong />}
                 <p className="t-sm tnum text-[var(--ink-4)]">{t('Includes the service fee of {fee}', { fee: formatMoney(money.fee, cur) })}</p>
+                <button
+                  type="button"
+                  onClick={() => void openReceipt(booking.id).catch(() => undefined)}
+                  className="t-sm min-h-[44px] self-start font-semibold underline underline-offset-4"
+                >
+                  {t('Download receipt (PDF)')}
+                </button>
               </>
             )}
           </>
