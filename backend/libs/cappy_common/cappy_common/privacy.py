@@ -113,6 +113,12 @@ REGISTER: dict[str, Entry] = {
         True,
         "tax law keeps invoices for the issuer's period (docs/retention.md), then they are purged",
     ),
+    "payments.credit_notes": Entry(
+        "CreditNoteRow",
+        "keep",
+        True,
+        "a credit note is an invoice correction: tax law keeps it with the invoice, then it is purged",
+    ),
     "payments.revoked_sessions": Entry("revoked", "keep", False, _SESSIONS),
     # --- notifications ---
     "notifications.devices": Entry("DeviceRow", "delete", True),

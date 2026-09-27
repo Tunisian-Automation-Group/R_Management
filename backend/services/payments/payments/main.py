@@ -46,6 +46,7 @@ def build_app(
     app.include_router(internal)
     app.include_router(admin)
     app.include_router(invoices.router)
+    app.include_router(invoices.admin)
     return app
 
 

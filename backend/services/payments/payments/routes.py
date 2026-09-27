@@ -400,9 +400,10 @@ async def open_payouts(person: str, session: AsyncSession = Tx) -> dict:
 async def export_person(person: str, session: AsyncSession = Tx) -> dict:
     """What payments holds about them (GDPR art. 15/20). Card details stay
     with Stripe and are never here."""
-    from .tables import InvoiceRow
+    from .tables import CreditNoteRow, InvoiceRow
 
     account = await session.get(ConnectAccountRow, person)
+    credits = (await session.execute(select(CreditNoteRow).where(CreditNoteRow.owner_id == person))).scalars()
     identity = await session.get(IdentityRow, person)
     invoices = (await session.execute(select(InvoiceRow).where(InvoiceRow.owner_id == person))).scalars()
     paid = (
@@ -433,6 +434,17 @@ async def export_person(person: str, session: AsyncSession = Tx) -> dict:
                 "recipient": {"name": i.recipient_name, "address": i.recipient_address, "vatId": i.recipient_vat_id},
             }
             for i in invoices
+        ],
+        "creditNotes": [
+            {
+                "number": c.number,
+                "corrects": c.corrects,
+                "gross": c.gross,
+                "currency": c.currency,
+                "reason": c.reason,
+                "issuedAt": c.issued_at.isoformat(),
+            }
+            for c in credits
         ],
         # D-10: what was charged, refunded and paid out, and the card's
         # fingerprint (never the card: that stays with Stripe).

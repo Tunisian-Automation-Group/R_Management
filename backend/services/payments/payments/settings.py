@@ -34,11 +34,19 @@ class Settings(CommonSettings):
     # Both lines show locally, as a German issuer's invoice has them (V7-10).
     legal_vat_id: str = "DE000000000 (local)"
     legal_tax_number: str = "00/000/00000 (local)"
+    # A company's business letters name its register court and number and
+    # its managing directors (§ 35a GmbHG, § 37a HGB), invoices included.
+    legal_register: str = "Amtsgericht Charlottenburg, HRB 000000 B (local)"
+    legal_directors: str = ""
+    legal_email: str = "hello@cappy.local"
+    # The issuer's country (ISO 3166-1): decides reverse charge vs. domestic VAT.
+    legal_country: str = "DE"
     # The issuer's calendar and tax (invoices.Issuer): Germany by default.
     invoice_time_zone: str = "Europe/Berlin"
     invoice_tax_rate_bps: int = 1900
     invoice_tax_label: str = "USt"
-    invoice_retention_years: int = 10
+    # § 14b (1) UStG and § 147 (3) AO keep invoices 8 years since 2025 (BEG IV).
+    invoice_retention_years: int = 8
 
     def unsafe_reasons(self) -> list[str]:
         problems = super().unsafe_reasons()
@@ -57,6 +65,10 @@ class Settings(CommonSettings):
         vat = self.legal_vat_id if "local" not in self.legal_vat_id else ""
         if not vat and (not self.legal_tax_number or "local" in self.legal_tax_number):
             problems.append("LEGAL_VAT_ID or LEGAL_TAX_NUMBER is required (invoices, § 14 UStG)")
+        if "local" in self.legal_register:
+            problems.append("LEGAL_REGISTER must be the operator's register entry, or empty")
+        if not self.legal_email or self.legal_email.endswith(".local"):
+            problems.append("LEGAL_EMAIL is required (the invoice footer, § 35a GmbHG)")
         if "local" in self.legal_vat_id:
             problems.append("LEGAL_VAT_ID must be the operator's, not the local placeholder")
         if not self.web_base_url.startswith("https://"):
