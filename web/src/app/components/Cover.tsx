@@ -3,7 +3,6 @@ import type { CategoryId, Iso, Slot } from '../../domain/types.ts'
 import { category } from '../../domain/categories.ts'
 import { locale, t } from '../../i18n.ts'
 import { weekday2 } from '../format.ts'
-import { Icon, categoryIcon } from './Icon.tsx'
 
 /** Matching's minimum lead time: nothing can be booked to start sooner. The
  *  deployed 2 hours; the dev server runs against the local stack, which books
@@ -223,8 +222,8 @@ export function Plate({
           )}
         </div>
       ) : (
-        // No photo and no times to set large (UX-1, judge a/J-5): the
-        // category's own mark, large, in a lit glass disc on a plate tinted
+        // No photo and no times to set large (UX-1, judge a/J-5, VD-14): the
+        // category's object, large, on a plate tinted
         // by its category, so a grid of them has variety and reads as
         // designed. No text: the card's title says what it is, and nothing
         // sits under the hour tag or beside the category chip.
@@ -234,18 +233,19 @@ export function Plate({
             backgroundImage: `radial-gradient(90% 70% at 72% 18%, var(--cat-glow-${categoryId}, var(--cat-glow)), transparent 70%)`,
           }}
         >
-          <span
-            className={`glass-dark grid place-items-center rounded-full ${thumb ? 'h-9 w-9' : 'h-24 w-24'}`}
-            style={{ boxShadow: 'var(--plate-disc-shadow)' }}
-          >
-            <Icon name={categoryIcon(meta.icon)} size={thumb ? 18 : 44} strokeWidth={1.5} className="text-[var(--on-field)]" />
-          </span>
+          <CategoryObject id={categoryId} size={thumb ? 40 : 120} className={thumb ? 'w-[80%]' : 'w-[min(120px,55%)]'} />
         </div>
       )}
 
       {children}
     </div>
   )
+}
+
+/** A category's object (VD-13): one of the nine layered drawings in
+ *  public/objects, decorative, so the label beside it does the naming. */
+export function CategoryObject({ id, size, className = '' }: { id: CategoryId; size: number; className?: string }) {
+  return <img src={`/objects/${id}.svg`} alt="" width={size} height={size} loading="lazy" decoding="async" draggable={false} className={`h-auto select-none ${className}`} />
 }
 
 /** Kept so callers that still say `Cover` keep working. */

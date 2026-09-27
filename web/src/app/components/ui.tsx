@@ -718,15 +718,18 @@ export function EmptyState({
   title,
   body,
   action,
+  visual,
 }: {
   icon: IconName
   title: string
   body: string
   action?: ReactNode
+  /** A category's object (VD-14) in place of the small icon, when there is one. */
+  visual?: ReactNode
 }) {
   return (
     <div className="anim-rise border-t border-[var(--line)] py-14">
-      <Icon name={icon} size={20} className="mb-5 text-[var(--ink-4)]" strokeWidth={1.6} />
+      {visual ? <div className="mb-4">{visual}</div> : <Icon name={icon} size={20} className="mb-5 text-[var(--ink-4)]" strokeWidth={1.6} />}
       <h2 className="t-h2 mb-2 max-w-[20ch]">{title}</h2>
       <p className="t-body mb-6 max-w-[42ch] text-[var(--ink-3)]">{body}</p>
       {action}

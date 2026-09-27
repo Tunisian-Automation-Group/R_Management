@@ -20,6 +20,7 @@ import {
 import { buildRequirement, useCappy, useMe } from '../store.tsx'
 import { Screen, SectionHead } from '../components/AppShell.tsx'
 import { Icon, categoryIcon } from '../components/Icon.tsx'
+import { CategoryObject } from '../components/Cover.tsx'
 import { ListingCard } from '../components/ListingCard.tsx'
 import { Photo, PhotoGrid, SaveButton, WhenChip } from '../components/Photo.tsx'
 import { LocationPicker } from '../components/LocationPicker.tsx'
@@ -284,12 +285,8 @@ export function Browse() {
                   // the category's mark and its name under it, not a form chip.
                   className="group flex w-max min-w-[76px] max-w-[max(120px,7.5rem)] shrink-0 flex-col items-center gap-2 pt-1 text-center"
                 >
-                  <span
-                    className="grid h-14 w-14 place-items-center rounded-[var(--radius-card)] bg-[var(--elevated)] text-[var(--ink)] shadow-[var(--shadow-1)]
-                      transition-transform duration-[var(--dur-snappy)] ease-[var(--spring-bouncy)] group-hover:-translate-y-0.5 group-active:scale-95"
-                  >
-                    <Icon name={categoryIcon(c.icon)} size={26} strokeWidth={1.6} />
-                  </span>
+                  {/* The category's object (VD-14): 56 px, springs when pressed. */}
+                  <CategoryObject id={c.id} size={56} className="transition-transform duration-[var(--dur-long)] ease-[var(--spring-bouncy)] group-hover:-translate-y-0.5 group-active:scale-110" />
                   <span className="text-label font-medium text-[var(--ink-2)]">{c.label}</span>
                 </button>
               ))}
@@ -472,6 +469,7 @@ export function Browse() {
             {!matches || matches.length === 0 ? (
               <EmptyState
                 icon="calendar"
+                visual={<CategoryObject id={meta.id} size={96} />}
                 title={t('Nothing matches that yet')}
                 body={
                   meta.mode === 'window'
