@@ -1609,9 +1609,18 @@ select {
 
 /* No dividers in a sheet (VD-12): the body fades out under the action row
    instead, so what continues below reads as "scroll for more". */
-.sheet-body {
-  -webkit-mask-image: linear-gradient(#000 calc(100% - 24px), transparent);
-  mask-image: linear-gradient(#000 calc(100% - 24px), transparent);
+/* A sheet's header and action row (VD-12): glass the content scrolls under,
+   flat to the sheet's edges, so no rim or specular band, and no shadow. */
+.glass.sheet-bar {
+  position: sticky;
+  border-radius: 0;
+  box-shadow: none;
+  /* The sheet's own colour, frosted: at rest it reads as one surface. */
+  background: color-mix(in srgb, var(--elevated) 82%, transparent);
+}
+.glass.sheet-bar::before,
+.glass.sheet-bar::after {
+  display: none;
 }
 
 /* The photo page's bar (VD-9): hidden over the photo, glass once it has

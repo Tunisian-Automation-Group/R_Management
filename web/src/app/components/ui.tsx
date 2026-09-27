@@ -641,10 +641,13 @@ export function Sheet({
           transition: drag === null ? 'transform var(--dur-medium) var(--ease-spring-spatial)' : 'none',
         }}
       >
+        {/* One scroller: the header and the action row are glass and stick to
+            its edges, so the content passes under them (VD-12, iOS 26). */}
+        <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain">
         {/* The grabber: drag it (or the title bar) down to close or to the
             medium height, up to grow; it is also a button, so the height can
             be changed without a gesture. Not on a dialog. */}
-        <div onPointerDown={onDown} onPointerMove={onMove} onPointerUp={onUp} onPointerCancel={onUp} className="touch-none md:touch-auto">
+        <div onPointerDown={onDown} onPointerMove={onMove} onPointerUp={onUp} onPointerCancel={onUp} className="glass sheet-bar sticky top-0 z-10 touch-none md:touch-auto">
         {resizable ? (
           <button
             type="button"
@@ -674,15 +677,16 @@ export function Sheet({
           </button>
         </div>
         </div>
-        <div data-sheet-body className="sheet-body min-h-0 flex-1 overflow-y-auto overscroll-contain px-5 pb-4 pt-3">{children}</div>
+        <div data-sheet-body className="px-5 pb-4 pt-3">{children}</div>
         {footer && (
           <div
-            className="px-5 pt-3"
+            className="glass sheet-bar sticky bottom-0 z-10 px-5 pt-3"
             style={{ paddingBottom: 'max(18px, env(safe-area-inset-bottom))' }}
           >
             {footer}
           </div>
         )}
+        </div>
       </div>
     </div>
   )
