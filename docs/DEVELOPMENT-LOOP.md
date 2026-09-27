@@ -96,6 +96,8 @@ After a limit hit:
 
 ## 5. Where things are
 
+- **UI rounds:** how the visual work was done, and its open points: `docs/UI-ROUNDS.md`; the judge's queue: `docs/UI-JUDGE.md`.
+
 - **Tasks:** `docs/TASKS.md`, grouped by source (V, U, S, P, M, D, F, FL, H,
   GD, R2, UX, VD).
 - **Readiness:** `docs/READINESS.md`.
