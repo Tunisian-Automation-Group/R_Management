@@ -475,7 +475,7 @@ export function Listing({ preview }: { preview?: { detail: ListingDetail; banner
                 ? t('This listing: {avg} from {n} reviews', { avg: oneDecimal(info.reviews.average), n: info.reviews.count })
                 : t('No reviews of this listing yet')
             }
-            className="inline-flex min-h-[44px] items-center underline decoration-[var(--line-strong)] underline-offset-4 hover:decoration-[var(--ink)]"
+            className="inline-flex min-h-[44px] min-w-[44px] items-center underline decoration-[var(--line-strong)] underline-offset-4 hover:decoration-[var(--ink)]"
           >
             <Stars value={info.reviews.average} count={info.reviews.count} />
           </a>
