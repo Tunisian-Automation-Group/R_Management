@@ -1,5 +1,5 @@
 import { lazy, Suspense, useEffect, useRef, useState, type ReactNode } from 'react'
-import { Link, useParams } from 'react-router-dom'
+import { Link, useLocation, useNavigate, useParams } from 'react-router-dom'
 import { useAuthReady, useSession } from '../../data/auth.ts'
 import { SignedOut } from '../components/SignedOut.tsx'
 import { NotFound } from './NotFound.tsx'
@@ -41,6 +41,7 @@ import { DECLINE_REASONS } from './Earn.tsx'
 import { messageOf, useToast } from '../store.tsx'
 import { Screen } from '../components/AppShell.tsx'
 import { Photo } from '../components/Photo.tsx'
+import { Ticket } from '../components/Ticket.tsx'
 import { Icon } from '../components/Icon.tsx'
 import { Avatar, Banner, Button, Card, Chip, DetailSkeleton, Field, Row, Sheet, Stars, Textarea } from '../components/ui.tsx'
 import { REVIEW_TAGS } from '../../domain/reviews.ts'
@@ -158,6 +159,16 @@ function Detail({
       attempt.settle(err)
       throw err
     }
+  }
+
+  // Arrived straight from sending it (VD-15): the ticket, once. Dropping the
+  // state on close means a reload or Back never plays it again.
+  const loc = useLocation()
+  const nav = useNavigate()
+  const [ticket, setTicket] = useState(() => Boolean((loc.state as { fresh?: boolean } | null)?.fresh))
+  const closeTicket = () => {
+    setTicket(false)
+    nav(loc.pathname, { replace: true, state: null })
   }
 
   const { quote } = booking.match
@@ -304,7 +315,7 @@ function Detail({
     </Button>
   ) : (
     <Button block size="lg" variant="secondary" to={'/'}>
-      {t('Browse capacity')}
+      {t('Find something to rent')}
     </Button>
   )
 
@@ -679,7 +690,7 @@ function Detail({
           <div className="flex items-center gap-3.5">
             <Avatar initials={other.initials} size={44} business={other.kind === 'business'} />
             <div className="min-w-0 flex-1">
-              <p className="truncate text-body font-semibold">{other.name}</p>
+              <p className="[overflow-wrap:anywhere] text-body font-semibold">{other.name}</p>
               <p className="t-sm text-[var(--ink-3)]">
                 {asOwner ? renterRecord(other.renterRatingSum, other.renterJobs) : trackRecord(other)}
               </p>
@@ -755,11 +766,11 @@ function Detail({
 
       <Card className="mt-3 flex flex-wrap items-center justify-between gap-3 p-5">
         <p className="t-sm text-[var(--ink-3)]">{t('Something not right? Tell us, and we see this booking with it.')}</p>
-        <div className="flex gap-4 text-body font-semibold">
-          <Link to="/help/problems" className="underline">
+        <div className="flex flex-wrap gap-x-5 text-body font-semibold">
+          <Link to="/help/problems" className="inline-flex min-h-[44px] min-w-[44px] items-center underline">
             {t('Help')}
           </Link>
-          <a href={supportHref(booking.id)} className="underline">
+          <a href={supportHref(booking.id)} className="inline-flex min-h-[44px] items-center underline">
             {t('Get help with this booking')}
           </a>
         </div>
@@ -1084,7 +1095,7 @@ function Detail({
                   key={o.label}
                   onClick={() => setOnTime(o.v)}
                   aria-pressed={onTime === o.v}
-                  className={`min-h-[48px] flex-1 rounded-[var(--radius-control)] border text-body font-semibold transition-colors duration-[var(--dur-short)] ${
+                  className={`min-h-[48px] flex-1 rounded-[var(--radius-capsule)] border text-body font-semibold transition-colors duration-[var(--dur-short)] ${
                     onTime === o.v
                       ? 'border-[var(--field)] bg-[var(--field)] text-[var(--on-field)]'
                       : 'border-[var(--line)] hover:border-[var(--ink-4)]'
@@ -1202,6 +1213,20 @@ function Detail({
               })}
         </p>
       </Sheet>
+      {ticket && !asOwner && (
+        <Ticket
+          booking={booking}
+          title={title}
+          instant={Boolean(booking.listing?.instantBook ?? listing?.instantBook)}
+          ownerName={first}
+          responseMins={owner?.responseMins}
+          onDone={closeTicket}
+          onMessage={() => {
+            closeTicket()
+            requestAnimationFrame(() => document.getElementById('messages')?.scrollIntoView({ block: 'start' }))
+          }}
+        />
+      )}
     </Screen>
   )
 }

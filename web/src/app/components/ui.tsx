@@ -63,10 +63,10 @@ export function Button({
   // sit inside a larger tap target.
   const sizes: Record<string, string> = {
     lg: 'min-h-[52px] px-7 text-body font-semibold gap-2',
-    md: 'min-h-[44px] px-5 text-body font-semibold gap-1.5',
-    sm: 'tap min-h-[34px] px-3.5 text-label font-semibold gap-1.5',
+    md: 'min-h-[48px] px-5 text-body font-semibold gap-1.5',
+    sm: 'min-h-[44px] px-4 text-label font-semibold gap-1.5',
   }
-  const cls = `press inline-flex items-center justify-center rounded-[var(--radius-control)] ${sizes[size]} ${variants[variant]} ${TR}
+  const cls = `press inline-flex items-center justify-center rounded-[var(--radius-capsule)] ${sizes[size]} ${variants[variant]} ${TR}
         disabled:pointer-events-none disabled:border-transparent disabled:bg-[var(--disabled-bg)] disabled:text-[var(--ink-4)] disabled:shadow-none ${block ? 'w-full' : ''} ${className}`
   const inner = (
     <>
@@ -142,7 +142,7 @@ export function Chip({
       onClick={onClick}
       aria-pressed={selected}
       aria-label={ariaLabel}
-      className={`press tap inline-flex min-h-[38px] max-w-full shrink-0 items-center gap-1.5 rounded-[var(--radius-control)] border px-3.5 py-1 text-left text-label font-medium ${TR}
+      className={`press inline-flex min-h-[44px] min-w-[44px] max-w-full shrink-0 items-center justify-center gap-1.5 rounded-[var(--radius-capsule)] border px-3.5 py-1 text-left text-label font-medium ${TR}
         ${
           selected
             ? 'border-[var(--field)] bg-[var(--field)] font-semibold text-[var(--on-field)]'
@@ -163,17 +163,18 @@ export function Pill({
   tone?: 'neutral' | 'accent' | 'success' | 'warn' | 'danger'
   icon?: IconName
 }) {
-  // A status word with a rule under it, not a coloured lozenge.
+  // A tinted status chip: a status is not a link, so it carries no underline
+  // (owner review, 2026-09-27).
   const tones = {
-    neutral: 'text-[var(--ink-4)] decoration-[var(--line-strong)]',
-    accent: 'text-[var(--accent-text)] decoration-[var(--accent-muted)]',
-    success: 'text-[var(--success-text)] decoration-[var(--success)]/40',
-    warn: 'text-[var(--warn)] decoration-[var(--warn)]/40',
-    danger: 'text-[var(--danger)] decoration-[var(--danger)]/40',
+    neutral: 'text-[var(--ink-3)] bg-[var(--sunken)]',
+    accent: 'text-[var(--accent-text)] bg-[var(--accent-subtle)]',
+    success: 'text-[var(--success-text)] bg-[var(--success-subtle)]',
+    warn: 'text-[var(--warn)] bg-[var(--warn-subtle)]',
+    danger: 'text-[var(--danger)] bg-[var(--danger-subtle)]',
   }[tone]
   return (
     <span
-      className={`inline-flex items-center gap-1 text-label font-semibold underline decoration-2 underline-offset-[5px] ${tones}`}
+      className={`inline-flex items-center gap-1 rounded-[var(--radius-capsule)] px-2.5 py-1 text-label font-semibold ${tones}`}
     >
       {icon && <Icon name={icon} size={13} strokeWidth={2.2} />}
       {children}
@@ -427,13 +428,42 @@ export function Segmented<T extends string>({
   value,
   onChange,
   label,
+  glass = false,
 }: {
   options: { value: T; label: string }[]
   value: T
   onChange: (v: T) => void
   label: string
+  /** A glass capsule with a droplet on the chosen segment (VD-19), for a
+   *  screen's one filter, rather than the travelling rule of a tab set. */
+  glass?: boolean
 }) {
   const index = Math.max(0, options.findIndex((o) => o.value === value))
+  if (glass)
+    return (
+      <div role="tablist" aria-label={label} className="glass relative flex w-full rounded-[var(--radius-capsule)] p-1">
+        <span
+          aria-hidden="true"
+          className="pointer-events-none absolute inset-y-1 left-1 rounded-[var(--radius-capsule)] bg-[var(--dock-active)] shadow-[var(--shadow-1)] transition-transform duration-[var(--dur-snappy)] ease-[var(--spring-snappy)]"
+          style={{ width: `calc((100% - 8px) / ${options.length})`, transform: `translateX(${index * 100}%)` }}
+        />
+        {options.map((o) => {
+          const on = o.value === value
+          return (
+            <button
+              key={o.value}
+              role="tab"
+              aria-selected={on}
+              onClick={() => onChange(o.value)}
+              className={`tap relative z-[1] min-h-[40px] min-w-0 flex-1 rounded-[var(--radius-capsule)] px-2 text-body [hyphens:manual] [overflow-wrap:anywhere] ${TR}
+                ${on ? 'font-semibold text-[var(--dock-active-ink)]' : 'font-medium text-[var(--ink-2)] hover:text-[var(--ink)]'}`}
+            >
+              {o.label}
+            </button>
+          )
+        })}
+      </div>
+    )
   return (
     <div
       role="tablist"
@@ -457,7 +487,7 @@ export function Segmented<T extends string>({
             role="tab"
             aria-selected={on}
             onClick={() => onChange(o.value)}
-            className={`tap relative z-[1] min-h-[44px] min-w-0 flex-1 px-1.5 text-body [hyphens:auto] [overflow-wrap:anywhere] ${TR}
+            className={`tap relative z-[1] min-h-[44px] min-w-0 flex-1 px-1.5 text-body [hyphens:manual] [overflow-wrap:anywhere] ${TR}
               ${on ? 'font-semibold text-[var(--ink)]' : 'font-medium text-[var(--ink-4)] hover:text-[var(--ink-2)]'}`}
           >
             {o.label}
@@ -627,18 +657,27 @@ export function Sheet({
           if (leaving && e.target === e.currentTarget) setMounted(false)
         }}
         className={`${leaving ? (wide ? 'anim-dialog-out' : 'anim-sheet-out') : wide ? 'anim-dialog' : 'anim-sheet'}
-          glass sheet-pane relative flex w-full max-w-[540px] flex-col shadow-[var(--shadow-sheet)]
-          ${detent === 'medium' ? 'max-h-[55dvh]' : 'max-h-[88dvh]'}
-          rounded-t-[var(--sheet-radius)] md:max-h-[85dvh] md:rounded-[var(--sheet-radius)]`}
+          sheet-pane relative flex w-full max-w-[540px] flex-col bg-[var(--elevated)] shadow-[var(--shadow-sheet)]
+          ${
+            // At the medium height a sheet floats, inset 8 with every corner
+            // rounded; at the large height it meets the edges (VD-12, iOS 26).
+            detent === 'medium'
+              ? 'max-h-[55dvh] rounded-[var(--sheet-radius)] max-md:mx-2 max-md:mb-2'
+              : 'max-h-[88dvh] rounded-t-[var(--sheet-radius)]'
+          }
+          md:mx-0 md:mb-0 md:max-h-[85dvh] md:rounded-[var(--sheet-radius)]`}
         style={{
           transform: drag ? `translateY(${drag}px)` : undefined,
           transition: drag === null ? 'transform var(--dur-medium) var(--ease-spring-spatial)' : 'none',
         }}
       >
+        {/* One scroller: the header and the action row are glass and stick to
+            its edges, so the content passes under them (VD-12, iOS 26). */}
+        <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain">
         {/* The grabber: drag it (or the title bar) down to close or to the
             medium height, up to grow; it is also a button, so the height can
             be changed without a gesture. Not on a dialog. */}
-        <div onPointerDown={onDown} onPointerMove={onMove} onPointerUp={onUp} onPointerCancel={onUp} className="touch-none md:touch-auto">
+        <div onPointerDown={onDown} onPointerMove={onMove} onPointerUp={onUp} onPointerCancel={onUp} className="glass sheet-bar sticky top-0 z-10 touch-none md:touch-auto">
         {resizable ? (
           <button
             type="button"
@@ -654,7 +693,7 @@ export function Sheet({
             <span className="h-[5px] w-9 rounded-full bg-[var(--line-strong)] opacity-60" />
           </span>
         )}
-        <div className="flex items-center justify-between gap-3 border-b border-[var(--line)] px-5 pb-4 pt-3 md:pt-5">
+        <div className="flex items-center justify-between gap-3 px-5 pb-2 pt-3 md:pt-5">
           <h2 id={titleId} className="t-title-m min-w-0">
             {title}
           </h2>
@@ -662,21 +701,22 @@ export function Sheet({
             data-no-drag
             onClick={onClose}
             aria-label={t('Close')}
-            className={`grid h-10 w-10 shrink-0 place-items-center rounded-[var(--radius-control)] text-[var(--ink-3)] ${TR} hover:bg-[var(--sunken)] hover:text-[var(--ink)]`}
+            className={`grid h-10 w-10 shrink-0 place-items-center rounded-full bg-[var(--sunken)] text-[var(--ink-2)] ${TR} hover:text-[var(--ink)]`}
           >
             <Icon name="close" size={18} strokeWidth={2.2} />
           </button>
         </div>
         </div>
-        <div data-sheet-body className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-5 pb-2 pt-5">{children}</div>
+        <div data-sheet-body className="px-5 pb-4 pt-3">{children}</div>
         {footer && (
           <div
-            className="border-t border-[var(--line)] px-5 pt-4"
+            className="glass sheet-bar sticky bottom-0 z-10 px-5 pt-3"
             style={{ paddingBottom: 'max(18px, env(safe-area-inset-bottom))' }}
           >
             {footer}
           </div>
         )}
+        </div>
       </div>
     </div>
   )
@@ -707,15 +747,18 @@ export function EmptyState({
   title,
   body,
   action,
+  visual,
 }: {
   icon: IconName
   title: string
   body: string
   action?: ReactNode
+  /** A category's object (VD-14) in place of the small icon, when there is one. */
+  visual?: ReactNode
 }) {
   return (
     <div className="anim-rise border-t border-[var(--line)] py-14">
-      <Icon name={icon} size={20} className="mb-5 text-[var(--ink-4)]" strokeWidth={1.6} />
+      {visual ? <div className="mb-4">{visual}</div> : <Icon name={icon} size={20} className="mb-5 text-[var(--ink-4)]" strokeWidth={1.6} />}
       <h2 className="t-h2 mb-2 max-w-[20ch]">{title}</h2>
       <p className="t-body mb-6 max-w-[42ch] text-[var(--ink-3)]">{body}</p>
       {action}
@@ -773,11 +816,12 @@ export function Row({
   const color =
     tone === 'accent' ? 'text-[var(--accent-text)]' : tone === 'muted' ? 'text-[var(--ink-4)]' : ''
   return (
-    <div className="flex items-baseline justify-between gap-5 py-2.5">
+    // Label and value side by side, and stacked when the text is large (J-11).
+    <div className="flex flex-wrap items-baseline justify-between gap-x-5 gap-y-0.5 py-2.5">
       <span className="t-sm min-w-0 text-[var(--ink-3)]">{label}</span>
       {/* Values wrap rather than run off the edge. Some of them are sentences. */}
       <span
-        className={`tnum min-w-0 text-right ${strong ? 'text-body-l font-bold' : 'text-body font-medium'} ${color}`}
+        className={`tnum ml-auto min-w-0 text-right ${strong ? 'text-body-l font-bold' : 'text-body font-medium'} ${color}`}
       >
         {value}
       </span>
@@ -831,8 +875,15 @@ export function TapLink({
   to,
   className,
   children,
+  prefetch,
   ...rest
-}: { to: string; className?: string; children: ReactNode } & Omit<React.AnchorHTMLAttributes<HTMLAnchorElement>, 'href'>) {
+}: {
+  to: string
+  className?: string
+  children: ReactNode
+  /** Loads the next screen first (for up to 350 ms) so the shared elements have somewhere to land. */
+  prefetch?: () => Promise<unknown>
+} & Omit<React.AnchorHTMLAttributes<HTMLAnchorElement>, 'href'>) {
   const nav = useNav()
   return (
     <a
@@ -843,7 +894,16 @@ export function TapLink({
         rest.onClick?.(e)
         if (e.defaultPrevented || e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return
         e.preventDefault()
-        nav(to)
+        // The hour tag and the photo travel into the listing (VD-16): named on
+        // the tapped card only, since a view-transition name must be unique. The
+        // card unmounts with the screen, so the names leave with it.
+        const tag = e.currentTarget.closest('[data-card]')?.querySelector<HTMLElement>('[data-hour]')
+        if (tag) {
+          tag.style.viewTransitionName = 'hour'
+          if (tag.parentElement) tag.parentElement.style.viewTransitionName = 'hero'
+        }
+        if (!prefetch) return nav(to)
+        void Promise.race([prefetch(), new Promise((ok) => setTimeout(ok, 350))]).finally(() => nav(to))
       }}
     >
       {children}

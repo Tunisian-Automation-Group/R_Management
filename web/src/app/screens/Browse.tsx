@@ -1,12 +1,14 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { useNav } from '../nav.ts'
 import { Link, useSearchParams } from 'react-router-dom'
+import { useQueryClient } from '@tanstack/react-query'
 import { rating } from '../../domain/types.ts'
 import { CATEGORIES, GROUPS, categoriesIn, category, durationLabel } from '../../domain/categories.ts'
 import type { SortKey } from '../../domain/match.ts'
 import { formatMoney } from '../../domain/money.ts'
 import {
   SEARCH_MIN,
+  getListing,
   useCities,
   useDistricts,
   useMatches,
@@ -18,6 +20,7 @@ import {
 import { buildRequirement, useCappy, useMe } from '../store.tsx'
 import { Screen, SectionHead } from '../components/AppShell.tsx'
 import { Icon, categoryIcon } from '../components/Icon.tsx'
+import { CategoryObject } from '../components/Cover.tsx'
 import { ListingCard } from '../components/ListingCard.tsx'
 import { Photo, PhotoGrid, SaveButton, WhenChip } from '../components/Photo.tsx'
 import { LocationPicker } from '../components/LocationPicker.tsx'
@@ -41,6 +44,16 @@ export function Browse() {
   const ME = useMe()
   const [filtersOpen, setFiltersOpen] = useState(false)
   const [showMap, setShowMap] = useState(false)
+  const [edgeSentinel, setEdgeSentinel] = useState<HTMLSpanElement | null>(null)
+  const [stuck, setStuck] = useState(false)
+  useEffect(() => {
+    const el = edgeSentinel
+    if (!el) return
+    // Stuck once the line just above the search has scrolled past its stick point.
+    const io = new IntersectionObserver(([e]) => setStuck(!e.isIntersecting && e.boundingClientRect.top < 0), { rootMargin: '-64px 0px 0px 0px' })
+    io.observe(el)
+    return () => io.disconnect()
+  }, [edgeSentinel])
   // The sort is part of the address like the rest of the search.
   const [urlParams, setUrlParams] = useSearchParams()
   const sort: SortKey = SORTS.find((k) => k === urlParams.get('sort')) ?? 'best'
@@ -124,17 +137,12 @@ export function Browse() {
   return (
     <Screen wide>
       <PhotoGrid>
-      {/* ------------------------------------------------------------ masthead */}
-      <header className="flex items-baseline justify-between gap-3 pb-2 pt-8 md:pt-10">
-        <h1 className="min-w-0">
-          <span className="t-h1 md:hidden">Cappy</span>
-          <span className="t-h1 hidden md:block">{t('Capacity near you')}</span>
-        </h1>
-        <span className="hidden md:block">
-          <span className="t-lede mt-2 block max-w-[48ch]">
-            {t('Someone within reach has a machine, a truck or a room standing idle right now. Buy the hours, not the thing.')}
-          </span>
-        </span>
+      {/* ------------------------------------------------------------ masthead
+          Content first (owner, 2026-09-27): the brand in one line, where you
+          are, and one plain sentence of what this is. The search is the hero
+          and the first listings sit above the fold on a 390 px phone. */}
+      <header className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1 pt-3 md:pt-8">
+        <span className="t-wordmark md:hidden">Cappy</span>
         <LocationPicker
           label={here.name === here.city ? here.name : `${here.name}, ${here.city}`}
           current={here.metro}
@@ -144,20 +152,24 @@ export function Browse() {
           onPickDistrict={(name) => send({ type: 'SEARCH_CHANGED', patch: { district: name, districtChosen: true } })}
         />
       </header>
-
+      <h1 className="t-h2 mt-5 max-w-[20ch] text-balance md:mt-4 md:max-w-none">{t('Rent what you need, by the hour')}</h1>
       {/* ------------------------------------------------------------- search */}
+      {/* J-17: the fade behind the search paints only once it is stuck; at rest
+          it painted page colour over the headline above it. */}
+      <span ref={setEdgeSentinel} aria-hidden="true" className="block h-px" />
       <div
+        data-stuck={stuck ? '' : undefined}
         className="scroll-edge isolate sticky z-20 pb-3 pt-4"
-        style={{ top: 'env(safe-area-inset-top)', marginInline: -20, paddingInline: 20 }}
+        style={{ top: 'calc(env(safe-area-inset-top) + 8px)', marginInline: -20, paddingInline: 20 }}
       >
         {/* The field is its own glass pane, the way the kit's search bars are,
             rather than a rule drawn across the page. */}
-        <div className="glass relative mx-auto max-w-[620px] rounded-[var(--radius-l)] px-4 py-[11px] shadow-[var(--glass-shadow)] md:max-w-none">
+        <div className="glass-strong relative flex min-h-16 max-w-[720px] items-center rounded-[var(--radius-xl)] px-5 py-2 shadow-[var(--glass-shadow-raised)]">
           <Icon
             name="search"
             size={17}
             strokeWidth={2}
-            className="pointer-events-none absolute left-4 top-[15px] text-[var(--ink-3)]"
+            className="pointer-events-none absolute left-5 top-1/2 -translate-y-1/2 text-[var(--ink-2)]"
           />
           <form
             role="search"
@@ -167,18 +179,31 @@ export function Browse() {
               e.preventDefault()
               if (matchMedia('(pointer: coarse)').matches) (document.activeElement as HTMLElement | null)?.blur()
             }}
+            className="w-full"
           >
-          <input
-            type="search"
-            enterKeyHint="search"
-            value={search.query}
-            aria-label={t('Search listings')}
-            placeholder={t('Milling, printing, PA rig, saw')}
-            onChange={(e) => send({ type: 'SEARCH_CHANGED', patch: { query: e.target.value } })}
-            className="h-[26px] w-full border-0 bg-transparent pl-7 text-body-l font-medium text-[var(--ink)]
-              outline-none placeholder:font-normal placeholder:text-[var(--ink-4)]"
-            style={{ fontVariationSettings: "'wdth' 104" }}
-          />
+          {/* The prompt and its examples are real text that wraps at any size
+              (J-2): an input's placeholder cannot wrap, so it is empty and the
+              words sit in the same grid cell, gone as soon as someone types. */}
+          <span className="grid pl-8">
+            <input
+              type="search"
+              enterKeyHint="search"
+              value={search.query}
+              aria-label={t('Search listings')}
+              aria-describedby="search-hint"
+              placeholder=" "
+              onChange={(e) => send({ type: 'SEARCH_CHANGED', patch: { query: e.target.value } })}
+              className="peer col-start-1 row-start-1 min-h-[1.5em] w-full self-center border-0 bg-transparent text-body-l font-semibold text-[var(--ink)] outline-none"
+            />
+            <span
+              id="search-hint"
+              aria-hidden="true"
+              className="pointer-events-none col-start-1 row-start-1 peer-[:not(:placeholder-shown)]:invisible"
+            >
+              <span className="block text-body-l font-semibold text-[var(--ink)]">{t('What do you need?')}</span>
+              <span className="block text-label text-[var(--ink-3)]">{t('Drill, van, 3D printer, studio…')}</span>
+            </span>
+          </span>
           </form>
         </div>
       </div>
@@ -212,7 +237,7 @@ export function Browse() {
                   <>
                     {plural(queryHits.length, '{n} match', '{n} matches')}
                     {' · '}
-                    <Link to="/legal/ranking" className="underline underline-offset-2">
+                    <Link to="/legal/ranking" className="inline-flex min-h-[44px] items-center underline underline-offset-2">
                       {t('How results are ordered')}
                     </Link>
                   </>
@@ -237,8 +262,8 @@ export function Browse() {
                           className="w-[52px] shrink-0 rounded-[var(--radius-plate)]"
                         />
                         <span className="min-w-0 flex-1">
-                          <span className="block truncate text-body font-semibold">{l.title}</span>
-                          <span className="t-sm block truncate text-[var(--ink-3)]">
+                          <span className="block [overflow-wrap:anywhere] text-body font-semibold">{l.title}</span>
+                          <span className="t-sm block [overflow-wrap:anywhere] text-[var(--ink-3)]">
                             {o.name}, {l.district}
                           </span>
                         </span>
@@ -265,25 +290,26 @@ export function Browse() {
                 of. The category index used to sit under twenty-nine cards and a
                 stats band, three screens down; it is now the first row. The full
                 grouped index further down stays, for browsing. */}
-            <nav aria-label={t('Categories')} className="rail mt-5 pb-1 md:m-0 md:mt-5 md:flex-wrap md:p-0">
+            <nav aria-label={t('Categories')} className="rail mt-2 pb-2 md:m-0 md:mt-4 md:flex-wrap md:gap-2 md:p-0">
               {CATEGORIES.map((c) => (
                 <button
                   key={c.id}
                   onClick={() => send({ type: 'SEARCH_CHANGED', patch: { categoryId: c.id } })}
-                  className="inline-flex shrink-0 items-center gap-2 rounded-full border border-[var(--line)]
-                    bg-[var(--surface)] px-3.5 py-2 text-label font-medium text-[var(--ink-2)]
-                    transition-colors duration-[var(--dur-short)] hover:border-[var(--line-strong)] hover:text-[var(--ink)]"
+                  // An icon row (owner, 2026-09-27; Airbnb, Uber): a tile with
+                  // the category's mark and its name under it, not a form chip.
+                  className="group flex w-max min-w-[76px] max-w-[max(120px,7.5rem)] shrink-0 flex-col items-center gap-2 pt-1 text-center"
                 >
-                  <Icon name={categoryIcon(c.icon)} size={16} strokeWidth={1.7} className="text-[var(--ink-3)]" />
-                  {c.label}
+                  {/* The category's object (VD-14): 56 px, springs when pressed. */}
+                  <CategoryObject id={c.id} size={56} className="transition-transform duration-[var(--dur-long)] ease-[var(--spring-bouncy)] group-hover:-translate-y-0.5 group-active:scale-110" />
+                  <span className="text-label font-medium text-[var(--ink-2)]">{c.label}</span>
                 </button>
               ))}
             </nav>
 
             <SectionHead
-              title={t('Free in the next 24 hours')}
+              title={t('Free today near you')}
               aside={spotlight.length > 0 ? String(spotlight.length) : undefined}
-              className="mt-7"
+              className="mt-4"
             />
             {spotQ.isPending ? (
               // Until the first answer: the rail's shape, never a false "nothing free" (V9-2).
@@ -298,8 +324,8 @@ export function Browse() {
             ) : spotlight.length === 0 ? (
               <EmptyState
                 icon="clock"
-                title={t('Nothing free nearby today')}
-                body={t('No idle capacity within {distance} today. Widening the radius usually finds something.', { distance: formatRadius(search.maxDistanceKm) })}
+                title={t('Nothing free near you today')}
+                body={t('Nothing is free within {distance} today. A wider area usually finds something.', { distance: formatRadius(search.maxDistanceKm) })}
                 action={
                   <Button
                     variant="secondary"
@@ -311,24 +337,16 @@ export function Browse() {
               />
             ) : (
               <>
-                {/* One thing shown large, then the rest small. A row of equal
-                    boxes gives a screen nothing to look at first. */}
-                <FeatureCard
-                  spot={spotlight[0]}
-                  to={`/listing/${spotlight[0].listing.id}`}
-                />
-                {spotlight.length > 1 && (
-                  <ul className="rail mt-8 pb-2 md:m-0 md:mt-10 md:grid md:grid-cols-4 md:gap-6 md:p-0">
-                    {spotlight.slice(1, allSpots ? undefined : 9).map((s) => (
-                      <li key={s.listing.id} className="md:w-auto">
-                        <SpotCard
-                          spot={s}
-                          to={`/listing/${s.listing.id}`}
-                        />
-                      </li>
-                    ))}
-                  </ul>
-                )}
+                {/* A rail of photographs, each with its hour tag (VD-10): the
+                    first thing seen is what is free, at a size where one weak
+                    photo cannot own the screen. A page shows four across. */}
+                <ul className="rail pb-2 md:m-0 md:grid md:grid-cols-4 md:gap-6 md:p-0">
+                  {spotlight.slice(0, allSpots ? undefined : 9).map((s, n) => (
+                    <li key={s.listing.id} className="md:w-auto">
+                      <SpotCard spot={s} to={`/listing/${s.listing.id}`} priority={n < 2} />
+                    </li>
+                  ))}
+                </ul>
                 {!allSpots && spotlight.length > 9 && (
                   <div className="mt-6">
                     <Button variant="secondary" onClick={() => setAllSpots(true)}>
@@ -340,7 +358,7 @@ export function Browse() {
             )}
 
 
-            <SectionHead title={t('What do you need?')} className="mt-14 md:mt-20" />
+            <SectionHead title={t('All categories')} className="mt-14 md:mt-20" />
             {/* Nine categories read as a wall. Three groups read as a decision:
                 are you short of making it, moving it, or the kit to do it with. */}
             <div className="md:grid md:grid-cols-3 md:gap-10">
@@ -363,7 +381,7 @@ export function Browse() {
                     />
                     <span className="min-w-0 flex-1">
                       <span className="block text-body font-semibold">{c.label}</span>
-                      <span className="t-sm block truncate text-[var(--ink-4)]">{c.blurb}</span>
+                      <span className="t-sm block [overflow-wrap:anywhere] text-[var(--ink-4)]">{c.blurb}</span>
                     </span>
                     <Icon
                       name="chevron-right"
@@ -382,7 +400,7 @@ export function Browse() {
         ) : (
           /* ------------------------------ a category is chosen: filters + ranked capacity */
           <>
-            <div className="border-t border-[var(--ink)] pt-4">
+            <div className="pt-6">
               <h2 className="t-h2">{meta.label}</h2>
               <p className="t-sm mt-1 text-[var(--ink-3)]">{meta.blurb}</p>
             </div>
@@ -418,7 +436,7 @@ export function Browse() {
                   {matches.length === 1 ? t('bookable slot') : t('bookable slots')}
                   {/* P2B Art. 5: how results are ordered, one tap from the results (H-3). */}
                   {' · '}
-                  <Link to="/legal/ranking" className="underline underline-offset-2">
+                  <Link to="/legal/ranking" className="inline-flex min-h-[44px] items-center underline underline-offset-2">
                     {t('How results are ordered')}
                   </Link>
                 </p>
@@ -429,7 +447,7 @@ export function Browse() {
                   <button
                     onClick={() => setShowMap((v) => !v)}
                     aria-pressed={showMap}
-                    className={`tap inline-flex min-h-[34px] items-center gap-1.5 rounded-[var(--radius-control)] border px-3 text-label font-medium transition-colors duration-[var(--dur-short)]
+                    className={`tap inline-flex min-h-[44px] items-center gap-1.5 rounded-[var(--radius-capsule)] border px-3 text-label font-medium transition-colors duration-[var(--dur-short)]
                       ${
                         showMap
                           ? 'border-[var(--field)] bg-[var(--field)] font-semibold text-[var(--on-field)]'
@@ -444,7 +462,7 @@ export function Browse() {
                     <select
                       value={sort}
                       onChange={(e) => setSort(e.target.value as SortKey)}
-                      className="min-h-[34px] appearance-none rounded-[var(--radius-control)] border border-[var(--line)] bg-transparent pl-3 pr-8 text-label font-medium text-[var(--ink-2)]"
+                      className="min-h-[44px] appearance-none rounded-[var(--radius-control)] border border-[var(--line)] bg-transparent pl-3 pr-8 text-label font-medium text-[var(--ink-2)]"
                     >
                       <option value="best">{t('Best match')}</option>
                       <option value="price">{t('Cheapest')}</option>
@@ -465,7 +483,8 @@ export function Browse() {
             {!matches || matches.length === 0 ? (
               <EmptyState
                 icon="calendar"
-                title={t('No idle capacity fits that')}
+                visual={<CategoryObject id={meta.id} size={96} />}
+                title={t('Nothing matches that yet')}
                 body={
                   meta.mode === 'window'
                     ? t('Nobody within {distance} has {duration} free {days}. A shorter booking or a wider radius usually fixes it.', { distance: formatRadius(search.maxDistanceKm), duration: durationLabel(search.hours), days: plural(search.withinDays, 'in the next 24 hours', 'in the next {n} days') })
@@ -723,67 +742,21 @@ function FilterGroup({ label, children, strip = false }: { label: string; childr
  * The lead item. A tall plate at full width with the opening time set across
  * it, and the details below in a single line of small type.
  */
-function FeatureCard({ spot, to }: { spot: Spotlight; to: string }) {
-  return (
-    // A card with a heart on it: the title is the one button, stretched over
-    // the whole card, and the heart sits above it (never a button in a button).
-    <div
-      className="group relative block w-full text-left transition-opacity duration-[var(--dur-medium)] hover:opacity-90
-        md:grid md:grid-cols-[1.7fr_1fr] md:items-end md:gap-10"
-    >
-      <Photo
-        src={spot.listing.photos?.[0]}
-        alt={spot.listing.title}
-        categoryId={spot.listing.category}
-        aspect={16 / 10}
-        claim={spot.listing.id}
-        width={1100}
-        sizes="(min-width: 768px) 700px, 100vw"
-        priority
-        className="w-full rounded-[var(--radius-plate)] shadow-[var(--shadow-plate)]"
-      >
-        <WhenChip
-          // The first start that can be booked (the owner needs notice), not the window's opening.
-          start={spot.offer.start}
-          className="bottom-4 left-4"
-        />
-        <SaveButton id={spot.listing.id} title={spot.listing.title} className="absolute right-4 top-4" />
-      </Photo>
-      {/* On a phone this sits under the photograph. On a page it sits beside it. */}
-      <span className="mt-5 block md:mt-0 md:pb-2">
-        <TapLink to={to} className="t-title-user block text-balance text-left after:absolute after:inset-0 after:content-['']">
-          {spot.listing.title}
-        </TapLink>
-        <span className="t-sm mt-2 hidden text-[var(--ink-3)] md:block">
-          {spot.listing.blurb}
-        </span>
-        <span className="mt-2.5 flex items-baseline justify-between gap-4 md:mt-5 md:border-t md:border-[var(--line)] md:pt-4">
-          <span className="t-sm tnum min-w-0 truncate text-[var(--ink-3)]">
-            {spot.listing.district}, {formatDistance(spot.distanceKm)}
-          </span>
-          <span className="tnum shrink-0 text-body-l font-semibold md:text-title-m">
-            <span className="mr-1 text-label font-normal text-[var(--ink-4)]">{t('from')}</span>
-            {formatMoney(spot.fromPrice, spot.currency)}
-          </span>
-        </span>
-      </span>
-    </div>
-  )
-}
-
 /** One thing that is free soon: what it is, when, and what it costs. */
-function SpotCard({ spot, to }: { spot: Spotlight; to: string }) {
+function SpotCard({ spot, to, priority = false }: { spot: Spotlight; to: string; priority?: boolean }) {
+  const qc = useQueryClient()
   return (
-    <div className="group relative w-[188px] text-left transition-opacity duration-[var(--dur-short)] hover:opacity-75 md:w-full">
+    <div data-card className="group relative w-[240px] text-left md:w-full">
       <Photo
         src={spot.listing.photos?.[0]}
         alt={spot.listing.title}
         categoryId={spot.listing.category}
-        aspect={4 / 3}
+        aspect={4 / 5}
         claim={spot.listing.id}
-        width={376}
-        sizes="(min-width: 768px) 25vw, 188px"
-        className="rounded-[var(--radius-plate)]"
+        width={480}
+        priority={priority}
+        sizes="(min-width: 768px) 25vw, 240px"
+        className="press-card rounded-[var(--radius-card)] shadow-[var(--shadow-1)]"
       >
         <WhenChip start={spot.offer.start} />
         <SaveButton id={spot.listing.id} title={spot.listing.title} />
@@ -791,12 +764,13 @@ function SpotCard({ spot, to }: { spot: Spotlight; to: string }) {
       <span className="block pt-3">
         <TapLink
           to={to}
-          className="line-clamp-2 block min-h-[40px] text-left text-body font-semibold leading-[1.25rem] after:absolute after:inset-0 after:content-['']"
+          prefetch={() => qc.prefetchQuery({ queryKey: ['listing', spot.listing.id], queryFn: () => getListing(spot.listing.id) })}
+          className="[overflow-wrap:anywhere] block min-h-[48px] text-left text-body-l font-semibold after:absolute after:inset-0 after:content-['']"
         >
           {spot.listing.title}
         </TapLink>
         <span className="mt-1.5 flex items-baseline justify-between gap-2">
-          <span className="t-sm tnum min-w-0 truncate text-[var(--ink-4)]">
+          <span className="t-sm tnum min-w-0 [overflow-wrap:anywhere] text-[var(--ink-4)]">
             {/* Trust at a glance, before anyone opens the listing. */}
             {rating(spot.owner) !== null && (
               <span className="mr-2 font-semibold text-[var(--ink-2)]" title={t("The owner's rating across all their jobs")}>

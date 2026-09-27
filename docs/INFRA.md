@@ -1,5 +1,9 @@
 # Infrastructure
 
+> **Deploys are off by default.** `deploy.yml` runs only when the repository
+> variable `DEPLOY_ENABLED` is `true` (since `9637675`); until the owner sets it,
+> a push or merge to `main` runs CI only and nothing reaches AWS.
+
 What Cappy runs on, per environment and cell, and why. This is a living doc
 (see `CLAUDE.md`): it describes the Terraform, compose file and workflows as
 committed. The reasons behind them are in the ADRs, mainly

@@ -99,7 +99,7 @@ export function Bookings() {
 
   if (!session) {
     return (
-      <Screen title={t('Bookings')} sub={t('Capacity you have taken from other people.')}>
+      <Screen title={t('Bookings')} sub={t('What you booked from other people.')}>
         <SignedOut what={t('see your bookings')} next="/bookings" />
       </Screen>
     )
@@ -114,7 +114,7 @@ export function Bookings() {
   return (
     <Screen
       title={t('Bookings')}
-      sub={hosting ? t('People booking what you listed.') : t('Capacity you have taken from other people.')}
+      sub={hosting ? t('People booking what you listed.') : t('What you booked from other people.')}
     >
       <div className="pb-4">
         <Segmented
@@ -156,7 +156,7 @@ export function Bookings() {
           />
           <div className="min-w-0 flex-1">
             <p className="t-label mb-1">{t('Next up')}</p>
-            <p className="truncate text-body-l font-semibold">{next.booking.listing?.title ?? t('Listing removed')}</p>
+            <p className="[overflow-wrap:anywhere] text-body-l font-semibold">{next.booking.listing?.title ?? t('Listing removed')}</p>
             <p className="t-sm tnum text-[var(--ink-3)]">{range(next.booking.match.start, next.booking.match.end)}</p>
             <p className="t-sm mt-1 font-semibold text-[var(--ink-2)]">{next.action}</p>
             <Button size="sm" className="mt-3" onClick={() => nav(`/bookings/${next.booking.id}`)}>
@@ -178,7 +178,7 @@ export function Bookings() {
           <EmptyState
             icon="ticket"
             title={t('No bookings yet')}
-            body={t("When you book someone's idle hour it shows up here. Once the owner accepts, you get the address and handover notes.")}
+            body={t('Book a tool, a van or a workshop and it shows up here. You get the address once the owner says yes.')}
             action={<Button to={'/'}>{t('Find something nearby')}</Button>}
           />
         )
@@ -191,7 +191,7 @@ export function Bookings() {
               ? t('Your past bookings are under the Past tab.')
               : t('Bookings move here once they are done, declined or cancelled.')
           }
-          action={tab === 'live' ? <Button to={'/'}>{t('Browse capacity')}</Button> : undefined}
+          action={tab === 'live' ? <Button to={'/'}>{t('Find something to rent')}</Button> : undefined}
         />
       ) : (
         <ul className="ruled border-t border-[var(--line)]">
@@ -240,7 +240,7 @@ function BookingRow({ booking, hosting, onOpen }: { booking: Booking; hosting: b
       />
       <span className="min-w-0 flex-1">
         <span className="flex items-baseline justify-between gap-3">
-          <span className={`truncate text-body font-semibold ${dim ? 'text-[var(--ink-3)]' : ''}`}>
+          <span className={`[overflow-wrap:anywhere] text-body font-semibold ${dim ? 'text-[var(--ink-3)]' : ''}`}>
             {title}
           </span>
           {amountOf(booking, hosting) === null ? (
@@ -254,8 +254,8 @@ function BookingRow({ booking, hosting, onOpen }: { booking: Booking; hosting: b
             </span>
           )}
         </span>
-        <span className="t-sm mt-0.5 block truncate text-[var(--ink-3)]">{ownerName}</span>
-        <span className="t-sm tnum mt-0.5 block truncate text-[var(--ink-3)]">
+        <span className="t-sm mt-0.5 block [overflow-wrap:anywhere] text-[var(--ink-3)]">{ownerName}</span>
+        <span className="t-sm tnum mt-0.5 block [overflow-wrap:anywhere] text-[var(--ink-3)]">
           {range(booking.match.start, booking.match.end)}
         </span>
         <span className="mt-2 block">

@@ -3,14 +3,16 @@
 // so a thread read on the phone is read on the desktop too. A thread opens on
 // its booking, where the booking card sits above the chat.
 import { useState } from 'react'
-import { useParams } from 'react-router-dom'
+import { Link, useParams } from 'react-router-dom'
+import { formatMoney } from '../../domain/money.ts'
 
-import { useBooking, useBookings, useInbox, useOwner, type InboxItem } from '../../data/repo.ts'
+import { HIDDEN_CONTACT, useBooking, useBookings, useInbox, useOwner, type InboxItem } from '../../data/repo.ts'
 import type { Booking } from '../../domain/types.ts'
-import { Screen } from '../components/AppShell.tsx'
+import { Screen, useLargeText } from '../components/AppShell.tsx'
 import { Conversation } from '../components/Conversation.tsx'
 import { Photo } from '../components/Photo.tsx'
-import { Button, Card, DetailSkeleton, EmptyState, Pill, Segmented, Skeleton, TapLink } from '../components/ui.tsx'
+import { Icon } from '../components/Icon.tsx'
+import { Avatar, Button, DetailSkeleton, EmptyState, Pill, Segmented, Skeleton, TapLink } from '../components/ui.tsx'
 import { ago, range } from '../format.ts'
 import { statusPill } from './Bookings.tsx'
 import { t } from '../../i18n.ts'
@@ -32,6 +34,7 @@ export function Inbox() {
   return (
     <Screen title={t('Inbox')}>
       <Segmented
+        glass
         label={t('Inbox')}
         value={tab}
         onChange={setTab}
@@ -79,24 +82,27 @@ function ThreadRow({ item }: { item: InboxItem }) {
   const asOwner = useBookings('owner').data?.items.find((b) => b.id === item.bookingId)
   const rated = asRenter ? Boolean(asRenter.outcome) : asOwner ? asOwner.renterRating != null : true
   const pill = statusPill(item.status, rated)
+  const category = (asRenter ?? asOwner)?.requirement.category
   return (
     <li>
       <TapLink to={`/inbox/${item.bookingId}`} className="press-soft flex w-full items-center gap-3.5 py-4 text-left">
-        {item.photo ? (
-          <Photo src={item.photo} alt="" categoryId="workshop" aspect={1} thumb width={52} className="w-[52px] shrink-0 rounded-[var(--radius-m)]" />
-        ) : (
-          // No photo and no category in the thread: a plain tile, never a guessed plate.
-          <span aria-hidden className="h-[52px] w-[52px] shrink-0 rounded-[var(--radius-m)] bg-[var(--sunken)]" />
-        )}
+        {/* Who first, then what (VD-19): the person, with the listing tucked at their shoulder. */}
+        <span className="relative shrink-0">
+          <Avatar initials={initialsOf(item.otherName ?? t('Your renter'))} size={48} />
+          <span className="absolute -bottom-2 -right-2 block w-6 overflow-hidden rounded-[var(--radius-xs)] ring-2 ring-[var(--page)]">
+            <Photo src={item.photo} alt="" categoryId={category ?? 'workshop'} aspect={1} thumb width={24} className="w-6" />
+          </span>
+        </span>
         <span className="min-w-0 flex-1">
           <span className="flex items-baseline justify-between gap-3">
-            <span className={`truncate text-body ${item.unread ? 'font-bold' : 'font-semibold'}`}>{item.otherName ?? t('Your renter')}</span>
+            <span className={`[overflow-wrap:anywhere] text-body ${item.unread ? 'font-bold' : 'font-semibold'}`}>{item.otherName ?? t('Your renter')}</span>
             <span className="tnum shrink-0 text-label text-[var(--ink-4)]">{ago(item.lastMessage.at)}</span>
           </span>
-          <span className="t-sm block truncate text-[var(--ink-3)]">{item.listingTitle || t('Listing removed')}</span>
-          <span className={`t-sm mt-0.5 block truncate ${item.unread ? 'text-[var(--ink)]' : 'text-[var(--ink-3)]'}`}>
+          <span className="t-sm block [overflow-wrap:anywhere] text-[var(--ink-3)]">{item.listingTitle || t('Listing removed')}</span>
+          {/* A preview: two lines, hidden contact details as one short mark; the thread has it all. */}
+          <span className={`t-sm mt-0.5 line-clamp-2 [overflow-wrap:anywhere] ${item.unread ? 'text-[var(--ink)]' : 'text-[var(--ink-3)]'}`}>
             {item.lastMessage.mine ? `${t('You')}: ` : ''}
-            {item.lastMessage.body}
+            {preview(item.lastMessage.body)}
           </span>
           <span className="mt-2 flex items-center gap-2">
             <Pill tone={pill.tone}>{pill.label}</Pill>
@@ -107,6 +113,14 @@ function ThreadRow({ item }: { item: InboxItem }) {
     </li>
   )
 }
+
+const preview = (body: string) => body.split(HIDDEN_CONTACT).join('•••')
+const initialsOf = (name: string) =>
+  name
+    .split(/\s+/)
+    .slice(0, 2)
+    .map((w) => w[0]?.toUpperCase() ?? '')
+    .join('')
 
 const OPEN_THREAD = new Set(['requested', 'accepted', 'active', 'disputed'])
 
@@ -136,31 +150,35 @@ export function Thread() {
   const b = booking.data
   const asOwner = Boolean(b?.requesterId)
   const other = useOwner(asOwner ? b?.requesterId : b?.match.ownerId)
+  // At large text the pinned booking would take half the screen: it scrolls away instead.
+  const big = useLargeText()
   if (booking.isPending || other.isPending) return <Screen back="/inbox"><DetailSkeleton /></Screen>
   if (!b) return <Screen back="/inbox" title={t('Inbox')}><EmptyState icon="chat" title={t('This conversation is gone')} body={t('The booking it belonged to no longer exists.')} /></Screen>
-  const name = other.data?.name.split(' ')[0] ?? (asOwner ? t('Your renter') : b.listing?.ownerName ?? '')
+  const name = other.data?.name ?? (asOwner ? t('Your renter') : b.listing?.ownerName ?? '')
   const rated = asOwner ? b.renterRating != null : Boolean(b.outcome)
   const pill = statusPill(b.status, rated)
   const dead = ['declined', 'cancelled', 'expired', 'payment_failed'].includes(b.status)
   return (
     <Screen back="/inbox" title={name} docTitle={t('Messages with {name}', { name })}>
-      <Card className="flex flex-wrap items-center gap-4 p-4">
-        <Photo src={b.listing?.photo} alt="" categoryId={b.requirement.category} aspect={1} thumb width={56} className="w-[56px] shrink-0 rounded-[var(--radius-m)]" />
+      {/* The booking this is about, pinned as a small plate (VD-19): the hour
+          in ice as on the ticket, the money on it, one way into the booking. */}
+      <Link
+        to={`/bookings/${b.id}`}
+        aria-label={`${t('Open the booking')}: ${b.listing?.title ?? t('Listing removed')}`}
+        className={`press-soft plate-lit on-plate ${big ? '' : 'sticky top-[calc(var(--safe-top)+8px)] z-20'} flex items-center gap-3 rounded-[var(--radius-plate)] p-3 shadow-[var(--shadow-plate)]`}
+      >
+        <Photo src={b.listing?.photo} alt="" categoryId={b.requirement.category} aspect={1} thumb width={48} className="w-12 shrink-0 rounded-[var(--radius-m)]" />
         <div className="min-w-0 flex-1">
-          <p className="truncate text-body font-semibold">{b.listing?.title ?? t('Listing removed')}</p>
-          <p className="t-sm tnum truncate text-[var(--ink-3)]">{range(b.match.start, b.match.end)}</p>
-          <span className="mt-1.5 block">
-            <Pill tone={pill.tone}>{pill.label}</Pill>
-          </span>
+          <p className="[overflow-wrap:anywhere] text-body font-semibold">{b.listing?.title ?? t('Listing removed')}</p>
+          <p className="t-sm tnum [overflow-wrap:anywhere] font-semibold text-[var(--idle)]">{range(b.match.start, b.match.end)}</p>
+          <p className="t-sm tnum text-[var(--ink-3)]">
+            {pill.label} · {formatMoney(b.match.quote.total, b.currency ?? b.match.quote.currency)}
+          </p>
         </div>
-        {/* Under the booking on a phone, so the title keeps its width. */}
-        <div className="w-full md:w-auto">
-          <Button size="sm" variant="secondary" block to={`/bookings/${b.id}`}>
-            {t('Open the booking')}
-          </Button>
-        </div>
-      </Card>
+        <Icon name="chevron-right" size={20} className="shrink-0 text-[var(--ink-3)]" />
+      </Link>
       <Conversation
+        fill
         bookingId={b.id}
         status={b.status}
         otherName={name}

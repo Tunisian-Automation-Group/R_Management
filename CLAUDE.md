@@ -32,9 +32,12 @@ them says updates it **in the same commit** (builders and agents included):
   (developers): accounts, payment modes, click paths, commands.
 - **[`docs/DATA.md`](docs/DATA.md)**: services, their tables, the events
   between them, who reads what, retention and personal data.
+- **[`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md)**: the system as mermaid
+  diagrams (context, services, edge, events, lifecycle, sequences, AWS,
+  cells, delivery, scaling, failure modes, local), each tied to its files.
 
 After each round of work, a docs-sync agent reads the round's commits
-(`git log -p <from>..HEAD`) and brings all five docs up to date, so a
+(`git log -p <from>..HEAD`) and brings all six docs up to date, so a
 builder that missed one is caught.
 
 ## UI work

@@ -22,6 +22,23 @@ function srcSetOf(src: string, meta?: PhotoMeta): string | undefined {
 }
 
 /**
+ * Demo photographs that do not show their listing's kind of thing (VD-3):
+ * an electrician for a plunge saw, smokestacks for 3D printers, a till for a
+ * sander. Checked by eye against every seeded listing's category. These show
+ * the designed category plate instead, which is honest about having no photo.
+ * ponytail: a denylist of seed photo ids; the fix at the source is category-
+ * true photos in backend seed.json, then this set can go.
+ */
+const MISMATCHED = new Set([
+  '1581092918056-0c4c3acd3789', '1621905251189-08b45d6a269e', '1517420704952-d9f39e95b43e',
+  '1611273426858-450d8e3c9fce', '1581092160562-40aa08e78837', '1516110833967-0b5716ca1387',
+  '1581578731548-c64695cc6952', '1452860606245-08befc0ff44b', '1581094288338-2314dddb7ece',
+  '1565043666747-69f6646db940', '1595246140625-573b715d11dc', '1574359411659-15573a27fd0c',
+  '1611117775350-ac3950990985', '1556740738-b6a63e27c4df', '1567789884554-0b844b597180',
+])
+const mismatched = (src: string) => MISMATCHED.has(/photo-([0-9a-f-]+)/.exec(src)?.[1] ?? '')
+
+/**
  * One grid of listings (UX-1): the same photograph never shows twice in it.
  * The first card to show a picture keeps it; any later card with the same
  * picture shows its designed category plate instead, which says honestly that
@@ -93,7 +110,7 @@ export function Photo({
     else taken = holder !== claim
   }
 
-  if (!src || failed || taken) {
+  if (!src || failed || taken || mismatched(src)) {
     return (
       <span className={`relative block overflow-hidden ${className}`} style={style}>
         <Plate slots={slots} categoryId={categoryId} aspect={aspect} detail={thumb ? 'thumb' : 'hero'} />
@@ -104,10 +121,16 @@ export function Photo({
 
   return (
     <span
-      className={`relative block overflow-hidden bg-[var(--sunken)] ${className}`}
-      // The photo's own colour while it loads, not a grey box (UX-3).
+      className={`relative block overflow-hidden ${className}`}
+      // The photo's own colour while it loads, not a grey box (UX-3); with no
+      // stored colour, the lit plate of its category (VD-3).
       style={{ aspectRatio: String(aspect), ...(meta?.color ? { backgroundColor: meta.color } : {}), ...style }}
     >
+      {!loaded && !meta?.color && (
+        <span aria-hidden="true" className="absolute inset-0">
+          <Plate categoryId={categoryId} aspect={aspect} detail={thumb ? 'thumb' : 'hero'} className="h-full w-full" />
+        </span>
+      )}
       <img
         src={mediaUrl(src)}
         srcSet={srcSetOf(src, meta)}
@@ -122,7 +145,7 @@ export function Photo({
         onError={() => setFailed(true)}
         // Fades in over the paper tone instead of popping, so a grid still
         // loading reads as settling rather than broken.
-        className={`h-full w-full object-cover transition-opacity duration-300 ${loaded ? 'opacity-100' : 'opacity-0'}`}
+        className={`relative h-full w-full object-cover transition-opacity duration-[var(--dur-long)] ${loaded ? 'opacity-100' : 'opacity-0'}`}
       />
       {/* A photograph is somebody's uncontrolled upload, so anything laid over it
           needs a guaranteed floor to sit on. The scrim only covers the bottom
@@ -158,13 +181,12 @@ export function WhenChip({
 
   return (
     <span
-      className={`glass glass-dark tnum absolute bottom-3 left-3 rounded-full px-2.5 py-1
+      data-hour
+      // The hour tag (VD-9/10): media glass for text, dark enough that white
+      // holds 4.5:1 over the palest photo (check:contrast measures it).
+      className={`glass-media-text tnum absolute bottom-4 left-4 rounded-full px-3 py-1.5
         text-label font-semibold ${className}`}
       style={{
-        // A photograph can be any colour, so the chip carries a darker tint than
-        // glass over a known surface needs. At 42% over a pale upload it went
-        // olive and the label stopped being legible.
-        ['--glass-tint-dark' as string]: 'rgba(20, 30, 19, 0.66)',
         color:
           state === 'now'
             ? 'var(--sky)'
@@ -228,9 +250,8 @@ export function SaveButton({
         toggle()
       }}
       // shrink-0 + square: a row that runs out of room at 200 % text must not squash it into a pill (V4-12).
-      className={`glass glass-dark z-10 grid h-9 w-9 shrink-0 aspect-square cursor-pointer place-items-center rounded-full
-        transition-transform duration-[var(--dur-short)] active:scale-90 ${className}`}
-      style={{ ['--glass-tint-dark' as string]: 'rgba(20, 30, 19, 0.5)' }}
+      className={`glass-media glass-lens z-10 grid h-11 w-11 shrink-0 aspect-square cursor-pointer place-items-center rounded-full
+        transition-transform duration-[var(--dur-snappy)] ease-[var(--spring-bouncy)] active:scale-90 ${className}`}
     >
       <Icon
         name="heart"

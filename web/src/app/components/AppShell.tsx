@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type ReactNode, type RefObject } from 'react'
+import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { NavLink, useLocation } from 'react-router-dom'
 import { useSession } from '../../data/auth.ts'
 import { useToast } from '../store.tsx'
@@ -6,7 +6,7 @@ import { Icon, type IconName } from './Icon.tsx'
 import { useBack, useNav } from '../nav.ts'
 import { LANGS, lang, locale, plural, setLang, t, tTab } from '../../i18n.ts'
 import { updateLocale } from '../../data/auth.ts'
-import { setAppearance, toggleTheme, useAppearance, useDark, type Appearance } from '../theme.ts'
+import { setAppearance, setGlass, toggleTheme, useAppearance, useDark, useGlass, type Appearance } from '../theme.ts'
 
 type Tab = { to: string; label: string; icon: IconName; badge?: number }
 
@@ -35,15 +35,27 @@ type Tab = { to: string; label: string; icon: IconName; badge?: number }
 // dock steps aside there and comes back one level up.
 const DETAIL = /^\/(listing\/|bookings\/[^/]+|earn\/(new|edit)|inbox\/[^/]+|admin\/)/
 
+export { useLargeText }
 export function Dock({ badges }: { badges: Record<string, number> }) {
   const big = useLargeText()
-  const detail = DETAIL.test(useLocation().pathname)
+  const path = useLocation().pathname
+  const detail = DETAIL.test(path)
+  useEffect(() => {
+    // Glass lights up where it is pressed (VD-17): the touch point, for the CSS.
+    const down = (e: PointerEvent) => {
+      const el = (e.target as Element | null)?.closest<HTMLElement>('.glass, .glass-thin, .glass-strong, .glass-media')
+      if (!el) return
+      const r = el.getBoundingClientRect()
+      el.style.setProperty('--px', `${e.clientX - r.left}px`)
+      el.style.setProperty('--py', `${e.clientY - r.top}px`)
+    }
+    addEventListener('pointerdown', down, { passive: true })
+    return () => removeEventListener('pointerdown', down)
+  }, [])
   useEffect(() => {
     // The sticky bars, the offline bar and toasts measure from --dock-h.
     document.documentElement.dataset.dock = detail ? 'hidden' : 'shown'
   }, [detail])
-  const nav = useRef<HTMLElement>(null)
-  useHideOnScroll(nav, detail)
   const tabs: Tab[] = [
     { to: '/', label: t('Explore'), icon: 'search' },
     { to: '/bookings', label: tTab('Bookings'), icon: 'ticket', badge: badges['/bookings'] },
@@ -54,25 +66,24 @@ export function Dock({ badges }: { badges: Record<string, number> }) {
     { to: '/profile', label: t('You'), icon: 'user' },
   ]
 
+  const active = tabs.findIndex((tab) => (tab.to === '/' ? path === '/' : path.startsWith(tab.to)))
+
   return (
     <nav
-      ref={nav}
       aria-label={t('Main')}
       className={`glass dock fixed z-40 ${detail ? 'max-md:hidden' : ''}
-        max-md:inset-x-0 max-md:bottom-0
-        md:inset-x-0 md:top-0 md:h-[var(--header-h)] md:shadow-[var(--glass-shadow-raised)]`}
+        md:inset-x-0 md:top-0 md:h-[var(--header-h)] md:rounded-none md:shadow-[var(--glass-shadow-raised)]`}
       style={{ viewTransitionName: 'dock' }}
     >
       <div
-        className="mx-auto flex h-[var(--dock-bar-h)] max-w-[var(--dock-row)] items-stretch px-[var(--dock-gutter)]
+        className="mx-auto flex h-[var(--dock-bar-h)] items-stretch
           md:h-full md:max-w-[1180px] md:items-center md:gap-8 md:px-8"
       >
         {/* The wordmark belongs in the header on a website, so Browse drops its
             own masthead above md rather than printing it twice. */}
         <NavLink
           to="/"
-          className="t-h2 wordmark hidden shrink-0 leading-none md:block"
-          style={{ fontSize: 26 }}
+          className="t-wordmark hidden shrink-0 md:block"
         >
           Cappy
         </NavLink>
@@ -81,7 +92,14 @@ export function Dock({ badges }: { badges: Record<string, number> }) {
             and the large marketplace apps (Airbnb, Vinted, Instagram) do on a
             phone. Listing something lives on Earn, where the supply side is,
             not as a sixth, louder button in the bar. */}
-        <ul className="flex flex-1 items-stretch md:items-center md:gap-1">
+        <ul className="relative flex flex-1 items-stretch md:items-center md:gap-1">
+          {/* The droplet (VD-6): one lit capsule behind the active tab that
+              slides between them on the snappy spring. Phone only. */}
+          {active >= 0 && (
+            <li aria-hidden="true" className="dock-droplet md:hidden" style={{ ['--i' as string]: active }}>
+              <span />
+            </li>
+          )}
           {tabs.map((tab) => (
             <TabItem key={tab.to} tab={tab} big={big} />
           ))}
@@ -114,7 +132,7 @@ export function Dock({ badges }: { badges: Record<string, number> }) {
             transition-colors duration-[var(--dur-short)] hover:bg-[var(--accent-hover)] md:inline-flex"
         >
           <Icon name="plus" size={16} strokeWidth={2.4} />
-          {t('List capacity')}
+          {t('List something')}
         </NavLink>
       </div>
     </nav>
@@ -140,51 +158,6 @@ export function ThemeToggle({ className = '' }: { className?: string }) {
       <Icon name={dark ? 'sun' : 'moon'} size={20} strokeWidth={1.8} />
     </button>
   )
-}
-
-/** Hide on scroll (UX-46, iOS 26's minimise simplified): after 48 px of
- *  scrolling down, past the first screen, the bar slides away; any scroll up
- *  of 8 px, the top of the page, or focus inside it brings it back. CSS keeps
- *  it in place under reduced motion. */
-function useHideOnScroll(nav: RefObject<HTMLElement | null>, detail: boolean) {
-  useEffect(() => {
-    const el = nav.current
-    if (!el || detail) return
-    let anchor = scrollY
-    let away = false
-    const set = (next: boolean) => {
-      if (next === away) return
-      away = next
-      el.dataset.scrolled = next ? 'away' : ''
-    }
-    const onScroll = () => {
-      const y = scrollY
-      if (y <= 0) {
-        set(false)
-        anchor = 0
-      } else if (y > anchor) {
-        // Going down: hide once 48 px past where the downward run began, and
-        // never within the first screen height.
-        if (away) anchor = y
-        else if (y - anchor >= 48 && y > innerHeight) {
-          set(true)
-          anchor = y
-        }
-      } else if (!away) anchor = y
-      else if (anchor - y >= 8) {
-        set(false)
-        anchor = y
-      }
-    }
-    const onFocus = () => set(false)
-    addEventListener('scroll', onScroll, { passive: true })
-    el.addEventListener('focusin', onFocus)
-    return () => {
-      removeEventListener('scroll', onScroll)
-      el.removeEventListener('focusin', onFocus)
-      set(false)
-    }
-  }, [nav, detail])
 }
 
 /** Large text (200 %, Dynamic Type): four labels do not fit a phone's dock, so
@@ -246,7 +219,7 @@ function TabItem({ tab, big }: { tab: Tab; big: boolean }) {
             <span
               className={`relative grid h-[var(--dock-pill-h)] w-[var(--dock-pill-w)] shrink-0 place-items-center rounded-full transition-colors duration-[var(--dur-short)]
                 md:h-auto md:w-auto md:bg-transparent
-                ${isActive ? 'dock-pill-in bg-[var(--dock-active)] text-[var(--dock-active-ink)]' : 'group-hover:bg-[var(--sunken)]'}`}
+                ${isActive ? 'text-[var(--dock-active-ink)]' : 'md:group-hover:bg-[var(--sunken)]'}`}
             >
               <span className="relative grid h-[var(--dock-icon)] w-[var(--dock-icon)] place-items-center">
                 {/* The filled variant when active (HIG: "prefer filled"). */}
@@ -257,7 +230,7 @@ function TabItem({ tab, big }: { tab: Tab; big: boolean }) {
                     // The icon's top-right corner at (−4, −4), ringed in the bar's
                     // colour so it reads as sitting on top, never clipped (cappy-ui §4).
                     className="tnum absolute right-[var(--dock-badge-off)] top-[var(--dock-badge-off)] grid h-[var(--dock-badge)] min-w-[var(--dock-badge)] place-items-center rounded-full bg-[var(--badge)] px-[var(--dock-badge-pad)] text-[length:var(--dock-badge-text)] font-bold leading-none text-[var(--on-badge)]
-                      ring-2 ring-[var(--dock-bg)] md:ring-0"
+                      ring-2 ring-[var(--elevated)] md:ring-0"
                   >
                     {tab.badge > 9 ? '9+' : tab.badge}
                   </span>
@@ -293,7 +266,10 @@ export function Screen({
   wide = false,
   tone = 'page',
   docTitle,
+  wash,
 }: {
+  /** The photo's own colour, washed into the top of the page (VD-9). */
+  wash?: string
   /** The browser tab's title; defaults to `title` when that is plain text. */
   docTitle?: string
   title?: ReactNode
@@ -341,8 +317,13 @@ export function Screen({
     <div
       className={`anim-screen min-h-dvh ${tone === 'surface' ? 'bg-[var(--surface)]' : ''}`}
       style={{
+        // The listing takes on its photo's colour at the top, fading into the
+        // page by 480 px (VD-9), as Apple Music and Airbnb tint a detail page.
+        ...(wash ? { backgroundImage: `linear-gradient(to bottom, color-mix(in srgb, ${wash} 22%, var(--page)), var(--page) 480px)` } : {}),
         paddingTop: 'var(--header-h)',
-        paddingBottom: `calc(var(--dock-h) + ${footer ? 96 : 16}px)`,
+        // J-20/J-21: the page ends 16 px above whatever is fixed at the bottom,
+        // the sticky bar measured (it grows at 200 % and in DE/FR) plus its 8 px lift.
+        paddingBottom: footer ? 'calc(var(--dock-h) + var(--footer-h, 96px) + 24px)' : 'calc(var(--dock-h) + 16px)',
       }}
     >
       {/* 560px is a phone column. 1120px is a page. The old 760px was neither,
@@ -365,6 +346,7 @@ export function Screen({
               <div className="relative md:px-8 md:pt-6">
                 {hero}
                 {back && <BackButton onClick={goBack} floating />}
+                {back && <HeroBar title={tabTitle} onBack={goBack} />}
               </div>
             ) : (
               <div style={{ height: 'var(--safe-top)' }} aria-hidden="true" />
@@ -380,7 +362,7 @@ export function Screen({
                 {eyebrow && <p className="t-label mb-2">{eyebrow}</p>}
                 <div className="flex flex-wrap items-start justify-between gap-x-4 gap-y-3">
                   <div className="min-w-0">
-                    {title && <h1 className="t-h1 text-balance">{title}</h1>}
+                    {title && <h1 className="t-large-title text-balance">{title}</h1>}
                     {sub && <p className="t-body mt-2 max-w-[46ch] text-[var(--ink-3)]">{sub}</p>}
                   </div>
                   {action && <div className="max-w-full shrink-0 pt-1">{action}</div>}
@@ -418,8 +400,10 @@ export function Screen({
           }}
         >
           <div
-            className="glass-strong mx-auto max-w-[560px] rounded-[var(--radius-l)] px-4 py-3
-              shadow-[var(--glass-shadow-raised)]"
+            // A floating glass capsule (VD-9): inset from the edges, the hour and
+            // the total on the left, the one action on the right.
+            className="glass-strong mx-3 max-w-[560px] rounded-[var(--radius-xl)] py-2.5 pl-5 pr-2.5
+              shadow-[var(--glass-shadow-raised)] sm:mx-auto"
           >
             {footer}
           </div>
@@ -439,14 +423,14 @@ function SiteFooter() {
   const staff = session?.staff ?? false
   const groups: { title: string; links: { label: string; to: string }[] }[] = [
     {
-      title: t('Buy capacity'),
+      title: t('Rent'),
       links: [
         { label: t('Explore what is free'), to: '/' },
         { label: t('Your bookings'), to: '/bookings' },
       ],
     },
     {
-      title: t('Sell capacity'),
+      title: t('Earn'),
       links: [
         { label: t('List something'), to: '/earn/new' },
         { label: t('Your listings'), to: '/earn' },
@@ -468,7 +452,7 @@ function SiteFooter() {
         <div className="max-w-[30ch]">
           <p className="t-h2 wordmark">Cappy</p>
           <p className="t-sm mt-2 text-[var(--ink-3)]">
-            {t('Buy the hours, not the thing. One capacity network: making, moving and the kit to do it with.')}
+            {t('Rent tools, vans and workshops by the hour, from people nearby.')}
           </p>
           <div className="mt-5 flex flex-wrap items-center gap-3">
             <LanguageSwitch />
@@ -509,15 +493,47 @@ function SiteFooter() {
   )
 }
 
+/**
+ * The top bar of a photo page (VD-9): nothing but a floating Back over the
+ * photo, and a regular glass bar with the title once the photo has scrolled
+ * away. A sentinel at the photo's bottom edge toggles it (no scroll handler).
+ */
+function HeroBar({ title, onBack }: { title?: string; onBack: () => void }) {
+  const sentinel = useRef<HTMLSpanElement>(null)
+  const [shown, setShown] = useState(false)
+  useEffect(() => {
+    const el = sentinel.current
+    if (!el) return
+    const io = new IntersectionObserver(([e]) => setShown(!e.isIntersecting && e.boundingClientRect.top < 0))
+    io.observe(el)
+    return () => io.disconnect()
+  }, [])
+  return (
+    <>
+      <span ref={sentinel} aria-hidden="true" className="absolute inset-x-0 bottom-16 h-px" />
+      <div
+        aria-hidden={!shown}
+        className={`glass hero-bar fixed inset-x-0 top-0 z-30 flex items-center gap-2 px-2 md:hidden ${shown ? 'is-shown' : ''}`}
+        style={{ paddingTop: 'var(--safe-top)' }}
+      >
+        <button type="button" onClick={onBack} tabIndex={shown ? 0 : -1} aria-label={t('Back')} className="grid h-11 w-11 shrink-0 place-items-center rounded-full">
+          <Icon name="chevron-left" size={20} strokeWidth={2.2} />
+        </button>
+        <p className="min-w-0 flex-1 py-3 pr-4 text-body font-semibold">{title}</p>
+      </div>
+    </>
+  )
+}
+
 function BackButton({ onClick, floating }: { onClick: () => void; floating?: boolean }) {
   return (
     <button
       onClick={onClick}
       aria-label={t('Back')}
-      className={`grid h-10 w-10 place-items-center rounded-full transition-all duration-[var(--dur-short)]
+      className={`grid h-11 w-11 place-items-center rounded-full transition-all duration-[var(--dur-short)]
         ${
           floating
-            ? 'glass glass-dark absolute left-4 z-10 hover:brightness-110 md:left-12 md:mt-6'
+            ? 'glass-media glass-lens absolute left-4 z-10 h-11 w-11 text-[var(--on-field)] hover:brightness-110 md:left-12 md:mt-6'
             : '-ml-2.5 text-[var(--ink)] hover:bg-[var(--sunken)]'
         }`}
       style={floating ? { top: 'calc(var(--safe-top) + 12px)' } : undefined}
@@ -544,7 +560,7 @@ export function LanguageSwitch() {
             // The language, then the full locale it gives with the device's region (en-US, fr-CA).
             void setLang(o.value).then(() => updateLocale(locale()))
           }}
-          className={`rounded-full px-3 py-1.5 text-label font-semibold transition-colors duration-[var(--dur-short)] ${
+          className={`min-h-[44px] rounded-full px-4 py-2 text-label font-semibold transition-colors duration-[var(--dur-short)] ${
             current === o.value ? 'bg-[var(--segment-on)] text-[var(--on-segment)]' : 'text-[var(--ink-3)] hover:text-[var(--ink)]'
           }`}
         >
@@ -558,20 +574,57 @@ export function LanguageSwitch() {
 /** System, Light or Dark (UX-36), stored on this device. */
 export function AppearanceSwitch() {
   const current = useAppearance()
-  const options: { value: Appearance; label: string }[] = [
-    { value: 'light', label: t('Light') },
-    { value: 'dark', label: t('Dark') },
-    { value: 'system', label: t('System') },
-  ]
   return (
-    <div role="group" aria-label={t('Appearance')} className="inline-flex max-w-full flex-wrap rounded-[var(--radius-l)] border border-[var(--line)] p-0.5">
+    <Segmented
+      label={t('Appearance')}
+      current={current}
+      onPick={setAppearance}
+      options={[
+        { value: 'light', label: t('Light') },
+        { value: 'dark', label: t('Dark') },
+        { value: 'system', label: t('System') },
+      ]}
+    />
+  )
+}
+
+/** Glass effects (VD-5): Automatic decides per device; Reduced turns the blur off. */
+export function GlassSwitch() {
+  const current = useGlass()
+  return (
+    <Segmented
+      label={t('Glass effects')}
+      current={current}
+      onPick={setGlass}
+      options={[
+        { value: 'auto', label: t('Automatic') },
+        { value: 'full', label: t('Full') },
+        { value: 'lite', label: t('Reduced') },
+      ]}
+    />
+  )
+}
+
+function Segmented<V extends string>({
+  label,
+  current,
+  onPick,
+  options,
+}: {
+  label: string
+  current: V
+  onPick: (v: V) => void
+  options: { value: V; label: string }[]
+}) {
+  return (
+    <div role="group" aria-label={label} className="inline-flex max-w-full flex-wrap rounded-[var(--radius-l)] border border-[var(--line)] p-0.5">
       {options.map((o) => (
         <button
           key={o.value}
           type="button"
           aria-pressed={current === o.value}
-          onClick={() => setAppearance(o.value)}
-          className={`rounded-full px-3 py-1.5 text-label font-semibold transition-colors duration-[var(--dur-short)] ${
+          onClick={() => onPick(o.value)}
+          className={`min-h-[44px] rounded-full px-4 py-2 text-label font-semibold transition-colors duration-[var(--dur-short)] ${
             current === o.value ? 'bg-[var(--segment-on)] text-[var(--on-segment)]' : 'text-[var(--ink-3)] hover:text-[var(--ink)]'
           }`}
         >
@@ -582,7 +635,8 @@ export function AppearanceSwitch() {
   )
 }
 
-/** A section heading with a rule above it, and room for a figure on the right. */
+/** A section heading, and room for a figure on the right. Space, not a black
+ *  rule, separates sections now (VD-8): 24 above plus the section gap. */
 export function SectionHead({
   title,
   aside,
@@ -594,10 +648,12 @@ export function SectionHead({
 }) {
   return (
     <div
-      className={`flex items-baseline justify-between gap-4 border-t border-[var(--ink)] pb-3 pt-3 ${className}`}
+      // J-19: the row wraps, so a long aside goes under the title rather than
+      // squeezing it to a letter per line.
+      className={`flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1 pb-3 pt-6 ${className}`}
     >
-      <h2 className="t-h3 min-w-0">{title}</h2>
-      {aside && <span className="tnum shrink-0 text-label text-[var(--ink-4)]">{aside}</span>}
+      <h2 className="t-h3 min-w-0 max-w-full shrink-0">{title}</h2>
+      {aside && <span className="tnum min-w-0 [overflow-wrap:anywhere] text-label text-[var(--ink-4)]">{aside}</span>}
     </div>
   )
 }

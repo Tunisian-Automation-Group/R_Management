@@ -126,12 +126,12 @@ export function CapacityBar({
             <div
               key={i}
               // min-w-0 and wrap: at large text sizes (U-27) the date drops under the weekday instead of pushing the page wide.
-              className={`tnum flex min-w-0 flex-1 flex-wrap justify-center text-center tracking-[0.06em] ${size === 'sm' ? 'text-caption leading-[0.75rem]' : 'text-caption leading-[0.875rem]'} ${
+              className={`tnum flex min-w-0 flex-1 flex-col items-center text-center tracking-[0.06em] ${size === 'sm' ? 'text-caption leading-[0.75rem]' : 'text-caption leading-[0.875rem]'} ${
                 col.isToday ? 'font-bold text-[var(--ink)]' : 'font-semibold text-[var(--ink-4)]'
               }`}
             >
               <span>{weekday2(col.date)}</span>
-              {size === 'md' && <span className="ml-0.5 opacity-80">{col.date.getDate()}</span>}
+              {size === 'md' && <span className="opacity-80">{col.date.getDate()}</span>}
             </div>
           ))}
         </div>
@@ -140,7 +140,7 @@ export function CapacityBar({
       {showLegend && (
         <div className="mt-4 flex flex-wrap items-center gap-x-4 gap-y-1.5 border-t border-[var(--line)] pt-3 text-label text-[var(--ink-3)]">
           <Key className="bg-[var(--track)]" label={t('In use')} />
-          <Key className="bg-[var(--idle)]" label={intent === 'earn' ? t('Idle, nobody paying') : t('Free to book')} />
+          <Key className="bg-[var(--idle)]" label={intent === 'earn' ? t('Free to book') : t('Free to book')} />
           {bookedList.length > 0 && <Key className="bg-[var(--sold)]" label={intent === 'earn' ? t('Sold') : t('Your booking')} />}
         </div>
       )}

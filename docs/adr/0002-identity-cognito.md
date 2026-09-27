@@ -32,3 +32,8 @@ Local development needs Cognito: LocalStack emulates it (ADR 0009). Tokens
 live in the browser (access token in memory, refresh token in storage) —
 mitigated by a strict Content-Security-Policy; a cookie-based BFF is the
 upgrade if the threat model changes.
+
+## Correction (2026-09-27)
+
+Locally, Cognito is emulated by `cognito-local`, not LocalStack (ADR 0009,
+`compose.yaml`). The decision stands.

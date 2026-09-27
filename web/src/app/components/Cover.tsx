@@ -3,7 +3,6 @@ import type { CategoryId, Iso, Slot } from '../../domain/types.ts'
 import { category } from '../../domain/categories.ts'
 import { locale, t } from '../../i18n.ts'
 import { weekday2 } from '../format.ts'
-import { Icon, categoryIcon } from './Icon.tsx'
 
 /** Matching's minimum lead time: nothing can be booked to start sooner. The
  *  deployed 2 hours; the dev server runs against the local stack, which books
@@ -138,7 +137,7 @@ export function Plate({
 
   return (
     <div
-      className={`plate relative isolate overflow-hidden bg-[var(--field)] ${className}`}
+      className={`plate plate-lit isolate overflow-hidden ${className}`}
       style={{ aspectRatio: String(aspect), ...style }}
       role="img"
       aria-label={
@@ -154,22 +153,9 @@ export function Plate({
             : meta.label
       }
     >
-      {/* The field lifts towards the top left, the way a printed ink panel
-          catches light, and carries the same lit rim as every glass surface in
-          the app so a plate and the dock read as one material family. */}
-      <span
-        aria-hidden="true"
-        className="absolute inset-0 bg-[radial-gradient(120%_90%_at_18%_0%,rgba(255,255,255,0.13),transparent_62%)]"
-      />
-      <span
-        aria-hidden="true"
-        className="pointer-events-none absolute inset-0 rounded-[inherit]"
-        style={{
-          boxShadow:
-            'inset 0 1px 0 rgba(255,255,255,0.16), inset 0 0 0 1px rgba(255,255,255,0.06)',
-        }}
-      />
-
+      {/* The lit plate material (VD-11): the green lit from the top left,
+          the glass's 1 px lit rim and a film grain, from `.plate-lit`, so a
+          plate and the dock read as one material family. */}
       {when ? (
         <div className={`plate-body relative flex h-full flex-col ${thumb ? 'p-2' : 'p-5'}`}>
           <p className={`t-label ${labelled ? '' : 'hidden'}`} style={{ color: 'var(--on-field-dim)' }}>
@@ -236,26 +222,30 @@ export function Plate({
           )}
         </div>
       ) : (
-        // No photo and no times to set large (UX-1): the category's own mark,
-        // drawn, with its name on top where no chip or heart covers it. It
-        // says honestly "a thing of this kind", never someone else's photo.
-        <div className={`relative flex h-full flex-col ${thumb ? 'items-center justify-center' : 'p-4'}`} style={{ color: 'var(--on-field-dim)' }}>
-          <span className={thumb ? '' : 'm-auto opacity-70'}>
-            <Icon name={categoryIcon(meta.icon)} size={thumb ? 20 : 44} strokeWidth={1.4} />
-          </span>
-          {/* The name sits at the bottom, clear of a back button or a heart on
-              the top corners (V9-7). */}
-          {!thumb && (
-            <p className="t-label" style={{ color: 'var(--on-field-dim)' }}>
-              {known ? t('Nothing free this week') : meta.label}
-            </p>
-          )}
+        // No photo and no times to set large (UX-1, judge a/J-5, VD-14): the
+        // category's object, large, on a plate tinted
+        // by its category, so a grid of them has variety and reads as
+        // designed. No text: the card's title says what it is, and nothing
+        // sits under the hour tag or beside the category chip.
+        <div
+          className="relative grid h-full place-items-center"
+          style={{
+            backgroundImage: `radial-gradient(90% 70% at 72% 18%, var(--cat-glow-${categoryId}, var(--cat-glow)), transparent 70%)`,
+          }}
+        >
+          <CategoryObject id={categoryId} size={thumb ? 40 : 120} className={thumb ? 'w-[80%]' : 'w-[min(120px,55%)]'} />
         </div>
       )}
 
       {children}
     </div>
   )
+}
+
+/** A category's object (VD-13): one of the nine layered drawings in
+ *  public/objects, decorative, so the label beside it does the naming. */
+export function CategoryObject({ id, size, className = '' }: { id: CategoryId; size: number; className?: string }) {
+  return <img src={`/objects/${id}.svg`} alt="" width={size} height={size} loading="lazy" decoding="async" draggable={false} className={`h-auto select-none ${className}`} />
 }
 
 /** Kept so callers that still say `Cover` keep working. */

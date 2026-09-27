@@ -57,6 +57,10 @@ const pairs: [string, string, number, string?][] = [
   // the pill against the bar, the badge.
   ['ink-3', 'elevated', 4.5],
   ['accent-text', 'accent-subtle', 4.5],
+  // Status chips (Pill): each tone's text on its own tint.
+  ['success-text', 'success-subtle', 4.5],
+  ['warn', 'warn-subtle', 4.5],
+  ['danger', 'danger-subtle', 4.5],
   ['dock-active-ink', 'dock-active', 4.5],
   ['dock-active', 'dock-bg', 1.5],
   ['on-badge', 'badge', 4.5],
@@ -94,5 +98,34 @@ for (const [name, t] of Object.entries(themes)) {
     }
   }
 }
+// Glass (ADR 0014, visual direction §3.4): a fill is only as good as its
+// worst backdrop. Composite each glass fill over pure black and pure white
+// (a blur averages any real photo to something between the two) and check
+// the text allowed on it: ink and ink-2 on glass, white on media glass.
+const lite = vars(block(":root[data-glass='lite'] {"))
+let glassChecks = 0
+for (const [name, t] of Object.entries(themes)) {
+  const fills: [string, string][] = ['glass-tint', 'glass-tint-strong'].map((f) => [f, t[f]])
+  if (name === 'light') fills.push(['glass-tint (lite)', lite['glass-tint']])
+  for (const [fill, value] of fills)
+    for (const backdrop of ['#000000', '#ffffff'])
+      for (const fg of ['ink', 'ink-2', 'dock-ink']) check(name, fg, t[fg], fill, value, backdrop, 4.5)
+  for (const backdrop of ['#ffffff']) {
+    check(name, 'white icon', '#ffffff', 'glass-tint-media', t['glass-tint-media'], backdrop, 3)
+    check(name, 'white text', '#ffffff', 'glass-tint-media-text', t['glass-tint-media-text'], backdrop, 4.5)
+    check(name, 'white text', '#ffffff', 'glass-solid-media', t['glass-solid-media'], backdrop, 4.5)
+  }
+}
+function check(theme: string, fgName: string, fg: string, fill: string, value: string, backdrop: string, min: number) {
+  if (!fg || !value) return
+  glassChecks++
+  const bg = over(value, backdrop)
+  const r = ratio(fg, bg)
+  if (r < min) {
+    failed = true
+    console.error(`${theme}: ${fgName} on --${fill} over ${backdrop} is ${r.toFixed(2)}:1, needs ${min}:1`)
+  }
+}
+
 if (failed) process.exit(1)
-console.log(`contrast: ${pairs.length} pairs pass in light and dark`)
+console.log(`contrast: ${pairs.length} pairs pass in light and dark, and ${glassChecks} glass worst cases`)

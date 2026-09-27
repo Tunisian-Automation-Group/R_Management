@@ -1,8 +1,8 @@
-import { useEffect, useId, useRef, useState, type ReactNode } from 'react'
+import { Fragment, useEffect, useId, useRef, useState, type ReactNode } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import { ApiError, HIDDEN_CONTACT, markInboxRead, sendMessage, unblockPerson, useAttemptKey, useBlocks, useMessages, type Message } from '../../data/repo.ts'
 import { messageOf, useToast } from '../store.tsx'
-import { ago } from '../format.ts'
+import { ago, dayShort } from '../format.ts'
 import { Button, Card, Textarea } from './ui.tsx'
 import { ReportButton } from './Report.tsx'
 import { t } from '../../i18n.ts'
@@ -30,12 +30,17 @@ function Body({ text, closed }: { text: string; closed: boolean }) {
   return <p className="whitespace-pre-wrap break-words text-body leading-[1.375rem]">{out}</p>
 }
 
-function Bubble({ m, otherName, closed }: { m: Message; otherName: string; closed: boolean }) {
+function Bubble({ m, otherName, closed, last }: { m: Message; otherName: string; closed: boolean; last: boolean }) {
   return (
-    <li className={`flex flex-col ${m.mine ? 'items-end' : 'items-start'}`}>
+    <li className={`flex flex-col ${m.mine ? 'items-end' : 'items-start'} ${last ? '' : '-mb-2'}`}>
       <div
-        className={`max-w-[85%] rounded-[var(--radius-m)] px-3.5 py-2.5 ${
-          m.mine ? 'bg-[var(--field)] text-[var(--on-field)]' : 'bg-[var(--sunken)] text-[var(--ink)]'
+        // Messenger bubbles (VD-19): yours in ink on the right, theirs on the
+        // paper tone on the left; the corner nearest the sender tucks in on
+        // the last bubble of a run, the way iMessage and Vinted draw a tail.
+        className={`max-w-[85%] rounded-[var(--radius-l)] px-4 py-2.5 ${
+          m.mine
+            ? `bg-[var(--inverse)] text-[var(--on-inverse)] ${last ? 'rounded-br-[var(--radius-xs)]' : ''}`
+            : `bg-[var(--sunken)] text-[var(--ink)] ${last ? 'rounded-bl-[var(--radius-xs)]' : ''}`
         }`}
       >
         <Body text={m.body} closed={closed} />
@@ -45,15 +50,35 @@ function Bubble({ m, otherName, closed }: { m: Message; otherName: string; close
           {t('Keep payments on Cappy: money paid outside it is not protected, and asking for it breaks our rules.')}
         </p>
       )}
-      {/* A div: the report button carries a sheet, which may not sit inside a <p> (V5-15). */}
-      <div className="t-sm mt-1 flex items-center gap-1 text-[var(--ink-4)]">
-        {m.mine ? t('You') : otherName} · {ago(m.at)}
-        {!m.mine && (
-          <ReportButton targetType="message" targetId={m.id} compact offerBlock={{ sub: m.senderId, name: otherName }} />
-        )}
-      </div>
+      {/* Who and when, once per run of messages rather than under each one.
+          A div: the report button carries a sheet, which may not sit inside a <p> (V5-15). */}
+      {last && (
+        <div className="t-sm mt-1 flex items-center gap-1 px-1 text-[var(--ink-4)]">
+          {m.mine ? t('You') : otherName} · {ago(m.at)}
+          {!m.mine && (
+            <ReportButton targetType="message" targetId={m.id} compact offerBlock={{ sub: m.senderId, name: otherName }} />
+          )}
+        </div>
+      )}
     </li>
   )
+}
+
+/** Sets --kb to the height the on-screen keyboard covers, so sticky things sit above it. */
+function useKeyboardInset(on: boolean) {
+  useEffect(() => {
+    const vv = window.visualViewport
+    if (!vv || !on) return
+    const root = document.documentElement.style
+    const set = () => root.setProperty('--kb', `${Math.max(0, innerHeight - vv.height - vv.offsetTop)}px`)
+    vv.addEventListener('resize', set)
+    vv.addEventListener('scroll', set)
+    return () => {
+      vv.removeEventListener('resize', set)
+      vv.removeEventListener('scroll', set)
+      root.removeProperty('--kb')
+    }
+  }, [on])
 }
 
 /** Messages between the two sides of one booking. */
@@ -64,6 +89,7 @@ export function Conversation({
   otherId,
   accepted,
   closed = false,
+  fill = false,
 }: {
   bookingId: string
   /** The booking's status: a change reads the thread again (masking follows it, V5-5). */
@@ -75,6 +101,9 @@ export function Conversation({
   accepted: boolean
   /** Declined, cancelled, lapsed: the conversation stays readable, nothing more is sent. */
   closed?: boolean
+  /** The thread screen (J-18): the page scrolls the conversation and the
+   *  composer sits flush on the bottom, above the keyboard and home indicator. */
+  fill?: boolean
 }) {
   const id = useId()
   const qc = useQueryClient()
@@ -111,11 +140,14 @@ export function Conversation({
   // scrollIntoView scrolled the whole booking page 477 px down on open (UX-25).
   useEffect(() => {
     const el = list.current
-    if (el) el.scrollTop = el.scrollHeight
+    if (fill) scrollTo({ top: document.documentElement.scrollHeight })
+    else if (el) el.scrollTop = el.scrollHeight
     // Read here: the server's receipt drops the Inbox's dot on every device (UX-12).
     const last = items[items.length - 1]
     if (last && !last.mine) void markInboxRead(bookingId).then(() => qc.invalidateQueries({ queryKey: ['inbox'] }), () => undefined)
   }, [items.length, bookingId])
+
+  useKeyboardInset(fill)
 
   const send = async () => {
     const text = draft.trim()
@@ -150,19 +182,29 @@ export function Conversation({
       )}
       {!accepted && !closed && (
         <p className="t-sm mb-3 text-[var(--ink-3)]">
-          {t('Phone numbers, emails and links are hidden until the booking is accepted, then shown. Keep payments on Cappy: that is what protects you both.')}
+          {t('Phone numbers, emails and links stay hidden until the booking is accepted. Keep payments in Cappy, so you are both protected.')}
         </p>
       )}
       {items.length === 0 ? (
         // No invitation to write on a booking nobody can write on (V4-18).
         closed || blocked ? null : (
-          <p className="t-sm py-3 text-[var(--ink-3)]">{t('No messages yet. Ask about the hand-over, access or anything you need.')}</p>
+          <p className="t-sm py-3 text-[var(--ink-3)]">{t('No messages yet. Say hello, and ask about the hand-over or anything else.')}</p>
         )
       ) : (
-        <ul ref={list} className="max-h-[360px] space-y-3 overflow-y-auto overscroll-contain py-2" aria-live="polite">
-          {items.map((m) => (
-            <Bubble key={m.id} m={m} otherName={otherName} closed={closed} />
-          ))}
+        <ul ref={list} className={`space-y-3 py-2 ${fill ? '' : 'max-h-[360px] overflow-y-auto overscroll-contain'}`} aria-live="polite">
+          {items.map((m, i) => {
+            // A quiet day line where the day changes (iMessage, WhatsApp); a run ends there too.
+            const d = dayShort(m.at)
+            const next = items[i + 1]
+            return (
+              <Fragment key={m.id}>
+                {(i === 0 || dayShort(items[i - 1].at) !== d) && (
+                  <li role="separator" className="t-sm py-1 text-center font-medium text-[var(--ink-4)]">{d}</li>
+                )}
+                <Bubble m={m} otherName={otherName} closed={closed} last={next?.mine !== m.mine || dayShort(next.at) !== d} />
+              </Fragment>
+            )
+          })}
         </ul>
       )}
       {closed ? (
@@ -192,8 +234,32 @@ export function Conversation({
           )}
         </p>
       ) : (
+        <>
+        {!draft && (
+          // Quick replies (Airbnb, Vinted): the three things people write most,
+          // one tap to start a message, still editable before sending.
+          <div className="rail mt-3 pb-1" aria-label={t('Suggested messages')}>
+            {[t('Hi! Is everything set for the booking?'), t('How does the hand-over work?'), t('Thanks, see you then!')].map((q) => (
+              <button
+                key={q}
+                type="button"
+                onClick={() => setDraft(q)}
+                className="min-h-[44px] shrink-0 rounded-full border border-[var(--line-strong)] px-4 py-2 text-label font-medium text-[var(--ink-2)] transition-colors duration-[var(--dur-short)] hover:bg-[var(--sunken)]"
+              >
+                {q}
+              </button>
+            ))}
+          </div>
+        )}
         <form
-          className="mt-3 flex items-end gap-2"
+          // On the thread it stays in reach, flush on the bottom and above the
+          // keyboard (--kb, the part of the layout viewport it covers); the
+          // field takes its own line at large text rather than breaking words.
+          className={`mt-3 flex flex-wrap items-end gap-2 ${
+            fill
+              ? 'sticky bottom-[var(--kb,0px)] z-10 -mx-5 -mb-5 border-t border-[var(--line)] bg-[var(--surface)] px-5 pt-3 pb-[max(12px,env(safe-area-inset-bottom))]'
+              : ''
+          }`}
           onSubmit={(e) => {
             e.preventDefault()
             void send()
@@ -206,6 +272,7 @@ export function Conversation({
             id={`${id}-msg`}
             rows={2}
             maxLength={2000}
+            className="min-w-[min(100%,12rem)] flex-1"
             value={draft}
             placeholder={t('Write to {name}', { name: otherName })}
             onChange={(e) => setDraft(e.target.value)}
@@ -217,6 +284,7 @@ export function Conversation({
             {t('Send')}
           </Button>
         </form>
+        </>
       )}
     </Card>
   )

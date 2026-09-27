@@ -107,3 +107,10 @@ Three facts shape the design:
   catalogues decide what each user sees.
 - Launch is per market: a market goes `live` only when its legal, tax and
   payment items in the research checklist are done.
+
+## Correction (2026-09-27)
+
+As built: `markets.json` uses `legal_entity`, `stripe_platform` and `units`, has
+no fee field yet, and statuses are only `live` and `planned`. A listing takes
+its **owner's** market (`catalog/routes.py`), not the geocoded address's; moving to
+the address's market comes with geocoding (M-7). The decision stands.

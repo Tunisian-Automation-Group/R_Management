@@ -29,7 +29,7 @@ import { CountrySelect } from '../components/CountrySelect.tsx'
 import { DistrictSelect } from '../components/DistrictSelect.tsx'
 import { accessToken, deleteAccount, endSession, signOut, useAuthReady, useSession } from '../../data/auth.ts'
 import { SignedOut } from '../components/SignedOut.tsx'
-import { AppearanceSwitch, LanguageSwitch, Screen, SectionHead, ThemeToggle } from '../components/AppShell.tsx'
+import { AppearanceSwitch, GlassSwitch, LanguageSwitch, Screen, SectionHead, ThemeToggle } from '../components/AppShell.tsx'
 import { Icon } from '../components/Icon.tsx'
 import { Photo, SaveButton } from '../components/Photo.tsx'
 import { Avatar, Button, Card, Field, Input, Row, Segmented, Sheet, Skeleton } from '../components/ui.tsx'
@@ -90,14 +90,14 @@ export function Profile() {
         <div className="flex items-center gap-4">
           <Avatar initials={you.initials} size={56} />
           <div className="min-w-0">
-            <p className="t-h3 truncate">{you.name}</p>
+            <p className="t-h3 [overflow-wrap:anywhere]">{you.name}</p>
             <p className="t-sm tnum text-[var(--ink-3)]">
               {you.district} · {t('member since {year}', { year: you.joinedYear })}
             </p>
-            <p className="t-sm truncate text-[var(--ink-3)]">{session.email}</p>
+            <p className="t-sm [overflow-wrap:anywhere] text-[var(--ink-3)]">{session.email}</p>
           </div>
         </div>
-        <div className="mt-5 grid grid-cols-3 gap-3 border-t border-[var(--line)] pt-5">
+        <div className="mt-5 grid grid-cols-[repeat(auto-fit,minmax(5.5rem,1fr))] gap-3 border-t border-[var(--line)] pt-5">
           <Stat label={t('Listed')} value={String(listings.data?.items.length ?? 0)} />
           <Stat label={t('Earned')} value={formatMoney(earned, currency)} accent />
           <Stat label={t('Spent')} value={formatMoney(spent, currency)} />
@@ -113,6 +113,11 @@ export function Profile() {
             <p className="t-label mb-2">{t('Appearance')}</p>
             <AppearanceSwitch />
             <p className="t-sm mt-3 text-[var(--ink-3)]">{t('Light is the default. System follows your phone or computer. Saved on this device only.')}</p>
+          </div>
+          <div>
+            <p className="t-label mb-2">{t('Glass effects')}</p>
+            <GlassSwitch />
+            <p className="t-sm mt-3 text-[var(--ink-3)]">{t('Reduced turns the frosted glass off, for older phones or if you prefer plain surfaces.')}</p>
           </div>
           <div>
             <p className="t-label mb-2">{t('Language')}</p>
@@ -154,11 +159,11 @@ export function Profile() {
                     <span className="min-w-0 flex-1">
                       <button
                         onClick={() => nav(`/listing/${id}`)}
-                        className="block w-full truncate text-left text-body font-semibold after:absolute after:inset-0 after:content-['']"
+                        className="block w-full [overflow-wrap:anywhere] text-left text-body font-semibold after:absolute after:inset-0 after:content-['']"
                       >
                         {l.title}
                       </button>
-                      <span className="t-sm block truncate text-[var(--ink-3)]">
+                      <span className="t-sm block [overflow-wrap:anywhere] text-[var(--ink-3)]">
                         {o?.name}, {l.district}
                       </span>
                     </span>
@@ -175,7 +180,7 @@ export function Profile() {
         <SectionHead
           title={t('Account')}
           aside={
-            <button className="font-semibold text-[var(--accent-text)]" onClick={() => setEditing(true)}>
+            <button className="-my-3 inline-flex min-h-[44px] items-center font-semibold text-[var(--accent-text)]" onClick={() => setEditing(true)}>
               {t('Edit profile')}
             </button>
           }
@@ -245,7 +250,7 @@ export function Profile() {
         <SectionHead title={t('How Cappy works')} className="mt-7" />
         <Card className="p-5">
           <p className="t-body text-[var(--ink-2)]">
-            {t('Capacity is idle most of the time. Cappy sells those hours: a printer free overnight, a PA rig between gigs, a mill with a gap between contracts. You buy the outcome, not the machine, and one engine matches every job to whoever can actually run it.')}
+            {t('Most tools, vans and rooms sit unused most of the time. On Cappy you rent them by the hour from people nearby, and earn from yours when you do not need them.')}
           </p>
           <div className="mt-4 border-t border-[var(--line)] pt-4">
             <Row label={t('Service fee')} value={t('{pct} of the booking', { pct: percent(PLATFORM_FEE_BPS / 10_000) })} />
@@ -258,7 +263,7 @@ export function Profile() {
       <section>
         <SectionHead title={t('Help')} className="mt-7" />
         <Card className="p-5">
-          <nav aria-label={t('Help')} className="flex flex-col gap-3 text-body font-semibold">
+          <nav aria-label={t('Help')} className="flex flex-col text-body font-semibold [&>a]:flex [&>a]:min-h-[44px] [&>a]:items-center hyphens-auto [overflow-wrap:anywhere]">
             <Link to="/help">{t('Help and answers')}</Link>
             <Link to="/help/safety">{t('How we keep you safe')}</Link>
           </nav>
@@ -268,7 +273,7 @@ export function Profile() {
       <section>
         <SectionHead title={t('Legal')} className="mt-7" />
         <Card className="p-5">
-          <nav aria-label={t('Legal')} className="flex flex-col gap-3 text-body font-semibold">
+          <nav aria-label={t('Legal')} className="flex flex-col text-body font-semibold [&>a]:flex [&>a]:min-h-[44px] [&>a]:items-center hyphens-auto [overflow-wrap:anywhere]">
             <Link to="/legal/impressum">Impressum</Link>
             <Link to="/legal/privacy">{t('Privacy Policy')}</Link>
             <Link to="/legal/terms">{t('Terms of Use')}</Link>
@@ -282,7 +287,7 @@ export function Profile() {
 
       <button
         onClick={() => nav('/earn/new')}
-        className="mt-5 flex w-full items-center justify-center gap-2 rounded-[var(--radius-control)] border border-[var(--line)] py-3.5 text-body font-semibold text-[var(--accent-text)]
+        className="mt-5 flex w-full items-center justify-center gap-2 rounded-[var(--radius-capsule)] border border-[var(--line)] py-3.5 text-body font-semibold text-[var(--accent-text)]
           transition-colors duration-[var(--dur-short)] hover:border-[var(--accent)]"
       >
         <Icon name="plus" size={17} strokeWidth={2.2} />
@@ -511,7 +516,7 @@ function BlockedRow({ sub, onUnblock }: { sub: string; onUnblock: () => void }) 
   const person = useOwner(sub)
   return (
     <li className="flex items-center justify-between gap-3">
-      <span className="truncate text-body font-semibold">{person.data?.name ?? t('Someone')}</span>
+      <span className="[overflow-wrap:anywhere] text-body font-semibold">{person.data?.name ?? t('Someone')}</span>
       <Button variant="secondary" size="sm" onClick={onUnblock}>
         {t('Unblock')}
       </Button>
@@ -580,7 +585,7 @@ function NotificationSettings() {
     <section>
       <SectionHead title={t('Notifications')} className="mt-7" />
       <Card className="p-5">
-        <Link to="/notifications" className="text-body font-semibold underline underline-offset-4">
+        <Link to="/notifications" className="inline-flex min-h-[44px] items-center text-body font-semibold underline underline-offset-4">
           {t('See all notifications')}
         </Link>
         {isNative && perm === 'denied' && (
@@ -652,7 +657,7 @@ function Channels() {
       {(Object.keys(CATEGORY_LABEL) as NoticeCategory[]).map((c) => (
         <li key={c} className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1 border-b border-[var(--line)] py-3">
           <span className="min-w-0 text-body">{t(CATEGORY_LABEL[c])}</span>
-          <span className="flex gap-4">
+          <span className="flex flex-wrap gap-x-4 gap-y-1">
             {(['push', 'email'] as const).map((ch) => (
               <label key={ch} className="t-sm flex items-center gap-1.5 text-[var(--ink-3)]">
                 <input

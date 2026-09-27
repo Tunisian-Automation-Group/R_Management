@@ -51,12 +51,12 @@ export function ListingCard({
       <span className="flex min-w-0 flex-1 flex-col justify-between py-0.5">
         <span className="min-w-0">
           <span className="flex items-baseline justify-between gap-3">
-            <span className="t-h4 min-w-0 truncate">{listing.title}</span>
+            <span className="t-h4 min-w-0 [overflow-wrap:anywhere]">{listing.title}</span>
             <span className="tnum shrink-0 text-body-l font-semibold">
               {formatMoney(match.quote.total, match.quote.currency)}
             </span>
           </span>
-          <span className="t-sm mt-1 block truncate text-[var(--ink-3)]">
+          <span className="t-sm mt-1 block [overflow-wrap:anywhere] text-[var(--ink-3)]">
             {owner.name}, {listing.district}
           </span>
         </span>

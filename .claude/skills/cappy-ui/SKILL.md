@@ -140,11 +140,11 @@ Contrast, and `data-glass='lite'`. Components never branch on them.
     `max(8, safe-bottom − 12)` from the bottom; icon 24, label `text-caption` 11–12
     medium, 4 between;
   - the active item sits on a 64×52 droplet of `glass-tint-strong` that slides on
-    `spring-snappy`; the icon is filled and in `ink`. Inactive icons are `ink-3`, never
-    below 4.5:1 on the glass;
-  - on scroll down it shrinks to the active icon plus a round search button; it expands
-    on scroll up, on a tap, or at the top. Under Reduce Transparency it is opaque
-    `elevated` with a `line-strong` edge;
+    `spring-snappy`; the icon is filled and in `ink`. Inactive icons and labels are
+    `ink-2` (`--dock-ink`), never below 4.5:1 on the glass over black or white;
+  - the dock never collapses or hides on scroll (owner's call, 2026-09-27): always the
+    full five tabs with labels; content scrolls under the glass and ends 16 px above it.
+    Under Reduce Transparency it is opaque `elevated` with a `line-strong` edge;
   - every scroll view gets bottom padding = dock height + its bottom inset + 16 so
     content never sits under it;
   - hidden on detail screens; at 200 % text it goes icons-only with aria-labels.
