@@ -66,9 +66,9 @@ variable "switches" {
 
 # The operator on fee invoices (§ 14 UStG). Set by the GitHub environment
 # variable LEGAL (TF_VAR_legal):
-# {"company":"…","address":"…","email":"…","vat_id":"…","tax_number":"","register":"…"}
+# {"company":"…","address":"…","email":"…","vat_id":"…","tax_number":"","register":"…","directors":"…"}
 variable "legal" {
-  type = object({ company = string, address = string, email = string, vat_id = string, tax_number = string, register = optional(string, "") })
+  type = object({ company = string, address = string, email = string, vat_id = string, tax_number = string, register = optional(string, ""), directors = optional(string, "") })
 }
 
 # Feature flags (S-26). Set by the GitHub environment variable FEATURE_FLAGS

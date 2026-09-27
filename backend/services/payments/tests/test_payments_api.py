@@ -758,8 +758,10 @@ def test_invoices_are_deleted_once_their_retention_ends(client, app):
             return sorted((await s.execute(select(InvoiceRow.number))).scalars())
 
     call(app, seed)
-    assert call(app, purge_invoices_once, app, datetime(2036, 12, 31, tzinfo=UTC)) == 0  # still within 10 years
-    assert call(app, purge_invoices_once, app, datetime(2037, 1, 1, tzinfo=UTC)) == 1
+    assert (
+        call(app, purge_invoices_once, app, datetime(2034, 12, 31, tzinfo=UTC)) == 0
+    )  # still within 8 years (§ 14b UStG)
+    assert call(app, purge_invoices_once, app, datetime(2035, 1, 1, tzinfo=UTC)) == 1
     assert call(app, numbers) == ["CAP-2027-1"]
 
 

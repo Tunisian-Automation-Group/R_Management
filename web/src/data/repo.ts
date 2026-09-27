@@ -666,26 +666,36 @@ export const useInvoices = () => {
   const session = useSession()
   return useQuery({ queryKey: ['invoices', session?.sub], queryFn: () => get<Invoice[]>('/payments/invoices'), enabled: Boolean(session) })
 }
-/** The printable invoice needs the token, so it is fetched and opened as a blob. */
-export async function openInvoice(number: string): Promise<void> {
-  // A store shell has no tabs: the invoice goes to the share sheet (print, save, mail).
+/** A document behind the token (the Factur-X invoice PDF, a receipt): fetched
+ *  and opened as a blob; in a store shell, handed to the share sheet. */
+async function openDocument(path: string, name: string): Promise<void> {
+  const fail = () => new ApiError(t('Could not open the document. Try again.'), 0, 'error')
   if (isNative) {
-    const res = await send('GET', `/payments/invoices/${encodeURIComponent(number)}`)
-    if (!res.ok) throw new ApiError(t('Could not open the invoice. Try again.'), res.status, 'error')
-    await shareFile(`${number}.html`, await res.text())
+    const res = await send('GET', path)
+    if (!res.ok) throw fail()
+    const bytes = new Uint8Array(await res.arrayBuffer())
+    let bin = ''
+    for (const b of bytes) bin += String.fromCharCode(b)
+    await shareFile(name, btoa(bin), true)
     return
   }
   const win = window.open('', '_blank') // opened in the click, or popup blockers step in
-  const res = await send('GET', `/payments/invoices/${encodeURIComponent(number)}`)
+  const res = await send('GET', path)
   if (!res.ok) {
     win?.close()
-    throw new ApiError(t('Could not open the invoice. Try again.'), res.status, 'error')
+    throw fail()
   }
-  const url = URL.createObjectURL(new Blob([await res.text()], { type: 'text/html' }))
+  const url = URL.createObjectURL(new Blob([await res.arrayBuffer()], { type: 'application/pdf' }))
   if (win) win.location.href = url
   else window.location.href = url
   setTimeout(() => URL.revokeObjectURL(url), 60_000)
 }
+/** The fee invoice as issued: a Factur-X PDF (the EN 16931 data inside). */
+export const openInvoice = (number: string) =>
+  openDocument(`/payments/invoices/${encodeURIComponent(number)}.pdf`, `${number}.pdf`)
+/** The renter's payment receipt for a booking (not a tax invoice). */
+export const openReceipt = (bookingId: string) =>
+  openDocument(`/payments/receipts/${encodeURIComponent(bookingId)}.pdf`, `receipt-${bookingId}.pdf`)
 
 export type Identity = {
   status: 'none' | 'pending' | 'requires_input' | 'verified' | 'failed'

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from sqlalchemy import Boolean, Integer, String, Text
+from sqlalchemy import Boolean, Integer, LargeBinary, String, Text
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
 from cappy_common.db import UtcDateTime, new_metadata
@@ -105,6 +105,49 @@ class InvoiceRow(Base):
     recipient_name: Mapped[str | None] = mapped_column(String(200), nullable=True)
     recipient_address: Mapped[str | None] = mapped_column(String(400), nullable=True)
     recipient_vat_id: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    recipient_country: Mapped[str | None] = mapped_column(String(2), nullable=True)
+    # "standard" (the issuer's VAT), "reverse_charge" (an EU business in
+    # another member state: Art. 196 VAT Directive, § 14a UStG) or
+    # "not_taxable" (a business outside the EU: not taxable in Germany).
+    tax_treatment: Mapped[str] = mapped_column(String(20), default="standard", server_default="standard")
+    # The issuer as it was at issue (0013): an invoice never changes when the
+    # operator's settings do. Null on invoices issued before 0013, which then
+    # show the current settings.
+    issuer_name: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    issuer_address: Mapped[str | None] = mapped_column(String(400), nullable=True)
+    issuer_vat_id: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    issuer_tax_number: Mapped[str | None] = mapped_column(String(40), nullable=True)
+    issuer_register: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    issuer_directors: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    issuer_email: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    issuer_country: Mapped[str | None] = mapped_column(String(2), nullable=True)
+    # The Factur-X PDF as first rendered, then kept (GoBD: unchangeable): the
+    # language is fixed with it, and its hash lets anyone check the copy.
+    document_lang: Mapped[str | None] = mapped_column(String(5), nullable=True)
+    pdf: Mapped[bytes | None] = mapped_column(LargeBinary, nullable=True)
+    pdf_sha256: Mapped[str | None] = mapped_column(String(64), nullable=True)
+
+
+class CreditNoteRow(Base):
+    """A correction of an issued invoice (Rechnungskorrektur / Stornorechnung,
+    § 14 (4) UStG, EN 16931 type 381): an invoice is never edited; it is
+    reversed by a credit note with its own number from its own series."""
+
+    __tablename__ = "credit_notes"
+    number: Mapped[str] = mapped_column(String(20), primary_key=True)
+    corrects: Mapped[str] = mapped_column(String(20), index=True)
+    booking_id: Mapped[str] = mapped_column(String(40), index=True)
+    owner_id: Mapped[str] = mapped_column(String(64), index=True)
+    net: Mapped[int] = mapped_column(Integer)
+    vat_rate_bps: Mapped[int] = mapped_column(Integer)
+    vat: Mapped[int] = mapped_column(Integer)
+    gross: Mapped[int] = mapped_column(Integer)
+    currency: Mapped[str] = mapped_column(String(3))
+    reason: Mapped[str] = mapped_column(Text)
+    issued_at: Mapped[datetime] = mapped_column(UtcDateTime)
+    document_lang: Mapped[str | None] = mapped_column(String(5), nullable=True)
+    pdf: Mapped[bytes | None] = mapped_column(LargeBinary, nullable=True)
+    pdf_sha256: Mapped[str | None] = mapped_column(String(64), nullable=True)
 
 
 class InvoiceCounterRow(Base):

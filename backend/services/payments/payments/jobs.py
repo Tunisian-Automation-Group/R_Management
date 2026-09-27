@@ -61,16 +61,17 @@ async def reconcile_once(app: FastAPI) -> int:
 async def purge_invoices_once(app: FastAPI, now: datetime | None = None) -> int:
     """Invoices past their retention period go (GDPR Art. 5(1)(e), D-9): the
     period runs from the end of the year of issue, so an invoice of 2026 kept
-    10 years may go from 1 January 2037."""
+    8 years may go from 1 January 2035. Credit notes go with the same rule."""
     from sqlalchemy import delete
 
     from .invoices import issuer_of
-    from .tables import InvoiceRow
+    from .tables import CreditNoteRow, InvoiceRow
 
     issuer = issuer_of(app.state.settings)
     year = (now or datetime.now(UTC)).year
     first_kept = datetime(year - issuer.retention_years, 1, 1, tzinfo=UTC)
     async with app.state.db.transaction() as s:
+        await s.execute(delete(CreditNoteRow).where(CreditNoteRow.issued_at < first_kept))
         r = await s.execute(delete(InvoiceRow).where(InvoiceRow.issued_at < first_kept))
     if r.rowcount:
         log.info("purged %d invoices issued before %s", r.rowcount, first_kept.date())

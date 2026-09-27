@@ -1494,4 +1494,6 @@ export const FR: Record<string, string> = {
   "{n} free hours this week": "{n} heures libres cette semaine",
   "Worth up to {amount} if they are booked.": "Jusqu’à {amount} si elles sont réservées.",
   "Open more hours": "Ouvrir plus d’heures",
+  "Could not open the document. Try again.": "Impossible d’ouvrir le document. Réessayez.",
+  "Download receipt (PDF)": "Télécharger le reçu (PDF)",
 }

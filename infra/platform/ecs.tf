@@ -56,6 +56,9 @@ locals {
       LEGAL_ADDRESS          = var.legal.address
       LEGAL_VAT_ID           = var.legal.vat_id
       LEGAL_TAX_NUMBER       = var.legal.tax_number
+      LEGAL_REGISTER         = var.legal.register
+      LEGAL_DIRECTORS        = var.legal.directors
+      LEGAL_EMAIL            = var.legal.email
     }
     notifications = {
       MAILER               = "ses"

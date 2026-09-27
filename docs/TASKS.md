@@ -1202,3 +1202,20 @@ within a band is the build order.
 - [ ] VD-31 [app] A device performance pass: a 10 s scroll on Explore and the listing on a 2021 mid-range Android (4 GB) and an iPhone 12, in `full` and `lite`; frame-time traces attached; the budget in §3.5 met or the thresholds retuned — docs/research/2026-10-visual-direction.md §3.5
 
 - [ ] R2-25 [infra] Queue consumers scale on the queue's total visible messages (target 100), not backlog per task: use a per-task backlog metric (visible messages ÷ running tasks, target from handler throughput × acceptable latency) — found writing ARCHITECTURE.md
+
+## Invoices (IN) — from docs/research/2026-10-invoices.md
+
+- [x] IN-1 [backend] Fee invoices as Factur-X / ZUGFeRD 2 PDF/A-3 (EN 16931), with the logo, every § 14 (4) UStG field, the register and directors (§ 35a GmbHG); XML checked against the XSD and schematron (feat/invoices)
+- [x] IN-2 [backend] Reverse charge for EU businesses in other member states (§ 14a UStG wording, both VAT IDs); Swiss and UK businesses not taxable in Germany (feat/invoices)
+- [x] IN-3 [backend] Issued invoices never change: issuer snapshot at issue, PDF stored with its SHA-256 (feat/invoices)
+- [x] IN-4 [backend] Credit notes (Rechnungskorrektur, type 381) in their own series, one per invoice, staff only (feat/invoices)
+- [x] IN-5 [backend]+[web] Renter payment receipt PDF (not a tax invoice) and PDF downloads in the app (feat/invoices)
+- [x] IN-6 [backend] Invoice retention 8 years (§ 14b UStG since 2025) (feat/invoices)
+- [x] IN-7 [infra] Pass `LEGAL_REGISTER`, `LEGAL_DIRECTORS` and `LEGAL_EMAIL` to payments from the `legal` Terraform variable (add `directors`), so production invoices carry the § 35a GmbHG details (only backend/ and docs/ were in scope) (Terraform passes LEGAL_REGISTER, LEGAL_DIRECTORS, LEGAL_EMAIL; `legal.directors` added)
+- [ ] IN-8 [infra] veraPDF check of one generated invoice in CI (PDF/A-3b conformance is claimed, not verified)
+- [ ] IN-9 [backend] An XRechnung CIUS profile (BR-DE rules, KoSIT validator) if a public-sector or XRechnung-only buyer appears
+- [ ] IN-10 [backend] Issue a credit note automatically when a booking already invoiced is refunded in full later (today staff do it)
+- [ ] IN-11 [legal/business] (counsel) VAT on the fee for private owners in other EU states: OSS (Art. 58) or supplier's country (Art. 45)?
+- [ ] IN-12 [legal/business] (counsel) Should Cappy invoice the rental on behalf of business owners (§ 14 (2) S. 4 UStG), with an agreement in the terms and a series per owner?
+- [ ] IN-13 [legal/business] (counsel) Confirm the payment-collection model: the payout is not consideration for a supply to Cappy, so no Gutschrift is needed
+- [ ] IN-14 [legal/business] (counsel) Retention: 8 years for invoices; confirm the records behind them need no longer; Swiss VAT registration threshold for Cappy as a foreign platform

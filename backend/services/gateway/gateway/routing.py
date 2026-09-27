@@ -31,6 +31,7 @@ RULES: list[tuple[re.Pattern[str], str]] = [
     (re.compile(r"^/admin/claims/[^/]+/decide$"), BOOKING),
     # Chargebacks: the open ones and staff's evidence (R2-3).
     (re.compile(r"^/admin/payments/(chargebacks|[^/]+/dispute-evidence)$"), PAYMENTS),
+    (re.compile(r"^/admin/payments/invoices/[^/]+(\.pdf|/credit-note)$"), PAYMENTS),
     # The staff preview's free times and price for a held listing (V6-2).
     (re.compile(r"^/admin/(listings/[^/]+/offers|quote)$"), MATCHING),
     (re.compile(r"^/admin/(reports|listings|owners|audit|dsa-stats)(/|$)"), CATALOG),
