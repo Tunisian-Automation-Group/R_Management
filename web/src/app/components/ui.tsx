@@ -163,17 +163,18 @@ export function Pill({
   tone?: 'neutral' | 'accent' | 'success' | 'warn' | 'danger'
   icon?: IconName
 }) {
-  // A status word with a rule under it, not a coloured lozenge.
+  // A tinted status chip: a status is not a link, so it carries no underline
+  // (owner review, 2026-09-27).
   const tones = {
-    neutral: 'text-[var(--ink-4)] decoration-[var(--line-strong)]',
-    accent: 'text-[var(--accent-text)] decoration-[var(--accent-muted)]',
-    success: 'text-[var(--success-text)] decoration-[var(--success)]/40',
-    warn: 'text-[var(--warn)] decoration-[var(--warn)]/40',
-    danger: 'text-[var(--danger)] decoration-[var(--danger)]/40',
+    neutral: 'text-[var(--ink-3)] bg-[var(--sunken)]',
+    accent: 'text-[var(--accent-text)] bg-[var(--accent-subtle)]',
+    success: 'text-[var(--success-text)] bg-[var(--success-subtle)]',
+    warn: 'text-[var(--warn)] bg-[var(--warn-subtle)]',
+    danger: 'text-[var(--danger)] bg-[var(--danger-subtle)]',
   }[tone]
   return (
     <span
-      className={`inline-flex items-center gap-1 text-label font-semibold underline decoration-2 underline-offset-[5px] ${tones}`}
+      className={`inline-flex items-center gap-1 rounded-[var(--radius-capsule)] px-2.5 py-1 text-label font-semibold ${tones}`}
     >
       {icon && <Icon name={icon} size={13} strokeWidth={2.2} />}
       {children}

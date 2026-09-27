@@ -57,6 +57,10 @@ const pairs: [string, string, number, string?][] = [
   // the pill against the bar, the badge.
   ['ink-3', 'elevated', 4.5],
   ['accent-text', 'accent-subtle', 4.5],
+  // Status chips (Pill): each tone's text on its own tint.
+  ['success-text', 'success-subtle', 4.5],
+  ['warn', 'warn-subtle', 4.5],
+  ['danger', 'danger-subtle', 4.5],
   ['dock-active-ink', 'dock-active', 4.5],
   ['dock-active', 'dock-bg', 1.5],
   ['on-badge', 'badge', 4.5],

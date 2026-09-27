@@ -5,12 +5,12 @@
 import { useState } from 'react'
 import { useParams } from 'react-router-dom'
 
-import { useBooking, useBookings, useInbox, useOwner, type InboxItem } from '../../data/repo.ts'
+import { HIDDEN_CONTACT, useBooking, useBookings, useInbox, useOwner, type InboxItem } from '../../data/repo.ts'
 import type { Booking } from '../../domain/types.ts'
 import { Screen } from '../components/AppShell.tsx'
 import { Conversation } from '../components/Conversation.tsx'
 import { Photo } from '../components/Photo.tsx'
-import { Button, Card, DetailSkeleton, EmptyState, Pill, Segmented, Skeleton, TapLink } from '../components/ui.tsx'
+import { Avatar, Button, Card, DetailSkeleton, EmptyState, Pill, Segmented, Skeleton, TapLink } from '../components/ui.tsx'
 import { ago, range } from '../format.ts'
 import { statusPill } from './Bookings.tsx'
 import { t } from '../../i18n.ts'
@@ -79,14 +79,15 @@ function ThreadRow({ item }: { item: InboxItem }) {
   const asOwner = useBookings('owner').data?.items.find((b) => b.id === item.bookingId)
   const rated = asRenter ? Boolean(asRenter.outcome) : asOwner ? asOwner.renterRating != null : true
   const pill = statusPill(item.status, rated)
+  const category = (asRenter ?? asOwner)?.requirement.category
   return (
     <li>
       <TapLink to={`/inbox/${item.bookingId}`} className="press-soft flex w-full items-center gap-3.5 py-4 text-left">
-        {item.photo ? (
-          <Photo src={item.photo} alt="" categoryId="workshop" aspect={1} thumb width={52} className="w-[52px] shrink-0 rounded-[var(--radius-m)]" />
+        {item.photo || category ? (
+          // No photo: the listing's category plate, never a grey box.
+          <Photo src={item.photo} alt="" categoryId={category ?? 'workshop'} aspect={1} thumb width={52} className="w-[52px] shrink-0 rounded-[var(--radius-m)]" />
         ) : (
-          // No photo and no category in the thread: a plain tile, never a guessed plate.
-          <span aria-hidden className="h-[52px] w-[52px] shrink-0 rounded-[var(--radius-m)] bg-[var(--sunken)]" />
+          <Avatar initials={initialsOf(item.otherName ?? t('Your renter'))} size={52} />
         )}
         <span className="min-w-0 flex-1">
           <span className="flex items-baseline justify-between gap-3">
@@ -94,9 +95,10 @@ function ThreadRow({ item }: { item: InboxItem }) {
             <span className="tnum shrink-0 text-label text-[var(--ink-4)]">{ago(item.lastMessage.at)}</span>
           </span>
           <span className="t-sm block [overflow-wrap:anywhere] text-[var(--ink-3)]">{item.listingTitle || t('Listing removed')}</span>
-          <span className={`t-sm mt-0.5 block [overflow-wrap:anywhere] ${item.unread ? 'text-[var(--ink)]' : 'text-[var(--ink-3)]'}`}>
+          {/* A preview: two lines, hidden contact details as one short mark; the thread has it all. */}
+          <span className={`t-sm mt-0.5 line-clamp-2 [overflow-wrap:anywhere] ${item.unread ? 'text-[var(--ink)]' : 'text-[var(--ink-3)]'}`}>
             {item.lastMessage.mine ? `${t('You')}: ` : ''}
-            {item.lastMessage.body}
+            {preview(item.lastMessage.body)}
           </span>
           <span className="mt-2 flex items-center gap-2">
             <Pill tone={pill.tone}>{pill.label}</Pill>
@@ -107,6 +109,14 @@ function ThreadRow({ item }: { item: InboxItem }) {
     </li>
   )
 }
+
+const preview = (body: string) => body.split(HIDDEN_CONTACT).join('•••')
+const initialsOf = (name: string) =>
+  name
+    .split(/\s+/)
+    .slice(0, 2)
+    .map((w) => w[0]?.toUpperCase() ?? '')
+    .join('')
 
 const OPEN_THREAD = new Set(['requested', 'accepted', 'active', 'disputed'])
 
