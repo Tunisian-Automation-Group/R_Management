@@ -34,7 +34,7 @@ const MISMATCHED = new Set([
   '1611273426858-450d8e3c9fce', '1581092160562-40aa08e78837', '1516110833967-0b5716ca1387',
   '1581578731548-c64695cc6952', '1452860606245-08befc0ff44b', '1581094288338-2314dddb7ece',
   '1565043666747-69f6646db940', '1595246140625-573b715d11dc', '1574359411659-15573a27fd0c',
-  '1611117775350-ac3950990985', '1556740738-b6a63e27c4df',
+  '1611117775350-ac3950990985', '1556740738-b6a63e27c4df', '1567789884554-0b844b597180',
 ])
 const mismatched = (src: string) => MISMATCHED.has(/photo-([0-9a-f-]+)/.exec(src)?.[1] ?? '')
 
@@ -249,7 +249,7 @@ export function SaveButton({
         toggle()
       }}
       // shrink-0 + square: a row that runs out of room at 200 % text must not squash it into a pill (V4-12).
-      className={`glass-media glass-lens z-10 grid h-9 w-9 shrink-0 aspect-square cursor-pointer place-items-center rounded-full
+      className={`glass-media glass-lens z-10 grid h-11 w-11 shrink-0 aspect-square cursor-pointer place-items-center rounded-full
         transition-transform duration-[var(--dur-snappy)] ease-[var(--spring-bouncy)] active:scale-90 ${className}`}
     >
       <Icon

@@ -25,7 +25,7 @@ import {
   type ListingDetail,
 } from '../../data/repo.ts'
 import { messageOf, useCappy, useMe, useToast } from '../store.tsx'
-import { Screen, SectionHead } from '../components/AppShell.tsx'
+import { Screen, SectionHead, useLargeText } from '../components/AppShell.tsx'
 import { CapacityBar } from '../components/CapacityBar.tsx'
 import { WhenBadge } from '../components/Cover.tsx'
 import { Photo, SaveButton } from '../components/Photo.tsx'
@@ -65,6 +65,7 @@ export function Listing({ preview }: { preview?: { detail: ListingDetail; banner
   const { id } = useParams()
   const [params] = useSearchParams()
   const nav = useNav()
+  const big = useLargeText()
   const qc = useQueryClient()
   const { state } = useCappy()
   const toast = useToast()
@@ -322,11 +323,12 @@ export function Listing({ preview }: { preview?: { detail: ListingDetail; banner
           style={{ viewTransitionName: 'hero' }}
           overlay={
           <span
-            // Wraps at large text instead of cutting the category to "At…" (V7-27).
-            className="absolute left-20 right-5 flex flex-wrap items-center justify-end gap-2"
-            style={{ top: 'calc(var(--safe-top) + 14px)' }}
+            // One row that never wraps into the photo counter (J-12): the chip's
+            // own text wraps inside it instead.
+            className="absolute left-20 right-4 flex items-start justify-end gap-2"
+            style={{ top: 'calc(var(--safe-top) + 12px)' }}
           >
-            <span className="glass-media-text max-w-full rounded-full px-3 py-1.5 text-center text-label font-semibold">
+            <span className="glass-media-text min-w-0 rounded-[var(--radius-l)] px-3 py-1.5 text-center text-label font-semibold">
               {meta.label}
             </span>
             <WhenBadge
@@ -344,7 +346,7 @@ export function Listing({ preview }: { preview?: { detail: ListingDetail; banner
         mine ? undefined : (
           // At large text sizes (U-27) the button wraps under the price instead of covering it.
           <div className="flex flex-wrap items-center gap-x-4 gap-y-2 md:block">
-            <div className="min-w-[min(10rem,100%)] flex-1">
+            <div className={`flex-1 ${big ? 'basis-full' : 'min-w-[min(10rem,100%)]'}`}>
               <p className="t-label hidden md:block">{t('Your booking')}</p>
               {/* On a desktop the box itself carries the choice (UX-20): Day,
                   Start, Duration as native selects, the same state as the chips. */}
@@ -353,7 +355,7 @@ export function Listing({ preview }: { preview?: { detail: ListingDetail; banner
                   <label className="t-label col-span-2 block">
                     {t('Day')}
                     <select
-                      className="mt-1 min-h-[40px] w-full rounded-[var(--radius-control)] border border-[var(--line)] bg-transparent px-3 text-body text-[var(--ink)]"
+                      className="mt-1 min-h-[44px] w-full rounded-[var(--radius-control)] border border-[var(--line)] bg-transparent px-3 text-body text-[var(--ink)]"
                       value={selected ? day(selected.start) : ''}
                       onChange={(e) => {
                         setDayPick(e.target.value)
@@ -371,7 +373,7 @@ export function Listing({ preview }: { preview?: { detail: ListingDetail; banner
                   <label className="t-label block">
                     {t('Starts')}
                     <select
-                      className="mt-1 tnum min-h-[40px] w-full rounded-[var(--radius-control)] border border-[var(--line)] bg-transparent px-3 text-body text-[var(--ink)]"
+                      className="mt-1 tnum min-h-[44px] w-full rounded-[var(--radius-control)] border border-[var(--line)] bg-transparent px-3 text-body text-[var(--ink)]"
                       value={selected?.start ?? ''}
                       onChange={(e) => setPicked(offers.find((o) => o.start === e.target.value) ?? null)}
                     >
@@ -385,7 +387,7 @@ export function Listing({ preview }: { preview?: { detail: ListingDetail; banner
                   <label className="t-label block">
                     {t('Duration')}
                     <select
-                      className="mt-1 min-h-[40px] w-full rounded-[var(--radius-control)] border border-[var(--line)] bg-transparent px-3 text-body text-[var(--ink)]"
+                      className="mt-1 min-h-[44px] w-full rounded-[var(--radius-control)] border border-[var(--line)] bg-transparent px-3 text-body text-[var(--ink)]"
                       value={hours}
                       onChange={(e) => {
                         setHours(Number(e.target.value))
@@ -406,7 +408,7 @@ export function Listing({ preview }: { preview?: { detail: ListingDetail; banner
               </p>
               {/* U-20: the total is the whole price; the fee is inside it, never added at the end. */}
               {quote && (
-                <p className="tnum truncate text-label text-[var(--ink-3)]">
+                <p className="tnum [overflow-wrap:anywhere] text-label text-[var(--ink-3)]">
                   {t('Total, incl. {fee} service fee', { fee: formatMoney(quote.platformFee, cur) })}
                 </p>
               )}
@@ -428,7 +430,8 @@ export function Listing({ preview }: { preview?: { detail: ListingDetail; banner
               disabled={!selected || !quote || !online}
               icon={listing.instantBook ? 'bolt' : undefined}
               onClick={request}
-              className="md:mt-5 md:w-full"
+              // At large text the bar stacks: the price above, the button across (J-8).
+              className={`md:mt-5 md:w-full ${big ? 'w-full' : ''}`}
             >
               {listing.instantBook ? t('Book') : t('Request')}
             </Button>
@@ -472,7 +475,7 @@ export function Listing({ preview }: { preview?: { detail: ListingDetail; banner
                 ? t('This listing: {avg} from {n} reviews', { avg: oneDecimal(info.reviews.average), n: info.reviews.count })
                 : t('No reviews of this listing yet')
             }
-            className="underline decoration-[var(--line-strong)] underline-offset-4 hover:decoration-[var(--ink)]"
+            className="inline-flex min-h-[44px] items-center underline decoration-[var(--line-strong)] underline-offset-4 hover:decoration-[var(--ink)]"
           >
             <Stars value={info.reviews.average} count={info.reviews.count} />
           </a>
@@ -516,16 +519,18 @@ export function Listing({ preview }: { preview?: { detail: ListingDetail; banner
             <p className="t-sm text-[var(--ink-3)]">
               {trackRecord(owner)} · {t('since {year}', { year: owner.joinedYear })}
             </p>
+            {/* The owner across all their listings, under the name so a long
+                company name keeps the full width (judge c). */}
+            {stars != null && (
+              <p className="mt-1 flex flex-wrap items-center gap-x-1.5">
+                <Stars value={stars} count={owner.jobsDone} />
+                <span className="t-sm text-[var(--ink-4)]">{t('all their jobs')}</span>
+              </p>
+            )}
             {cancelRate(owner.cancellationRate) && (
               <p className="t-sm text-[var(--warn)]">{cancelRate(owner.cancellationRate)}</p>
             )}
           </div>
-          {/* The owner across all their listings, labelled so it is not read as this listing's. */}
-          {/* Allowed to shrink and wrap: at 200 % text in French it pushed the page sideways (V6-7). */}
-          <span className="min-w-0 max-w-[45%] text-right">
-            <Stars value={stars} count={owner.jobsDone} />
-            <span className="t-sm block break-words text-[var(--ink-4)]">{t('all their jobs')}</span>
-          </span>
         </div>
         {/* Measured, never assumed (H-1): nothing is said before 3 requests. */}
         {(responseTime(owner.responseMins) || responseRate(owner.responseRate)) && (
@@ -805,8 +810,8 @@ export function Listing({ preview }: { preview?: { detail: ListingDetail; banner
                 className="w-[52px] shrink-0 rounded-[var(--radius-m)]"
               />
               <div className="min-w-0">
-                <p className="truncate text-body font-semibold">{listing.title}</p>
-                <p className="t-sm truncate text-[var(--ink-3)]">{owner.name}</p>
+                <p className="[overflow-wrap:anywhere] text-body font-semibold">{listing.title}</p>
+                <p className="t-sm [overflow-wrap:anywhere] text-[var(--ink-3)]">{owner.name}</p>
               </div>
             </div>
 

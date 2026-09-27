@@ -147,7 +147,7 @@ export function Browse() {
       >
         {/* The field is its own glass pane, the way the kit's search bars are,
             rather than a rule drawn across the page. */}
-        <div className="glass-strong relative flex h-16 max-w-[720px] items-center rounded-full px-5 shadow-[var(--glass-shadow-raised)]">
+        <div className="glass-strong relative flex min-h-16 max-w-[720px] items-center rounded-[var(--radius-xl)] px-5 py-2 shadow-[var(--glass-shadow-raised)]">
           <Icon
             name="search"
             size={17}
@@ -164,24 +164,28 @@ export function Browse() {
             }}
             className="w-full"
           >
-          <input
-            type="search"
-            enterKeyHint="search"
-            value={search.query}
-            aria-label={t('Search listings')}
-            aria-describedby="search-hint"
-            placeholder={t('What do you need?')}
-            onChange={(e) => send({ type: 'SEARCH_CHANGED', patch: { query: e.target.value } })}
-            className="peer block h-[24px] w-full border-0 bg-transparent pl-8 text-body-l font-semibold text-[var(--ink)]
-              outline-none placeholder:font-semibold placeholder:text-[var(--ink)]"
-          />
-          {/* Real examples under the prompt, as Airbnb's "Anywhere · Any week":
-              gone as soon as someone types. */}
-          <span
-            id="search-hint"
-            className="pointer-events-none block truncate pl-8 text-label text-[var(--ink-3)] peer-[:not(:placeholder-shown)]:hidden"
-          >
-            {t('Drill, van, 3D printer, studio…')}
+          {/* The prompt and its examples are real text that wraps at any size
+              (J-2): an input's placeholder cannot wrap, so it is empty and the
+              words sit in the same grid cell, gone as soon as someone types. */}
+          <span className="grid pl-8">
+            <input
+              type="search"
+              enterKeyHint="search"
+              value={search.query}
+              aria-label={t('Search listings')}
+              aria-describedby="search-hint"
+              placeholder=" "
+              onChange={(e) => send({ type: 'SEARCH_CHANGED', patch: { query: e.target.value } })}
+              className="peer col-start-1 row-start-1 min-h-[1.5em] w-full self-center border-0 bg-transparent text-body-l font-semibold text-[var(--ink)] outline-none"
+            />
+            <span
+              id="search-hint"
+              aria-hidden="true"
+              className="pointer-events-none col-start-1 row-start-1 peer-[:not(:placeholder-shown)]:invisible"
+            >
+              <span className="block text-body-l font-semibold text-[var(--ink)]">{t('What do you need?')}</span>
+              <span className="block text-label text-[var(--ink-3)]">{t('Drill, van, 3D printer, studio…')}</span>
+            </span>
           </span>
           </form>
         </div>
@@ -241,8 +245,8 @@ export function Browse() {
                           className="w-[52px] shrink-0 rounded-[var(--radius-plate)]"
                         />
                         <span className="min-w-0 flex-1">
-                          <span className="block truncate text-body font-semibold">{l.title}</span>
-                          <span className="t-sm block truncate text-[var(--ink-3)]">
+                          <span className="block [overflow-wrap:anywhere] text-body font-semibold">{l.title}</span>
+                          <span className="t-sm block [overflow-wrap:anywhere] text-[var(--ink-3)]">
                             {o.name}, {l.district}
                           </span>
                         </span>
@@ -276,7 +280,7 @@ export function Browse() {
                   onClick={() => send({ type: 'SEARCH_CHANGED', patch: { categoryId: c.id } })}
                   // An icon row (owner, 2026-09-27; Airbnb, Uber): a tile with
                   // the category's mark and its name under it, not a form chip.
-                  className="group flex w-[76px] shrink-0 flex-col items-center gap-2 pt-1 text-center"
+                  className="group flex w-max min-w-[76px] max-w-[max(120px,7.5rem)] shrink-0 flex-col items-center gap-2 pt-1 text-center"
                 >
                   <span
                     className="grid h-14 w-14 place-items-center rounded-[var(--radius-card)] bg-[var(--elevated)] text-[var(--ink)] shadow-[var(--shadow-1)]
@@ -284,7 +288,7 @@ export function Browse() {
                   >
                     <Icon name={categoryIcon(c.icon)} size={26} strokeWidth={1.6} />
                   </span>
-                  <span className="line-clamp-2 text-label font-medium leading-[1rem] text-[var(--ink-2)]">{c.label}</span>
+                  <span className="text-label font-medium text-[var(--ink-2)]">{c.label}</span>
                 </button>
               ))}
             </nav>
@@ -364,7 +368,7 @@ export function Browse() {
                     />
                     <span className="min-w-0 flex-1">
                       <span className="block text-body font-semibold">{c.label}</span>
-                      <span className="t-sm block truncate text-[var(--ink-4)]">{c.blurb}</span>
+                      <span className="t-sm block [overflow-wrap:anywhere] text-[var(--ink-4)]">{c.blurb}</span>
                     </span>
                     <Icon
                       name="chevron-right"
@@ -430,7 +434,7 @@ export function Browse() {
                   <button
                     onClick={() => setShowMap((v) => !v)}
                     aria-pressed={showMap}
-                    className={`tap inline-flex min-h-[34px] items-center gap-1.5 rounded-[var(--radius-capsule)] border px-3 text-label font-medium transition-colors duration-[var(--dur-short)]
+                    className={`tap inline-flex min-h-[44px] items-center gap-1.5 rounded-[var(--radius-capsule)] border px-3 text-label font-medium transition-colors duration-[var(--dur-short)]
                       ${
                         showMap
                           ? 'border-[var(--field)] bg-[var(--field)] font-semibold text-[var(--on-field)]'
@@ -445,7 +449,7 @@ export function Browse() {
                     <select
                       value={sort}
                       onChange={(e) => setSort(e.target.value as SortKey)}
-                      className="min-h-[34px] appearance-none rounded-[var(--radius-control)] border border-[var(--line)] bg-transparent pl-3 pr-8 text-label font-medium text-[var(--ink-2)]"
+                      className="min-h-[44px] appearance-none rounded-[var(--radius-control)] border border-[var(--line)] bg-transparent pl-3 pr-8 text-label font-medium text-[var(--ink-2)]"
                     >
                       <option value="best">{t('Best match')}</option>
                       <option value="price">{t('Cheapest')}</option>
@@ -745,12 +749,12 @@ function SpotCard({ spot, to, priority = false }: { spot: Spotlight; to: string;
       <span className="block pt-3">
         <TapLink
           to={to}
-          className="line-clamp-2 block min-h-[48px] text-left text-body-l font-semibold after:absolute after:inset-0 after:content-['']"
+          className="[overflow-wrap:anywhere] block min-h-[48px] text-left text-body-l font-semibold after:absolute after:inset-0 after:content-['']"
         >
           {spot.listing.title}
         </TapLink>
         <span className="mt-1.5 flex items-baseline justify-between gap-2">
-          <span className="t-sm tnum min-w-0 truncate text-[var(--ink-4)]">
+          <span className="t-sm tnum min-w-0 [overflow-wrap:anywhere] text-[var(--ink-4)]">
             {/* Trust at a glance, before anyone opens the listing. */}
             {rating(spot.owner) !== null && (
               <span className="mr-2 font-semibold text-[var(--ink-2)]" title={t("The owner's rating across all their jobs")}>

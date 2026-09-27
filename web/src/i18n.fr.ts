@@ -1479,4 +1479,8 @@ export const FR: Record<string, string> = {
   "Hi! Is everything set for the booking?": "Bonjour ! Tout est prêt pour la réservation ?",
   "How does the hand-over work?": "Comment se passe la remise ?",
   "Thanks, see you then!": "Merci, à bientôt !",
+  "What you booked from other people.": "Ce que vous avez réservé chez d’autres.",
+  "Most tools, vans and rooms sit unused most of the time. On Cappy you rent them by the hour from people nearby, and earn from yours when you do not need them.": "La plupart des outils, camionnettes et locaux restent inutilisés la plupart du temps. Sur Cappy, vous les louez à l’heure auprès de gens près de chez vous – et gagnez avec les vôtres quand vous n’en avez pas besoin.",
+  "Rent": "Louer",
+  "Rent tools, vans and workshops by the hour, from people nearby.": "Louez outils, camionnettes et ateliers à l’heure, auprès de gens près de chez vous.",
 }

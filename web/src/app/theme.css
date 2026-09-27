@@ -17,6 +17,10 @@
    ========================================================================= */
 
 @theme {
+  /* Spacing in px (judge, root cause of J-1/J-8/J-11): at 200 % text the
+     words grow and the gutters, gaps and paddings stay put, as iOS Dynamic
+     Type does. In rem every gap doubled with the text and ate the width. */
+  --spacing: 4px;
   /* Two faces with different jobs and a wide gap between them. Bodoni Moda is
      a true Didone: at display sizes its optical-size axis opens the stroke
      contrast right up, which is where the presence comes from. Archivo runs
@@ -229,8 +233,11 @@
   --dock-droplet-h: 52px;
   --dock-ink: var(--ink-3);
   /* The crimson tint deep enough to read against the bar (1.5:1). */
-  --dock-active: #ecc4c9;
-  --dock-active-ink: var(--accent-active); /* 6.5:1 on the pink droplet; accent-text was 4.41 */
+  /* A neutral glass droplet, the icon in ink (cappy-ui §4, J-10): crimson is
+     the one action colour, never the navigation's. */
+  --dock-active: #cdd3c9;
+  --dock-active-ink: var(--ink);
+  --dock-bg: var(--elevated);
   /* Fixed pixels, as an iOS tab bar: the bar does not grow with text size; at
      200 % it drops its labels instead (useLargeText), so 5 × 56 always fits. */
   --dock-pill-w: 56px;
@@ -288,6 +295,19 @@
      135° light), a 1 px lit top edge, and a faint film grain over it. */
   --plate: radial-gradient(120% 90% at 15% 0%, #2f4a2b 0%, var(--field) 55%, #182716 100%);
   --plate-rim: inset 0 1px 0 rgba(255, 255, 255, 0.14);
+  /* The no-photo plate (judge a): the same lit green with a different light
+     in it per category, so neighbouring cards are never identical. */
+  --cat-glow: rgba(255, 255, 255, 0.12);
+  --cat-glow-fabrication: rgba(120, 170, 220, 0.34);
+  --cat-glow-additive: rgba(170, 140, 220, 0.34);
+  --cat-glow-finishing: rgba(230, 170, 110, 0.32);
+  --cat-glow-print: rgba(235, 120, 130, 0.3);
+  --cat-glow-freight: rgba(110, 200, 180, 0.3);
+  --cat-glow-warehousing: rgba(210, 200, 120, 0.28);
+  --cat-glow-workshop: rgba(230, 150, 100, 0.32);
+  --cat-glow-events: rgba(220, 120, 200, 0.3);
+  --cat-glow-creator: rgba(120, 160, 240, 0.32);
+  --plate-disc-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.22), 0 12px 32px -12px rgba(0, 0, 0, 0.5);
   --plate-grain: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='128' height='128'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 1 0 0 0 0 1 0 0 0 0 1 0 0 0 .6 0'/%3E%3C/filter%3E%3Crect width='128' height='128' filter='url(%23n)'/%3E%3C/svg%3E");
   --ambient-night: none;
   --accent-glow: none;
@@ -457,12 +477,30 @@
   .dock-label {
     transition: opacity var(--dur-short) var(--ease-standard);
   }
+  /* Scrolled down (J-10): the capsule tucks into the active tab and a round
+     search button, centred, as the iOS 26 tab bar minimises. */
   .dock[data-scrolled='away'] {
-    transform: translateY(10px) scale(0.84);
+    left: 50%;
+    right: auto;
+    transform: translateX(-50%);
     transition-duration: var(--dur-medium);
   }
+  .dock[data-scrolled='away'] li:not(:has(a[aria-current])):not(.dock-search),
+  .dock[data-scrolled='away'] .dock-droplet,
   .dock[data-scrolled='away'] .dock-label {
-    opacity: 0;
+    display: none;
+  }
+  .dock[data-scrolled='away'] li > a[aria-current] {
+    min-width: var(--dock-droplet-w);
+  }
+  .dock[data-scrolled='away'] li > a[aria-current] > span:first-child {
+    background: var(--dock-active);
+  }
+  .dock-search {
+    display: none;
+  }
+  .dock[data-scrolled='away'] .dock-search {
+    display: grid;
   }
   /* The droplet: one element for the whole bar, moved by transform to the
      active slot, a little wider mid-flight (gel), a lit rim like all glass. */
@@ -520,8 +558,8 @@ body {
   padding-right: env(safe-area-inset-right, 0px);
 }
 .safe-x {
-  padding-left: max(1rem, env(safe-area-inset-left, 0px));
-  padding-right: max(1rem, env(safe-area-inset-right, 0px));
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
 }
 
 body {
@@ -1226,7 +1264,7 @@ input[type='range'] {
   /* Horizontal rails bleed to the screen edge and snap. */
   .rail {
     display: flex;
-    gap: 10px;
+    gap: 12px;
     overflow-x: auto;
     scroll-snap-type: x mandatory;
     scroll-padding-inline: 20px;

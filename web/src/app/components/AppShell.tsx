@@ -35,8 +35,10 @@ type Tab = { to: string; label: string; icon: IconName; badge?: number }
 // dock steps aside there and comes back one level up.
 const DETAIL = /^\/(listing\/|bookings\/[^/]+|earn\/(new|edit)|inbox\/[^/]+|admin\/)/
 
+export { useLargeText }
 export function Dock({ badges }: { badges: Record<string, number> }) {
   const big = useLargeText()
+  const go = useNav()
   const path = useLocation().pathname
   const detail = DETAIL.test(path)
   useEffect(() => {
@@ -66,15 +68,14 @@ export function Dock({ badges }: { badges: Record<string, number> }) {
       style={{ viewTransitionName: 'dock' }}
     >
       <div
-        className="mx-auto flex h-[var(--dock-bar-h)] items-stretch px-1.5
+        className="mx-auto flex h-[var(--dock-bar-h)] items-stretch
           md:h-full md:max-w-[1180px] md:items-center md:gap-8 md:px-8"
       >
         {/* The wordmark belongs in the header on a website, so Browse drops its
             own masthead above md rather than printing it twice. */}
         <NavLink
           to="/"
-          className="t-h2 wordmark hidden shrink-0 leading-none md:block"
-          style={{ fontSize: 26 }}
+          className="t-wordmark hidden shrink-0 md:block"
         >
           Cappy
         </NavLink>
@@ -94,6 +95,23 @@ export function Dock({ badges }: { badges: Record<string, number> }) {
           {tabs.map((tab) => (
             <TabItem key={tab.to} tab={tab} big={big} />
           ))}
+          {/* Shown only while the dock is tucked away: search, one tap (J-10). */}
+          <li className="dock-search place-items-center px-1 md:hidden">
+            <button
+              type="button"
+              aria-label={t('Search listings')}
+              onClick={() => {
+                go('/')
+                requestAnimationFrame(() => {
+                  scrollTo({ top: 0, behavior: 'smooth' })
+                  document.querySelector<HTMLInputElement>('input[type=search]')?.focus({ preventScroll: true })
+                })
+              }}
+              className="grid h-12 w-12 place-items-center rounded-full bg-[var(--dock-active)] text-[var(--ink)]"
+            >
+              <Icon name="search" size={22} strokeWidth={2} />
+            </button>
+          </li>
         </ul>
 
         <ThemeToggle className="hidden md:grid" />
@@ -450,14 +468,14 @@ function SiteFooter() {
   const staff = session?.staff ?? false
   const groups: { title: string; links: { label: string; to: string }[] }[] = [
     {
-      title: t('Buy capacity'),
+      title: t('Rent'),
       links: [
         { label: t('Explore what is free'), to: '/' },
         { label: t('Your bookings'), to: '/bookings' },
       ],
     },
     {
-      title: t('Sell capacity'),
+      title: t('Earn'),
       links: [
         { label: t('List something'), to: '/earn/new' },
         { label: t('Your listings'), to: '/earn' },
@@ -479,7 +497,7 @@ function SiteFooter() {
         <div className="max-w-[30ch]">
           <p className="t-h2 wordmark">Cappy</p>
           <p className="t-sm mt-2 text-[var(--ink-3)]">
-            {t('Buy the hours, not the thing. One capacity network: making, moving and the kit to do it with.')}
+            {t('Rent tools, vans and workshops by the hour, from people nearby.')}
           </p>
           <div className="mt-5 flex flex-wrap items-center gap-3">
             <LanguageSwitch />
@@ -525,7 +543,7 @@ function BackButton({ onClick, floating }: { onClick: () => void; floating?: boo
     <button
       onClick={onClick}
       aria-label={t('Back')}
-      className={`grid h-10 w-10 place-items-center rounded-full transition-all duration-[var(--dur-short)]
+      className={`grid h-11 w-11 place-items-center rounded-full transition-all duration-[var(--dur-short)]
         ${
           floating
             ? 'glass-media glass-lens absolute left-4 z-10 h-11 w-11 text-[var(--on-field)] hover:brightness-110 md:left-12 md:mt-6'
@@ -555,7 +573,7 @@ export function LanguageSwitch() {
             // The language, then the full locale it gives with the device's region (en-US, fr-CA).
             void setLang(o.value).then(() => updateLocale(locale()))
           }}
-          className={`rounded-full px-3 py-1.5 text-label font-semibold transition-colors duration-[var(--dur-short)] ${
+          className={`min-h-[44px] rounded-full px-4 py-2 text-label font-semibold transition-colors duration-[var(--dur-short)] ${
             current === o.value ? 'bg-[var(--segment-on)] text-[var(--on-segment)]' : 'text-[var(--ink-3)] hover:text-[var(--ink)]'
           }`}
         >
@@ -619,7 +637,7 @@ function Segmented<V extends string>({
           type="button"
           aria-pressed={current === o.value}
           onClick={() => onPick(o.value)}
-          className={`rounded-full px-3 py-1.5 text-label font-semibold transition-colors duration-[var(--dur-short)] ${
+          className={`min-h-[44px] rounded-full px-4 py-2 text-label font-semibold transition-colors duration-[var(--dur-short)] ${
             current === o.value ? 'bg-[var(--segment-on)] text-[var(--on-segment)]' : 'text-[var(--ink-3)] hover:text-[var(--ink)]'
           }`}
         >

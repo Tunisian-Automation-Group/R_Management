@@ -63,8 +63,8 @@ export function Button({
   // sit inside a larger tap target.
   const sizes: Record<string, string> = {
     lg: 'min-h-[52px] px-7 text-body font-semibold gap-2',
-    md: 'min-h-[44px] px-5 text-body font-semibold gap-1.5',
-    sm: 'tap min-h-[34px] px-3.5 text-label font-semibold gap-1.5',
+    md: 'min-h-[48px] px-5 text-body font-semibold gap-1.5',
+    sm: 'min-h-[44px] px-4 text-label font-semibold gap-1.5',
   }
   const cls = `press inline-flex items-center justify-center rounded-[var(--radius-capsule)] ${sizes[size]} ${variants[variant]} ${TR}
         disabled:pointer-events-none disabled:border-transparent disabled:bg-[var(--disabled-bg)] disabled:text-[var(--ink-4)] disabled:shadow-none ${block ? 'w-full' : ''} ${className}`
@@ -142,7 +142,7 @@ export function Chip({
       onClick={onClick}
       aria-pressed={selected}
       aria-label={ariaLabel}
-      className={`press tap inline-flex min-h-[38px] max-w-full shrink-0 items-center gap-1.5 rounded-[var(--radius-capsule)] border px-3.5 py-1 text-left text-label font-medium ${TR}
+      className={`press inline-flex min-h-[44px] min-w-[44px] max-w-full shrink-0 items-center justify-center gap-1.5 rounded-[var(--radius-capsule)] border px-3.5 py-1 text-left text-label font-medium ${TR}
         ${
           selected
             ? 'border-[var(--field)] bg-[var(--field)] font-semibold text-[var(--on-field)]'
@@ -457,7 +457,7 @@ export function Segmented<T extends string>({
             role="tab"
             aria-selected={on}
             onClick={() => onChange(o.value)}
-            className={`tap relative z-[1] min-h-[44px] min-w-0 flex-1 px-1.5 text-body [hyphens:auto] [overflow-wrap:anywhere] ${TR}
+            className={`tap relative z-[1] min-h-[44px] min-w-0 flex-1 px-1.5 text-body [hyphens:manual] [overflow-wrap:anywhere] ${TR}
               ${on ? 'font-semibold text-[var(--ink)]' : 'font-medium text-[var(--ink-4)] hover:text-[var(--ink-2)]'}`}
           >
             {o.label}
@@ -779,11 +779,12 @@ export function Row({
   const color =
     tone === 'accent' ? 'text-[var(--accent-text)]' : tone === 'muted' ? 'text-[var(--ink-4)]' : ''
   return (
-    <div className="flex items-baseline justify-between gap-5 py-2.5">
+    // Label and value side by side, and stacked when the text is large (J-11).
+    <div className="flex flex-wrap items-baseline justify-between gap-x-5 gap-y-0.5 py-2.5">
       <span className="t-sm min-w-0 text-[var(--ink-3)]">{label}</span>
       {/* Values wrap rather than run off the edge. Some of them are sentences. */}
       <span
-        className={`tnum min-w-0 text-right ${strong ? 'text-body-l font-bold' : 'text-body font-medium'} ${color}`}
+        className={`tnum ml-auto min-w-0 text-right ${strong ? 'text-body-l font-bold' : 'text-body font-medium'} ${color}`}
       >
         {value}
       </span>

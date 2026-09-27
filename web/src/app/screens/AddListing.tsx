@@ -617,7 +617,7 @@ function ListingForm({ edit }: { edit?: repo.ListingView }) {
                 />
                 <span className="min-w-0 flex-1">
                   <span className="block text-body font-semibold">{c.label}</span>
-                  <span className="t-sm block truncate text-[var(--ink-4)]">{c.blurb}</span>
+                  <span className="t-sm block [overflow-wrap:anywhere] text-[var(--ink-4)]">{c.blurb}</span>
                 </span>
                 <Icon
                   name="chevron-right"
@@ -678,7 +678,7 @@ function ListingForm({ edit }: { edit?: repo.ListingView }) {
       <button
         disabled={Boolean(was)}
         onClick={() => setCategoryId(null)}
-        className="mb-7 inline-flex min-h-[38px] items-center gap-2 rounded-[var(--radius-capsule)] border border-[var(--line)] px-3.5 text-label font-semibold
+        className="mb-7 inline-flex min-h-[44px] items-center gap-2 rounded-[var(--radius-capsule)] border border-[var(--line)] px-3.5 text-label font-semibold
           transition-colors duration-[var(--dur-short)] hover:border-[var(--ink-4)]"
       >
         <Icon name={categoryIcon(meta!.icon)} size={17} className="text-[var(--accent-text)]" />
@@ -753,7 +753,7 @@ function ListingForm({ edit }: { edit?: repo.ListingView }) {
                     type="button"
                     aria-label={t('Remove photo')}
                     onClick={() => removePhoto(p.key)}
-                    className="tap absolute right-1.5 top-1.5 grid h-7 w-7 place-items-center rounded-full bg-[var(--ink)] text-[var(--on-inverse)]"
+                    className="absolute right-0 top-0 grid h-11 w-11 place-items-center rounded-full bg-[var(--ink)] text-[var(--on-inverse)]"
                   >
                     <Icon name="close" size={13} strokeWidth={2.6} />
                   </button>

@@ -223,20 +223,23 @@ export function Plate({
           )}
         </div>
       ) : (
-        // No photo and no times to set large (UX-1): the category's own mark,
-        // drawn, with its name on top where no chip or heart covers it. It
-        // says honestly "a thing of this kind", never someone else's photo.
-        <div className={`relative flex h-full flex-col ${thumb ? 'items-center justify-center' : 'p-4'}`} style={{ color: 'var(--on-field-dim)' }}>
-          <span className={thumb ? '' : 'm-auto opacity-70'}>
-            <Icon name={categoryIcon(meta.icon)} size={thumb ? 20 : 44} strokeWidth={1.4} />
+        // No photo and no times to set large (UX-1, judge a/J-5): the
+        // category's own mark, large, in a lit glass disc on a plate tinted
+        // by its category, so a grid of them has variety and reads as
+        // designed. No text: the card's title says what it is, and nothing
+        // sits under the hour tag or beside the category chip.
+        <div
+          className="relative grid h-full place-items-center"
+          style={{
+            backgroundImage: `radial-gradient(90% 70% at 72% 18%, var(--cat-glow-${categoryId}, var(--cat-glow)), transparent 70%)`,
+          }}
+        >
+          <span
+            className={`glass-dark grid place-items-center rounded-full ${thumb ? 'h-9 w-9' : 'h-24 w-24'}`}
+            style={{ boxShadow: 'var(--plate-disc-shadow)' }}
+          >
+            <Icon name={categoryIcon(meta.icon)} size={thumb ? 18 : 44} strokeWidth={1.5} className="text-[var(--on-field)]" />
           </span>
-          {/* The name sits at the bottom, clear of a back button or a heart on
-              the top corners (V9-7). */}
-          {!thumb && (
-            <p className="t-label" style={{ color: 'var(--on-field-dim)' }}>
-              {known ? t('Nothing free this week') : meta.label}
-            </p>
-          )}
         </div>
       )}
 

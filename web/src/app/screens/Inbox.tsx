@@ -90,11 +90,11 @@ function ThreadRow({ item }: { item: InboxItem }) {
         )}
         <span className="min-w-0 flex-1">
           <span className="flex items-baseline justify-between gap-3">
-            <span className={`truncate text-body ${item.unread ? 'font-bold' : 'font-semibold'}`}>{item.otherName ?? t('Your renter')}</span>
+            <span className={`[overflow-wrap:anywhere] text-body ${item.unread ? 'font-bold' : 'font-semibold'}`}>{item.otherName ?? t('Your renter')}</span>
             <span className="tnum shrink-0 text-label text-[var(--ink-4)]">{ago(item.lastMessage.at)}</span>
           </span>
-          <span className="t-sm block truncate text-[var(--ink-3)]">{item.listingTitle || t('Listing removed')}</span>
-          <span className={`t-sm mt-0.5 block truncate ${item.unread ? 'text-[var(--ink)]' : 'text-[var(--ink-3)]'}`}>
+          <span className="t-sm block [overflow-wrap:anywhere] text-[var(--ink-3)]">{item.listingTitle || t('Listing removed')}</span>
+          <span className={`t-sm mt-0.5 block [overflow-wrap:anywhere] ${item.unread ? 'text-[var(--ink)]' : 'text-[var(--ink-3)]'}`}>
             {item.lastMessage.mine ? `${t('You')}: ` : ''}
             {item.lastMessage.body}
           </span>
@@ -138,7 +138,7 @@ export function Thread() {
   const other = useOwner(asOwner ? b?.requesterId : b?.match.ownerId)
   if (booking.isPending || other.isPending) return <Screen back="/inbox"><DetailSkeleton /></Screen>
   if (!b) return <Screen back="/inbox" title={t('Inbox')}><EmptyState icon="chat" title={t('This conversation is gone')} body={t('The booking it belonged to no longer exists.')} /></Screen>
-  const name = other.data?.name.split(' ')[0] ?? (asOwner ? t('Your renter') : b.listing?.ownerName ?? '')
+  const name = other.data?.name ?? (asOwner ? t('Your renter') : b.listing?.ownerName ?? '')
   const rated = asOwner ? b.renterRating != null : Boolean(b.outcome)
   const pill = statusPill(b.status, rated)
   const dead = ['declined', 'cancelled', 'expired', 'payment_failed'].includes(b.status)
@@ -147,8 +147,8 @@ export function Thread() {
       <Card className="flex flex-wrap items-center gap-4 p-4">
         <Photo src={b.listing?.photo} alt="" categoryId={b.requirement.category} aspect={1} thumb width={56} className="w-[56px] shrink-0 rounded-[var(--radius-m)]" />
         <div className="min-w-0 flex-1">
-          <p className="truncate text-body font-semibold">{b.listing?.title ?? t('Listing removed')}</p>
-          <p className="t-sm tnum truncate text-[var(--ink-3)]">{range(b.match.start, b.match.end)}</p>
+          <p className="[overflow-wrap:anywhere] text-body font-semibold">{b.listing?.title ?? t('Listing removed')}</p>
+          <p className="t-sm tnum [overflow-wrap:anywhere] text-[var(--ink-3)]">{range(b.match.start, b.match.end)}</p>
           <span className="mt-1.5 block">
             <Pill tone={pill.tone}>{pill.label}</Pill>
           </span>

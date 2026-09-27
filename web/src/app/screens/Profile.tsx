@@ -90,11 +90,11 @@ export function Profile() {
         <div className="flex items-center gap-4">
           <Avatar initials={you.initials} size={56} />
           <div className="min-w-0">
-            <p className="t-h3 truncate">{you.name}</p>
+            <p className="t-h3 [overflow-wrap:anywhere]">{you.name}</p>
             <p className="t-sm tnum text-[var(--ink-3)]">
               {you.district} · {t('member since {year}', { year: you.joinedYear })}
             </p>
-            <p className="t-sm truncate text-[var(--ink-3)]">{session.email}</p>
+            <p className="t-sm [overflow-wrap:anywhere] text-[var(--ink-3)]">{session.email}</p>
           </div>
         </div>
         <div className="mt-5 grid grid-cols-[repeat(auto-fit,minmax(5.5rem,1fr))] gap-3 border-t border-[var(--line)] pt-5">
@@ -159,11 +159,11 @@ export function Profile() {
                     <span className="min-w-0 flex-1">
                       <button
                         onClick={() => nav(`/listing/${id}`)}
-                        className="block w-full truncate text-left text-body font-semibold after:absolute after:inset-0 after:content-['']"
+                        className="block w-full [overflow-wrap:anywhere] text-left text-body font-semibold after:absolute after:inset-0 after:content-['']"
                       >
                         {l.title}
                       </button>
-                      <span className="t-sm block truncate text-[var(--ink-3)]">
+                      <span className="t-sm block [overflow-wrap:anywhere] text-[var(--ink-3)]">
                         {o?.name}, {l.district}
                       </span>
                     </span>
@@ -180,7 +180,7 @@ export function Profile() {
         <SectionHead
           title={t('Account')}
           aside={
-            <button className="font-semibold text-[var(--accent-text)]" onClick={() => setEditing(true)}>
+            <button className="-my-3 inline-flex min-h-[44px] items-center font-semibold text-[var(--accent-text)]" onClick={() => setEditing(true)}>
               {t('Edit profile')}
             </button>
           }
@@ -250,7 +250,7 @@ export function Profile() {
         <SectionHead title={t('How Cappy works')} className="mt-7" />
         <Card className="p-5">
           <p className="t-body text-[var(--ink-2)]">
-            {t('Capacity is idle most of the time. Cappy sells those hours: a printer free overnight, a PA rig between gigs, a mill with a gap between contracts. You buy the outcome, not the machine, and one engine matches every job to whoever can actually run it.')}
+            {t('Most tools, vans and rooms sit unused most of the time. On Cappy you rent them by the hour from people nearby, and earn from yours when you do not need them.')}
           </p>
           <div className="mt-4 border-t border-[var(--line)] pt-4">
             <Row label={t('Service fee')} value={t('{pct} of the booking', { pct: percent(PLATFORM_FEE_BPS / 10_000) })} />
@@ -263,7 +263,7 @@ export function Profile() {
       <section>
         <SectionHead title={t('Help')} className="mt-7" />
         <Card className="p-5">
-          <nav aria-label={t('Help')} className="flex flex-col gap-3 text-body font-semibold hyphens-auto [overflow-wrap:anywhere]">
+          <nav aria-label={t('Help')} className="flex flex-col text-body font-semibold [&>a]:flex [&>a]:min-h-[44px] [&>a]:items-center hyphens-auto [overflow-wrap:anywhere]">
             <Link to="/help">{t('Help and answers')}</Link>
             <Link to="/help/safety">{t('How we keep you safe')}</Link>
           </nav>
@@ -273,7 +273,7 @@ export function Profile() {
       <section>
         <SectionHead title={t('Legal')} className="mt-7" />
         <Card className="p-5">
-          <nav aria-label={t('Legal')} className="flex flex-col gap-3 text-body font-semibold hyphens-auto [overflow-wrap:anywhere]">
+          <nav aria-label={t('Legal')} className="flex flex-col text-body font-semibold [&>a]:flex [&>a]:min-h-[44px] [&>a]:items-center hyphens-auto [overflow-wrap:anywhere]">
             <Link to="/legal/impressum">Impressum</Link>
             <Link to="/legal/privacy">{t('Privacy Policy')}</Link>
             <Link to="/legal/terms">{t('Terms of Use')}</Link>
@@ -516,7 +516,7 @@ function BlockedRow({ sub, onUnblock }: { sub: string; onUnblock: () => void }) 
   const person = useOwner(sub)
   return (
     <li className="flex items-center justify-between gap-3">
-      <span className="truncate text-body font-semibold">{person.data?.name ?? t('Someone')}</span>
+      <span className="[overflow-wrap:anywhere] text-body font-semibold">{person.data?.name ?? t('Someone')}</span>
       <Button variant="secondary" size="sm" onClick={onUnblock}>
         {t('Unblock')}
       </Button>
@@ -585,7 +585,7 @@ function NotificationSettings() {
     <section>
       <SectionHead title={t('Notifications')} className="mt-7" />
       <Card className="p-5">
-        <Link to="/notifications" className="text-body font-semibold underline underline-offset-4">
+        <Link to="/notifications" className="inline-flex min-h-[44px] items-center text-body font-semibold underline underline-offset-4">
           {t('See all notifications')}
         </Link>
         {isNative && perm === 'denied' && (

@@ -184,7 +184,7 @@ export function LocationPicker({
         }`}
       >
         <Icon name="pin" size={15} strokeWidth={1.9} className={onPlate ? '' : 'text-[var(--ink-3)]'} />
-        <span className="min-w-0 truncate">{label}</span>
+        <span className="min-w-0 [overflow-wrap:anywhere]">{label}</span>
         <Icon
           name="chevron-down"
           size={14}

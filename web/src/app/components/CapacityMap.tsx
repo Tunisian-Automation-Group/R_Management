@@ -485,7 +485,7 @@ export function CapacityMap({
       type="button"
       onClick={() => onLevel(l)}
       aria-pressed={level === l}
-      className={`tap min-h-[30px] rounded-[var(--radius-control)] px-2.5 text-label font-semibold transition-colors duration-[var(--dur-short)]
+      className={`tap min-h-[44px] rounded-[var(--radius-control)] px-2.5 text-label font-semibold transition-colors duration-[var(--dur-short)]
         ${level === l ? "bg-[var(--inverse)] text-[var(--on-inverse)]" : "text-[var(--ink-2)] hover:text-[var(--ink)]"}`}
     >
       {label}

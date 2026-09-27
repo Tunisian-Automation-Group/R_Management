@@ -1450,7 +1450,7 @@ export const DE: Record<string, string> = {
   "Full": "Voll",
   "Reduced": "Reduziert",
   "Reduced turns the frosted glass off, for older phones or if you prefer plain surfaces.": "Reduziert schaltet das Milchglas aus, für ältere Handys oder wenn du schlichte Flächen magst.",
-  "Rent what you need, by the hour": "Miete, was du brauchst – stundenweise",
+  "Rent what you need, by the hour": "Miete, was du brauchst\u00a0– stundenweise",
   "Drill, van, 3D printer, studio…": "Bohrmaschine, Transporter, 3D-Drucker, Studio …",
   "Free today near you": "Heute frei in deiner Nähe",
   "All categories": "Alle Kategorien",
@@ -1475,4 +1475,8 @@ export const DE: Record<string, string> = {
   "Hi! Is everything set for the booking?": "Hallo! Passt alles für die Buchung?",
   "How does the hand-over work?": "Wie läuft die Übergabe?",
   "Thanks, see you then!": "Danke, bis dann!",
+  "What you booked from other people.": "Was du bei anderen gebucht hast.",
+  "Most tools, vans and rooms sit unused most of the time. On Cappy you rent them by the hour from people nearby, and earn from yours when you do not need them.": "Die meisten Werkzeuge, Transporter und Räume stehen die meiste Zeit ungenutzt herum. Auf Cappy mietest du sie stundenweise bei Leuten in deiner Nähe – und verdienst mit deinen eigenen, wenn du sie nicht brauchst.",
+  "Rent": "Mieten",
+  "Rent tools, vans and workshops by the hour, from people nearby.": "Miete Werkzeug, Transporter und Werkstätten stundenweise, bei Leuten in deiner Nähe.",
 }

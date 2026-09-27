@@ -210,7 +210,7 @@ export function Conversation({
                 key={q}
                 type="button"
                 onClick={() => setDraft(q)}
-                className="shrink-0 rounded-full border border-[var(--line-strong)] px-3.5 py-2 text-label font-medium text-[var(--ink-2)] transition-colors duration-[var(--dur-short)] hover:bg-[var(--sunken)]"
+                className="min-h-[44px] shrink-0 rounded-full border border-[var(--line-strong)] px-4 py-2 text-label font-medium text-[var(--ink-2)] transition-colors duration-[var(--dur-short)] hover:bg-[var(--sunken)]"
               >
                 {q}
               </button>

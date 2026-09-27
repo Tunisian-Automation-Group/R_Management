@@ -355,8 +355,8 @@ export function Earn() {
                   className="flex w-full items-center gap-4 py-3.5 text-left transition-opacity duration-[var(--dur-short)] hover:opacity-70"
                 >
                   <span className="min-w-0 flex-1">
-                    <span className="block truncate text-body font-semibold">{b.listing?.title ?? t('Your listing')}</span>
-                    <span className="t-sm tnum block truncate text-[var(--ink-3)]">{range(b.match.start, b.match.end)}</span>
+                    <span className="block [overflow-wrap:anywhere] text-body font-semibold">{b.listing?.title ?? t('Your listing')}</span>
+                    <span className="t-sm tnum block [overflow-wrap:anywhere] text-[var(--ink-3)]">{range(b.match.start, b.match.end)}</span>
                   </span>
                   <Pill tone="warn">{t('Payout on hold')}</Pill>
                 </button>
@@ -378,8 +378,8 @@ export function Earn() {
                   className="flex w-full items-center gap-4 py-3.5 text-left transition-opacity duration-[var(--dur-short)] hover:opacity-70"
                 >
                   <span className="min-w-0 flex-1">
-                    <span className="block truncate text-body font-semibold">{b.listing?.title ?? t('Your listing')}</span>
-                    <span className="t-sm tnum block truncate text-[var(--ink-3)]">{range(b.match.start, b.match.end)}</span>
+                    <span className="block [overflow-wrap:anywhere] text-body font-semibold">{b.listing?.title ?? t('Your listing')}</span>
+                    <span className="t-sm tnum block [overflow-wrap:anywhere] text-[var(--ink-3)]">{range(b.match.start, b.match.end)}</span>
                   </span>
                   <Pill tone="success">{b.status === 'active' ? t('In progress') : t('Confirmed')}</Pill>
                 </button>
@@ -410,7 +410,7 @@ export function Earn() {
                       className={`w-[56px] shrink-0 rounded-[var(--radius-plate)] ${l.active ? '' : 'opacity-40'}`}
                     />
                     <div className="min-w-0 flex-1">
-                      <p className="truncate text-body font-semibold">{l.title}</p>
+                      <p className="[overflow-wrap:anywhere] text-body font-semibold">{l.title}</p>
                       <p className="t-sm tnum text-[var(--ink-3)]">
                         {formatMoney(l.ratePerHour, l.currency)}/h ·{' '}
                         {l.active ? t('{h} h free this week', { h: Math.round(h) }) : t('Paused')}
@@ -483,7 +483,7 @@ export function Earn() {
                   <span className="min-w-0 flex-1">
                     {/* Built here from the parts, so both dates follow the reader's
                         locale; the server's description carries a German date (V4-8). */}
-                    <span className="block truncate text-body font-semibold">
+                    <span className="block [overflow-wrap:anywhere] text-body font-semibold">
                       {inv.title
                         ? `${t('Service fee')} · ${inv.title}${inv.serviceStart ? ` · ${serviceDates(inv.serviceStart, inv.serviceEnd)}` : ''}`
                         : (inv.description ?? t('Cappy fee for booking {id}', { id: inv.bookingId.slice(-6).toUpperCase() }))}

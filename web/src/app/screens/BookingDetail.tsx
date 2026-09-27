@@ -679,7 +679,7 @@ function Detail({
           <div className="flex items-center gap-3.5">
             <Avatar initials={other.initials} size={44} business={other.kind === 'business'} />
             <div className="min-w-0 flex-1">
-              <p className="truncate text-body font-semibold">{other.name}</p>
+              <p className="[overflow-wrap:anywhere] text-body font-semibold">{other.name}</p>
               <p className="t-sm text-[var(--ink-3)]">
                 {asOwner ? renterRecord(other.renterRatingSum, other.renterJobs) : trackRecord(other)}
               </p>
@@ -755,11 +755,11 @@ function Detail({
 
       <Card className="mt-3 flex flex-wrap items-center justify-between gap-3 p-5">
         <p className="t-sm text-[var(--ink-3)]">{t('Something not right? Tell us, and we see this booking with it.')}</p>
-        <div className="flex gap-4 text-body font-semibold">
-          <Link to="/help/problems" className="underline">
+        <div className="flex flex-wrap gap-x-5 text-body font-semibold">
+          <Link to="/help/problems" className="inline-flex min-h-[44px] items-center underline">
             {t('Help')}
           </Link>
-          <a href={supportHref(booking.id)} className="underline">
+          <a href={supportHref(booking.id)} className="inline-flex min-h-[44px] items-center underline">
             {t('Get help with this booking')}
           </a>
         </div>
