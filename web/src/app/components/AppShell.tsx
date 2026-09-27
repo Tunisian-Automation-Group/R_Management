@@ -320,7 +320,10 @@ export function Screen({
   wide = false,
   tone = 'page',
   docTitle,
+  wash,
 }: {
+  /** The photo's own colour, washed into the top of the page (VD-9). */
+  wash?: string
   /** The browser tab's title; defaults to `title` when that is plain text. */
   docTitle?: string
   title?: ReactNode
@@ -368,6 +371,9 @@ export function Screen({
     <div
       className={`anim-screen min-h-dvh ${tone === 'surface' ? 'bg-[var(--surface)]' : ''}`}
       style={{
+        // The listing takes on its photo's colour at the top, fading into the
+        // page by 480 px (VD-9), as Apple Music and Airbnb tint a detail page.
+        ...(wash ? { backgroundImage: `linear-gradient(to bottom, color-mix(in srgb, ${wash} 22%, var(--page)), var(--page) 480px)` } : {}),
         paddingTop: 'var(--header-h)',
         paddingBottom: `calc(var(--dock-h) + ${footer ? 96 : 16}px)`,
       }}
@@ -392,6 +398,7 @@ export function Screen({
               <div className="relative md:px-8 md:pt-6">
                 {hero}
                 {back && <BackButton onClick={goBack} floating />}
+                {back && <HeroBar title={tabTitle} onBack={goBack} />}
               </div>
             ) : (
               <div style={{ height: 'var(--safe-top)' }} aria-hidden="true" />
@@ -535,6 +542,38 @@ function SiteFooter() {
         {staff && <NavLink to="/admin" className="hover:text-[var(--ink-2)]">{t('Staff')}</NavLink>}
       </nav>
     </footer>
+  )
+}
+
+/**
+ * The top bar of a photo page (VD-9): nothing but a floating Back over the
+ * photo, and a regular glass bar with the title once the photo has scrolled
+ * away. A sentinel at the photo's bottom edge toggles it (no scroll handler).
+ */
+function HeroBar({ title, onBack }: { title?: string; onBack: () => void }) {
+  const sentinel = useRef<HTMLSpanElement>(null)
+  const [shown, setShown] = useState(false)
+  useEffect(() => {
+    const el = sentinel.current
+    if (!el) return
+    const io = new IntersectionObserver(([e]) => setShown(!e.isIntersecting && e.boundingClientRect.top < 0))
+    io.observe(el)
+    return () => io.disconnect()
+  }, [])
+  return (
+    <>
+      <span ref={sentinel} aria-hidden="true" className="absolute inset-x-0 bottom-16 h-px" />
+      <div
+        aria-hidden={!shown}
+        className={`glass hero-bar fixed inset-x-0 top-0 z-30 flex items-center gap-2 px-2 md:hidden ${shown ? 'is-shown' : ''}`}
+        style={{ paddingTop: 'var(--safe-top)' }}
+      >
+        <button type="button" onClick={onBack} tabIndex={shown ? 0 : -1} aria-label={t('Back')} className="grid h-11 w-11 shrink-0 place-items-center rounded-full">
+          <Icon name="chevron-left" size={20} strokeWidth={2.2} />
+        </button>
+        <p className="min-w-0 flex-1 py-3 pr-4 text-body font-semibold">{title}</p>
+      </div>
+    </>
   )
 }
 

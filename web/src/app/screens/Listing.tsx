@@ -313,6 +313,7 @@ export function Listing({ preview }: { preview?: { detail: ListingDetail; banner
     <Screen
       back={preview ? '/admin' : '/'}
       docTitle={listing.title}
+      wash={detail.data.photoMeta?.[0]?.color ?? undefined}
       hero={
         <Gallery
           photos={listing.photos ?? []}

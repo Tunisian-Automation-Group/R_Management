@@ -1640,3 +1640,17 @@ select {
   -webkit-mask-image: linear-gradient(#000 calc(100% - 24px), transparent);
   mask-image: linear-gradient(#000 calc(100% - 24px), transparent);
 }
+
+/* The photo page's bar (VD-9): hidden over the photo, glass once it has
+   scrolled away. Transform and opacity only. */
+.hero-bar {
+  opacity: 0;
+  transform: translateY(-100%);
+  pointer-events: none;
+  transition: opacity var(--dur-short) var(--ease-standard), transform var(--dur-medium) var(--ease-decelerate);
+}
+.hero-bar.is-shown {
+  opacity: 1;
+  transform: none;
+  pointer-events: auto;
+}
