@@ -140,7 +140,7 @@ export function CapacityBar({
       {showLegend && (
         <div className="mt-4 flex flex-wrap items-center gap-x-4 gap-y-1.5 border-t border-[var(--line)] pt-3 text-label text-[var(--ink-3)]">
           <Key className="bg-[var(--track)]" label={t('In use')} />
-          <Key className="bg-[var(--idle)]" label={intent === 'earn' ? t('Idle, nobody paying') : t('Free to book')} />
+          <Key className="bg-[var(--idle)]" label={intent === 'earn' ? t('Free to book') : t('Free to book')} />
           {bookedList.length > 0 && <Key className="bg-[var(--sold)]" label={intent === 'earn' ? t('Sold') : t('Your booking')} />}
         </div>
       )}

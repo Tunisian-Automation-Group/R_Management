@@ -147,7 +147,7 @@ export function Browse() {
       >
         {/* The field is its own glass pane, the way the kit's search bars are,
             rather than a rule drawn across the page. */}
-        <div className="glass-strong relative mx-auto flex h-16 max-w-[720px] items-center rounded-full px-5 shadow-[var(--glass-shadow-raised)]">
+        <div className="glass-strong relative flex h-16 max-w-[720px] items-center rounded-full px-5 shadow-[var(--glass-shadow-raised)]">
           <Icon
             name="search"
             size={17}

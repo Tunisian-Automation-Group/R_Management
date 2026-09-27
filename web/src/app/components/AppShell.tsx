@@ -123,7 +123,7 @@ export function Dock({ badges }: { badges: Record<string, number> }) {
             transition-colors duration-[var(--dur-short)] hover:bg-[var(--accent-hover)] md:inline-flex"
         >
           <Icon name="plus" size={16} strokeWidth={2.4} />
-          {t('List capacity')}
+          {t('List something')}
         </NavLink>
       </div>
     </nav>
