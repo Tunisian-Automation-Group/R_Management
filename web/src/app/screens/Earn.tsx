@@ -109,7 +109,6 @@ export function Earn() {
     hoursIdle += h
     unsold += h * l.ratePerHour
   }
-  const sold = soldThisWeek.reduce((n, b) => n + b.match.quote.hours, 0)
   // Earned means paid out: completed. Accepted and active are still to come.
   // What really reached the owner, after refunds and no-shows: the server's reckoning (V8-2).
   const earned = inbound
@@ -315,32 +314,45 @@ export function Earn() {
 
       {requests.length > 0 && requestsSection}
 
-      {/* ------------------------------------------- the number that matters */}
-      <section className="-mt-1">
-        <p className="t-label">{t('Free to book this week')}</p>
-        <p className="mt-3 flex flex-wrap items-baseline gap-x-2.5">
-          <span className="t-figure text-[clamp(3.5rem,19vw,4.75rem)] leading-[0.9]">{Math.round(hoursIdle)}</span>
-          <span className="text-title-s font-medium text-[var(--ink-4)]">{t('hours')}</span>
+      {/* --------------------------------------- the hero (VD-18, §4.8)
+          What you have and what is next, Revolut-style, on the lit plate; the
+          week chart is content, so an opaque card on it, never glass. */}
+      <section className="plate-lit on-plate -mx-4 overflow-hidden px-4 pb-5 pt-6 md:mx-0 md:rounded-[var(--radius-plate)] md:px-6">
+        <p className="t-label text-[var(--ink-3)]">{t('This week')}</p>
+        <p className="t-figure-hero mt-2 text-[var(--ink)]">{formatMoney(earned, currency)}</p>
+        <p className="t-sm tnum mt-2 text-[var(--ink-3)]">
+          {t('earned')}
+          {upcoming > 0 && (
+            <>
+              {' · '}
+              <span className="font-semibold text-[var(--money)]">{t('{amount} on the way', { amount: formatMoney(upcoming, currency) })}</span>
+            </>
+          )}
         </p>
-        <p className="t-lede mt-3 text-[var(--ink-2)]">
-          <span className="hl font-semibold">{formatMoney(unsold, currency)}</span> {t('you could still earn this week.')}
-        </p>
-        {(sold > 0 || earned > 0) && (
-          <p className="t-sm tnum mt-2.5 font-semibold text-[var(--success-text)]">
-            {t('{h} h sold this week · {earned} earned', { h: Math.round(sold), earned: formatMoney(earned, currency) })}
-            {upcoming > 0 && ` · ${t('{amount} to come', { amount: formatMoney(upcoming, currency) })}`}
-          </p>
-        )}
+        <div className="mt-5 rounded-[var(--radius-card)] bg-[var(--field-2)] p-4">
+          <CapacityBar
+            slots={active.flatMap((l) => slotsFor(l.id))}
+            booked={soldThisWeek.map((b) => b.match)}
+            intent="earn"
+            showLegend
+          />
+        </div>
       </section>
 
-      <Card className="mt-6 p-5">
-        <CapacityBar
-          slots={active.flatMap((l) => slotsFor(l.id))}
-          booked={soldThisWeek.map((b) => b.match)}
-          intent="earn"
-          showLegend
-        />
-      </Card>
+      {/* The free hours as an invitation, not a reproach. */}
+      <section className="mt-6">
+        <p className="text-title-s font-bold">
+          {plural(Math.round(hoursIdle), '{n} free hour this week', '{n} free hours this week')}
+        </p>
+        {unsold > 0 && (
+          <p className="t-sm mt-1 text-[var(--ink-3)]">{t('Worth up to {amount} if they are booked.', { amount: formatMoney(unsold, currency) })}</p>
+        )}
+        <div className="mt-3">
+          <Button size="sm" variant="secondary" to={mine.length === 1 ? `/earn/edit/${mine[0].id}` : '#listings'}>
+            {t('Open more hours')}
+          </Button>
+        </div>
+      </section>
 
       {requests.length === 0 && requestsSection}
 
@@ -390,7 +402,7 @@ export function Earn() {
       )}
 
       {/* --------------------------------------------------------- listings */}
-      <section>
+      <section id="listings" className="scroll-mt-24">
         <SectionHead title={t('Your listings')} aside={`${mine.length}`} className="mt-7" />
         <ul className="space-y-3">
           {mine.map((l) => {

@@ -1483,4 +1483,11 @@ export const DE: Record<string, string> = {
   "Add to calendar": "Zum Kalender hinzufügen",
   "with {name}": "mit {name}",
   "All set. {name} knows you are coming.": "Alles klar. {name} weiß, dass du kommst.",
+  "This week": "Diese Woche",
+  "earned": "verdient",
+  "{amount} on the way": "{amount} unterwegs",
+  "{n} free hour this week": "{n} freie Stunde diese Woche",
+  "{n} free hours this week": "{n} freie Stunden diese Woche",
+  "Worth up to {amount} if they are booked.": "Bis zu {amount} wert, wenn sie gebucht werden.",
+  "Open more hours": "Mehr Stunden öffnen",
 }

@@ -1487,4 +1487,11 @@ export const FR: Record<string, string> = {
   "Add to calendar": "Ajouter au calendrier",
   "with {name}": "avec {name}",
   "All set. {name} knows you are coming.": "C’est réservé. {name} sait que vous venez.",
+  "This week": "Cette semaine",
+  "earned": "gagnés",
+  "{amount} on the way": "{amount} en route",
+  "{n} free hour this week": "{n} heure libre cette semaine",
+  "{n} free hours this week": "{n} heures libres cette semaine",
+  "Worth up to {amount} if they are booked.": "Jusqu’à {amount} si elles sont réservées.",
+  "Open more hours": "Ouvrir plus d’heures",
 }

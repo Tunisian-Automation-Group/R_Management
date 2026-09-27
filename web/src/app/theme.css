@@ -1744,3 +1744,19 @@ div > .ticket-step:nth-child(3) {
     transition: none;
   }
 }
+
+/* Content on the lit plate (VD-18): the dark theme's text, line and chart
+   colours, scoped, so a chart or a label reads on the green in either theme. */
+.on-plate {
+  --ink: #eef0ea;
+  --ink-2: #cfd5ca;
+  --ink-3: #b3bdaf;
+  --ink-4: #b0b9ac;
+  --line: rgba(238, 240, 234, 0.18);
+  --surface: #1a211b;
+  --money: #8fd3ae;
+  --track: #2b322c;
+  --idle: #8cc3d6;
+  --sold: #f2606d;
+  color: var(--ink);
+}
