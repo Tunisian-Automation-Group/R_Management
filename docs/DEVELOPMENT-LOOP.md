@@ -16,6 +16,11 @@ parallel.
      on the web version (desktop) and the app version (390 px), in EN/DE/FR,
      light and dark, and writes `## Verification round N (VN)` into
      [`TASKS.md`](TASKS.md);
+   - a **UI judge** (`cappy-ui-judge`) scans every screen of the web and app
+     versions for overflowing or clipped text, overlaps, horizontal scroll,
+     dock and safe-area collisions, small targets, off-grid spacing and
+     contrast, and gives the UI builder a PASS or FAIL per screen; a UI change
+     is merged only when the judge says "ship";
    - a **UX reviewer** scores the app against best-in-class apps and the
      `cappy-ui` rulebook and adds UX-n tasks;
    - when needed, a **research** agent (law, markets, security, stores) adds tasks
@@ -38,6 +43,7 @@ parallel.
 
 | Agent | Writes | Never |
 |---|---|---|
+| UI judge | findings and screenshots in its report; the scratchpad | edits code |
 | Verifier | only its new section at the end of TASKS.md | edits code, types passwords or cards, confirms deletions |
 | UX reviewer / visual lead | `docs/research/*ui-ux*` / `*visual-direction*`, UX-n or VD-n in TASKS | builds |
 | Backend fork | `backend/`, `infra/`, `local/`, `.github/`, docs other than the living ones | touches `web/src`, restarts containers while a browser round runs |
@@ -149,7 +155,7 @@ The readiness verdict at the last score was NO-GO:
 |---|---|
 | `.claude/settings.json` | Enables the `frontend-design` plugin (official marketplace) for everyone who opens the repo in Claude Code |
 | `.claude/skills/cappy-ui/SKILL.md` | The UI rulebook (the `cappy-ui` skill) |
-| `.claude/agents/` | One agent per role: `cappy-verifier`, `cappy-ux-reviewer`, `cappy-visual-lead`, `cappy-docs-sync`, `cappy-readiness`, `cappy-backend-builder`, `cappy-web-builder`. Start one by name and give it the round's items. |
+| `.claude/agents/` | One agent per role: `cappy-verifier`, `cappy-ui-judge`, `cappy-ux-reviewer`, `cappy-visual-lead`, `cappy-docs-sync`, `cappy-readiness`, `cappy-backend-builder`, `cappy-web-builder`. Start one by name and give it the round's items. |
 | `docs/research/visual-refs.json` | The design reference image URLs (the images are copyrighted and stay out of the repo) |
 
 ## 8. The owner's standing preferences
