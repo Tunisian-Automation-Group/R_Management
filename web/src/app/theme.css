@@ -798,6 +798,8 @@ th {
   :is(button, a).glass-media:active {
     transform: scale(0.96);
     box-shadow: inset 0 0 22px var(--glass-glow), inset 0 1px 0 var(--glass-specular), var(--glass-shadow);
+    /* The glow starts where the finger is (--px/--py, set on pointerdown). */
+    background-image: radial-gradient(circle at var(--px, 50%) var(--py, 50%), var(--glass-glow), transparent 70%);
   }
   :is(button, a):is(.glass, .glass-thin, .glass-strong, .glass-media) {
     transition: transform var(--dur-snappy) var(--spring-snappy), box-shadow var(--dur-short) var(--ease-standard);
@@ -1448,9 +1450,11 @@ input[type='range'] {
 .skeleton {
   background-image: linear-gradient(90deg, var(--sunken) 0%, var(--line) 45%, var(--sunken) 90%);
   background-size: 180% 100%;
+  /* One pass, then still (VD-17): at rest the band is off the edge. */
+  background-position: 180% 0;
   animation:
     cappy-fade var(--dur-short) var(--ease-decelerate) 300ms backwards,
-    cappy-shimmer 1.4s linear infinite;
+    cappy-shimmer 1.4s linear 1;
 }
 
 /* ------------------------------------------------------------ view transitions
@@ -1702,5 +1706,41 @@ div > .ticket-step:nth-child(3) {
     animation: none;
     transform: none;
     background: linear-gradient(160deg, var(--ticket-sweep), transparent 42%);
+  }
+}
+
+/* Glass materialises from what opened it (VD-17): it grows from its origin on
+   the snappy spring, never a bare fade. */
+.anim-materialize {
+  animation: cappy-materialize var(--dur-long) var(--spring-snappy) backwards;
+}
+@keyframes cappy-materialize {
+  from {
+    opacity: 0;
+    transform: scale(0.6);
+  }
+}
+/* Odometer digits (VD-17): each digit a 0-9 column moved to its value. */
+.odo {
+  display: inline-flex;
+  font-variant-numeric: tabular-nums;
+}
+.odo-d {
+  display: inline-block;
+  height: 1.2em;
+  line-height: 1.2em;
+  overflow: hidden;
+}
+.odo-d > span {
+  display: flex;
+  flex-direction: column;
+  transition: transform var(--dur-long) var(--spring-snappy);
+}
+@media (prefers-reduced-motion: reduce) {
+  .anim-materialize {
+    animation: cappy-fade var(--dur-instant) linear backwards;
+  }
+  .odo-d > span {
+    transition: none;
   }
 }

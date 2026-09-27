@@ -198,7 +198,7 @@ export function LocationPicker({
           <div
             role="dialog"
             aria-label={t('Choose a city')}
-            className="anim-pop glass-strong absolute right-0 top-[calc(100%+8px)] z-50 max-h-[70vh] w-[320px]
+            className="anim-materialize origin-top-right glass-strong absolute right-0 top-[calc(100%+8px)] z-50 max-h-[70vh] w-[320px]
               overflow-y-auto rounded-[var(--radius-l)] p-3 shadow-[var(--glass-shadow-raised)]"
           >
             {list}

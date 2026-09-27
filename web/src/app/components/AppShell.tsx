@@ -41,6 +41,18 @@ export function Dock({ badges }: { badges: Record<string, number> }) {
   const path = useLocation().pathname
   const detail = DETAIL.test(path)
   useEffect(() => {
+    // Glass lights up where it is pressed (VD-17): the touch point, for the CSS.
+    const down = (e: PointerEvent) => {
+      const el = (e.target as Element | null)?.closest<HTMLElement>('.glass, .glass-thin, .glass-strong, .glass-media')
+      if (!el) return
+      const r = el.getBoundingClientRect()
+      el.style.setProperty('--px', `${e.clientX - r.left}px`)
+      el.style.setProperty('--py', `${e.clientY - r.top}px`)
+    }
+    addEventListener('pointerdown', down, { passive: true })
+    return () => removeEventListener('pointerdown', down)
+  }, [])
+  useEffect(() => {
     // The sticky bars, the offline bar and toasts measure from --dock-h.
     document.documentElement.dataset.dock = detail ? 'hidden' : 'shown'
   }, [detail])

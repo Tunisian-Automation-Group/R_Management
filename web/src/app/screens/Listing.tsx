@@ -29,6 +29,7 @@ import { Screen, SectionHead, useLargeText } from '../components/AppShell.tsx'
 import { CapacityBar } from '../components/CapacityBar.tsx'
 import { WhenBadge } from '../components/Cover.tsx'
 import { Photo, SaveButton, WhenChip } from '../components/Photo.tsx'
+import { Odometer } from '../components/Odometer.tsx'
 import { Reviews } from '../components/Reviews.tsx'
 import { BlockButton, ReportButton } from '../components/Report.tsx'
 import { TraderNote } from '../components/BusinessFields.tsx'
@@ -412,7 +413,7 @@ export function Listing({ preview }: { preview?: { detail: ListingDetail; banner
                 </div>
               )}
               <p className="tnum text-title-s font-bold leading-tight md:mt-2 md:text-title-l">
-                {quote ? formatMoney(quote.total, cur) : '—'}
+                {quote ? <Odometer value={formatMoney(quote.total, cur)} /> : '—'}
               </p>
               {/* U-20: the total is the whole price; the fee is inside it, never added at the end. */}
               {quote && (
