@@ -554,7 +554,11 @@ body {
 .t-display,
 .t-h1,
 .t-h2,
-.t-title-user {
+.t-h3,
+.t-h4,
+.t-title-user,
+td,
+th {
   hyphens: auto;
   overflow-wrap: anywhere;
 }

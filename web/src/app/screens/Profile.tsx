@@ -263,7 +263,7 @@ export function Profile() {
       <section>
         <SectionHead title={t('Help')} className="mt-7" />
         <Card className="p-5">
-          <nav aria-label={t('Help')} className="flex flex-col gap-3 text-body font-semibold">
+          <nav aria-label={t('Help')} className="flex flex-col gap-3 text-body font-semibold hyphens-auto [overflow-wrap:anywhere]">
             <Link to="/help">{t('Help and answers')}</Link>
             <Link to="/help/safety">{t('How we keep you safe')}</Link>
           </nav>
@@ -273,7 +273,7 @@ export function Profile() {
       <section>
         <SectionHead title={t('Legal')} className="mt-7" />
         <Card className="p-5">
-          <nav aria-label={t('Legal')} className="flex flex-col gap-3 text-body font-semibold">
+          <nav aria-label={t('Legal')} className="flex flex-col gap-3 text-body font-semibold hyphens-auto [overflow-wrap:anywhere]">
             <Link to="/legal/impressum">Impressum</Link>
             <Link to="/legal/privacy">{t('Privacy Policy')}</Link>
             <Link to="/legal/terms">{t('Terms of Use')}</Link>
