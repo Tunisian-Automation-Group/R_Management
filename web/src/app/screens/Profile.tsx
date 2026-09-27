@@ -97,7 +97,7 @@ export function Profile() {
             <p className="t-sm truncate text-[var(--ink-3)]">{session.email}</p>
           </div>
         </div>
-        <div className="mt-5 grid grid-cols-3 gap-3 border-t border-[var(--line)] pt-5">
+        <div className="mt-5 grid grid-cols-[repeat(auto-fit,minmax(5.5rem,1fr))] gap-3 border-t border-[var(--line)] pt-5">
           <Stat label={t('Listed')} value={String(listings.data?.items.length ?? 0)} />
           <Stat label={t('Earned')} value={formatMoney(earned, currency)} accent />
           <Stat label={t('Spent')} value={formatMoney(spent, currency)} />
@@ -657,7 +657,7 @@ function Channels() {
       {(Object.keys(CATEGORY_LABEL) as NoticeCategory[]).map((c) => (
         <li key={c} className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1 border-b border-[var(--line)] py-3">
           <span className="min-w-0 text-body">{t(CATEGORY_LABEL[c])}</span>
-          <span className="flex gap-4">
+          <span className="flex flex-wrap gap-x-4 gap-y-1">
             {(['push', 'email'] as const).map((ch) => (
               <label key={ch} className="t-sm flex items-center gap-1.5 text-[var(--ink-3)]">
                 <input

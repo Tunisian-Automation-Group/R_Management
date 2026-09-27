@@ -128,7 +128,7 @@ export function Browse() {
           Content first (owner, 2026-09-27): the brand in one line, where you
           are, and one plain sentence of what this is. The search is the hero
           and the first listings sit above the fold on a 390 px phone. */}
-      <header className="flex items-center justify-between gap-3 pt-3 md:pt-8">
+      <header className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1 pt-3 md:pt-8">
         <span className="t-wordmark md:hidden">Cappy</span>
         <LocationPicker
           label={here.name === here.city ? here.name : `${here.name}, ${here.city}`}

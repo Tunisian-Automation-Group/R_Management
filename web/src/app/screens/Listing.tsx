@@ -344,7 +344,7 @@ export function Listing({ preview }: { preview?: { detail: ListingDetail; banner
         mine ? undefined : (
           // At large text sizes (U-27) the button wraps under the price instead of covering it.
           <div className="flex flex-wrap items-center gap-x-4 gap-y-2 md:block">
-            <div className="min-w-[10rem] flex-1">
+            <div className="min-w-[min(10rem,100%)] flex-1">
               <p className="t-label hidden md:block">{t('Your booking')}</p>
               {/* On a desktop the box itself carries the choice (UX-20): Day,
                   Start, Duration as native selects, the same state as the chips. */}

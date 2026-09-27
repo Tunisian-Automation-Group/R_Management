@@ -666,8 +666,9 @@ body {
    the cents set smaller with .t-cents. */
 .t-figure-hero {
   font-family: var(--font-sans);
-  font-size: 3.5rem;
-  line-height: 3.5rem;
+  /* Grows with the reader's text size, but never past the phone's width. */
+  font-size: min(3.5rem, 15vw);
+  line-height: 1;
   font-weight: 800;
   font-stretch: 125%;
   font-variation-settings: 'wdth' 125;

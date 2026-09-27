@@ -177,14 +177,14 @@ export function LocationPicker({
         onClick={() => setOpen((o) => !o)}
         aria-haspopup="dialog"
         aria-expanded={open}
-        className={`inline-flex min-h-[44px] items-center gap-1.5 rounded-full px-3 text-label font-medium transition-colors duration-[var(--dur-short)] ${
+        className={`inline-flex min-h-[44px] max-w-full items-center gap-1.5 rounded-full px-3 text-label font-medium transition-colors duration-[var(--dur-short)] ${
           onPlate
             ? 'glass glass-dark text-[var(--on-field)]'
             : 'text-[var(--ink-2)] hover:bg-[var(--sunken)] hover:text-[var(--ink)]'
         }`}
       >
         <Icon name="pin" size={15} strokeWidth={1.9} className={onPlate ? '' : 'text-[var(--ink-3)]'} />
-        <span>{label}</span>
+        <span className="min-w-0 truncate">{label}</span>
         <Icon
           name="chevron-down"
           size={14}
