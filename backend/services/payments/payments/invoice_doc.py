@@ -424,6 +424,15 @@ def pdf(doc: Doc, *, tz: str, lang: str, locale: str = "") -> bytes:
     def wrap(s: str, font: str, size: float, max_w: float) -> list[str]:
         out, cur = [], ""
         for word in s.split():
+            # A word wider than the column (an email, a long register entry)
+            # is cut by character, so it never runs into the next column.
+            while stringWidth(word, font, size) > max_w:
+                cut = next(i for i in range(len(word), 0, -1) if stringWidth(word[:i], font, size) <= max_w)
+                if cur:
+                    out.append(cur)
+                    cur = ""
+                out.append(word[:cut])
+                word = word[cut:]
             nxt = f"{cur} {word}".strip()
             if stringWidth(nxt, font, size) <= max_w or not cur:
                 cur = nxt
@@ -572,8 +581,6 @@ def pdf(doc: Doc, *, tz: str, lang: str, locale: str = "") -> bytes:
         y -= 4
 
     # Footer: every legal detail of the issuer (§ 35a GmbHG business letter).
-    fy = m + 34
-    cv.line(m, fy + 14, right, fy + 14)
     left = [doc.seller.name, *_lines(doc.seller.address)]
     mid = [
         x
@@ -584,12 +591,17 @@ def pdf(doc: Doc, *, tz: str, lang: str, locale: str = "") -> bytes:
         )
         if x
     ]
-    for i, block in enumerate((left, mid, seller_ids)):
-        yy = fy
-        for line in block:
-            for part in wrap(line, "Archivo", 7.5, col - 12):
-                text(m + i * col, yy, part, size=7.5, color=INK3)
-                yy -= 10
+    # Each column is wrapped to its own width first; the footer then grows
+    # upwards from just above the bottom line by its tallest column, so it
+    # never runs into the next column or the "Page 1 of 1" line.
+    columns = [
+        [part for line in block for part in wrap(line, "Archivo", 7.5, col - 12)] for block in (left, mid, seller_ids)
+    ]
+    fy = m + 12 + (max(len(c) for c in columns) - 1) * 10
+    cv.line(m, fy + 14, right, fy + 14)
+    for i, parts in enumerate(columns):
+        for k, part in enumerate(parts):
+            text(m + i * col, fy - k * 10, part, size=7.5, color=INK3)
     bottom = w["e_invoice"] if doc.kind != "receipt" else ""
     if bottom:
         text(m, m - 6, bottom, size=7, color=INK3)

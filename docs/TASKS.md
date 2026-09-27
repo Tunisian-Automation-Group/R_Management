@@ -1211,7 +1211,7 @@ within a band is the build order.
 - [x] IN-4 [backend] Credit notes (Rechnungskorrektur, type 381) in their own series, one per invoice, staff only (feat/invoices)
 - [x] IN-5 [backend]+[web] Renter payment receipt PDF (not a tax invoice) and PDF downloads in the app (feat/invoices)
 - [x] IN-6 [backend] Invoice retention 8 years (§ 14b UStG since 2025) (feat/invoices)
-- [ ] IN-7 [infra] Pass `LEGAL_REGISTER`, `LEGAL_DIRECTORS` and `LEGAL_EMAIL` to payments from the `legal` Terraform variable (add `directors`), so production invoices carry the § 35a GmbHG details (only backend/ and docs/ were in scope)
+- [x] IN-7 [infra] Pass `LEGAL_REGISTER`, `LEGAL_DIRECTORS` and `LEGAL_EMAIL` to payments from the `legal` Terraform variable (add `directors`), so production invoices carry the § 35a GmbHG details (only backend/ and docs/ were in scope) (Terraform passes LEGAL_REGISTER, LEGAL_DIRECTORS, LEGAL_EMAIL; `legal.directors` added)
 - [ ] IN-8 [infra] veraPDF check of one generated invoice in CI (PDF/A-3b conformance is claimed, not verified)
 - [ ] IN-9 [backend] An XRechnung CIUS profile (BR-DE rules, KoSIT validator) if a public-sector or XRechnung-only buyer appears
 - [ ] IN-10 [backend] Issue a credit note automatically when a booking already invoiced is refunded in full later (today staff do it)

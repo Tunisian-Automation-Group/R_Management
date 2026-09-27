@@ -17,7 +17,7 @@
    - `ALARM_EMAIL`
    - `LEGAL`, the operator on invoices and in the app's Impressum, privacy
      policy and DSA contact point, as JSON:
-     `{"company":"…","address":"…","email":"…","vat_id":"…","tax_number":"…","register":"…"}`.
+     `{"company":"…","address":"…","email":"…","vat_id":"…","tax_number":"…","register":"…","directors":"…"}`.
      Deploys stop without it, and the web build refuses to build without the
      company, address and email (R2-1).
    - `APPS` (once the store apps ship): `{"apple_team_id":"…","android_sha256":"AB:CD:…","app_store_url":"…","play_store_url":"…"}`.

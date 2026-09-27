@@ -106,8 +106,8 @@ variable "switches" {
 }
 
 variable "legal" {
-  description = "The operator's identity for fee invoices (§ 14 UStG) and the Impressum, privacy policy and DSA contact point in the app: legal name, address (comma-separated lines), contact email, VAT ID and/or tax number, commercial register entry. Payments refuses to start without it; a release web build refuses to build without company, address and email."
-  type        = object({ company = string, address = string, email = string, vat_id = string, tax_number = string, register = optional(string, "") })
+  description = "The operator's identity for fee invoices (§ 14 UStG) and the Impressum, privacy policy and DSA contact point in the app: legal name, address (comma-separated lines), contact email, VAT ID and/or tax number, commercial register entry, managing directors (§ 35a GmbHG). Payments refuses to start without it; a release web build refuses to build without company, address and email."
+  type        = object({ company = string, address = string, email = string, vat_id = string, tax_number = string, register = optional(string, ""), directors = optional(string, "") })
 }
 
 variable "apps" {

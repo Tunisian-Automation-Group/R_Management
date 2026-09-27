@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import hashlib
 import io
+import re
 
 import pytest
 from facturx import get_xml_from_pdf, xml_check_schematron, xml_check_xsd
@@ -242,3 +243,108 @@ def test_the_renter_gets_a_receipt_not_an_invoice(app, client, issuer):
     assert "Invoice" not in text.replace("tax invoice", "").replace("own invoice", "")
     assert client.get("/payments/receipts/bk_1.pdf", headers=issuer.headers("host")).status_code == 404
     assert client.get("/payments/receipts/nope.pdf", headers=issuer.headers("buyer")).status_code == 404
+
+
+def _runs(pdf: bytes) -> list[tuple[float, float, str]]:
+    """Every text run on the first page with its position (x, y)."""
+    out: list[tuple[float, float, str]] = []
+
+    def visit(text, cm, tm, font, size):  # noqa: ANN001
+        if text.strip():
+            out.append((tm[4] * cm[0] + cm[4], tm[5] * cm[3] + cm[5], text.strip()))
+
+    PdfReader(io.BytesIO(pdf)).pages[0].extract_text(visitor_text=visit)
+    return out
+
+
+def test_the_footer_columns_never_run_into_each_other(issuer):
+    """Long register entries, two directors, a long email and a long company
+    name wrap inside their own column (a third of the text width each)."""
+    from reportlab.lib.pagesizes import A4
+    from reportlab.pdfbase.pdfmetrics import stringWidth
+
+    reset_memory_broker()
+    settings = Settings(
+        app_env="test",
+        database_url="sqlite+aiosqlite://",
+        internal_token="i" * 40,
+        legal_company="Cappy Marktplatz für Werkstätten und Geräte GmbH",
+        legal_address="Ohlauer Straße 5, Hinterhaus, 3. Obergeschoss, 10999 Berlin",
+        legal_vat_id="DE123456789",
+        legal_tax_number="37/123/45678",
+        legal_register="Amtsgericht Charlottenburg (Berlin), HRB 123456 B",
+        legal_directors="Ada Muster-Beispielfrau, Bartholomäus Langername-Mustermann",
+        legal_email="rechnungen.und.buchhaltung@cappy-marktplatz-europa.example",
+    )
+    app = build_app(settings, provider=FakeProvider(), verifier=issuer.verifier())
+    with TestClient(app) as client:
+        app.state._portal = client.portal
+        _complete(app, client, "bk_1")
+        inv = _only(client, issuer)
+        pdf = client.get(inv["pdfUrl"].removeprefix("/api"), headers=issuer.headers("host")).content
+    margin, width = 56, A4[0]
+    col = (width - 2 * margin) / 3
+    runs = _runs(pdf)
+    bottom = margin - 6  # the "e-invoice" and "Page 1 of 1" line
+    footer = [r for r in runs if bottom < r[1] < margin + 120]
+    assert len(footer) >= 10, footer
+    assert all(y >= bottom + 12 for _, y, _ in footer), "the footer runs into the bottom line"
+    for x, _, s in footer:
+        i = int((x - margin + 0.5) // col)
+        end = x + stringWidth(s, "Archivo", 7.5)
+        assert end <= margin + (i + 1) * col - 6, (
+            f"{s!r} ends at {end:.0f}, column {i} ends at {margin + (i + 1) * col:.0f}"
+        )
+
+
+# English that must never show on a German or French document (labels and phrases).
+ENGLISH = (
+    "Platform fee",
+    "Service fee",
+    "Invoice date",
+    "Date of service",
+    "Booking reference",
+    "Withheld from",
+    "Paid by card",
+    "Total paid",
+    "Refunded",
+    "Credit note",
+    "Receipt",
+    "Amount",
+    "Net",
+    "Page 1 of 1",
+    "This PDF carries",
+    "Rental",
+    "includes Cappy",
+    "Corrects invoice",
+    "Reason",
+    "Managing directors",
+    "Commercial register",
+    "Tax number",
+    "VAT ID",
+)
+
+
+@pytest.mark.parametrize("lang", ["de-DE", "fr-FR"])
+def test_german_and_french_documents_carry_no_english(app, client, issuer, lang):
+    _complete(app, client, "bk_1", title="Bandsäge")
+    head = {**issuer.headers("host"), "Accept-Language": lang}
+    [inv] = client.get("/payments/invoices", headers=head).json()
+    staff = {
+        "Authorization": f"Bearer {issuer.token('staff-1', **{'cognito:groups': ['admin']})}",
+        "Accept-Language": lang,
+    }
+    cn = client.post(
+        f"/admin/payments/invoices/{inv['number']}/credit-note",
+        json={"reason": "Buchung vollständig erstattet"},
+        headers=staff,
+    ).json()
+    docs = [
+        client.get(inv["pdfUrl"].removeprefix("/api"), headers=head).content,
+        client.get(cn["pdfUrl"].removeprefix("/api"), headers=head).content,
+        client.get("/payments/receipts/bk_1.pdf", headers={**issuer.headers("buyer"), "Accept-Language": lang}).content,
+    ]
+    for pdf in docs:
+        text = _text(pdf)
+        leaks = [e for e in ENGLISH if re.search(rf"\b{re.escape(e)}\b", text)]
+        assert not leaks, (lang, leaks, text[:300])
