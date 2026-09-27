@@ -1398,6 +1398,44 @@ chargeback") payments follows it to the end.
 
 ### 8.1 Fee invoices to owners
 
+**Since `feat/invoices` (docs/research/2026-10-invoices.md):** every fee invoice
+is a **Factur-X / ZUGFeRD 2 PDF/A-3, profile EN 16931**: the PDF people read
+with the CII XML attached, which the German B2B e-invoice rules accept (§ 14 (1)
+UStG, mandatory from 2027/2028). The document is laid out like Stripe's and
+Airbnb's: the Cappy wordmark, the name and number, a summary with the amount
+and "Paid", from and to, the line, the tax block, and every legal detail in the
+footer (register court and number, managing directors, contact email: § 35a
+GmbHG). Rendering is `payments/invoice_doc.py` (reportlab with embedded
+Archivo and Bodoni Moda, OFL; the XML is checked against the XSD and the EN
+16931 schematron with the `factur-x` library).
+
+- **Tax per recipient** (`invoices.treatment_of`): an EU business with a VAT ID
+  from another member state gets a **reverse charge** invoice (no VAT, "Steuer-
+  schuldnerschaft des Leistungsempfängers", both VAT IDs; § 14a UStG); a Swiss
+  (CHE…) or UK business is **not taxable in Germany**; everyone else pays the
+  issuer's VAT, included. ponytail: OSS for private owners in other EU states
+  waits for counsel (TASKS, "(counsel)").
+- **Never changes** (GoBD): the issuer is copied onto the invoice at issue
+  (`issuer_*` columns), the PDF is rendered once on the first download and kept
+  with its SHA-256 (`pdf`, `pdf_sha256`, `document_lang`), then served byte for
+  byte whatever the settings or the reader's language.
+- **Credit notes** (Rechnungskorrektur, type 381): staff reverse an invoice in
+  full with `POST /api/admin/payments/invoices/{number}/credit-note {reason}`,
+  once per invoice, numbered in their own series `CAP-<year>-G000001`; the
+  list shows `correctedBy`. Table `credit_notes`.
+- **Downloads:** `GET /api/payments/invoices/{number}.pdf` and `.xml` (the
+  owner), `/api/payments/credit-notes/{number}.pdf`, and
+  `/api/admin/payments/invoices/{number}.pdf` for staff. The list items carry
+  `pdfUrl`, `xmlUrl`, `taxTreatment`. Earn's invoice rows open the PDF.
+- **Renter receipt:** `GET /api/payments/receipts/{bookingId}.pdf`: charged,
+  refunded, paid, with Cappy's fee inside it, titled Receipt / Zahlungsbeleg /
+  Reçu and "not a tax invoice" (the rental is the owner's supply). A
+  "Download receipt (PDF)" link on the renter's booking page.
+- **Logo:** the wordmark as vector paths, `payments/assets/logo.svg` and
+  `web/public/logo.svg`.
+- **Seam:** a new issuer or market is an `Issuer` (settings) and, where the
+  invoice law differs, words in `invoice_doc.LABELS`; the layout is shared.
+
 Each payout (or kept late-cancellation fee) issues an invoice for Cappy's
 fee. Numbers have no gaps per year, and an invoice never changes once issued.
 
