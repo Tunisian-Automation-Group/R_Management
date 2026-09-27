@@ -27,3 +27,10 @@ authorisation.
   code path remembers to take them.
 - *Carving the idle slot into pieces on accept.* Mutates supply to represent
   demand, and still races.
+
+## Correction (2026-09-27)
+
+The statuses that hold a window are wider than listed above: `awaiting_payment`,
+`requested`, `accepted`, `active`, `completed` and `disputed` (booking migration
+0003, `booking/state.py` `HOLDING`). A completed or disputed booking used its
+time, so it stays sold. The decision stands.

@@ -1200,3 +1200,5 @@ within a band is the build order.
 - [ ] VD-29 [web] The specular highlight follows device tilt on the ticket and the plate (DeviceOrientation, clamped to ±8°, off under Reduce Motion and in `lite`) — https://developer.apple.com/videos/play/wwdc2025/219/
 - [ ] VD-30 [web] True refraction on desktop Chromium only: an `feDisplacementMap` droplet in the dock and segmented controls behind `CSS.supports('backdrop-filter','url(#lg)')` and `data-glass='full'`; never required for the look — https://kube.io/blog/liquid-glass-css-svg/
 - [ ] VD-31 [app] A device performance pass: a 10 s scroll on Explore and the listing on a 2021 mid-range Android (4 GB) and an iPhone 12, in `full` and `lite`; frame-time traces attached; the budget in §3.5 met or the thresholds retuned — docs/research/2026-10-visual-direction.md §3.5
+
+- [ ] R2-25 [infra] Queue consumers scale on the queue's total visible messages (target 100), not backlog per task: use a per-task backlog metric (visible messages ÷ running tasks, target from handler throughput × acceptable latency) — found writing ARCHITECTURE.md
