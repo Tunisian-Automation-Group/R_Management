@@ -181,6 +181,7 @@ export function WhenChip({
 
   return (
     <span
+      data-hour
       // The hour tag (VD-9/10): media glass for text, dark enough that white
       // holds 4.5:1 over the palest photo (check:contrast measures it).
       className={`glass-media-text tnum absolute bottom-4 left-4 rounded-full px-3 py-1.5

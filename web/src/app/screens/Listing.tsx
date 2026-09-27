@@ -28,7 +28,7 @@ import { messageOf, useCappy, useMe, useToast } from '../store.tsx'
 import { Screen, SectionHead, useLargeText } from '../components/AppShell.tsx'
 import { CapacityBar } from '../components/CapacityBar.tsx'
 import { WhenBadge } from '../components/Cover.tsx'
-import { Photo, SaveButton } from '../components/Photo.tsx'
+import { Photo, SaveButton, WhenChip } from '../components/Photo.tsx'
 import { Reviews } from '../components/Reviews.tsx'
 import { BlockButton, ReportButton } from '../components/Report.tsx'
 import { TraderNote } from '../components/BusinessFields.tsx'
@@ -198,6 +198,8 @@ export function Listing({ preview }: { preview?: { detail: ListingDetail; banner
   const selectedStart = selected?.start
   useEffect(startOver, [selectedStart])
 
+  const heroStart = selected?.start ?? slots.find((sl) => Date.parse(sl.start) > Date.now())?.start
+
   if (detail.isPending) return <Screen back="/"><DetailSkeleton /></Screen>
   if (!detail.data || !listing || !owner) return <NotFound what="listing" />
   const info = detail.data
@@ -323,6 +325,7 @@ export function Listing({ preview }: { preview?: { detail: ListingDetail; banner
           categoryId={listing.category}
           style={{ viewTransitionName: 'hero' }}
           overlay={
+          <>
           <span
             // One row that never wraps into the photo counter (J-12): the chip's
             // own text wraps inside it instead.
@@ -338,6 +341,10 @@ export function Listing({ preview }: { preview?: { detail: ListingDetail; banner
             />
             {!mine && <SaveButton id={listing.id} title={listing.title} className="" />}
           </span>
+          {/* The hour tag the card showed, in the same corner (VD-16): the card's
+              tag travels here. The slot stands in until the offers arrive. */}
+          {heroStart && <WhenChip start={heroStart} className="[view-transition-name:hour]" />}
+          </>
           }
         />
       }

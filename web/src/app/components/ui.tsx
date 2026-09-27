@@ -838,8 +838,15 @@ export function TapLink({
   to,
   className,
   children,
+  prefetch,
   ...rest
-}: { to: string; className?: string; children: ReactNode } & Omit<React.AnchorHTMLAttributes<HTMLAnchorElement>, 'href'>) {
+}: {
+  to: string
+  className?: string
+  children: ReactNode
+  /** Loads the next screen first (for up to 350 ms) so the shared elements have somewhere to land. */
+  prefetch?: () => Promise<unknown>
+} & Omit<React.AnchorHTMLAttributes<HTMLAnchorElement>, 'href'>) {
   const nav = useNav()
   return (
     <a
@@ -850,7 +857,16 @@ export function TapLink({
         rest.onClick?.(e)
         if (e.defaultPrevented || e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return
         e.preventDefault()
-        nav(to)
+        // The hour tag and the photo travel into the listing (VD-16): named on
+        // the tapped card only, since a view-transition name must be unique. The
+        // card unmounts with the screen, so the names leave with it.
+        const tag = e.currentTarget.closest('[data-card]')?.querySelector<HTMLElement>('[data-hour]')
+        if (tag) {
+          tag.style.viewTransitionName = 'hour'
+          if (tag.parentElement) tag.parentElement.style.viewTransitionName = 'hero'
+        }
+        if (!prefetch) return nav(to)
+        void Promise.race([prefetch(), new Promise((ok) => setTimeout(ok, 350))]).finally(() => nav(to))
       }}
     >
       {children}

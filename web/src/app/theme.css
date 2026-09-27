@@ -1507,6 +1507,11 @@ input[type='range'] {
   object-fit: cover;
   overflow: clip;
 }
+/* The hour tag flies from the card to the booking bar on the spring (VD-16). */
+::view-transition-group(hour) {
+  animation-duration: var(--dur-long);
+  animation-timing-function: var(--spring-bouncy);
+}
 ::view-transition-group(dock),
 ::view-transition-group(chrome) {
   animation-duration: 0ms;

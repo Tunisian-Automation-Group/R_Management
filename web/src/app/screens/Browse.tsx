@@ -1,12 +1,14 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { useNav } from '../nav.ts'
 import { Link, useSearchParams } from 'react-router-dom'
+import { useQueryClient } from '@tanstack/react-query'
 import { rating } from '../../domain/types.ts'
 import { CATEGORIES, GROUPS, categoriesIn, category, durationLabel } from '../../domain/categories.ts'
 import type { SortKey } from '../../domain/match.ts'
 import { formatMoney } from '../../domain/money.ts'
 import {
   SEARCH_MIN,
+  getListing,
   useCities,
   useDistricts,
   useMatches,
@@ -730,8 +732,9 @@ function FilterGroup({ label, children, strip = false }: { label: string; childr
  */
 /** One thing that is free soon: what it is, when, and what it costs. */
 function SpotCard({ spot, to, priority = false }: { spot: Spotlight; to: string; priority?: boolean }) {
+  const qc = useQueryClient()
   return (
-    <div className="group relative w-[240px] text-left md:w-full">
+    <div data-card className="group relative w-[240px] text-left md:w-full">
       <Photo
         src={spot.listing.photos?.[0]}
         alt={spot.listing.title}
@@ -749,6 +752,7 @@ function SpotCard({ spot, to, priority = false }: { spot: Spotlight; to: string;
       <span className="block pt-3">
         <TapLink
           to={to}
+          prefetch={() => qc.prefetchQuery({ queryKey: ['listing', spot.listing.id], queryFn: () => getListing(spot.listing.id) })}
           className="[overflow-wrap:anywhere] block min-h-[48px] text-left text-body-l font-semibold after:absolute after:inset-0 after:content-['']"
         >
           {spot.listing.title}
