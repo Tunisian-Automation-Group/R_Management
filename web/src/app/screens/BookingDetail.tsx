@@ -304,7 +304,7 @@ function Detail({
     </Button>
   ) : (
     <Button block size="lg" variant="secondary" to={'/'}>
-      {t('Browse capacity')}
+      {t('Find something to rent')}
     </Button>
   )
 
@@ -1084,7 +1084,7 @@ function Detail({
                   key={o.label}
                   onClick={() => setOnTime(o.v)}
                   aria-pressed={onTime === o.v}
-                  className={`min-h-[48px] flex-1 rounded-[var(--radius-control)] border text-body font-semibold transition-colors duration-[var(--dur-short)] ${
+                  className={`min-h-[48px] flex-1 rounded-[var(--radius-capsule)] border text-body font-semibold transition-colors duration-[var(--dur-short)] ${
                     onTime === o.v
                       ? 'border-[var(--field)] bg-[var(--field)] text-[var(--on-field)]'
                       : 'border-[var(--line)] hover:border-[var(--ink-4)]'

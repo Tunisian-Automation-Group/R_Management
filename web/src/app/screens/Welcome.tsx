@@ -19,18 +19,18 @@ const EXAMPLES: { icon: IconName; what: string; price: number }[] = [
 const VALUES: { icon: IconName; title: string; body: string }[] = [
   {
     icon: 'search',
-    title: 'Book the hours, not the thing',
-    body: 'A workshop for an afternoon, a van for a move, a 3D printer for a batch: from people and businesses near you.',
+    title: 'Book by the hour',
+    body: 'A workshop for an afternoon, a van for a move, a 3D printer for one job. From people nearby.',
   },
   {
     icon: 'wallet',
-    title: 'Earn from what stands idle',
-    body: 'List a machine, a room or a vehicle for the hours it is free. Approve each request, or let people book instantly, and be paid after it.',
+    title: 'Earn from your own gear',
+    body: 'List a tool, a room or a vehicle for the hours you do not need it. You choose who books, and you are paid after.',
   },
   {
     icon: 'shield',
-    title: 'Members only, for a reason',
-    body: 'Listings are people’s own property and addresses. Everyone signs in, payments stay on Cappy, and both sides review each other.',
+    title: 'Safe by design',
+    body: 'Everyone is a verified member, payments stay in Cappy, and both sides leave reviews.',
   },
 ]
 
@@ -63,10 +63,10 @@ export function Welcome() {
         <main id="main" className="flex flex-1 flex-col justify-center py-10 md:grid md:grid-cols-2 md:items-center md:gap-16">
           <div>
             <h1 className="t-display text-balance" style={{ fontSize: 'clamp(40px, 9vw, 72px)', lineHeight: 1.02 }}>
-              {t('Capacity, shared by the hour.')}
+              {t('Rent tools, vans and workshops near you.')}
             </h1>
             <p className="t-body mt-4 max-w-[40ch] text-[var(--on-field-dim)]">
-              {t('Rent the machines, rooms and vehicles near you when you need them, and earn from yours when you do not.')}
+              {t('Book by the hour from people close by, and earn from your own gear when you are not using it.')}
             </p>
             <ul className="no-scrollbar -mx-6 mt-7 flex gap-2.5 overflow-x-auto px-6 md:mx-0 md:flex-wrap md:px-0" aria-label={t('For example')}>
               {EXAMPLES.map((e) => (
@@ -103,7 +103,7 @@ export function Welcome() {
           <button
             type="button"
             onClick={() => nav('/login', { replace: true })}
-            className="min-h-[48px] rounded-[var(--radius-control)] border border-[var(--on-field-dim)] px-4 text-body font-semibold"
+            className="min-h-[48px] rounded-[var(--radius-capsule)] border border-[var(--on-field-dim)] px-4 text-body font-semibold"
           >
             {t('I have an account')}
           </button>

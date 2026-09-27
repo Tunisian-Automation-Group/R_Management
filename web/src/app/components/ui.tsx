@@ -66,7 +66,7 @@ export function Button({
     md: 'min-h-[44px] px-5 text-body font-semibold gap-1.5',
     sm: 'tap min-h-[34px] px-3.5 text-label font-semibold gap-1.5',
   }
-  const cls = `press inline-flex items-center justify-center rounded-[var(--radius-control)] ${sizes[size]} ${variants[variant]} ${TR}
+  const cls = `press inline-flex items-center justify-center rounded-[var(--radius-capsule)] ${sizes[size]} ${variants[variant]} ${TR}
         disabled:pointer-events-none disabled:border-transparent disabled:bg-[var(--disabled-bg)] disabled:text-[var(--ink-4)] disabled:shadow-none ${block ? 'w-full' : ''} ${className}`
   const inner = (
     <>
@@ -142,7 +142,7 @@ export function Chip({
       onClick={onClick}
       aria-pressed={selected}
       aria-label={ariaLabel}
-      className={`press tap inline-flex min-h-[38px] max-w-full shrink-0 items-center gap-1.5 rounded-[var(--radius-control)] border px-3.5 py-1 text-left text-label font-medium ${TR}
+      className={`press tap inline-flex min-h-[38px] max-w-full shrink-0 items-center gap-1.5 rounded-[var(--radius-capsule)] border px-3.5 py-1 text-left text-label font-medium ${TR}
         ${
           selected
             ? 'border-[var(--field)] bg-[var(--field)] font-semibold text-[var(--on-field)]'
@@ -627,9 +627,15 @@ export function Sheet({
           if (leaving && e.target === e.currentTarget) setMounted(false)
         }}
         className={`${leaving ? (wide ? 'anim-dialog-out' : 'anim-sheet-out') : wide ? 'anim-dialog' : 'anim-sheet'}
-          glass sheet-pane relative flex w-full max-w-[540px] flex-col shadow-[var(--shadow-sheet)]
-          ${detent === 'medium' ? 'max-h-[55dvh]' : 'max-h-[88dvh]'}
-          rounded-t-[var(--sheet-radius)] md:max-h-[85dvh] md:rounded-[var(--sheet-radius)]`}
+          sheet-pane relative flex w-full max-w-[540px] flex-col bg-[var(--elevated)] shadow-[var(--shadow-sheet)]
+          ${
+            // At the medium height a sheet floats, inset 8 with every corner
+            // rounded; at the large height it meets the edges (VD-12, iOS 26).
+            detent === 'medium'
+              ? 'max-h-[55dvh] rounded-[var(--sheet-radius)] max-md:mx-2 max-md:mb-2'
+              : 'max-h-[88dvh] rounded-t-[var(--sheet-radius)]'
+          }
+          md:mx-0 md:mb-0 md:max-h-[85dvh] md:rounded-[var(--sheet-radius)]`}
         style={{
           transform: drag ? `translateY(${drag}px)` : undefined,
           transition: drag === null ? 'transform var(--dur-medium) var(--ease-spring-spatial)' : 'none',
@@ -654,7 +660,7 @@ export function Sheet({
             <span className="h-[5px] w-9 rounded-full bg-[var(--line-strong)] opacity-60" />
           </span>
         )}
-        <div className="flex items-center justify-between gap-3 border-b border-[var(--line)] px-5 pb-4 pt-3 md:pt-5">
+        <div className="flex items-center justify-between gap-3 px-5 pb-2 pt-3 md:pt-5">
           <h2 id={titleId} className="t-title-m min-w-0">
             {title}
           </h2>
@@ -662,16 +668,16 @@ export function Sheet({
             data-no-drag
             onClick={onClose}
             aria-label={t('Close')}
-            className={`grid h-10 w-10 shrink-0 place-items-center rounded-[var(--radius-control)] text-[var(--ink-3)] ${TR} hover:bg-[var(--sunken)] hover:text-[var(--ink)]`}
+            className={`grid h-10 w-10 shrink-0 place-items-center rounded-full bg-[var(--sunken)] text-[var(--ink-2)] ${TR} hover:text-[var(--ink)]`}
           >
             <Icon name="close" size={18} strokeWidth={2.2} />
           </button>
         </div>
         </div>
-        <div data-sheet-body className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-5 pb-2 pt-5">{children}</div>
+        <div data-sheet-body className="sheet-body min-h-0 flex-1 overflow-y-auto overscroll-contain px-5 pb-4 pt-3">{children}</div>
         {footer && (
           <div
-            className="border-t border-[var(--line)] px-5 pt-4"
+            className="px-5 pt-3"
             style={{ paddingBottom: 'max(18px, env(safe-area-inset-bottom))' }}
           >
             {footer}

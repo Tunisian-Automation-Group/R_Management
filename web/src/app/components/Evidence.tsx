@@ -219,7 +219,7 @@ export function EvidencePanel({
             />
             <label
               htmlFor={`${id}-files`}
-              className="inline-flex min-h-[48px] cursor-pointer items-center gap-2 rounded-[var(--radius-control)] border border-[var(--line-strong)] px-4 text-body font-semibold hover:border-[var(--ink-4)] focus-within:outline"
+              className="inline-flex min-h-[48px] cursor-pointer items-center gap-2 rounded-[var(--radius-capsule)] border border-[var(--line-strong)] px-4 text-body font-semibold hover:border-[var(--ink-4)] focus-within:outline"
             >
               <Icon name="camera" size={18} />
               {files.length ? t('Add more photos') : t('Take or choose photos')}

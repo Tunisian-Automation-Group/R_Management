@@ -287,7 +287,7 @@ export function Profile() {
 
       <button
         onClick={() => nav('/earn/new')}
-        className="mt-5 flex w-full items-center justify-center gap-2 rounded-[var(--radius-control)] border border-[var(--line)] py-3.5 text-body font-semibold text-[var(--accent-text)]
+        className="mt-5 flex w-full items-center justify-center gap-2 rounded-[var(--radius-capsule)] border border-[var(--line)] py-3.5 text-body font-semibold text-[var(--accent-text)]
           transition-colors duration-[var(--dur-short)] hover:border-[var(--accent)]"
       >
         <Icon name="plus" size={17} strokeWidth={2.2} />

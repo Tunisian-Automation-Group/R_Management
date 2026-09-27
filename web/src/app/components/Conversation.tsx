@@ -30,12 +30,17 @@ function Body({ text, closed }: { text: string; closed: boolean }) {
   return <p className="whitespace-pre-wrap break-words text-body leading-[1.375rem]">{out}</p>
 }
 
-function Bubble({ m, otherName, closed }: { m: Message; otherName: string; closed: boolean }) {
+function Bubble({ m, otherName, closed, last }: { m: Message; otherName: string; closed: boolean; last: boolean }) {
   return (
-    <li className={`flex flex-col ${m.mine ? 'items-end' : 'items-start'}`}>
+    <li className={`flex flex-col ${m.mine ? 'items-end' : 'items-start'} ${last ? '' : '-mb-2'}`}>
       <div
-        className={`max-w-[85%] rounded-[var(--radius-m)] px-3.5 py-2.5 ${
-          m.mine ? 'bg-[var(--field)] text-[var(--on-field)]' : 'bg-[var(--sunken)] text-[var(--ink)]'
+        // Messenger bubbles (VD-19): yours in ink on the right, theirs on the
+        // paper tone on the left; the corner nearest the sender tucks in on
+        // the last bubble of a run, the way iMessage and Vinted draw a tail.
+        className={`max-w-[85%] rounded-[var(--radius-l)] px-4 py-2.5 ${
+          m.mine
+            ? `bg-[var(--inverse)] text-[var(--on-inverse)] ${last ? 'rounded-br-[var(--radius-xs)]' : ''}`
+            : `bg-[var(--sunken)] text-[var(--ink)] ${last ? 'rounded-bl-[var(--radius-xs)]' : ''}`
         }`}
       >
         <Body text={m.body} closed={closed} />
@@ -45,13 +50,16 @@ function Bubble({ m, otherName, closed }: { m: Message; otherName: string; close
           {t('Keep payments on Cappy: money paid outside it is not protected, and asking for it breaks our rules.')}
         </p>
       )}
-      {/* A div: the report button carries a sheet, which may not sit inside a <p> (V5-15). */}
-      <div className="t-sm mt-1 flex items-center gap-1 text-[var(--ink-4)]">
-        {m.mine ? t('You') : otherName} · {ago(m.at)}
-        {!m.mine && (
-          <ReportButton targetType="message" targetId={m.id} compact offerBlock={{ sub: m.senderId, name: otherName }} />
-        )}
-      </div>
+      {/* Who and when, once per run of messages rather than under each one.
+          A div: the report button carries a sheet, which may not sit inside a <p> (V5-15). */}
+      {last && (
+        <div className="t-sm mt-1 flex items-center gap-1 px-1 text-[var(--ink-4)]">
+          {m.mine ? t('You') : otherName} · {ago(m.at)}
+          {!m.mine && (
+            <ReportButton targetType="message" targetId={m.id} compact offerBlock={{ sub: m.senderId, name: otherName }} />
+          )}
+        </div>
+      )}
     </li>
   )
 }
@@ -150,18 +158,18 @@ export function Conversation({
       )}
       {!accepted && !closed && (
         <p className="t-sm mb-3 text-[var(--ink-3)]">
-          {t('Phone numbers, emails and links are hidden until the booking is accepted, then shown. Keep payments on Cappy: that is what protects you both.')}
+          {t('Phone numbers, emails and links stay hidden until the booking is accepted. Keep payments in Cappy, so you are both protected.')}
         </p>
       )}
       {items.length === 0 ? (
         // No invitation to write on a booking nobody can write on (V4-18).
         closed || blocked ? null : (
-          <p className="t-sm py-3 text-[var(--ink-3)]">{t('No messages yet. Ask about the hand-over, access or anything you need.')}</p>
+          <p className="t-sm py-3 text-[var(--ink-3)]">{t('No messages yet. Say hello, and ask about the hand-over or anything else.')}</p>
         )
       ) : (
         <ul ref={list} className="max-h-[360px] space-y-3 overflow-y-auto overscroll-contain py-2" aria-live="polite">
-          {items.map((m) => (
-            <Bubble key={m.id} m={m} otherName={otherName} closed={closed} />
+          {items.map((m, i) => (
+            <Bubble key={m.id} m={m} otherName={otherName} closed={closed} last={items[i + 1]?.mine !== m.mine} />
           ))}
         </ul>
       )}
@@ -192,6 +200,23 @@ export function Conversation({
           )}
         </p>
       ) : (
+        <>
+        {!draft && (
+          // Quick replies (Airbnb, Vinted): the three things people write most,
+          // one tap to start a message, still editable before sending.
+          <div className="rail mt-3 pb-1" aria-label={t('Suggested messages')}>
+            {[t('Hi! Is everything set for the booking?'), t('How does the hand-over work?'), t('Thanks, see you then!')].map((q) => (
+              <button
+                key={q}
+                type="button"
+                onClick={() => setDraft(q)}
+                className="shrink-0 rounded-full border border-[var(--line-strong)] px-3.5 py-2 text-label font-medium text-[var(--ink-2)] transition-colors duration-[var(--dur-short)] hover:bg-[var(--sunken)]"
+              >
+                {q}
+              </button>
+            ))}
+          </div>
+        )}
         <form
           className="mt-3 flex items-end gap-2"
           onSubmit={(e) => {
@@ -217,6 +242,7 @@ export function Conversation({
             {t('Send')}
           </Button>
         </form>
+        </>
       )}
     </Card>
   )

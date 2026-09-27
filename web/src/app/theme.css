@@ -32,7 +32,11 @@
   /* Concentric and rounder (VD-8, ADR 0014): controls are capsules, a card is
      20 so an image inset 8 inside it is 12, sheets are iOS 26's 32. */
   --radius-plate: 24px;
-  --radius-control: 999px;
+  /* Buttons and chips are capsules (VD-8); a control that is a box (a
+     select, a note, a tile) keeps a box radius. Two tokens, so a box can
+     never turn into a pill by sharing the button's. */
+  --radius-capsule: 999px;
+  --radius-control: 12px;
   --radius-field: 12px;
   --radius-card: 20px;
   --radius-cover: 20px;
@@ -211,7 +215,7 @@
   --spring-bouncy: linear(0, 0.091, 0.297, 0.538, 0.76, 0.933, 1.047, 1.108, 1.126, 1.116, 1.091, 1.06, 1.032, 1.01, 0.995, 0.987, 0.984, 0.985, 0.988, 0.992, 0.996, 0.999, 1.001, 1.002, 1);
 
   /* Component knobs. */
-  --sheet-radius: var(--radius-l);
+  --sheet-radius: var(--radius-xl);
   /* The phone tab bar (cappy-ui §4): 56 plus the home indicator, opaque
      elevated surface, hairline top, a 56×32 indicator pill behind the active
      icon. */
@@ -1585,4 +1589,11 @@ select {
   .press-card img {
     transition: transform var(--dur-long) var(--ease-standard), opacity var(--dur-long) var(--ease-standard);
   }
+}
+
+/* No dividers in a sheet (VD-12): the body fades out under the action row
+   instead, so what continues below reads as "scroll for more". */
+.sheet-body {
+  -webkit-mask-image: linear-gradient(#000 calc(100% - 24px), transparent);
+  mask-image: linear-gradient(#000 calc(100% - 24px), transparent);
 }

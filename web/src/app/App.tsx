@@ -230,7 +230,7 @@ function StoreLinks() {
   const url = platform === 'ios' ? ios : platform === 'android' ? android : (ios ?? android)
   if (!url) return null
   return (
-    <a href={url} className="mt-6 inline-flex rounded-[var(--radius-control)] bg-[var(--field)] px-5 py-3 font-semibold text-[var(--on-field)]">
+    <a href={url} className="mt-6 inline-flex rounded-[var(--radius-capsule)] bg-[var(--field)] px-5 py-3 font-semibold text-[var(--on-field)]">
       {t('Update now')}
     </a>
   )

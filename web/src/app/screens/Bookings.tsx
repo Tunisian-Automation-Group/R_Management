@@ -178,7 +178,7 @@ export function Bookings() {
           <EmptyState
             icon="ticket"
             title={t('No bookings yet')}
-            body={t("When you book someone's idle hour it shows up here. Once the owner accepts, you get the address and handover notes.")}
+            body={t('Book a tool, a van or a workshop and it shows up here. You get the address once the owner says yes.')}
             action={<Button to={'/'}>{t('Find something nearby')}</Button>}
           />
         )
@@ -191,7 +191,7 @@ export function Bookings() {
               ? t('Your past bookings are under the Past tab.')
               : t('Bookings move here once they are done, declined or cancelled.')
           }
-          action={tab === 'live' ? <Button to={'/'}>{t('Browse capacity')}</Button> : undefined}
+          action={tab === 'live' ? <Button to={'/'}>{t('Find something to rent')}</Button> : undefined}
         />
       ) : (
         <ul className="ruled border-t border-[var(--line)]">

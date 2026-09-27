@@ -317,13 +317,13 @@ export function Earn() {
 
       {/* ------------------------------------------- the number that matters */}
       <section className="-mt-1">
-        <p className="t-label">{t('Still idle this week')}</p>
+        <p className="t-label">{t('Free to book this week')}</p>
         <p className="mt-3 flex flex-wrap items-baseline gap-x-2.5">
           <span className="t-figure text-[clamp(3.5rem,19vw,4.75rem)] leading-[0.9]">{Math.round(hoursIdle)}</span>
           <span className="text-title-s font-medium text-[var(--ink-4)]">{t('hours')}</span>
         </p>
         <p className="t-lede mt-3 text-[var(--ink-2)]">
-          <span className="hl font-semibold">{formatMoney(unsold, currency)}</span> {t('of time nobody is paying you for.')}
+          <span className="hl font-semibold">{formatMoney(unsold, currency)}</span> {t('you could still earn this week.')}
         </p>
         {(sold > 0 || earned > 0) && (
           <p className="t-sm tnum mt-2.5 font-semibold text-[var(--success-text)]">

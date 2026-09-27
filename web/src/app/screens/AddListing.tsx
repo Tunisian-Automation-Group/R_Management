@@ -678,7 +678,7 @@ function ListingForm({ edit }: { edit?: repo.ListingView }) {
       <button
         disabled={Boolean(was)}
         onClick={() => setCategoryId(null)}
-        className="mb-7 inline-flex min-h-[38px] items-center gap-2 rounded-[var(--radius-control)] border border-[var(--line)] px-3.5 text-label font-semibold
+        className="mb-7 inline-flex min-h-[38px] items-center gap-2 rounded-[var(--radius-capsule)] border border-[var(--line)] px-3.5 text-label font-semibold
           transition-colors duration-[var(--dur-short)] hover:border-[var(--ink-4)]"
       >
         <Icon name={categoryIcon(meta!.icon)} size={17} className="text-[var(--accent-text)]" />

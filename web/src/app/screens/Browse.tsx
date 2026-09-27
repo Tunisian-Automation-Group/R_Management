@@ -307,8 +307,8 @@ export function Browse() {
             ) : spotlight.length === 0 ? (
               <EmptyState
                 icon="clock"
-                title={t('Nothing free nearby today')}
-                body={t('No idle capacity within {distance} today. Widening the radius usually finds something.', { distance: formatRadius(search.maxDistanceKm) })}
+                title={t('Nothing free near you today')}
+                body={t('Nothing is free within {distance} today. A wider area usually finds something.', { distance: formatRadius(search.maxDistanceKm) })}
                 action={
                   <Button
                     variant="secondary"
@@ -430,7 +430,7 @@ export function Browse() {
                   <button
                     onClick={() => setShowMap((v) => !v)}
                     aria-pressed={showMap}
-                    className={`tap inline-flex min-h-[34px] items-center gap-1.5 rounded-[var(--radius-control)] border px-3 text-label font-medium transition-colors duration-[var(--dur-short)]
+                    className={`tap inline-flex min-h-[34px] items-center gap-1.5 rounded-[var(--radius-capsule)] border px-3 text-label font-medium transition-colors duration-[var(--dur-short)]
                       ${
                         showMap
                           ? 'border-[var(--field)] bg-[var(--field)] font-semibold text-[var(--on-field)]'
@@ -466,7 +466,7 @@ export function Browse() {
             {!matches || matches.length === 0 ? (
               <EmptyState
                 icon="calendar"
-                title={t('No idle capacity fits that')}
+                title={t('Nothing matches that yet')}
                 body={
                   meta.mode === 'window'
                     ? t('Nobody within {distance} has {duration} free {days}. A shorter booking or a wider radius usually fixes it.', { distance: formatRadius(search.maxDistanceKm), duration: durationLabel(search.hours), days: plural(search.withinDays, 'in the next 24 hours', 'in the next {n} days') })
