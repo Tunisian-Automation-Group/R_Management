@@ -38,7 +38,7 @@
   "devDependencies": {
     "@capacitor/cli": "^8.5.2",
     "@tailwindcss/vite": "^4.1.13",
-    "@types/node": "^26.6.2",
+    "@types/node": "^26.6.3",
     "@types/react": "^19.2.0",
     "@types/react-dom": "^19.2.0",
     "@vitejs/plugin-react": "^5.0.2",
